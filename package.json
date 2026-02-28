@@ -1,0 +1,12 @@
+{
+    "name": "fleetadmin-pro",
+    "version": "1.0.0",
+    "description": "Gestión integral de flota vehicular, conductores y mantenimiento",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

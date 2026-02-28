@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description"
+        content="Administrador de Flota - Gestión integral de vehículos, conductores y mantenimiento">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>FleetAdmin Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/index.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/modules.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Pantalla de carga inicial -->
+        <div id="splash-screen" class="splash-screen">
+            <div class="splash-content">
+                <div class="splash-icon">🚗</div>
+                <h1 class="splash-title">FleetAdmin Pro</h1>
+                <div class="splash-loader">
+                    <div class="splash-loader-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts del sistema -->
+    <script src="js/i18n.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/units.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/alerts.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/modules/login.js"></script>
+    <script src="js/modules/dashboard.js"></script>
+    <script src="js/modules/shifts.js"></script>
+    <script src="js/modules/maintenance.js"></script>
+    <script src="js/modules/mechanic.js"></script>
+    <script src="js/modules/vehicles.js"></script>
+    <script src="js/modules/settings.js"></script>
+    <script src="js/app.js"></script>
+
+    <script>
+        // Registro del Service Worker para PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registrado:', reg.scope))
+                .catch(err => console.error('Error registrando SW:', err));
+        }
+    </script>
+</body>
+
+</html>

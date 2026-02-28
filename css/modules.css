@@ -1,0 +1,492 @@
+/* ============================================
+   FleetAdmin Pro — Estilos de Módulos
+   ============================================ */
+
+/* --- Pantalla de Login --- */
+.login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary);
+    padding: var(--space-4);
+}
+
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    animation: scaleIn 0.4s ease;
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: var(--space-8);
+}
+
+.login-logo-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-4);
+    background: var(--gradient-primary);
+    border-radius: var(--radius-2xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    box-shadow: var(--shadow-glow);
+}
+
+.login-logo h1 {
+    font-size: var(--font-size-3xl);
+    font-weight: 800;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.login-logo p {
+    color: var(--text-secondary);
+    margin-top: var(--space-2);
+    font-size: var(--font-size-sm);
+}
+
+.login-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-2xl);
+    padding: var(--space-8);
+}
+
+.login-card h2 {
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--space-6);
+    text-align: center;
+}
+
+.role-selector {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.role-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border-radius: var(--radius-xl);
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.role-option:hover {
+    border-color: var(--color-primary);
+    color: var(--text-primary);
+}
+
+.role-option.selected {
+    border-color: var(--color-primary);
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--color-primary-light);
+    box-shadow: var(--shadow-glow);
+}
+
+.role-icon {
+    font-size: 1.8rem;
+}
+
+.role-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+}
+
+.login-lang {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--space-6);
+}
+
+/* --- Dashboard del Dueño --- */
+.dashboard-welcome {
+    margin-bottom: var(--space-6);
+}
+
+.dashboard-welcome h2 {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+}
+
+.dashboard-welcome p {
+    color: var(--text-secondary);
+}
+
+.dashboard-section {
+    margin-bottom: var(--space-8);
+}
+
+.dashboard-section-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.vehicle-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--space-4);
+}
+
+.vehicle-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.vehicle-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--color-primary);
+}
+
+.vehicle-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.vehicle-name {
+    font-weight: 600;
+    font-size: var(--font-size-lg);
+}
+
+.vehicle-plate {
+    background: var(--bg-tertiary);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+
+.vehicle-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+}
+
+.vehicle-stat {
+    text-align: center;
+    padding: var(--space-3);
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+}
+
+.vehicle-stat-value {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+}
+
+.vehicle-stat-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin-top: var(--space-1);
+}
+
+/* --- Módulo de Turnos --- */
+.shift-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-6);
+}
+
+.shift-timer {
+    text-align: center;
+    padding: var(--space-6);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-6);
+}
+
+.shift-timer-display {
+    font-size: var(--font-size-4xl);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: var(--space-2);
+}
+
+.shift-timer-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.shift-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+.shift-action-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.shift-action-card:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+}
+
+.shift-action-icon {
+    font-size: 2rem;
+}
+
+.shift-action-text {
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    text-align: center;
+}
+
+/* --- Módulo de Mantenimiento --- */
+.maintenance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-4);
+}
+
+.maintenance-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+}
+
+.maintenance-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.maintenance-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.maintenance-card-title {
+    font-weight: 600;
+    font-size: var(--font-size-base);
+}
+
+.maintenance-card-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+}
+
+.belt-visualization {
+    margin: var(--space-4) 0;
+}
+
+.belt-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-2);
+}
+
+.belt-current {
+    font-weight: 600;
+}
+
+.belt-next {
+    color: var(--text-secondary);
+}
+
+/* --- Módulo del Mecánico --- */
+.mechanic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+}
+
+.repair-form {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+}
+
+.repair-form-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-5);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.repair-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+}
+
+/* --- Configuración --- */
+.settings-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-4);
+    overflow: hidden;
+}
+
+.settings-section-title {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    padding: var(--space-4) var(--space-6);
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.settings-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-6);
+    border-top: 1px solid var(--border-color);
+}
+
+.settings-item-label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}
+
+.settings-item-desc {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin-top: var(--space-1);
+}
+
+/* --- Página de Vehículos --- */
+.vehicle-detail-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+.vehicle-detail-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-xl);
+    background: var(--gradient-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.vehicle-detail-info h2 {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+}
+
+.vehicle-detail-info p {
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+/* -- Responsivo móvil para módulos -- */
+@media (max-width: 768px) {
+    .role-selector {
+        grid-template-columns: 1fr;
+    }
+
+    .login-card {
+        padding: var(--space-6);
+    }
+
+    .shift-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-action-card {
+        flex-direction: row;
+        padding: var(--space-4);
+    }
+
+    .shift-action-icon {
+        font-size: 1.5rem;
+    }
+
+    .maintenance-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .repair-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .vehicle-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .mechanic-header {
+        flex-direction: column;
+        gap: var(--space-3);
+        align-items: stretch;
+    }
+
+    .vehicle-detail-header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .settings-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+}
