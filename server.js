@@ -355,6 +355,26 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // --- TWA Digital Asset Links (para Google Play Store) ---
+    if (urlPath === '/.well-known/assetlinks.json') {
+        const assetlinks = [{
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": "com.onrender.fleetadmin_pro.twa",
+                "sha256_cert_fingerprints": [
+                    // PWABuilder signing key fingerprint (se actualiza al generar el paquete)
+                    "XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX"
+                ]
+            }
+        }];
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(JSON.stringify(assetlinks));
+    }
+
     // --- Archivos estáticos ---
     let filePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
     filePath = decodeURIComponent(filePath);

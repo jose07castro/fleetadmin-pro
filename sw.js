@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v5';
+const CACHE_NAME = 'fleetadmin-v6';
 const ASSETS = [
     '/',
     '/index.html',
@@ -24,7 +24,9 @@ const ASSETS = [
     '/manifest.json',
     '/assets/icon.svg',
     '/assets/icon-192.png',
-    '/assets/icon-512.png'
+    '/assets/icon-512.png',
+    '/assets/screenshot-login.png',
+    '/assets/screenshot-dashboard.png'
 ];
 
 // Instalar: cachear todos los archivos estáticos

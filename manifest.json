@@ -1,8 +1,10 @@
 {
+    "id": "/",
     "name": "FleetAdmin Pro - Administrador de Flota",
     "short_name": "FleetAdmin",
-    "description": "Gestión integral de flota vehicular, conductores y mantenimiento",
+    "description": "Gestión integral de flota vehicular, conductores y mantenimiento para Uber y DiDi",
     "start_url": "/index.html",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#0f172a",
     "theme_color": "#0f172a",
@@ -12,18 +14,47 @@
             "src": "assets/icon-192.png",
             "sizes": "192x192",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
         },
         {
             "src": "assets/icon-512.png",
             "sizes": "512x512",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
+        },
+        {
+            "src": "assets/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "assets/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "assets/screenshot-login.png",
+            "sizes": "1080x1920",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Pantalla de inicio de sesión"
+        },
+        {
+            "src": "assets/screenshot-dashboard.png",
+            "sizes": "1080x1920",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Panel principal con vista de flota"
         }
     ],
     "categories": [
         "business",
         "productivity"
     ],
-    "lang": "es"
+    "lang": "es",
+    "prefer_related_applications": false
 }
