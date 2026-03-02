@@ -356,17 +356,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     // --- Archivos estáticos ---
-    let filePath = urlPath === '/' ? '/index.html' : urlPath;
-    const fullPath = path.join(__dirname, filePath);
+    let filePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
+    filePath = decodeURIComponent(filePath);
+    const fullPath = path.resolve(__dirname, filePath);
+    const rootDir = path.resolve(__dirname);
 
     // Seguridad: no permitir salir del directorio
-    if (!fullPath.startsWith(__dirname)) {
+    if (!fullPath.startsWith(rootDir)) {
         res.writeHead(403);
         return res.end('Acceso denegado');
     }
 
     fs.readFile(fullPath, (err, data) => {
         if (err) {
+            console.log(`[404] ${filePath} (${fullPath})`);
             res.writeHead(404);
             res.end('Archivo no encontrado');
             return;
