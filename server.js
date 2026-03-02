@@ -361,10 +361,9 @@ const server = http.createServer(async (req, res) => {
             "relation": ["delegate_permission/common.handle_all_urls"],
             "target": {
                 "namespace": "android_app",
-                "package_name": "com.onrender.fleetadmin_pro.twa",
+                "package_name": "com.fleetadminpro.app",
                 "sha256_cert_fingerprints": [
-                    // PWABuilder signing key fingerprint (se actualiza al generar el paquete)
-                    "XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX"
+                    "72:B4:6F:DC:F1:C9:3B:A0:02:0E:4E:EF:6E:E7:3D:F6:A3:0D:7E:E1:6A:D7:DB:88:B3:A4:A3:69:E4:AF:0B:19"
                 ]
             }
         }];
