@@ -1,9 +1,13 @@
 /* ============================================
    FleetAdmin Pro — Archivo Principal
    Inicialización de la aplicación PWA
+   con sincronización Firebase en tiempo real
    ============================================ */
 
 const App = (() => {
+
+    // Listener refs para limpieza
+    let realtimeListenersActive = false;
 
     // Inicializar la aplicación
     async function init() {
@@ -11,7 +15,7 @@ const App = (() => {
             // 1. Inicializar sistema de idiomas
             I18n.init();
 
-            // 2. Abrir la base de datos IndexedDB
+            // 2. Conectar a Firebase
             await DB.open();
 
             // 3. Crear datos iniciales si es primera vez
@@ -27,6 +31,8 @@ const App = (() => {
             setTimeout(() => {
                 if (Auth.isLoggedIn()) {
                     Router.navigate(Router.getDefaultRoute());
+                    // 6. Activar sincronización en tiempo real
+                    startRealtimeSync();
                 } else {
                     Router.navigate('login');
                 }
@@ -40,7 +46,7 @@ const App = (() => {
                         <div style="font-size:3rem; margin-bottom:var(--space-4);">❌</div>
                         <h2>${I18n.t('error')}</h2>
                         <p style="color:var(--text-secondary); margin-top:var(--space-2);">
-                            Error al inicializar. Refresca la página.
+                            Error al inicializar. Verifica tu conexión a internet.
                         </p>
                         <button class="btn btn-primary" onclick="location.reload()" style="margin-top:var(--space-4);">
                             🔄 Refrescar
@@ -51,8 +57,52 @@ const App = (() => {
         }
     }
 
+    // --- Sincronización en tiempo real ---
+    function startRealtimeSync() {
+        if (realtimeListenersActive) return;
+        realtimeListenersActive = true;
+
+        const stores = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+        let initialLoad = {};
+
+        stores.forEach(store => {
+            initialLoad[store] = true;
+            DB.onChanges(store, (items) => {
+                // Ignorar la primera carga (ya se renderizó)
+                if (initialLoad[store]) {
+                    initialLoad[store] = false;
+                    return;
+                }
+
+                console.log(`🔄 Sync: ${store} actualizado (${items.length} items)`);
+
+                // Refrescar la vista actual si hay cambios
+                const currentRoute = Router.getCurrentRoute();
+                if (currentRoute && currentRoute !== 'login') {
+                    Router.navigate(currentRoute);
+                }
+            });
+        });
+
+        console.log('📡 Sincronización en tiempo real activada');
+    }
+
+    // --- Detener sincronización ---
+    function stopRealtimeSync() {
+        if (!realtimeListenersActive) return;
+
+        const stores = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+        stores.forEach(store => {
+            DB.offChanges(store);
+        });
+
+        realtimeListenersActive = false;
+        console.log('📡 Sincronización en tiempo real desactivada');
+    }
+
     // Cerrar sesión
     function logout() {
+        stopRealtimeSync();
         Auth.logout();
         Router.navigate('login');
     }
@@ -85,7 +135,7 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar };
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---

@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v6';
+const CACHE_NAME = 'fleetadmin-v7';
 const ASSETS = [
     '/',
     '/index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
     '/css/components.css',
     '/css/modules.css',
     '/js/i18n.js',
+    '/js/firebase-config.js',
     '/js/db.js',
     '/js/units.js',
     '/js/auth.js',
@@ -47,11 +48,20 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch: API siempre va a red, estáticos cache-first
+// Fetch: Firebase y API van a red, estáticos cache-first
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
-    // Las llamadas a /api/ SIEMPRE van a la red (datos en tiempo real)
+    // Firebase Realtime Database - SIEMPRE va a la red
+    if (url.hostname.includes('firebaseio.com') ||
+        url.hostname.includes('googleapis.com') ||
+        url.hostname.includes('firebasedatabase.app') ||
+        url.hostname.includes('gstatic.com')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
+    // Las llamadas a /api/ SIEMPRE van a la red (legacy)
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(fetch(event.request));
         return;
@@ -74,4 +84,3 @@ self.addEventListener('fetch', event => {
         })
     );
 });
-

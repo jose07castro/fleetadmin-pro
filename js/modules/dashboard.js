@@ -201,7 +201,7 @@ const DashboardModule = (() => {
 
         const userCards = users.map(u => `
             <div style="display:flex; align-items:center; gap:var(--space-4); padding:var(--space-4); border-bottom:1px solid var(--border-color);">
-                <div style="position:relative; cursor:pointer;" onclick="DashboardModule.changeUserPhoto(${u.id})">
+                <div style="position:relative; cursor:pointer;" onclick="DashboardModule.changeUserPhoto('${u.id}')">
                     ${u.profilePhoto
                 ? `<img src="${u.profilePhoto}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">`
                 : `<div style="width:50px;height:50px;border-radius:50%;background:var(--gradient-primary);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:white;">
@@ -217,8 +217,8 @@ const DashboardModule = (() => {
                     </span>
                 </div>
                 <div style="display:flex; gap:var(--space-2);">
-                    <button class="btn btn-ghost btn-sm" onclick="DashboardModule.editUser(${u.id})">✏️</button>
-                    ${u.role !== 'owner' ? `<button class="btn btn-ghost btn-sm" onclick="DashboardModule.deleteUser(${u.id})">🗑️</button>` : ''}
+                    <button class="btn btn-ghost btn-sm" onclick="DashboardModule.editUser('${u.id}')">✏️</button>
+                    ${u.role !== 'owner' ? `<button class="btn btn-ghost btn-sm" onclick="DashboardModule.deleteUser('${u.id}')">🗑️</button>` : ''}
                 </div>
             </div>
         `).join('');
@@ -315,7 +315,7 @@ const DashboardModule = (() => {
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
-                <button class="btn btn-primary" onclick="DashboardModule.saveEditUser(${userId})">${I18n.t('save')}</button>
+                <button class="btn btn-primary" onclick="DashboardModule.saveEditUser('${userId}')">${I18n.t('save')}</button>
             `
         );
     }
@@ -365,7 +365,7 @@ const DashboardModule = (() => {
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
-                <button class="btn btn-primary" onclick="DashboardModule.saveUserPhoto(${userId})">${I18n.t('save')}</button>
+                <button class="btn btn-primary" onclick="DashboardModule.saveUserPhoto('${userId}')">${I18n.t('save')}</button>
             `
         );
     }
@@ -392,7 +392,7 @@ const DashboardModule = (() => {
             `<p>${I18n.t('user_delete_confirm')}</p>`,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                <button class="btn btn-danger" onclick="DashboardModule.confirmDeleteUser(${userId})">${I18n.t('confirm')}</button>
+                <button class="btn btn-danger" onclick="DashboardModule.confirmDeleteUser('${userId}')">${I18n.t('confirm')}</button>
             `
         );
     }

@@ -89,8 +89,8 @@ const MechanicModule = (() => {
                                 </td>
                                 ${Auth.isOwner() ? `
                                     <td data-label="${I18n.t('actions')}">
-                                        <button class="btn btn-ghost btn-sm" onclick="MechanicModule.editRepair(${r.id})">✏️</button>
-                                        <button class="btn btn-ghost btn-sm" onclick="MechanicModule.deleteRepair(${r.id})">🗑️</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="MechanicModule.editRepair('${r.id}')">✏️</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="MechanicModule.deleteRepair('${r.id}')">🗑️</button>
                                     </td>
                                 ` : ''}
                             </tr>
@@ -143,21 +143,21 @@ const MechanicModule = (() => {
                 `,
                 `
                     <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                    <button class="btn btn-primary" onclick="MechanicModule.saveRepair(${repair?.id || 'null'})">${I18n.t('save')}</button>
+                    <button class="btn btn-primary" onclick="MechanicModule.saveRepair('${repair?.id || ''}')">${I18n.t('save')}</button>
                 `
             );
         });
     }
 
     async function saveRepair(repairId) {
-        const vehicleId = parseInt(document.getElementById('repairVehicle')?.value);
+        const vehicleId = document.getElementById('repairVehicle')?.value;
         const description = document.getElementById('repairDesc')?.value;
         const odometer = parseFloat(document.getElementById('repairOdometer')?.value) || 0;
         const cost = parseFloat(document.getElementById('repairCost')?.value) || 0;
         const date = document.getElementById('repairDate')?.value;
         const photo = Components.getPhotoData('repairPhoto');
 
-        if (!vehicleId || !description) {
+        if (!vehicleId || vehicleId === '' || !description) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
             return;
         }
@@ -174,7 +174,7 @@ const MechanicModule = (() => {
             photo
         };
 
-        if (repairId) {
+        if (repairId && repairId !== '' && repairId !== 'null') {
             data.id = repairId;
             await DB.put('repairs', data);
         } else {

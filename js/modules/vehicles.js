@@ -81,10 +81,10 @@ const VehiclesModule = (() => {
 
                     ${Auth.isOwner() ? `
                         <div style="display:flex; gap:var(--space-2); margin-top:var(--space-4);">
-                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showForm(${v.id})">
+                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showForm('${v.id}')">
                                 ✏️ ${I18n.t('edit')}
                             </button>
-                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.deleteVehicle(${v.id})">
+                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.deleteVehicle('${v.id}')">
                                 🗑️ ${I18n.t('delete')}
                             </button>
                         </div>
@@ -137,7 +137,7 @@ const VehiclesModule = (() => {
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                <button class="btn btn-primary" onclick="VehiclesModule.saveVehicle(${vehicleId || 'null'})">${I18n.t('save')}</button>
+                <button class="btn btn-primary" onclick="VehiclesModule.saveVehicle('${vehicleId || ''}')">${I18n.t('save')}</button>
             `
         );
     }
@@ -162,7 +162,7 @@ const VehiclesModule = (() => {
             status
         };
 
-        if (vehicleId) {
+        if (vehicleId && vehicleId !== '' && vehicleId !== 'null') {
             data.id = vehicleId;
             await DB.put('vehicles', data);
         } else {

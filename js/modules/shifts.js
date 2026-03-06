@@ -157,7 +157,7 @@ const ShiftsModule = (() => {
 
                 ${Components.renderPhotoCapture('shiftEarningsPhoto', I18n.t('shift_earnings_photo'))}
 
-                <button class="btn btn-danger btn-block btn-lg" onclick="ShiftsModule.endShift(${shift.id})">
+                <button class="btn btn-danger btn-block btn-lg" onclick="ShiftsModule.endShift('${shift.id}')">
                     ⏹️ ${I18n.t('shift_end')}
                 </button>
             </div>
@@ -274,11 +274,11 @@ const ShiftsModule = (() => {
 
     // --- Iniciar turno ---
     async function startShift() {
-        const vehicleId = parseInt(document.getElementById('shiftVehicle')?.value);
+        const vehicleId = document.getElementById('shiftVehicle')?.value;
         const odoStart = parseFloat(document.getElementById('shiftOdometerStart')?.value);
         const photo = Components.getPhotoData('shiftOdoStart');
 
-        if (!vehicleId || !odoStart) {
+        if (!vehicleId || vehicleId === '' || !odoStart) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
             return;
         }

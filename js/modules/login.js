@@ -92,6 +92,7 @@ const LoginModule = (() => {
         const success = await Auth.authenticate(name, pin, selectedRole);
         if (success) {
             errorEl.style.display = 'none';
+            App.startRealtimeSync();
             Router.navigate(Router.getDefaultRoute());
         } else {
             errorEl.style.display = 'block';

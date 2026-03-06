@@ -77,7 +77,7 @@ const MaintenanceModule = (() => {
                 </div>
 
                 ${Auth.isOwner() ? `
-                    <button class="btn btn-primary btn-sm" onclick="MaintenanceModule.registerBeltChange(${vehicle.id})"
+                    <button class="btn btn-primary btn-sm" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')"
                         style="margin-top:var(--space-3);">
                         🔄 ${I18n.t('maint_belt_register')}
                     </button>
@@ -142,7 +142,7 @@ const MaintenanceModule = (() => {
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                <button class="btn btn-primary" onclick="MaintenanceModule.saveBeltChange(${vehicleId})">${I18n.t('save')}</button>
+                <button class="btn btn-primary" onclick="MaintenanceModule.saveBeltChange('${vehicleId}')">${I18n.t('save')}</button>
             `
         );
     }
@@ -277,7 +277,7 @@ const OilModule = (() => {
                     </td>
                     ${Auth.isOwner() ? `
                         <td data-label="${I18n.t('actions')}">
-                            <button class="btn btn-ghost btn-sm" onclick="OilModule.deleteOilLog(${l.id})">🗑️</button>
+                            <button class="btn btn-ghost btn-sm" onclick="OilModule.deleteOilLog('${l.id}')">🗑️</button>
                         </td>
                     ` : ''}
                 </tr>
@@ -306,12 +306,12 @@ const OilModule = (() => {
     }
 
     async function saveOilLog() {
-        const vehicleId = parseInt(document.getElementById('oilVehicle')?.value);
+        const vehicleId = document.getElementById('oilVehicle')?.value;
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
         const date = document.getElementById('oilDate')?.value;
         const photo = Components.getPhotoData('oilPhoto');
 
-        if (!vehicleId || !quantity) {
+        if (!vehicleId || vehicleId === '' || !quantity) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
             return;
         }
