@@ -1,27 +1,27 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v11';
+const CACHE_NAME = 'fleetadmin-v12';
 const ASSETS = [
     './',
-    './index.html?v=11',
-    './css/index.css?v=11',
-    './css/components.css?v=11',
-    './css/modules.css?v=11',
-    './js/i18n.js?v=11',
-    './js/firebase-config.js?v=11',
-    './js/db.js?v=11',
-    './js/units.js?v=11',
-    './js/auth.js?v=11',
-    './js/alerts.js?v=11',
-    './js/components.js?v=11',
-    './js/router.js?v=11',
-    './js/modules/login.js?v=11',
-    './js/modules/dashboard.js?v=11',
-    './js/modules/shifts.js?v=11',
-    './js/modules/maintenance.js?v=11',
-    './js/modules/vehicles.js?v=11',
-    './js/modules/settings.js?v=11',
-    './js/app.js?v=11',
-    './manifest.json?v=11',
+    './index.html?v=12',
+    './css/index.css?v=12',
+    './css/components.css?v=12',
+    './css/modules.css?v=12',
+    './js/i18n.js?v=12',
+    './js/firebase-config.js?v=12',
+    './js/db.js?v=12',
+    './js/units.js?v=12',
+    './js/auth.js?v=12',
+    './js/alerts.js?v=12',
+    './js/components.js?v=12',
+    './js/router.js?v=12',
+    './js/modules/login.js?v=12',
+    './js/modules/dashboard.js?v=12',
+    './js/modules/shifts.js?v=12',
+    './js/modules/maintenance.js?v=12',
+    './js/modules/vehicles.js?v=12',
+    './js/modules/settings.js?v=12',
+    './js/app.js?v=12',
+    './manifest.json?v=12',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -78,7 +78,7 @@ self.addEventListener('fetch', event => {
             });
         }).catch(() => {
             if (event.request.destination === 'document') {
-                return caches.match('./index.html?v=11').then(res => res || caches.match('./index.html'));
+                return caches.match('./index.html?v=12').then(res => res || caches.match('./index.html'));
             }
         })
     );
