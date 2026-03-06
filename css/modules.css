@@ -8,7 +8,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-primary);
+    background: rgba(15, 23, 42, 0.6);
     padding: var(--space-4);
 }
 
@@ -52,10 +52,13 @@
 }
 
 .login-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
+    background: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(99, 102, 241, 0.2);
     border-radius: var(--radius-2xl);
     padding: var(--space-8);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .login-card h2 {

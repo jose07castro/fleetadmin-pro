@@ -125,6 +125,9 @@ const I18n = (() => {
             shift_total_km: 'KM Recorridos',
             shift_fuel: 'Combustible',
             shift_notes: 'Notas',
+            shift_type: 'Tipo de Turno',
+            shift_day: '🌅 Día (06:00 - 18:00)',
+            shift_night: '🌙 Noche (18:00 - 06:00)',
 
             // Mantenimiento
             maint_title: 'Mantenimiento',
@@ -306,6 +309,9 @@ const I18n = (() => {
             shift_total_km: 'KM Traveled',
             shift_fuel: 'Fuel',
             shift_notes: 'Notes',
+            shift_type: 'Shift Type',
+            shift_day: '🌅 Day (06:00 - 18:00)',
+            shift_night: '🌙 Night (18:00 - 06:00)',
 
             maint_title: 'Maintenance',
             maint_timing_belt: 'Timing Belt',
@@ -481,6 +487,9 @@ const I18n = (() => {
             shift_total_km: 'KM Percorridos',
             shift_fuel: 'Combustível',
             shift_notes: 'Notas',
+            shift_type: 'Tipo de Turno',
+            shift_day: '🌅 Dia (06:00 - 18:00)',
+            shift_night: '🌙 Noite (18:00 - 06:00)',
 
             maint_title: 'Manutenção',
             maint_timing_belt: 'Correia Dentada',

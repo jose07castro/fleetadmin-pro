@@ -7,6 +7,14 @@
 const ShiftsModule = (() => {
 
     let shiftTimer = null;
+    let selectedShiftType = 'day'; // 'day' o 'night'
+
+    function selectShiftType(type) {
+        selectedShiftType = type;
+        document.querySelectorAll('.shift-type-option').forEach(el => {
+            el.classList.toggle('selected', el.dataset.type === type);
+        });
+    }
 
     async function render() {
         const role = Auth.getRole();
@@ -42,6 +50,20 @@ const ShiftsModule = (() => {
             <!-- Iniciar nuevo turno -->
             <div class="card" style="margin-bottom:var(--space-6);">
                 <h3 style="margin-bottom:var(--space-4);">${I18n.t('shift_start')}</h3>
+
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('shift_type')}</label>
+                    <div class="role-selector" id="shiftTypeSelector" style="margin-bottom:var(--space-2);">
+                        <button class="role-option shift-type-option selected" data-type="day" onclick="ShiftsModule.selectShiftType('day')">
+                            <span class="role-icon">🌅</span>
+                            <span class="role-label">06:00 - 18:00</span>
+                        </button>
+                        <button class="role-option shift-type-option" data-type="night" onclick="ShiftsModule.selectShiftType('night')">
+                            <span class="role-icon">🌙</span>
+                            <span class="role-label">18:00 - 06:00</span>
+                        </button>
+                    </div>
+                </div>
 
                 <div class="form-group">
                     <label class="form-label">${I18n.t('shift_select_vehicle')}</label>
@@ -96,7 +118,9 @@ const ShiftsModule = (() => {
                         ${vehicle?.name || ''} — ${vehicle?.plate || ''}
                     </div>
                 </div>
-                <span class="badge badge-success">${I18n.t('shift_12h')}</span>
+                <span class="badge ${shift.shiftType === 'night' ? 'badge-warning' : 'badge-success'}">
+                    ${shift.shiftType === 'night' ? '🌙 18-06' : '🌅 06-18'}
+                </span>
             </div>
 
             <div class="shift-timer">
@@ -184,12 +208,15 @@ const ShiftsModule = (() => {
                 <div class="card">
                     <div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3);">
                         <div class="stat-icon success">⏱️</div>
-                        <div>
+                        <div style="flex:1;">
                             <div style="font-weight:600;">${driver?.name || ''}</div>
                             <div style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
                                 ${vehicle?.name || ''} — ${vehicle?.plate || ''}
                             </div>
                         </div>
+                        <span class="badge ${s.shiftType === 'night' ? 'badge-warning' : 'badge-success'}">
+                            ${s.shiftType === 'night' ? '🌙 18-06' : '🌅 06-18'}
+                        </span>
                     </div>
                     <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
                         ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
@@ -211,6 +238,7 @@ const ShiftsModule = (() => {
             rows += `
                 <tr>
                     <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()}</td>
+                    <td data-label="${I18n.t('shift_type')}">${s.shiftType === 'night' ? '🌙' : '🌅'}</td>
                     <td data-label="${I18n.t('shift_driver')}">${driverName}</td>
                     <td data-label="${I18n.t('shift_odometer_start')}">${Units.formatDistance(s.startOdometer)}</td>
                     <td data-label="${I18n.t('shift_odometer_end')}">${s.endOdometer ? Units.formatDistance(s.endOdometer) : '-'}</td>
@@ -228,6 +256,7 @@ const ShiftsModule = (() => {
                     <thead>
                         <tr>
                             <th>${I18n.t('date')}</th>
+                            <th>${I18n.t('shift_type')}</th>
                             <th>${I18n.t('shift_driver')}</th>
                             <th>${I18n.t('shift_odometer_start')}</th>
                             <th>${I18n.t('shift_odometer_end')}</th>
@@ -259,12 +288,16 @@ const ShiftsModule = (() => {
         await DB.add('shifts', {
             vehicleId,
             driverId: Auth.getUserId(),
+            shiftType: selectedShiftType,
             startTime: new Date().toISOString(),
             startOdometer: odometerKm,
             startOdometerPhoto: photo,
             status: 'active',
             earnings: 0
         });
+
+        // Reset selector
+        selectedShiftType = 'day';
 
         // Actualizar odómetro del vehículo
         const vehicle = await DB.get('vehicles', vehicleId);
@@ -356,5 +389,5 @@ const ShiftsModule = (() => {
         }, 1000);
     }
 
-    return { render, startShift, endShift };
+    return { render, startShift, endShift, selectShiftType };
 })();
