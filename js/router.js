@@ -12,7 +12,6 @@ const Router = (() => {
         vehicles: () => VehiclesModule.render(),
         shifts: () => ShiftsModule.render(),
         maintenance: () => MaintenanceModule.render(),
-        mechanic: () => MechanicModule.render(),
         oil: () => OilModule.render(),
         settings: () => SettingsModule.render(),
     };
@@ -28,7 +27,7 @@ const Router = (() => {
             const defaultRoutes = {
                 owner: 'dashboard',
                 driver: 'shifts',
-                mechanic: 'mechanic'
+                mechanic: 'maintenance'
             };
             route = defaultRoutes[Auth.getRole()] || 'login';
         }
@@ -64,7 +63,7 @@ const Router = (() => {
         const defaults = {
             owner: 'dashboard',
             driver: 'shifts',
-            mechanic: 'mechanic'
+            mechanic: 'maintenance'
         };
         return defaults[role] || 'login';
     }

@@ -73,9 +73,9 @@ const Auth = (() => {
         if (!role) return false;
 
         const permissions = {
-            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'mechanic', 'oil', 'settings'],
+            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'settings'],
             driver: ['shifts', 'oil', 'settings'],
-            mechanic: ['mechanic', 'settings']
+            mechanic: ['maintenance', 'settings']
         };
 
         return permissions[role]?.includes(route) || false;
