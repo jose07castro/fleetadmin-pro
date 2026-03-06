@@ -45,9 +45,17 @@ const LoginModule = (() => {
 
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
-                            <input type="password" class="form-input" id="loginPin"
-                                placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric"
-                                onkeydown="if(event.key==='Enter') LoginModule.doLogin()">
+                            <div style="position:relative;">
+                                <input type="password" class="form-input" id="loginPin"
+                                    placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric"
+                                    onkeydown="if(event.key==='Enter') LoginModule.doLogin()"
+                                    style="padding-right:3rem;">
+                                <button type="button" onclick="LoginModule.togglePin()" id="pinToggleBtn"
+                                    style="position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.2rem; padding:0.25rem; opacity:0.6; transition:opacity 0.2s;"
+                                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">
+                                    👁️
+                                </button>
+                            </div>
                         </div>
 
                         <div id="loginError" class="form-error" style="text-align:center; margin-bottom:var(--space-4); display:none;">
@@ -101,6 +109,17 @@ const LoginModule = (() => {
             setTimeout(() => errorEl.parentElement.style.animation = '', 400);
         }
     }
+    function togglePin() {
+        const input = document.getElementById('loginPin');
+        const btn = document.getElementById('pinToggleBtn');
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            btn.textContent = '👁️';
+        }
+    }
 
-    return { render, selectRole, doLogin };
+    return { render, selectRole, doLogin, togglePin };
 })();
