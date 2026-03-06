@@ -1,32 +1,32 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v10';
+const CACHE_NAME = 'fleetadmin-v11';
 const ASSETS = [
-    '/',
-    '/index.html?v=10',
-    '/css/index.css?v=10',
-    '/css/components.css?v=10',
-    '/css/modules.css?v=10',
-    '/js/i18n.js?v=10',
-    '/js/firebase-config.js?v=10',
-    '/js/db.js?v=10',
-    '/js/units.js?v=10',
-    '/js/auth.js?v=10',
-    '/js/alerts.js?v=10',
-    '/js/components.js?v=10',
-    '/js/router.js?v=10',
-    '/js/modules/login.js?v=10',
-    '/js/modules/dashboard.js?v=10',
-    '/js/modules/shifts.js?v=10',
-    '/js/modules/maintenance.js?v=10',
-    '/js/modules/vehicles.js?v=10',
-    '/js/modules/settings.js?v=10',
-    '/js/app.js?v=10',
-    '/manifest.json?v=10',
-    '/assets/icon.svg',
-    '/assets/icon-192.png',
-    '/assets/icon-512.png',
-    '/assets/screenshot-login.png',
-    '/assets/screenshot-dashboard.png'
+    './',
+    './index.html?v=11',
+    './css/index.css?v=11',
+    './css/components.css?v=11',
+    './css/modules.css?v=11',
+    './js/i18n.js?v=11',
+    './js/firebase-config.js?v=11',
+    './js/db.js?v=11',
+    './js/units.js?v=11',
+    './js/auth.js?v=11',
+    './js/alerts.js?v=11',
+    './js/components.js?v=11',
+    './js/router.js?v=11',
+    './js/modules/login.js?v=11',
+    './js/modules/dashboard.js?v=11',
+    './js/modules/shifts.js?v=11',
+    './js/modules/maintenance.js?v=11',
+    './js/modules/vehicles.js?v=11',
+    './js/modules/settings.js?v=11',
+    './js/app.js?v=11',
+    './manifest.json?v=11',
+    './assets/icon.svg',
+    './assets/icon-192.png',
+    './assets/icon-512.png',
+    './assets/screenshot-login.png',
+    './assets/screenshot-dashboard.png'
 ];
 
 // Instalar: cachear todos los archivos estáticos
@@ -78,7 +78,7 @@ self.addEventListener('fetch', event => {
             });
         }).catch(() => {
             if (event.request.destination === 'document') {
-                return caches.match('/index.html');
+                return caches.match('./index.html?v=11').then(res => res || caches.match('./index.html'));
             }
         })
     );

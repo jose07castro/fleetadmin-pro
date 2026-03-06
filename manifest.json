@@ -1,10 +1,10 @@
 {
-    "id": "/",
+    "id": "./",
     "name": "FleetAdmin Pro - Administrador de Flota",
     "short_name": "FleetAdmin",
     "description": "Gestión integral de flota vehicular, conductores y mantenimiento para Uber y DiDi",
-    "start_url": "/index.html",
-    "scope": "/",
+    "start_url": "./index.html",
+    "scope": "./",
     "display": "standalone",
     "background_color": "#0f172a",
     "theme_color": "#0f172a",
