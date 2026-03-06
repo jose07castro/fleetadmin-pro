@@ -45,7 +45,7 @@ const I18n = (() => {
             login_error: 'Credenciales incorrectas',
 
             // Roles
-            role_owner: 'Dueño',
+            role_owner: 'Administrador',
             role_driver: 'Conductor',
             role_mechanic: 'Mecánico',
 
@@ -233,7 +233,7 @@ const I18n = (() => {
             login_enter: 'Enter',
             login_error: 'Invalid credentials',
 
-            role_owner: 'Owner',
+            role_owner: 'Administrator',
             role_driver: 'Driver',
             role_mechanic: 'Mechanic',
 
@@ -411,7 +411,7 @@ const I18n = (() => {
             login_enter: 'Entrar',
             login_error: 'Credenciais incorretas',
 
-            role_owner: 'Proprietário',
+            role_owner: 'Administrador',
             role_driver: 'Motorista',
             role_mechanic: 'Mecânico',
 
