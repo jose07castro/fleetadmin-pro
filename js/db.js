@@ -101,7 +101,7 @@ const DB = (() => {
         try {
             const snap = await fetchWithTimeout(db.ref(path), 5000);
             const val = snap.val() || undefined;
-            if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val));
+            try { if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val)); } catch(ce) { /* quota */ }
             return val;
         } catch (e) {
             console.warn(`Fallback caché (offline): get(${storeName}, ${id})`);
@@ -116,7 +116,7 @@ const DB = (() => {
             const snap = await fetchWithTimeout(db.ref(path), 7000);
             const val = snap.val();
             const data = val ? Object.values(val) : [];
-            localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(data));
+            try { localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(data)); } catch(ce) { /* quota */ }
             return data;
         } catch (e) {
             console.warn(`Fallback caché (offline): getAll(${storeName})`);
