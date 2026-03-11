@@ -228,14 +228,19 @@ const LoginModule = (() => {
 
             Components.closeModal();
 
-            // 5. Auto-login
-            const success = await Auth.authenticate(name, pin, 'owner');
-            if (success) {
-                App.startRealtimeSync();
-                Router.navigate(Router.getDefaultRoute());
-                // Mostrar wizard de ubicación
-                setTimeout(() => SettingsModule.showLocationSetup(), 500);
-            }
+            // 5. Auto-login directo (NO usar authenticate para evitar match con entradas viejas)
+            Auth.login({
+                id: globalId,
+                name,
+                pin,
+                role: 'owner',
+                fleetId
+            });
+            App.startRealtimeSync();
+            Router.navigate(Router.getDefaultRoute());
+            // Mostrar wizard de ubicación
+            setTimeout(() => SettingsModule.showLocationSetup(), 500);
+
         } catch (e) {
             errorEl.style.display = 'block';
             errorEl.textContent = I18n.t('error');
