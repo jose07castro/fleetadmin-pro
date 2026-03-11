@@ -163,8 +163,9 @@ const SettingsModule = (() => {
                             ➕ ${I18n.t('add')}
                         </button>
                     </div>
-                    <div id="userList"></div>
+                    <div id="userList" style="margin-top:var(--space-3);"></div>
                 </div>
+                <script>setTimeout(() => SettingsModule.loadUserList(), 100)</script>
             ` : ''}
 
             <!-- Acerca de -->
@@ -428,9 +429,150 @@ const SettingsModule = (() => {
         }
     }
 
+    // --- Lista de usuarios con estado de licencia ---
+    async function loadUserList() {
+        const container = document.getElementById('userList');
+        if (!container) return;
+
+        const users = await DB.getAll('users');
+        if (!users || users.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-secondary); text-align:center; padding:var(--space-3);">No hay usuarios</p>';
+            return;
+        }
+
+        const roleIcons = { owner: '👑', driver: '🚗', mechanic: '🔧' };
+        let html = '';
+
+        for (const u of users) {
+            const icon = roleIcons[u.role] || '👤';
+            const roleName = I18n.t('role_' + u.role) || u.role;
+
+            // Badge de licencia para conductores
+            let licenseBadge = '';
+            let editBtn = '';
+            if (u.role === 'driver') {
+                const status = Alerts.getLicenseStatus(u);
+                if (status.level === 'danger') {
+                    licenseBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('license_expired')}</span>`;
+                } else if (status.level === 'warning') {
+                    licenseBadge = `<span class="badge badge-warning" style="font-size:0.7rem;">🟡 ${I18n.t('license_expiring')} (${status.daysLeft}d)</span>`;
+                } else if (status.level === 'ok') {
+                    licenseBadge = `<span class="badge badge-success" style="font-size:0.7rem;">🟢 ${I18n.t('license_valid')} (${status.daysLeft}d)</span>`;
+                } else {
+                    licenseBadge = `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">⚪ Sin licencia</span>`;
+                }
+                editBtn = `<button class="btn btn-sm" onclick="SettingsModule.showEditUser('${u.id}')" style="font-size:0.75rem; padding:var(--space-1) var(--space-2);">
+                    🪪 ${I18n.t('edit')}
+                </button>`;
+            }
+
+            html += `
+                <div class="settings-item" style="padding:var(--space-3); border-bottom:1px solid var(--border-color);">
+                    <div style="display:flex; align-items:center; gap:var(--space-2); flex:1; min-width:0;">
+                        <span style="font-size:1.3rem;">${icon}</span>
+                        <div style="min-width:0;">
+                            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.name}</div>
+                            <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">${roleName}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:var(--space-2); flex-shrink:0;">
+                        ${licenseBadge}
+                        ${editBtn}
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+    }
+
+    // --- Editar licencia de un conductor existente ---
+    async function showEditUser(userId) {
+        const user = await DB.get('users', userId);
+        if (!user) return;
+
+        const issueDate = user.licenseIssueDate || '';
+        const expiryDate = user.licenseExpiryDate || '';
+        const hasPhoto = !!user.licensePhoto;
+
+        Components.showModal(
+            `🪪 ${I18n.t('license_title')} — ${user.name}`,
+            `
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('license_issue_date')} *</label>
+                    <input type="date" class="form-input" id="editLicenseIssue" value="${issueDate}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('license_expiry_date')} *</label>
+                    <input type="date" class="form-input" id="editLicenseExpiry" value="${expiryDate}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('license_photo')}</label>
+                    ${hasPhoto ? `
+                        <div style="margin-bottom:var(--space-2);">
+                            <img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
+                        </div>
+                    ` : ''}
+                    <div style="display:flex; gap:var(--space-2); flex-wrap:wrap;">
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📁 ${I18n.t('license_upload')}
+                            <input type="file" id="editLicensePhotoFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleEditLicensePhoto(event)">
+                        </label>
+                    </div>
+                    <div id="editLicensePhotoPreview" style="margin-top:var(--space-2);"></div>
+                    <input type="hidden" id="editLicensePhotoData" value="">
+                </div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="SettingsModule.updateUserLicense('${userId}')">${I18n.t('save')}</button>
+            `
+        );
+    }
+
+    function handleEditLicensePhoto(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById('editLicensePhotoData').value = e.target.result;
+            document.getElementById('editLicensePhotoPreview').innerHTML = `
+                <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
+            `;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function updateUserLicense(userId) {
+        const issueDate = document.getElementById('editLicenseIssue')?.value;
+        const expiryDate = document.getElementById('editLicenseExpiry')?.value;
+        const newPhoto = document.getElementById('editLicensePhotoData')?.value;
+
+        if (!issueDate || !expiryDate) {
+            Components.showToast(I18n.t('license_required'), 'danger');
+            return;
+        }
+
+        const user = await DB.get('users', userId);
+        if (!user) return;
+
+        user.licenseIssueDate = issueDate;
+        user.licenseExpiryDate = expiryDate;
+        if (newPhoto) {
+            user.licensePhoto = newPhoto;
+        }
+
+        await DB.put('users', user);
+        Components.closeModal();
+        Components.showToast(I18n.t('success') + ' ✅', 'success');
+        // Refrescar la lista
+        loadUserList();
+    }
+
     return {
         render, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
-        toggleLicenseFields, handleLicensePhoto, captureLicensePhoto
+        toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
+        loadUserList, showEditUser, handleEditLicensePhoto, updateUserLicense
     };
 })();
