@@ -218,7 +218,6 @@ const ShiftsModule = (() => {
                             ${s.shiftType === 'night' ? '🌙 18-06' : '🌅 06-18'}
                         </span>
                     </div>
-                    </div>
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
                             ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
