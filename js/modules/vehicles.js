@@ -1,6 +1,6 @@
 /* ============================================
    FleetAdmin Pro — Módulo de Vehículos
-   CRUD de vehículos con odómetro y estado
+   CRUD de vehículos con odómetro, estado y RTO/VTV
    ============================================ */
 
 const VehiclesModule = (() => {
@@ -33,6 +33,19 @@ const VehiclesModule = (() => {
         `;
     }
 
+    // Helper: estado de RTO/VTV
+    function getVtvStatus(vehicle) {
+        if (!vehicle.vtvExpiryDate) return { level: 'unknown', daysLeft: null };
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiryDate = new Date(vehicle.vtvExpiryDate + 'T00:00:00');
+        const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+
+        if (daysLeft < 0) return { level: 'danger', daysLeft };
+        if (daysLeft <= 60) return { level: 'warning', daysLeft };
+        return { level: 'ok', daysLeft };
+    }
+
     async function renderVehicleCards(vehicles) {
         let html = '';
         for (const v of vehicles) {
@@ -41,6 +54,19 @@ const VehiclesModule = (() => {
             const completedShifts = shifts.filter(s => s.status === 'completed');
             const totalKm = completedShifts.reduce((sum, s) => sum + ((s.endOdometer || 0) - (s.startOdometer || 0)), 0);
 
+            // Badge RTO/VTV
+            const vtv = getVtvStatus(v);
+            let vtvBadge = '';
+            if (vtv.level === 'danger') {
+                vtvBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('vtv_title')}: ${I18n.t('vtv_expired')}</span>`;
+            } else if (vtv.level === 'warning') {
+                vtvBadge = `<span class="badge badge-warning" style="font-size:0.7rem;">🟡 ${I18n.t('vtv_title')}: ${vtv.daysLeft}d</span>`;
+            } else if (vtv.level === 'ok') {
+                vtvBadge = `<span class="badge badge-success" style="font-size:0.7rem;">🟢 ${I18n.t('vtv_title')}: ${vtv.daysLeft}d</span>`;
+            } else {
+                vtvBadge = `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">⚪ ${I18n.t('vtv_title')}: ${I18n.t('vtv_not_loaded')}</span>`;
+            }
+
             html += `
                 <div class="vehicle-card">
                     <div class="vehicle-card-header">
@@ -48,13 +74,14 @@ const VehiclesModule = (() => {
                         <span class="vehicle-plate">${v.plate || '-'}</span>
                     </div>
 
-                    ${belt.level !== 'ok' ? `
-                        <div style="margin-bottom:var(--space-3);">
+                    <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3);">
+                        ${belt.level !== 'ok' ? `
                             <span class="badge badge-${belt.level === 'danger' ? 'danger' : 'warning'}">
                                 ${belt.level === 'danger' ? '🔴' : '🟡'} ${I18n.t('maint_timing_belt')}
                             </span>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                        ${vtvBadge}
+                    </div>
 
                     <div class="vehicle-stats">
                         <div class="vehicle-stat">
@@ -83,6 +110,9 @@ const VehiclesModule = (() => {
                         <div style="display:flex; gap:var(--space-2); margin-top:var(--space-4);">
                             <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showForm('${v.id}')">
                                 ✏️ ${I18n.t('edit')}
+                            </button>
+                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showVtvEditor('${v.id}')">
+                                🔧 ${I18n.t('vtv_title')}
                             </button>
                             <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.deleteVehicle('${v.id}')">
                                 🗑️ ${I18n.t('delete')}
@@ -134,6 +164,25 @@ const VehiclesModule = (() => {
                         <option value="inactive" ${vehicle?.status === 'inactive' ? 'selected' : ''}>${I18n.t('veh_inactive')}</option>
                     </select>
                 </div>
+
+                <!-- RTO/VTV -->
+                <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
+                        🔧 ${I18n.t('vtv_title')}
+                    </div>
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">${I18n.t('vtv_issue_date')}</label>
+                            <input type="date" class="form-input" id="vehVtvIssue"
+                                value="${vehicle?.vtvIssueDate || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">${I18n.t('vtv_expiry_date')}</label>
+                            <input type="date" class="form-input" id="vehVtvExpiry"
+                                value="${vehicle?.vtvExpiryDate || ''}">
+                        </div>
+                    </div>
+                </div>
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -148,6 +197,8 @@ const VehiclesModule = (() => {
         const year = parseInt(document.getElementById('vehYear')?.value) || null;
         const odometer = parseFloat(document.getElementById('vehOdometer')?.value) || 0;
         const status = document.getElementById('vehStatus')?.value || 'active';
+        const vtvIssueDate = document.getElementById('vehVtvIssue')?.value || null;
+        const vtvExpiryDate = document.getElementById('vehVtvExpiry')?.value || null;
 
         if (!name) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
@@ -162,13 +213,69 @@ const VehiclesModule = (() => {
             status
         };
 
+        if (vtvIssueDate) data.vtvIssueDate = vtvIssueDate;
+        if (vtvExpiryDate) data.vtvExpiryDate = vtvExpiryDate;
+
         if (vehicleId && vehicleId !== '' && vehicleId !== 'null') {
+            // Preservar datos existentes que no están en el form
+            const existing = await DB.get('vehicles', vehicleId);
+            if (existing) {
+                if (!vtvIssueDate && existing.vtvIssueDate) data.vtvIssueDate = existing.vtvIssueDate;
+                if (!vtvExpiryDate && existing.vtvExpiryDate) data.vtvExpiryDate = existing.vtvExpiryDate;
+            }
             data.id = vehicleId;
             await DB.put('vehicles', data);
         } else {
             await DB.add('vehicles', data);
         }
 
+        Components.closeModal();
+        Components.showToast(I18n.t('success') + ' ✅', 'success');
+        Router.navigate('vehicles');
+    }
+
+    // --- Editor RTO/VTV para vehículos existentes ---
+    async function showVtvEditor(vehicleId) {
+        const vehicle = await DB.get('vehicles', vehicleId);
+        if (!vehicle) return;
+
+        Components.showModal(
+            `🔧 ${I18n.t('vtv_title')} — ${vehicle.name}`,
+            `
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('vtv_issue_date')} *</label>
+                    <input type="date" class="form-input" id="editVtvIssue"
+                        value="${vehicle.vtvIssueDate || ''}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('vtv_expiry_date')} *</label>
+                    <input type="date" class="form-input" id="editVtvExpiry"
+                        value="${vehicle.vtvExpiryDate || ''}">
+                </div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="VehiclesModule.saveVtv('${vehicleId}')">${I18n.t('save')}</button>
+            `
+        );
+    }
+
+    async function saveVtv(vehicleId) {
+        const issueDate = document.getElementById('editVtvIssue')?.value;
+        const expiryDate = document.getElementById('editVtvExpiry')?.value;
+
+        if (!issueDate || !expiryDate) {
+            Components.showToast(I18n.t('vtv_required'), 'danger');
+            return;
+        }
+
+        const vehicle = await DB.get('vehicles', vehicleId);
+        if (!vehicle) return;
+
+        vehicle.vtvIssueDate = issueDate;
+        vehicle.vtvExpiryDate = expiryDate;
+
+        await DB.put('vehicles', vehicle);
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
         Router.navigate('vehicles');
@@ -185,5 +292,5 @@ const VehiclesModule = (() => {
         );
     }
 
-    return { render, showForm, saveVehicle, deleteVehicle };
+    return { render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv, getVtvStatus };
 })();

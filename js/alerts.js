@@ -81,6 +81,35 @@ const Alerts = (() => {
         const licenseAlerts = await getLicenseAlerts();
         alerts.push(...licenseAlerts);
 
+        // Alertas de RTO/VTV
+        for (const vehicle of vehicles) {
+            const vtv = VehiclesModule.getVtvStatus(vehicle);
+            if (vtv.level === 'danger') {
+                const dateStr = new Date(vehicle.vtvExpiryDate + 'T00:00:00').toLocaleDateString();
+                alerts.push({
+                    type: 'vtv_expired',
+                    vehicle,
+                    daysLeft: vtv.daysLeft,
+                    message: I18n.t('vtv_alert_expired', {
+                        vehicle: vehicle.name,
+                        date: dateStr
+                    })
+                });
+            } else if (vtv.level === 'warning') {
+                const dateStr = new Date(vehicle.vtvExpiryDate + 'T00:00:00').toLocaleDateString();
+                alerts.push({
+                    type: 'vtv_warning',
+                    vehicle,
+                    daysLeft: vtv.daysLeft,
+                    message: I18n.t('vtv_alert', {
+                        vehicle: vehicle.name,
+                        date: dateStr,
+                        days: vtv.daysLeft
+                    })
+                });
+            }
+        }
+
         return alerts;
     }
 

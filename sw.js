@@ -1,28 +1,28 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v21';
+const CACHE_NAME = 'fleetadmin-v22';
 const ASSETS = [
     './',
-    './index.html?v=21',
-    './css/index.css?v=21',
-    './css/components.css?v=21',
-    './css/modules.css?v=21',
-    './js/i18n.js?v=21',
-    './js/firebase-config.js?v=21',
-    './js/db.js?v=21',
-    './js/units.js?v=21',
-    './js/auth.js?v=21',
-    './js/alerts.js?v=21',
-    './js/components.js?v=21',
-    './js/router.js?v=21',
-    './js/modules/login.js?v=21',
-    './js/modules/dashboard.js?v=21',
-    './js/modules/shifts.js?v=21',
-    './js/modules/maintenance.js?v=21',
-    './js/modules/vehicles.js?v=21',
-    './js/modules/settings.js?v=21',
-    './js/notifications.js?v=21',
-    './js/app.js?v=21',
-    './manifest.json?v=21',
+    './index.html?v=22',
+    './css/index.css?v=22',
+    './css/components.css?v=22',
+    './css/modules.css?v=22',
+    './js/i18n.js?v=22',
+    './js/firebase-config.js?v=22',
+    './js/db.js?v=22',
+    './js/units.js?v=22',
+    './js/auth.js?v=22',
+    './js/alerts.js?v=22',
+    './js/components.js?v=22',
+    './js/router.js?v=22',
+    './js/modules/login.js?v=22',
+    './js/modules/dashboard.js?v=22',
+    './js/modules/shifts.js?v=22',
+    './js/modules/maintenance.js?v=22',
+    './js/modules/vehicles.js?v=22',
+    './js/modules/settings.js?v=22',
+    './js/notifications.js?v=22',
+    './js/app.js?v=22',
+    './manifest.json?v=22',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -99,7 +99,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=21')
+                return caches.match('./index.html?v=22')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

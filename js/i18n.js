@@ -237,6 +237,18 @@ const I18n = (() => {
             license_alert_expired_driver: '🚨 Tu licencia venció el {date}. ¡Renovála urgente!',
             license_alert_expired_admin: '🚨 La licencia de {driver} venció el {date}.',
 
+            // RTO/VTV
+            vtv_title: 'RTO / VTV',
+            vtv_issue_date: 'Fecha de Otorgamiento',
+            vtv_expiry_date: 'Fecha de Vencimiento',
+            vtv_valid: 'Vigente',
+            vtv_expiring: 'Próxima a vencer',
+            vtv_expired: 'Vencida',
+            vtv_not_loaded: 'Sin cargar',
+            vtv_required: 'Las fechas de RTO/VTV son obligatorias',
+            vtv_alert: '🔧 La RTO/VTV de {vehicle} vence el {date}. Faltan {days} días.',
+            vtv_alert_expired: '🔧 La RTO/VTV de {vehicle} venció el {date}.',
+
             // Alertas
             alert_belt_danger: '⚠️ ¡URGENTE! La correa de distribución requiere cambio inmediato. Odómetro: {current} — Límite: {limit}',
             alert_belt_warning: '🔔 La correa de distribución está próxima a necesitar cambio. Faltan {remaining} {unit}.',
@@ -462,6 +474,18 @@ const I18n = (() => {
             license_alert_expired_driver: '🚨 Your license expired on {date}. Renew urgently!',
             license_alert_expired_admin: '🚨 {driver}\'s license expired on {date}.',
 
+            // RTO/VTV
+            vtv_title: 'Vehicle Inspection (RTO/VTV)',
+            vtv_issue_date: 'Issue Date',
+            vtv_expiry_date: 'Expiry Date',
+            vtv_valid: 'Valid',
+            vtv_expiring: 'Expiring soon',
+            vtv_expired: 'Expired',
+            vtv_not_loaded: 'Not loaded',
+            vtv_required: 'RTO/VTV dates are required',
+            vtv_alert: '🔧 {vehicle}\'s inspection expires on {date}. {days} days left.',
+            vtv_alert_expired: '🔧 {vehicle}\'s inspection expired on {date}.',
+
             alert_belt_danger: '⚠️ URGENT! Timing belt requires immediate change. Odometer: {current} — Limit: {limit}',
             alert_belt_warning: '🔔 Timing belt change approaching. {remaining} {unit} remaining.',
             alert_shift_ending: '⏰ Your shift ends in {minutes} minutes.',
@@ -685,6 +709,18 @@ const I18n = (() => {
             license_alert_admin: '🪪 A carteira de {driver} vence em {date}. Faltam {days} dias.',
             license_alert_expired_driver: '🚨 Sua carteira venceu em {date}. Renove urgente!',
             license_alert_expired_admin: '🚨 A carteira de {driver} venceu em {date}.',
+
+            // RTO/VTV
+            vtv_title: 'Inspeção Veicular (RTO/VTV)',
+            vtv_issue_date: 'Data de Emissão',
+            vtv_expiry_date: 'Data de Validade',
+            vtv_valid: 'Válida',
+            vtv_expiring: 'Próxima do vencimento',
+            vtv_expired: 'Vencida',
+            vtv_not_loaded: 'Não carregado',
+            vtv_required: 'As datas de RTO/VTV são obrigatórias',
+            vtv_alert: '🔧 A inspeção de {vehicle} vence em {date}. Faltam {days} dias.',
+            vtv_alert_expired: '🔧 A inspeção de {vehicle} venceu em {date}.',
 
             alert_belt_danger: '⚠️ URGENTE! A correia dentada precisa de troca imediata. Odômetro: {current} — Limite: {limit}',
             alert_belt_warning: '🔔 A troca da correia dentada está se aproximando. Faltam {remaining} {unit}.',
