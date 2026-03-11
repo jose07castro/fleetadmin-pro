@@ -1,6 +1,7 @@
 /* ============================================
    FleetAdmin Pro — Módulo de Login
    Pantalla de inicio de sesión con selección de rol
+   Registro de nuevos administradores con flota propia
    ============================================ */
 
 const LoginModule = (() => {
@@ -78,7 +79,6 @@ const LoginModule = (() => {
                         ${Components.renderLanguageSelector()}
                     </div>
 
-
                 </div>
             </div>
         `;
@@ -102,6 +102,16 @@ const LoginModule = (() => {
             return;
         }
 
+        // Verificar si hay datos viejos sin migrar
+        const hasGlobal = await DB.hasGlobalUsers();
+        if (!hasGlobal) {
+            // Primera vez con la nueva versión: migrar datos viejos
+            const migratedFleetId = await DB.migrateOldData();
+            if (migratedFleetId) {
+                console.log('📦 Datos migrados, reintentando login...');
+            }
+        }
+
         const success = await Auth.authenticate(name, pin, selectedRole);
         if (success) {
             errorEl.style.display = 'none';
@@ -111,7 +121,6 @@ const LoginModule = (() => {
             if (Auth.isOwner()) {
                 const location = await DB.getSetting('location');
                 if (!location || !location.country) {
-                    // Navegar al dashboard primero, luego mostrar el wizard
                     Router.navigate(Router.getDefaultRoute());
                     setTimeout(() => SettingsModule.showLocationSetup(), 500);
                     return;
@@ -126,6 +135,7 @@ const LoginModule = (() => {
             setTimeout(() => errorEl.parentElement.style.animation = '', 400);
         }
     }
+
     function togglePin() {
         const input = document.getElementById('loginPin');
         const btn = document.getElementById('pinToggleBtn');
@@ -194,19 +204,42 @@ const LoginModule = (() => {
         }
 
         try {
-            await DB.add('users', { name, pin, role: 'owner' });
+            // 1. Crear un fleetId nuevo para esta flota
+            const fleetId = DB.createFleetId();
+
+            // 2. Registrar en globalUsers con su fleetId
+            const globalId = await DB.addGlobalUser({
+                name,
+                pin,
+                role: 'owner',
+                fleetId
+            });
+
+            // 3. Activar la flota nueva
+            DB.setFleet(fleetId);
+
+            // 4. Crear el usuario dentro de la flota
+            await DB.add('users', {
+                name,
+                pin,
+                role: 'owner',
+                globalId
+            });
+
             Components.closeModal();
 
-            // Auto-login con el nuevo admin
+            // 5. Auto-login
             const success = await Auth.authenticate(name, pin, 'owner');
             if (success) {
                 App.startRealtimeSync();
                 Router.navigate(Router.getDefaultRoute());
+                // Mostrar wizard de ubicación
                 setTimeout(() => SettingsModule.showLocationSetup(), 500);
             }
         } catch (e) {
             errorEl.style.display = 'block';
             errorEl.textContent = I18n.t('error');
+            console.error('Error en registro:', e);
         }
     }
 

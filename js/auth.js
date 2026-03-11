@@ -1,6 +1,7 @@
 /* ============================================
    FleetAdmin Pro — Sistema de Autenticación
-   Roles: owner (dueño), driver (chofer), mechanic (mecánico)
+   Multi-tenencia: cada usuario pertenece a una flota
+   Roles: owner (admin), driver (chofer), mechanic (mecánico)
    ============================================ */
 
 const Auth = (() => {
@@ -9,18 +10,29 @@ const Auth = (() => {
     function login(user) {
         currentUser = user;
         sessionStorage.setItem('fleetadmin_user', JSON.stringify(user));
+        // Activar la flota del usuario
+        if (user.fleetId) {
+            DB.setFleet(user.fleetId);
+        }
     }
 
     function logout() {
         currentUser = null;
         sessionStorage.removeItem('fleetadmin_user');
+        sessionStorage.removeItem('fleetadmin_fleetId');
     }
 
     function getUser() {
         if (!currentUser) {
             const saved = sessionStorage.getItem('fleetadmin_user');
             if (saved) {
-                try { currentUser = JSON.parse(saved); } catch (e) { /* ignorar */ }
+                try {
+                    currentUser = JSON.parse(saved);
+                    // Restaurar fleetId en DB
+                    if (currentUser.fleetId) {
+                        DB.setFleet(currentUser.fleetId);
+                    }
+                } catch (e) { /* ignorar */ }
             }
         }
         return currentUser;
@@ -54,14 +66,15 @@ const Auth = (() => {
         return getUser()?.id || null;
     }
 
-    // Verificar credenciales contra la BD
+    function getFleetId() {
+        return getUser()?.fleetId || DB.getFleet() || null;
+    }
+
+    // Verificar credenciales contra globalUsers
     async function authenticate(name, pin, role) {
-        const users = await DB.getAllByIndex('users', 'role', role);
-        const match = users.find(u =>
-            u.name.toLowerCase() === name.toLowerCase() && u.pin === pin
-        );
-        if (match) {
-            login(match);
+        const globalUser = await DB.findGlobalUser(name, pin, role);
+        if (globalUser) {
+            login(globalUser);
             return true;
         }
         return false;
@@ -84,6 +97,6 @@ const Auth = (() => {
     return {
         login, logout, getUser, isLoggedIn, getRole,
         isOwner, isDriver, isMechanic,
-        getUserName, getUserId, authenticate, canAccess
+        getUserName, getUserId, getFleetId, authenticate, canAccess
     };
 })();

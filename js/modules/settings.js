@@ -261,7 +261,15 @@ const SettingsModule = (() => {
             return;
         }
 
-        await DB.add('users', { name, pin, role });
+        const fleetId = Auth.getFleetId();
+
+        // Crear en globalUsers para que pueda loguearse
+        const globalId = await DB.addGlobalUser({
+            name, pin, role, fleetId
+        });
+
+        // Crear dentro de la flota
+        await DB.add('users', { name, pin, role, globalId });
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
     }

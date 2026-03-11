@@ -1,15 +1,43 @@
 /* ============================================
    FleetAdmin Pro — Base de Datos (Firebase)
    Realtime Database con sincronización en vivo
-   API compatible con la versión anterior
+   Multi-tenencia: cada flota tiene sus propios datos
    ============================================ */
 
 const DB = (() => {
     const db = firebaseDB; // Definido en firebase-config.js
 
-    // Stores válidos
+    // Stores válidos (dentro de cada flota)
     const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
     const CACHE_PREFIX = 'fleetadmin_cache_';
+
+    // --- Fleet ID actual ---
+    let currentFleetId = null;
+
+    function setFleet(fleetId) {
+        currentFleetId = fleetId;
+        if (fleetId) {
+            sessionStorage.setItem('fleetadmin_fleetId', fleetId);
+        }
+        console.log(`🏢 Fleet activa: ${fleetId}`);
+    }
+
+    function getFleet() {
+        if (!currentFleetId) {
+            currentFleetId = sessionStorage.getItem('fleetadmin_fleetId');
+        }
+        return currentFleetId;
+    }
+
+    // Helper: obtener la ruta con prefijo de flota
+    function fleetPath(path) {
+        const fid = getFleet();
+        if (!fid) {
+            console.warn('⚠️ No hay fleetId configurado, usando ruta sin prefijo');
+            return path;
+        }
+        return `fleets/${fid}/${path}`;
+    }
 
     // --- Helper de timeout con promesa ---
     async function fetchWithTimeout(ref, timeoutMs = 7000) {
@@ -46,9 +74,9 @@ const DB = (() => {
         });
     }
 
-    // --- Operaciones CRUD genéricas ---
+    // --- Operaciones CRUD genéricas (dentro de la flota activa) ---
     async function add(storeName, data) {
-        const ref = db.ref(storeName).push();
+        const ref = db.ref(fleetPath(storeName)).push();
         const newItem = {
             ...data,
             id: ref.key,
@@ -64,13 +92,14 @@ const DB = (() => {
             ...data,
             updatedAt: new Date().toISOString()
         };
-        await db.ref(`${storeName}/${data.id}`).set(updated);
+        await db.ref(`${fleetPath(storeName)}/${data.id}`).set(updated);
         return data.id;
     }
 
     async function get(storeName, id) {
+        const path = `${fleetPath(storeName)}/${id}`;
         try {
-            const snap = await fetchWithTimeout(db.ref(`${storeName}/${id}`), 5000);
+            const snap = await fetchWithTimeout(db.ref(path), 5000);
             const val = snap.val() || undefined;
             if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val));
             return val;
@@ -82,8 +111,9 @@ const DB = (() => {
     }
 
     async function getAll(storeName) {
+        const path = fleetPath(storeName);
         try {
-            const snap = await fetchWithTimeout(db.ref(storeName), 7000);
+            const snap = await fetchWithTimeout(db.ref(path), 7000);
             const val = snap.val();
             const data = val ? Object.values(val) : [];
             localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(data));
@@ -101,17 +131,18 @@ const DB = (() => {
     }
 
     async function remove(storeName, id) {
-        await db.ref(`${storeName}/${id}`).remove();
+        await db.ref(`${fleetPath(storeName)}/${id}`).remove();
     }
 
     async function clearStore(storeName) {
-        await db.ref(storeName).remove();
+        await db.ref(fleetPath(storeName)).remove();
     }
 
-    // --- Configuración (clave-valor) ---
+    // --- Configuración (clave-valor, dentro de la flota) ---
     async function getSetting(key) {
+        const path = fleetPath(`settings/${key}`);
         try {
-            const snap = await fetchWithTimeout(db.ref(`settings/${key}`), 5000);
+            const snap = await fetchWithTimeout(db.ref(path), 5000);
             const val = snap.val();
             localStorage.setItem(`${CACHE_PREFIX}setting_${key}`, JSON.stringify(val));
             return val;
@@ -122,72 +153,135 @@ const DB = (() => {
     }
 
     async function setSetting(key, value) {
-        await db.ref(`settings/${key}`).set(value);
+        await db.ref(fleetPath(`settings/${key}`)).set(value);
     }
 
-    // --- Datos iniciales (seed) ---
-    async function seed() {
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                console.warn('Firebase seed: timeout, asumiendo offline...');
-                resolve();
-            }, 5000);
+    // --- Operaciones GLOBALES (fuera de la flota) ---
 
-            db.ref('users').once('value').then(async (usersSnap) => {
-                const usersVal = usersSnap.val();
+    // Crear un nuevo fleetId
+    function createFleetId() {
+        return db.ref('fleets').push().key;
+    }
 
-                if (!usersVal || Object.keys(usersVal).length === 0) {
-                    console.log('📦 Creando datos iniciales (seed)...');
+    // Registro global de usuario (para login cross-fleet)
+    async function addGlobalUser(data) {
+        const ref = db.ref('globalUsers').push();
+        const newItem = {
+            ...data,
+            id: ref.key,
+            createdAt: new Date().toISOString()
+        };
+        await ref.set(newItem);
+        return ref.key;
+    }
 
-                    // Dueño por defecto
-                    const ownerRef = db.ref('users').push();
-                    await ownerRef.set({
-                        id: ownerRef.key,
-                        name: 'Admin',
-                        role: 'owner',
-                        pin: '123456789012345',
-                        createdAt: new Date().toISOString()
-                    });
+    // Buscar usuario global por nombre, pin y rol
+    async function findGlobalUser(name, pin, role) {
+        try {
+            const snap = await fetchWithTimeout(db.ref('globalUsers'), 7000);
+            const val = snap.val();
+            if (!val) return null;
+            const users = Object.values(val);
+            return users.find(u =>
+                u.name.toLowerCase() === name.toLowerCase() &&
+                u.pin === pin &&
+                u.role === role
+            ) || null;
+        } catch (e) {
+            console.warn('Error buscando usuario global:', e);
+            return null;
+        }
+    }
 
-                    // Conductor de ejemplo
-                    const driverRef = db.ref('users').push();
-                    await driverRef.set({
-                        id: driverRef.key,
-                        name: 'Carlos',
-                        role: 'driver',
-                        pin: '111111111111111',
-                        createdAt: new Date().toISOString()
-                    });
+    // Buscar todos los usuarios globales de una flota
+    async function getGlobalUsersByFleet(fleetId) {
+        try {
+            const snap = await fetchWithTimeout(db.ref('globalUsers'), 7000);
+            const val = snap.val();
+            if (!val) return [];
+            return Object.values(val).filter(u => u.fleetId === fleetId);
+        } catch (e) {
+            return [];
+        }
+    }
 
-                    // Mecánico de ejemplo
-                    const mechRef = db.ref('users').push();
-                    await mechRef.set({
-                        id: mechRef.key,
-                        name: 'Miguel',
-                        role: 'mechanic',
-                        pin: '222222222222222',
-                        createdAt: new Date().toISOString()
-                    });
+    // Verificar si existen usuarios globales registrados
+    async function hasGlobalUsers() {
+        try {
+            const snap = await fetchWithTimeout(db.ref('globalUsers'), 5000);
+            const val = snap.val();
+            return val && Object.keys(val).length > 0;
+        } catch (e) {
+            return false;
+        }
+    }
 
-                    console.log('✅ Datos iniciales creados');
+    // --- Migración: mover datos viejos (sin flota) a una flota ---
+    async function migrateOldData() {
+        try {
+            // Verificar si hay datos en el path viejo /users/
+            const oldUsersSnap = await fetchWithTimeout(db.ref('users'), 5000);
+            const oldUsers = oldUsersSnap.val();
+
+            if (!oldUsers || Object.keys(oldUsers).length === 0) {
+                return null; // No hay datos viejos
+            }
+
+            console.log('🔄 Migrando datos viejos a nueva estructura de flotas...');
+
+            // Crear una flota para los datos existentes
+            const fleetId = createFleetId();
+
+            // Migrar cada store
+            for (const store of VALID_STORES) {
+                const snap = await fetchWithTimeout(db.ref(store), 5000).catch(() => null);
+                if (snap && snap.val()) {
+                    await db.ref(`fleets/${fleetId}/${store}`).set(snap.val());
+                    await db.ref(store).remove();
                 }
-                clearTimeout(timeout);
-                resolve();
-            }).catch(e => {
-                console.warn('Error en DB.seed:', e);
-                clearTimeout(timeout);
-                resolve();
-            });
-        });
+            }
+
+            // Migrar settings
+            const settingsSnap = await fetchWithTimeout(db.ref('settings'), 5000).catch(() => null);
+            if (settingsSnap && settingsSnap.val()) {
+                await db.ref(`fleets/${fleetId}/settings`).set(settingsSnap.val());
+                await db.ref('settings').remove();
+            }
+
+            // Crear globalUsers para cada usuario viejo
+            const users = Object.values(oldUsers);
+            for (const u of users) {
+                await addGlobalUser({
+                    name: u.name,
+                    pin: u.pin,
+                    role: u.role,
+                    fleetId: fleetId,
+                    profilePhoto: u.profilePhoto || null
+                });
+            }
+
+            console.log(`✅ Migración completada. FleetId: ${fleetId}`);
+            return fleetId;
+        } catch (e) {
+            console.warn('Error en migración:', e);
+            return null;
+        }
     }
 
-    // --- Exportar/Importar datos ---
+    // --- Datos iniciales (seed) — ya no crea datos por defecto ---
+    async function seed() {
+        // La migración se maneja desde login/registro
+        return Promise.resolve();
+    }
+
+    // --- Exportar/Importar datos (dentro de la flota activa) ---
     async function exportAll() {
         const exportData = {};
         for (const store of VALID_STORES) {
             exportData[store] = await getAll(store);
         }
-        const settingsSnap = await db.ref('settings').once('value');
+        const settingsPath = fleetPath('settings');
+        const settingsSnap = await db.ref(settingsPath).once('value');
         const settingsVal = settingsSnap.val() || {};
         exportData.settings = Object.entries(settingsVal).map(([key, value]) => ({ key, value }));
         return exportData;
@@ -196,9 +290,9 @@ const DB = (() => {
     async function importAll(data) {
         for (const store of VALID_STORES) {
             if (data[store] && Array.isArray(data[store])) {
-                await db.ref(store).remove();
+                await db.ref(fleetPath(store)).remove();
                 for (const item of data[store]) {
-                    const ref = db.ref(store).push();
+                    const ref = db.ref(fleetPath(store)).push();
                     await ref.set({ ...item, id: ref.key });
                 }
             }
@@ -207,25 +301,24 @@ const DB = (() => {
             if (Array.isArray(data.settings)) {
                 const settingsObj = {};
                 data.settings.forEach(s => { settingsObj[s.key] = s.value; });
-                await db.ref('settings').set(settingsObj);
+                await db.ref(fleetPath('settings')).set(settingsObj);
             } else {
-                await db.ref('settings').set(data.settings);
+                await db.ref(fleetPath('settings')).set(data.settings);
             }
         }
     }
 
     async function resetAll() {
-        for (const store of VALID_STORES) {
-            await db.ref(store).remove();
+        const fid = getFleet();
+        if (fid) {
+            await db.ref(`fleets/${fid}`).remove();
         }
-        await db.ref('settings').remove();
-        await seed();
     }
 
-    // --- Sincronización en tiempo real ---
-    // Registrar un listener para cambios en un store
+    // --- Sincronización en tiempo real (dentro de la flota) ---
     function onChanges(storeName, callback) {
-        db.ref(storeName).on('value', (snap) => {
+        const path = fleetPath(storeName);
+        db.ref(path).on('value', (snap) => {
             const val = snap.val();
             const items = val ? Object.values(val) : [];
             localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(items));
@@ -233,14 +326,18 @@ const DB = (() => {
         });
     }
 
-    // Remover listener
     function offChanges(storeName) {
-        db.ref(storeName).off('value');
+        const path = fleetPath(storeName);
+        db.ref(path).off('value');
     }
 
     return {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, seed, exportAll, importAll, resetAll,
-        onChanges, offChanges
+        onChanges, offChanges,
+        // Multi-tenencia
+        setFleet, getFleet, createFleetId,
+        addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers,
+        migrateOldData
     };
 })();

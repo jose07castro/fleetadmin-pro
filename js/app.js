@@ -18,7 +18,7 @@ const App = (() => {
             // 2. Conectar a Firebase
             await DB.open();
 
-            // 3. Crear datos iniciales si es primera vez
+            // 3. Seed (no-op en multi-tenencia, migración en login)
             await DB.seed();
 
             // 4. Ocultar pantalla de carga
