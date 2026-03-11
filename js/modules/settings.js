@@ -8,6 +8,7 @@ const SettingsModule = (() => {
     async function render() {
         const distUnit = Units.getDistanceUnit();
         const volUnit = Units.getVolumeUnit();
+        const location = await DB.getSetting('location');
 
         return `
             <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
@@ -25,6 +26,36 @@ const SettingsModule = (() => {
                     ${Components.renderLanguageSelector()}
                 </div>
             </div>
+
+            ${Auth.isOwner() ? `
+            <!-- Ubicación de Operación -->
+            <div class="settings-section">
+                <div class="settings-section-title">📍 ${I18n.t('location_title')}</div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">${I18n.t('location_country')}</div>
+                    </div>
+                    <span style="font-weight:600;">${location?.country || I18n.t('location_not_configured')}</span>
+                </div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">${I18n.t('location_province')}</div>
+                    </div>
+                    <span style="font-weight:600;">${location?.province || I18n.t('location_not_configured')}</span>
+                </div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">${I18n.t('location_city')}</div>
+                    </div>
+                    <span style="font-weight:600;">${location?.city || I18n.t('location_not_configured')}</span>
+                </div>
+                <div class="settings-item" style="justify-content:flex-end;">
+                    <button class="btn btn-primary btn-sm" onclick="SettingsModule.showLocationEditor()">
+                        ✏️ ${I18n.t('location_edit')}
+                    </button>
+                </div>
+            </div>
+            ` : ''}
 
             <!-- Unidades de medida -->
             <div class="settings-section">
@@ -207,6 +238,7 @@ const SettingsModule = (() => {
                 <div class="form-group">
                     <label class="form-label">Rol</label>
                     <select class="form-select" id="newUserRole">
+                        <option value="owner">${I18n.t('role_owner')}</option>
                         <option value="driver">${I18n.t('role_driver')}</option>
                         <option value="mechanic">${I18n.t('role_mechanic')}</option>
                     </select>
@@ -234,5 +266,76 @@ const SettingsModule = (() => {
         Components.showToast(I18n.t('success') + ' ✅', 'success');
     }
 
-    return { render, exportData, importData, resetData, showUserManager, saveUser };
+    // --- Ubicación ---
+    async function showLocationEditor() {
+        const location = await DB.getSetting('location') || {};
+        _showLocationModal(location, false);
+    }
+
+    function showLocationSetup() {
+        _showLocationModal({}, true);
+    }
+
+    function _showLocationModal(location, isSetup) {
+        const title = isSetup
+            ? `🗺️ ${I18n.t('location_setup_title')}`
+            : `📍 ${I18n.t('location_edit')}`;
+
+        Components.showModal(
+            title,
+            `
+                ${isSetup ? `<p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4); font-size:var(--font-size-sm);">
+                    ${I18n.t('location_setup_subtitle')}
+                </p>` : ''}
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('location_country')}</label>
+                    <input type="text" class="form-input" id="locCountry"
+                        placeholder="${I18n.t('location_placeholder_country')}"
+                        value="${location.country || ''}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('location_province')}</label>
+                    <input type="text" class="form-input" id="locProvince"
+                        placeholder="${I18n.t('location_placeholder_province')}"
+                        value="${location.province || ''}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('location_city')}</label>
+                    <input type="text" class="form-input" id="locCity"
+                        placeholder="${I18n.t('location_placeholder_city')}"
+                        value="${location.city || ''}" autocomplete="off">
+                </div>
+            `,
+            `
+                ${isSetup ? '' : `<button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>`}
+                <button class="btn btn-primary" onclick="SettingsModule.saveLocation(${isSetup})">${I18n.t('save')}</button>
+            `
+        );
+    }
+
+    async function saveLocation(isSetup = false) {
+        const country = document.getElementById('locCountry')?.value.trim();
+        const province = document.getElementById('locProvince')?.value.trim();
+        const city = document.getElementById('locCity')?.value.trim();
+
+        if (!country || !province || !city) {
+            Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+            return;
+        }
+
+        await DB.setSetting('location', { country, province, city });
+        Components.closeModal();
+        Components.showToast(I18n.t('location_save_success') + ' ✅', 'success');
+
+        if (isSetup) {
+            Router.navigate(Router.getDefaultRoute());
+        } else {
+            Router.navigate('settings');
+        }
+    }
+
+    return {
+        render, exportData, importData, resetData, showUserManager, saveUser,
+        showLocationEditor, showLocationSetup, saveLocation
+    };
 })();

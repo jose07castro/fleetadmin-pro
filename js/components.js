@@ -200,12 +200,24 @@ const Components = (() => {
         return `
             <div class="form-group">
                 <label class="form-label">${label}</label>
-                <div class="photo-capture" id="${id}Wrapper">
-                    <input type="file" accept="image/*" capture="environment"
-                        id="${id}Input" onchange="Components.handlePhoto('${id}', event)">
-                    <div class="photo-capture-icon">📷</div>
-                    <div class="photo-capture-text">${I18n.t('shift_take_photo')} / ${I18n.t('shift_upload_photo')}</div>
+                <div class="photo-capture" id="${id}Wrapper" style="display:flex; flex-direction:column; gap:10px; padding:var(--space-4);">
+                    <div style="display:flex; gap:10px;">
+                        <!-- Botón para Cámara -->
+                        <div style="flex:1; position:relative; border:2px dashed var(--border-color); border-radius:var(--radius-lg); padding:var(--space-4); text-align:center; cursor:pointer;">
+                            <input type="file" accept="image/*" capture="environment" id="${id}InputCamera" onchange="Components.handlePhoto('${id}', event, this)" style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;">
+                            <div style="font-size:2rem; margin-bottom:5px;">📷</div>
+                            <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">Cámara</div>
+                        </div>
+                        <!-- Botón para Galería -->
+                        <div style="flex:1; position:relative; border:2px dashed var(--border-color); border-radius:var(--radius-lg); padding:var(--space-4); text-align:center; cursor:pointer;">
+                            <input type="file" accept="image/*" id="${id}InputGallery" onchange="Components.handlePhoto('${id}', event, this)" style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;">
+                            <div style="font-size:2rem; margin-bottom:5px;">🖼️</div>
+                            <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">Galería</div>
+                        </div>
+                    </div>
                 </div>
+                <!-- Input principal oculto para compatibilidad con código existente -->
+                <input type="hidden" id="${id}Input">
                 <div id="${id}Preview" style="display:none;" class="photo-preview">
                     <img id="${id}Img" src="" alt="">
                     <button class="photo-preview-remove" onclick="Components.removePhoto('${id}')">✕</button>
@@ -228,9 +240,14 @@ const Components = (() => {
     }
 
     function removePhoto(id) {
-        document.getElementById(`${id}Input`).value = '';
+        const inputCam = document.getElementById(`${id}InputCamera`);
+        if (inputCam) inputCam.value = '';
+        const inputGal = document.getElementById(`${id}InputGallery`);
+        if (inputGal) inputGal.value = '';
+        const inputMain = document.getElementById(`${id}Input`);
+        if (inputMain) inputMain.value = '';
         document.getElementById(`${id}Img`).src = '';
-        document.getElementById(`${id}Wrapper`).style.display = '';
+        document.getElementById(`${id}Wrapper`).style.display = 'flex';
         document.getElementById(`${id}Preview`).style.display = 'none';
     }
 

@@ -9,6 +9,21 @@ const DB = (() => {
 
     // Stores válidos
     const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+    const CACHE_PREFIX = 'fleetadmin_cache_';
+
+    // --- Helper de timeout con promesa ---
+    async function fetchWithTimeout(ref, timeoutMs = 7000) {
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => reject(new Error('Firebase timeout')), timeoutMs);
+            ref.once('value').then(snap => {
+                clearTimeout(timeoutId);
+                resolve(snap);
+            }).catch(e => {
+                clearTimeout(timeoutId);
+                reject(e);
+            });
+        });
+    }
 
     // --- Abrir conexión (verificar Firebase) ---
     async function open() {
@@ -55,18 +70,29 @@ const DB = (() => {
 
     async function get(storeName, id) {
         try {
-            const snap = await db.ref(`${storeName}/${id}`).once('value');
-            return snap.val() || undefined;
+            const snap = await fetchWithTimeout(db.ref(`${storeName}/${id}`), 5000);
+            const val = snap.val() || undefined;
+            if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val));
+            return val;
         } catch (e) {
-            return undefined;
+            console.warn(`Fallback caché (offline): get(${storeName}, ${id})`);
+            const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_${id}`);
+            return cached ? JSON.parse(cached) : undefined;
         }
     }
 
     async function getAll(storeName) {
-        const snap = await db.ref(storeName).once('value');
-        const val = snap.val();
-        if (!val) return [];
-        return Object.values(val);
+        try {
+            const snap = await fetchWithTimeout(db.ref(storeName), 7000);
+            const val = snap.val();
+            const data = val ? Object.values(val) : [];
+            localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(data));
+            return data;
+        } catch (e) {
+            console.warn(`Fallback caché (offline): getAll(${storeName})`);
+            const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_all`);
+            return cached ? JSON.parse(cached) : [];
+        }
     }
 
     async function getAllByIndex(storeName, indexName, value) {
@@ -84,8 +110,15 @@ const DB = (() => {
 
     // --- Configuración (clave-valor) ---
     async function getSetting(key) {
-        const snap = await db.ref(`settings/${key}`).once('value');
-        return snap.val();
+        try {
+            const snap = await fetchWithTimeout(db.ref(`settings/${key}`), 5000);
+            const val = snap.val();
+            localStorage.setItem(`${CACHE_PREFIX}setting_${key}`, JSON.stringify(val));
+            return val;
+        } catch (e) {
+            const cached = localStorage.getItem(`${CACHE_PREFIX}setting_${key}`);
+            return cached ? JSON.parse(cached) : undefined;
+        }
     }
 
     async function setSetting(key, value) {
@@ -94,44 +127,58 @@ const DB = (() => {
 
     // --- Datos iniciales (seed) ---
     async function seed() {
-        const usersSnap = await db.ref('users').once('value');
-        const usersVal = usersSnap.val();
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.warn('Firebase seed: timeout, asumiendo offline...');
+                resolve();
+            }, 5000);
 
-        if (!usersVal || Object.keys(usersVal).length === 0) {
-            console.log('📦 Creando datos iniciales (seed)...');
+            db.ref('users').once('value').then(async (usersSnap) => {
+                const usersVal = usersSnap.val();
 
-            // Dueño por defecto
-            const ownerRef = db.ref('users').push();
-            await ownerRef.set({
-                id: ownerRef.key,
-                name: 'Admin',
-                role: 'owner',
-                pin: '123456789012345',
-                createdAt: new Date().toISOString()
+                if (!usersVal || Object.keys(usersVal).length === 0) {
+                    console.log('📦 Creando datos iniciales (seed)...');
+
+                    // Dueño por defecto
+                    const ownerRef = db.ref('users').push();
+                    await ownerRef.set({
+                        id: ownerRef.key,
+                        name: 'Admin',
+                        role: 'owner',
+                        pin: '123456789012345',
+                        createdAt: new Date().toISOString()
+                    });
+
+                    // Conductor de ejemplo
+                    const driverRef = db.ref('users').push();
+                    await driverRef.set({
+                        id: driverRef.key,
+                        name: 'Carlos',
+                        role: 'driver',
+                        pin: '111111111111111',
+                        createdAt: new Date().toISOString()
+                    });
+
+                    // Mecánico de ejemplo
+                    const mechRef = db.ref('users').push();
+                    await mechRef.set({
+                        id: mechRef.key,
+                        name: 'Miguel',
+                        role: 'mechanic',
+                        pin: '222222222222222',
+                        createdAt: new Date().toISOString()
+                    });
+
+                    console.log('✅ Datos iniciales creados');
+                }
+                clearTimeout(timeout);
+                resolve();
+            }).catch(e => {
+                console.warn('Error en DB.seed:', e);
+                clearTimeout(timeout);
+                resolve();
             });
-
-            // Conductor de ejemplo
-            const driverRef = db.ref('users').push();
-            await driverRef.set({
-                id: driverRef.key,
-                name: 'Carlos',
-                role: 'driver',
-                pin: '111111111111111',
-                createdAt: new Date().toISOString()
-            });
-
-            // Mecánico de ejemplo
-            const mechRef = db.ref('users').push();
-            await mechRef.set({
-                id: mechRef.key,
-                name: 'Miguel',
-                role: 'mechanic',
-                pin: '222222222222222',
-                createdAt: new Date().toISOString()
-            });
-
-            console.log('✅ Datos iniciales creados');
-        }
+        });
     }
 
     // --- Exportar/Importar datos ---
@@ -181,6 +228,7 @@ const DB = (() => {
         db.ref(storeName).on('value', (snap) => {
             const val = snap.val();
             const items = val ? Object.values(val) : [];
+            localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(items));
             callback(items);
         });
     }

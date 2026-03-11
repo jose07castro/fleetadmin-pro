@@ -11,6 +11,7 @@ const DashboardModule = (() => {
         const repairs = await DB.getAll('repairs');
         const alerts = await Alerts.getAllAlerts();
         const users = await DB.getAll('users');
+        const location = await DB.getSetting('location');
 
         // Calcular estadísticas
         const activeShifts = shifts.filter(s => s.status === 'active');
@@ -23,7 +24,34 @@ const DashboardModule = (() => {
             <div class="dashboard-welcome">
                 <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
                 <p>${I18n.t('dash_summary')}</p>
+                ${location && location.city ? `
+                    <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
+                        <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
+                            📍 ${location.city}, ${location.province}, ${location.country}
+                        </span>
+                    </p>
+                ` : ''}
             </div>
+
+            ${!location || !location.country ? `
+            <!-- Banner de configuración de ubicación -->
+            <div class="card" style="background:linear-gradient(135deg, var(--color-primary), var(--color-info)); color:white; padding:var(--space-5); margin-bottom:var(--space-6); border:none;">
+                <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
+                    <div style="font-size:2.5rem;">🗺️</div>
+                    <div style="flex:1; min-width:200px;">
+                        <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">
+                            ${I18n.t('location_setup_title')}
+                        </div>
+                        <div style="opacity:0.9; font-size:var(--font-size-sm);">
+                            ${I18n.t('location_setup_subtitle')}
+                        </div>
+                    </div>
+                    <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:600;" onclick="SettingsModule.showLocationSetup()">
+                        📍 ${I18n.t('location_edit')}
+                    </button>
+                </div>
+            </div>
+            ` : ''}
 
             <!-- Alertas de mantenimiento -->
             ${alerts.length > 0 ? `
@@ -152,6 +180,8 @@ const DashboardModule = (() => {
         for (const s of shifts.slice(0, 5)) {
             const driver = await DB.get('users', s.driverId);
             activities.push({
+                type: 'shift',
+                id: s.id,
                 date: s.startTime,
                 icon: '⏱️',
                 text: `${I18n.t('nav_shifts')}: ${driver?.name || ''}`,
@@ -163,6 +193,7 @@ const DashboardModule = (() => {
         repairs.sort((a, b) => new Date(b.date) - new Date(a.date));
         for (const r of repairs.slice(0, 5)) {
             activities.push({
+                type: 'repair',
                 date: r.date,
                 icon: '🔧',
                 text: `${I18n.t('maint_repairs')}: ${r.description || ''}`,
@@ -189,6 +220,12 @@ const DashboardModule = (() => {
                             </div>
                         </div>
                         <span class="badge ${a.badge}">${a.badgeText}</span>
+                        ${Auth.isOwner() && a.type === 'shift' ? `
+                        <div style="display:flex; gap:var(--space-2); margin-left:var(--space-3); z-index: 10; position:relative;">
+                            <button class="btn btn-icon btn-primary" onclick="ShiftsModule.editShift('${a.id}')" title="Editar" style="padding:6px; font-size:14px; min-width:32px;">✏️</button>
+                            <button class="btn btn-icon btn-danger" onclick="ShiftsModule.deleteShift('${a.id}')" title="Eliminar" style="padding:6px; font-size:14px; min-width:32px;">🗑️</button>
+                        </div>
+                        ` : ''}
                     </div>
                 `).join('')}
             </div>
@@ -257,6 +294,7 @@ const DashboardModule = (() => {
                 <div class="form-group">
                     <label class="form-label">Rol</label>
                     <select class="form-select" id="newUserRole">
+                        <option value="owner">${I18n.t('role_owner')}</option>
                         <option value="driver">${I18n.t('role_driver')}</option>
                         <option value="mechanic">${I18n.t('role_mechanic')}</option>
                     </select>

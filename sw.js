@@ -1,27 +1,28 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v12';
+const CACHE_NAME = 'fleetadmin-v16';
 const ASSETS = [
     './',
-    './index.html?v=12',
-    './css/index.css?v=12',
-    './css/components.css?v=12',
-    './css/modules.css?v=12',
-    './js/i18n.js?v=12',
-    './js/firebase-config.js?v=12',
-    './js/db.js?v=12',
-    './js/units.js?v=12',
-    './js/auth.js?v=12',
-    './js/alerts.js?v=12',
-    './js/components.js?v=12',
-    './js/router.js?v=12',
-    './js/modules/login.js?v=12',
-    './js/modules/dashboard.js?v=12',
-    './js/modules/shifts.js?v=12',
-    './js/modules/maintenance.js?v=12',
-    './js/modules/vehicles.js?v=12',
-    './js/modules/settings.js?v=12',
-    './js/app.js?v=12',
-    './manifest.json?v=12',
+    './index.html?v=16',
+    './css/index.css?v=16',
+    './css/components.css?v=16',
+    './css/modules.css?v=16',
+    './js/i18n.js?v=16',
+    './js/firebase-config.js?v=16',
+    './js/db.js?v=16',
+    './js/units.js?v=16',
+    './js/auth.js?v=16',
+    './js/alerts.js?v=16',
+    './js/components.js?v=16',
+    './js/router.js?v=16',
+    './js/modules/login.js?v=16',
+    './js/modules/dashboard.js?v=16',
+    './js/modules/shifts.js?v=16',
+    './js/modules/maintenance.js?v=16',
+    './js/modules/vehicles.js?v=16',
+    './js/modules/settings.js?v=16',
+    './js/notifications.js?v=16',
+    './js/app.js?v=16',
+    './manifest.json?v=16',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -70,15 +71,57 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
-            return fetch(event.request).then(response => {
-                if (event.request.method !== 'GET') return response;
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+
+            // Promise race manual para timeout de fetch (10 segundos)
+            const fetchPromise = fetch(event.request).then(response => {
+                if (!response || response.status !== 200 || response.type !== 'basic') {
+                    return response;
+                }
+                if (event.request.method === 'GET') {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
                 return response;
             });
+
+            // Evitar esperas infinitas en Android
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => reject(new Error('Timeout')), 10000);
+                fetchPromise.then(res => {
+                    clearTimeout(timeoutId);
+                    resolve(res);
+                }).catch(err => {
+                    clearTimeout(timeoutId);
+                    reject(err);
+                });
+            });
+
         }).catch(() => {
-            if (event.request.destination === 'document') {
-                return caches.match('./index.html?v=12').then(res => res || caches.match('./index.html'));
+            // Fallback para navegación
+            if (event.request.destination === 'document' || event.request.mode === 'navigate') {
+                return caches.match('./index.html?v=16')
+                    .then(res => res || caches.match('./index.html'))
+                    .then(res => res || caches.match('./'));
+            }
+            return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        })
+    );
+});
+
+// Manejo de clicks en notificaciones
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            for (let client of windowClients) {
+                // Si la app ya está abierta, hacer foco
+                if (client.url === event.notification.data.url && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // Si la app está cerrada, abrirla
+            if (clients.openWindow) {
+                return clients.openWindow(event.notification.data.url || '/');
             }
         })
     );

@@ -395,7 +395,10 @@ const server = http.createServer(async (req, res) => {
         }
         const ext = path.extname(fullPath).toLowerCase();
         res.writeHead(200, {
-            'Content-Type': MIME_TYPES[ext] || 'application/octet-stream'
+            'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         });
         res.end(data);
     });

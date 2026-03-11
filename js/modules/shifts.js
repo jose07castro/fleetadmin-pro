@@ -218,9 +218,18 @@ const ShiftsModule = (() => {
                             ${s.shiftType === 'night' ? '🌙 18-06' : '🌅 06-18'}
                         </span>
                     </div>
-                    <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
-                        ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
-                        ${new Date(s.startTime).toLocaleString()}
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
+                            ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
+                            ${new Date(s.startTime).toLocaleString()}
+                        </div>
+                        ${Auth.isOwner() ? `
+                        <div style="display:flex; gap:var(--space-2);">
+                            <button class="btn btn-icon btn-primary" onclick="ShiftsModule.editShift('${s.id}')" title="Editar" style="padding:4px; font-size:12px;">✏️</button>
+                            <button class="btn btn-icon btn-danger" onclick="ShiftsModule.deleteShift('${s.id}')" title="Eliminar" style="padding:4px; font-size:12px;">🗑️</button>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -232,7 +241,7 @@ const ShiftsModule = (() => {
     async function renderShiftTable(shifts) {
         // Resolver nombres de choferes
         let rows = '';
-        for (const s of shifts.slice(0, 20)) {
+        for (const s of shifts.slice(0, 50)) { // Mostrar hasta 50
             const driver = await DB.get('users', s.driverId);
             const driverName = driver?.name || '-';
             rows += `
@@ -246,6 +255,12 @@ const ShiftsModule = (() => {
                     <td data-label="${I18n.t('shift_earnings')}">
                         ${Auth.isOwner() ? `${I18n.t('unit_currency')}${(s.earnings || 0).toLocaleString()}` : '-'}
                     </td>
+                    ${Auth.isOwner() ? `
+                    <td data-label="Acciones">
+                        <button class="btn btn-icon btn-primary" onclick="ShiftsModule.editShift('${s.id}')" title="Editar" style="margin-right:var(--space-2);">✏️</button>
+                        <button class="btn btn-icon btn-danger" onclick="ShiftsModule.deleteShift('${s.id}')" title="Eliminar">🗑️</button>
+                    </td>
+                    ` : ''}
                 </tr>
             `;
         }
@@ -262,6 +277,7 @@ const ShiftsModule = (() => {
                             <th>${I18n.t('shift_odometer_end')}</th>
                             <th>${I18n.t('shift_total_km')}</th>
                             <th>${I18n.t('shift_earnings')}</th>
+                            ${Auth.isOwner() ? `<th>Acciones</th>` : ''}
                         </tr>
                     </thead>
                     <tbody>
@@ -283,11 +299,38 @@ const ShiftsModule = (() => {
             return;
         }
 
+        // Obtener todos los turnos para validaciones de seguridad
+        const allShifts = await DB.getAll('shifts');
+
+        // Validación 1: El chofer no puede tener más de un turno activo
+        const driverId = Auth.getUserId();
+        const driverHasActiveShift = allShifts.some(s => s.status === 'active' && s.driverId === driverId);
+        if (driverHasActiveShift) {
+            Components.showToast('Ya tienes un turno activo. Finalízalo antes de empezar otro.', 'danger');
+            return;
+        }
+
+        // Validación 2: El vehículo no puede estar en uso por otro turno activo
+        // Usar String() para evitar problemas de tipos (ej: 1 === "1" es falso)
+        const activeShiftOnVehicle = allShifts.find(s => s.status === 'active' && String(s.vehicleId) === String(vehicleId));
+
+        if (activeShiftOnVehicle) {
+            // Obtener el nombre de quien lo está usando
+            const driverInUse = await DB.get('users', activeShiftOnVehicle.driverId);
+            const driverName = driverInUse ? driverInUse.name : 'Otro chofer';
+
+            // Extraer la hora exacta en la que inició el turno
+            const shiftStartTime = new Date(activeShiftOnVehicle.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            Components.showToast(`Vehículo en uso por: ${driverName} (Empezó a las ${shiftStartTime})`, 'danger');
+            return;
+        }
+
         const odometerKm = Units.toKm(odoStart);
 
         await DB.add('shifts', {
             vehicleId,
-            driverId: Auth.getUserId(),
+            driverId,
             shiftType: selectedShiftType,
             startTime: new Date().toISOString(),
             startOdometer: odometerKm,
@@ -389,5 +432,104 @@ const ShiftsModule = (() => {
         }, 1000);
     }
 
-    return { render, startShift, endShift, selectShiftType };
+    // --- Eliminar turno (Solo Dueño) ---
+    async function deleteShift(shiftId) {
+        if (!Auth.isOwner()) return;
+
+        if (confirm('¿Estás seguro de que deseas eliminar este turno permanentemente? Esta acción borrará el registro de horas, kilómetros y ganancias asociados a este turno.')) {
+            await DB.remove('shifts', shiftId);
+            Components.showToast('Turno eliminado correctamente.', 'success');
+            // Refrescar vista
+            Router.navigate('shifts');
+        }
+    }
+
+    // --- Utilidad para datetime-local ---
+    function toLocalDatetime(isoString) {
+        if (!isoString) return '';
+        const d = new Date(isoString);
+        if (isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    // --- Editar turno (Solo Dueño) ---
+    async function editShift(shiftId) {
+        if (!Auth.isOwner()) return;
+
+        const shift = await DB.get('shifts', shiftId);
+        if (!shift) return;
+
+        const startOdo = shift.startOdometer || '';
+        const endOdo = shift.endOdometer || '';
+        const startTimeStr = toLocalDatetime(shift.startTime);
+        const endTimeStr = shift.endTime ? toLocalDatetime(shift.endTime) : '';
+        const earningsStr = shift.earnings || '';
+
+        const bodyHTML = `
+            <input type="hidden" id="editShiftId" value="${shift.id}">
+            <div class="form-group">
+                <label class="form-label">${I18n.t('shift_odometer_start')} (KM)</label>
+                <input type="number" id="editShiftOdoStart" class="form-control" value="${startOdo}" step="0.1">
+            </div>
+            <div class="form-group">
+                <label class="form-label">${I18n.t('shift_odometer_end')} (KM)</label>
+                <input type="number" id="editShiftOdoEnd" class="form-control" value="${endOdo}" step="0.1">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hora de Inicio</label>
+                <input type="datetime-local" id="editShiftStartTime" class="form-control" value="${startTimeStr}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hora de Fin</label>
+                <input type="datetime-local" id="editShiftEndTime" class="form-control" value="${endTimeStr}">
+                <small class="form-help">Dejar en blanco si el turno sigue Activo.</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">${I18n.t('shift_earnings')}</label>
+                <input type="number" id="editShiftEarnings" class="form-control" value="${earningsStr}" step="0.1">
+            </div>
+        `;
+
+        const footerHTML = `
+            <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+            <button class="btn btn-primary" onclick="ShiftsModule.saveEditShift()">Guardar</button>
+        `;
+
+        Components.showModal('Editar Turno', bodyHTML, footerHTML);
+    }
+
+    async function saveEditShift() {
+        const id = document.getElementById('editShiftId').value;
+        const shift = await DB.get('shifts', id);
+        if (!shift) return;
+
+        const odoStart = parseFloat(document.getElementById('editShiftOdoStart').value);
+        const odoEnd = parseFloat(document.getElementById('editShiftOdoEnd').value);
+        const startTime = document.getElementById('editShiftStartTime').value;
+        const endTime = document.getElementById('editShiftEndTime').value;
+        const earnings = parseFloat(document.getElementById('editShiftEarnings').value);
+
+        if (!isNaN(odoStart)) shift.startOdometer = odoStart;
+        if (!isNaN(odoEnd)) shift.endOdometer = odoEnd;
+        if (startTime) shift.startTime = new Date(startTime).toISOString();
+        if (endTime) shift.endTime = new Date(endTime).toISOString();
+        if (!isNaN(earnings)) shift.earnings = earnings;
+
+        await DB.put('shifts', shift);
+
+        if (shift.endOdometer) {
+            const vehicle = await DB.get('vehicles', shift.vehicleId);
+            if (vehicle && vehicle.odometer < shift.endOdometer) {
+                vehicle.odometer = shift.endOdometer;
+                await DB.put('vehicles', vehicle);
+            }
+        }
+
+        Components.closeModal();
+        Components.showToast('Turno actualizado', 'success');
+        Router.navigate('shifts');
+    }
+
+    return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift };
 })();

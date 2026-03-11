@@ -65,15 +65,20 @@ const LoginModule = (() => {
                         <button class="btn btn-primary btn-block btn-lg" onclick="LoginModule.doLogin()">
                             ${I18n.t('login_enter')}
                         </button>
+
+                        <div style="text-align:center; margin-top:var(--space-4);">
+                            <button class="btn btn-block" onclick="LoginModule.showRegister()"
+                                style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600;">
+                                👑 ${I18n.t('register_admin')}
+                            </button>
+                        </div>
                     </div>
 
                     <div class="login-lang" style="margin-top:var(--space-6);">
                         ${Components.renderLanguageSelector()}
                     </div>
 
-                    <div style="text-align:center; margin-top:var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs);">
-                        Demo — ${I18n.t('role_owner')}: Admin / 123456789012345
-                    </div>
+
                 </div>
             </div>
         `;
@@ -101,6 +106,18 @@ const LoginModule = (() => {
         if (success) {
             errorEl.style.display = 'none';
             App.startRealtimeSync();
+
+            // Si es owner, verificar si la ubicación está configurada
+            if (Auth.isOwner()) {
+                const location = await DB.getSetting('location');
+                if (!location || !location.country) {
+                    // Navegar al dashboard primero, luego mostrar el wizard
+                    Router.navigate(Router.getDefaultRoute());
+                    setTimeout(() => SettingsModule.showLocationSetup(), 500);
+                    return;
+                }
+            }
+
             Router.navigate(Router.getDefaultRoute());
         } else {
             errorEl.style.display = 'block';
@@ -121,5 +138,77 @@ const LoginModule = (() => {
         }
     }
 
-    return { render, selectRole, doLogin, togglePin };
+    function showRegister() {
+        Components.showModal(
+            `👑 ${I18n.t('register_admin')}`,
+            `
+                <p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4); font-size:var(--font-size-sm);">
+                    ${I18n.t('register_admin_subtitle')}
+                </p>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('login_name')}</label>
+                    <input type="text" class="form-input" id="regName"
+                        placeholder="${I18n.t('login_name_placeholder')}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
+                    <input type="password" class="form-input" id="regPin"
+                        placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('register_confirm_pin')}</label>
+                    <input type="password" class="form-input" id="regPinConfirm"
+                        placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric">
+                </div>
+                <div id="regError" class="form-error" style="text-align:center; margin-bottom:var(--space-2); display:none;"></div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="LoginModule.doRegister()">${I18n.t('register_btn')}</button>
+            `
+        );
+    }
+
+    async function doRegister() {
+        const name = document.getElementById('regName')?.value.trim();
+        const pin = document.getElementById('regPin')?.value.trim();
+        const pinConfirm = document.getElementById('regPinConfirm')?.value.trim();
+        const errorEl = document.getElementById('regError');
+
+        if (!name || !pin) {
+            errorEl.style.display = 'block';
+            errorEl.textContent = I18n.t('error') + ': ' + I18n.t('required');
+            return;
+        }
+
+        if (pin.length < 4) {
+            errorEl.style.display = 'block';
+            errorEl.textContent = I18n.t('register_pin_min');
+            return;
+        }
+
+        if (pin !== pinConfirm) {
+            errorEl.style.display = 'block';
+            errorEl.textContent = I18n.t('register_pin_mismatch');
+            return;
+        }
+
+        try {
+            await DB.add('users', { name, pin, role: 'owner' });
+            Components.closeModal();
+
+            // Auto-login con el nuevo admin
+            const success = await Auth.authenticate(name, pin, 'owner');
+            if (success) {
+                App.startRealtimeSync();
+                Router.navigate(Router.getDefaultRoute());
+                setTimeout(() => SettingsModule.showLocationSetup(), 500);
+            }
+        } catch (e) {
+            errorEl.style.display = 'block';
+            errorEl.textContent = I18n.t('error');
+        }
+    }
+
+    return { render, selectRole, doLogin, togglePin, showRegister, doRegister };
 })();

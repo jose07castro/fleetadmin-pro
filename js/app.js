@@ -33,6 +33,10 @@ const App = (() => {
                     Router.navigate(Router.getDefaultRoute());
                     // 6. Activar sincronización en tiempo real
                     startRealtimeSync();
+                    // 7. Iniciar checker de notificaciones locales
+                    if (typeof Notifications !== 'undefined') {
+                        Notifications.init();
+                    }
                 } else {
                     Router.navigate('login');
                 }

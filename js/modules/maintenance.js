@@ -315,10 +315,6 @@ const MaintenanceModule = (() => {
                         </select>
                     </div>
                     ` : ''}
-                    <div class="form-group">
-                        <label class="form-label">${I18n.t('mech_repair_desc')}</label>
-                        <textarea class="form-textarea" id="repairDesc" placeholder="${I18n.t('mech_repair_desc')}">${repair?.description || ''}</textarea>
-                    </div>
                     <div class="repair-form-grid">
                         <div class="form-group">
                             <label class="form-label">${I18n.t('mech_odometer')} (${Units.distanceLabel()})</label>
@@ -344,13 +340,35 @@ const MaintenanceModule = (() => {
                             <button class="btn btn-sm btn-ghost" type="button" onclick="MaintenanceModule.addPartRow()">➕ ${I18n.t('mech_add_part')}</button>
                         </div>
                         <div id="repairPartsContainer">
-                            ${(repair?.parts && repair.parts.length > 0) ? repair.parts.map(p => `
-                                <div class="part-row" style="display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center;">
-                                    <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}" value="${p.name}">
-                                    <input type="number" class="form-input part-cost" placeholder="${I18n.t('mech_part_cost')}" value="${p.cost}" step="0.01" style="width:100px;">
-                                    <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('mech_remove_part')}">✕</button>
-                                </div>
-                            `).join('') : ''}
+                            ${(() => {
+                    if (repair?.parts && repair.parts.length > 0) {
+                        return repair.parts.map(p => `
+                                        <div class="part-row" style="display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: var(--space-2);">
+                                            <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}" value="${p.name}">
+                                            <input type="number" class="form-input part-cost" placeholder="${I18n.t('unit_currency')} ${I18n.t('mech_part_cost')}" value="${p.cost}" step="0.01" style="width:100px;" inputmode="decimal">
+                                            <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('delete')}">✕</button>
+                                        </div>
+                                    `).join('');
+                    } else if (repair?.description) {
+                        // Soporte para reparaciones antiguas que solo tenían texto de descripción
+                        return `
+                                        <div class="part-row" style="display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: var(--space-2);">
+                                            <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}" value="${repair.description}">
+                                            <input type="number" class="form-input part-cost" placeholder="${I18n.t('unit_currency')} ${I18n.t('mech_part_cost')}" value="${repair.cost || ''}" step="0.01" style="width:100px;" inputmode="decimal">
+                                            <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('delete')}">✕</button>
+                                        </div>
+                                    `;
+                    } else {
+                        // Por defecto una vacía
+                        return `
+                                        <div class="part-row" style="display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: var(--space-2);">
+                                            <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}" value="">
+                                            <input type="number" class="form-input part-cost" placeholder="${I18n.t('unit_currency')} ${I18n.t('mech_part_cost')}" value="" step="0.01" style="width:100px;" inputmode="decimal">
+                                            <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('delete')}">✕</button>
+                                        </div>
+                                    `;
+                    }
+                })()}
                         </div>
                     </div>
                     ${Components.renderPhotoCapture('repairPhoto', I18n.t('mech_photos'))}
@@ -365,7 +383,6 @@ const MaintenanceModule = (() => {
 
     async function saveRepair(repairId) {
         const vehicleId = document.getElementById('repairVehicle')?.value;
-        const description = document.getElementById('repairDesc')?.value;
         const odometer = parseFloat(document.getElementById('repairOdometer')?.value) || 0;
         const laborCost = parseFloat(document.getElementById('repairLaborCost')?.value) || 0;
         const date = document.getElementById('repairDate')?.value;
@@ -375,23 +392,30 @@ const MaintenanceModule = (() => {
         const partRows = document.querySelectorAll('#repairPartsContainer .part-row');
         const parts = [];
         let partsTotalCost = 0;
+        let descriptionParts = [];
 
         partRows.forEach(row => {
-            const name = row.querySelector('.part-name').value.trim();
-            const cost = parseFloat(row.querySelector('.part-cost').value) || 0;
+            const nameInput = row.querySelector('.part-name');
+            const costInput = row.querySelector('.part-cost');
+            if (!nameInput) return; // fail-safe para posibles remociones raras
+
+            const name = nameInput.value.trim();
+            const cost = parseFloat(costInput.value) || 0;
             if (name) {
                 parts.push({ name, cost });
                 partsTotalCost += cost;
+                descriptionParts.push(name);
             }
         });
 
-        const totalCost = laborCost + partsTotalCost;
-
-        if (!vehicleId || vehicleId === '' || !description) {
-            Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+        // Validar que al menos haya un ítem de reparación
+        if (!vehicleId || vehicleId === '' || parts.length === 0) {
+            Components.showToast(I18n.t('error') + ': Ingrese vehículo y al menos un detalle de reparación', 'danger');
             return;
         }
 
+        const totalCost = laborCost + partsTotalCost;
+        const description = descriptionParts.join(', '); // Retro-compatibilidad de descripción texto string
         const odometerKm = Units.toKm(odometer);
 
         const data = {
@@ -443,18 +467,16 @@ const MaintenanceModule = (() => {
 
     function addPartRow() {
         const container = document.getElementById('repairPartsContainer');
-        if (!container) return;
-        const div = document.createElement('div');
-        div.className = 'part-row';
-        div.style.cssText = 'display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center;';
-        div.innerHTML = `
-            <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}">
-            <input type="number" class="form-input part-cost" placeholder="${I18n.t('mech_part_cost')}" step="0.01" style="width:100px;">
-            <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('mech_remove_part')}">✕</button>
-        `;
-        container.appendChild(div);
+        const row = document.createElement('div');
+        row.className = 'part-row';
+        row.style.cssText = 'display:flex; gap:var(--space-2); margin-bottom:var(--space-2); align-items:center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: var(--space-2);';
+        row.innerHTML = `
+        <input type="text" class="form-input part-name" placeholder="${I18n.t('mech_part_name')}">
+        <input type="number" class="form-input part-cost" placeholder="${I18n.t('unit_currency')} ${I18n.t('mech_part_cost')}" step="0.01" style="width:100px;" inputmode="decimal">
+        <button class="btn btn-icon btn-danger" type="button" onclick="MaintenanceModule.removePartRow(this)" title="${I18n.t('delete')}">✕</button>
+    `;
+        container.appendChild(row);
     }
-
     function removePartRow(btn) {
         btn.parentElement.remove();
     }
