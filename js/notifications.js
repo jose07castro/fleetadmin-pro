@@ -84,6 +84,59 @@ const Notifications = (() => {
                 }
             }
         });
+
+        // Verificar licencias de conducir una vez al día (a las 09:00)
+        if (currentTime === '09:00') {
+            await checkLicenseExpiry(todayStr);
+        }
+    }
+
+    async function checkLicenseExpiry(todayStr) {
+        try {
+            const licenseAlerts = await Alerts.getLicenseAlerts();
+            if (!licenseAlerts || licenseAlerts.length === 0) return;
+
+            for (const alert of licenseAlerts) {
+                const daysLeft = alert.daysLeft;
+                const driverName = alert.driver.name;
+
+                // Determinar si debemos notificar hoy:
+                // - 60 días antes
+                // - Luego cada 15 días (45, 30, 15, 0)
+                // - Si está vencida, cada 15 días después
+                let shouldNotify = false;
+
+                if (daysLeft <= 0) {
+                    // Vencida: notificar cada 15 días
+                    shouldNotify = (Math.abs(daysLeft) % 15 === 0) || daysLeft === 0;
+                } else if (daysLeft === 60 || daysLeft === 45 || daysLeft === 30 || daysLeft === 15 || daysLeft <= 7) {
+                    shouldNotify = true;
+                }
+
+                if (shouldNotify) {
+                    const storageKey = `license_notif_${alert.driver.id}_${todayStr}`;
+                    if (!localStorage.getItem(storageKey)) {
+                        // Notificar al admin
+                        sendNotification(
+                            `🪪 ${I18n.t('license_title')}`,
+                            alert.message
+                        );
+
+                        // Si el conductor logueado es este driver, notificar directamente
+                        if (Auth.isDriver() && Auth.getUserId() === alert.driver.id) {
+                            const driverMsg = daysLeft < 0
+                                ? I18n.t('license_alert_expired_driver', { date: new Date(alert.driver.licenseExpiryDate).toLocaleDateString() })
+                                : I18n.t('license_alert_driver', { date: new Date(alert.driver.licenseExpiryDate).toLocaleDateString(), days: daysLeft });
+                            sendNotification(`🪪 ${I18n.t('license_title')}`, driverMsg);
+                        }
+
+                        localStorage.setItem(storageKey, 'true');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Error verificando licencias:', e);
+        }
     }
 
     function sendNotification(title, body) {

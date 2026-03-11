@@ -237,11 +237,40 @@ const SettingsModule = (() => {
                 </div>
                 <div class="form-group">
                     <label class="form-label">Rol</label>
-                    <select class="form-select" id="newUserRole">
+                    <select class="form-select" id="newUserRole" onchange="SettingsModule.toggleLicenseFields()">
                         <option value="owner">${I18n.t('role_owner')}</option>
                         <option value="driver">${I18n.t('role_driver')}</option>
                         <option value="mechanic">${I18n.t('role_mechanic')}</option>
                     </select>
+                </div>
+
+                <!-- Campos de licencia (solo para conductores) -->
+                <div id="licenseFields" style="display:none; border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
+                        🪪 ${I18n.t('license_title')}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_issue_date')} *</label>
+                        <input type="date" class="form-input" id="licenseIssueDate">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_expiry_date')} *</label>
+                        <input type="date" class="form-input" id="licenseExpiryDate">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_photo')}</label>
+                        <div style="display:flex; gap:var(--space-2); flex-wrap:wrap;">
+                            <button type="button" class="btn btn-sm" onclick="SettingsModule.captureLicensePhoto()">
+                                📷 ${I18n.t('license_take_photo')}
+                            </button>
+                            <label class="btn btn-sm" style="cursor:pointer;">
+                                📁 ${I18n.t('license_upload')}
+                                <input type="file" id="licensePhotoFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event)">
+                            </label>
+                        </div>
+                        <div id="licensePhotoPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="licensePhotoData">
+                    </div>
                 </div>
             `,
             `
@@ -249,6 +278,42 @@ const SettingsModule = (() => {
                 <button class="btn btn-primary" onclick="SettingsModule.saveUser()">${I18n.t('save')}</button>
             `
         );
+    }
+
+    function toggleLicenseFields() {
+        const role = document.getElementById('newUserRole')?.value;
+        const licenseDiv = document.getElementById('licenseFields');
+        if (licenseDiv) {
+            licenseDiv.style.display = role === 'driver' ? 'block' : 'none';
+        }
+    }
+
+    function handleLicensePhoto(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById('licensePhotoData').value = e.target.result;
+            document.getElementById('licensePhotoPreview').innerHTML = `
+                <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
+            `;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function captureLicensePhoto() {
+        if (typeof Components.capturePhoto === 'function') {
+            const photo = await Components.capturePhoto();
+            if (photo) {
+                document.getElementById('licensePhotoData').value = photo;
+                document.getElementById('licensePhotoPreview').innerHTML = `
+                    <img src="${photo}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
+                `;
+            }
+        } else {
+            // Fallback: usar input file
+            document.getElementById('licensePhotoFile')?.click();
+        }
     }
 
     async function saveUser() {
@@ -261,6 +326,26 @@ const SettingsModule = (() => {
             return;
         }
 
+        const userData = { name, pin, role };
+
+        // Si es conductor, validar y agregar datos de licencia
+        if (role === 'driver') {
+            const issueDate = document.getElementById('licenseIssueDate')?.value;
+            const expiryDate = document.getElementById('licenseExpiryDate')?.value;
+            const licensePhoto = document.getElementById('licensePhotoData')?.value;
+
+            if (!issueDate || !expiryDate) {
+                Components.showToast(I18n.t('license_required'), 'danger');
+                return;
+            }
+
+            userData.licenseIssueDate = issueDate;
+            userData.licenseExpiryDate = expiryDate;
+            if (licensePhoto) {
+                userData.licensePhoto = licensePhoto;
+            }
+        }
+
         const fleetId = Auth.getFleetId();
 
         // Crear en globalUsers para que pueda loguearse
@@ -269,7 +354,8 @@ const SettingsModule = (() => {
         });
 
         // Crear dentro de la flota
-        await DB.add('users', { name, pin, role, globalId });
+        userData.globalId = globalId;
+        await DB.add('users', userData);
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
     }
@@ -344,6 +430,7 @@ const SettingsModule = (() => {
 
     return {
         render, exportData, importData, resetData, showUserManager, saveUser,
-        showLocationEditor, showLocationSetup, saveLocation
+        showLocationEditor, showLocationSetup, saveLocation,
+        toggleLicenseFields, handleLicensePhoto, captureLicensePhoto
     };
 })();
