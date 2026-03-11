@@ -165,7 +165,6 @@ const SettingsModule = (() => {
                     </div>
                     <div id="userList" style="margin-top:var(--space-3);"></div>
                 </div>
-                <script>setTimeout(() => SettingsModule.loadUserList(), 100)</script>
             ` : ''}
 
             <!-- Acerca de -->
@@ -569,8 +568,15 @@ const SettingsModule = (() => {
         loadUserList();
     }
 
+    // afterRender: se llama desde Router después de que el HTML fue insertado
+    function afterRender() {
+        if (Auth.isOwner()) {
+            loadUserList();
+        }
+    }
+
     return {
-        render, exportData, importData, resetData, showUserManager, saveUser,
+        render, afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, handleEditLicensePhoto, updateUserLicense

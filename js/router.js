@@ -16,6 +16,15 @@ const Router = (() => {
         settings: () => SettingsModule.render(),
     };
 
+    // Módulos con afterRender (se llama después de innerHTML)
+    const modules = {
+        settings: SettingsModule,
+        dashboard: DashboardModule,
+        vehicles: VehiclesModule,
+        shifts: ShiftsModule,
+        maintenance: MaintenanceModule,
+    };
+
     async function navigate(route) {
         // Si no está logueado, forzar login
         if (!Auth.isLoggedIn() && route !== 'login') {
@@ -50,6 +59,11 @@ const Router = (() => {
                 app.innerHTML = Components.renderLayout(content, route);
                 // Reactivar el sidebar overlay para móvil
                 setupMobileMenu();
+            }
+            // Llamar afterRender si el módulo lo tiene
+            const mod = modules[route];
+            if (mod && typeof mod.afterRender === 'function') {
+                setTimeout(() => mod.afterRender(), 50);
             }
         }
     }
