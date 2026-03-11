@@ -16,13 +16,13 @@ const Router = (() => {
         settings: () => SettingsModule.render(),
     };
 
-    // Módulos con afterRender (se llama después de innerHTML)
-    const modules = {
-        settings: SettingsModule,
-        dashboard: DashboardModule,
-        vehicles: VehiclesModule,
-        shifts: ShiftsModule,
-        maintenance: MaintenanceModule,
+    // Mapeo de rutas a nombres de módulos (para afterRender)
+    const moduleNames = {
+        settings: 'SettingsModule',
+        dashboard: 'DashboardModule',
+        vehicles: 'VehiclesModule',
+        shifts: 'ShiftsModule',
+        maintenance: 'MaintenanceModule',
     };
 
     async function navigate(route) {
@@ -61,7 +61,8 @@ const Router = (() => {
                 setupMobileMenu();
             }
             // Llamar afterRender si el módulo lo tiene
-            const mod = modules[route];
+            const modName = moduleNames[route];
+            const mod = modName ? window[modName] : null;
             if (mod && typeof mod.afterRender === 'function') {
                 setTimeout(() => mod.afterRender(), 50);
             }
