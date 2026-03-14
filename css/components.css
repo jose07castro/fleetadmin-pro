@@ -219,12 +219,13 @@
 .form-select,
 .form-textarea {
     width: 100%;
-    padding: var(--space-3) var(--space-4);
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
+    padding: 12px 14px !important;
+    background-color: #FFFFFF !important;
+    border: 2px solid #000000 !important;
     border-radius: var(--radius-lg);
-    color: var(--text-primary);
-    font-size: var(--font-size-base);
+    color: #000000 !important;
+    font-size: 20px !important;
+    font-weight: 900 !important;
     transition: all var(--transition-fast);
     outline: none;
 }
@@ -232,12 +233,20 @@
 .form-input:focus,
 .form-select:focus,
 .form-textarea:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
 }
 
 .form-input::placeholder {
-    color: var(--text-tertiary);
+    color: #9ca3af !important;
+    font-weight: 400 !important;
+    font-size: 16px !important;
+}
+
+/* KM inválido: borde rojo */
+.form-input.km-error {
+    border-color: #ef4444 !important;
+    background-color: #fef2f2 !important;
 }
 
 .form-textarea {
@@ -247,11 +256,19 @@
 
 .form-select {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 16px;
-    padding-right: 40px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23000000'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 12px center !important;
+    background-size: 16px !important;
+    padding-right: 40px !important;
+    background-color: #FFFFFF !important;
+}
+
+/* Labels más visibles dentro de modales */
+.modal-body .form-label {
+    color: var(--text-primary) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
 }
 
 .form-error {

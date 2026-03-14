@@ -85,9 +85,36 @@ const Notifications = (() => {
             }
         });
 
-        // Verificar licencias de conducir una vez al día (a las 09:00)
+        // Verificar licencias de conducir y aceite una vez al día (a las 09:00)
         if (currentTime === '09:00') {
             await checkLicenseExpiry(todayStr);
+            await checkOilChangeAlerts(todayStr);
+        }
+    }
+
+    async function checkOilChangeAlerts(todayStr) {
+        try {
+            const vehicles = await DB.getAll('vehicles');
+            for (const vehicle of vehicles) {
+                const oil = Alerts.getOilChangeStatus(vehicle);
+                if (oil.level === 'danger' || oil.level === 'warning') {
+                    const storageKey = `oil_notif_${vehicle.id}_${todayStr}`;
+                    if (!localStorage.getItem(storageKey)) {
+                        const remaining = Math.max(0, oil.remainingKm);
+                        sendNotification(
+                            `🛢️ ${I18n.t('oil_change')} — ${vehicle.name}`,
+                            I18n.t('oil_change_alert', {
+                                vehicle: vehicle.name,
+                                current: Units.formatDistance(vehicle.currentOdometer || 0),
+                                limit: Units.formatDistance(vehicle.nextOilChangeKm)
+                            })
+                        );
+                        localStorage.setItem(storageKey, 'true');
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Error verificando cambio de aceite:', e);
         }
     }
 

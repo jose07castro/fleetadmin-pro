@@ -203,6 +203,13 @@ const MaintenanceModule = (() => {
 
         const odometerKm = Units.toKm(odometer);
 
+        // Validar KM contra odómetro actual del vehículo
+        const vehicle = await DB.get('vehicles', vehicleId);
+        if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
+            Components.showToast(I18n.t('km_error_lower'), 'danger');
+            return;
+        }
+
         await DB.add('beltChanges', {
             vehicleId,
             odometer: odometerKm,
@@ -210,7 +217,6 @@ const MaintenanceModule = (() => {
         });
 
         // Actualizar odómetro del vehículo si es mayor
-        const vehicle = await DB.get('vehicles', vehicleId);
         if (vehicle && odometerKm > (vehicle.currentOdometer || 0)) {
             vehicle.currentOdometer = odometerKm;
             await DB.put('vehicles', vehicle);
@@ -506,7 +512,7 @@ const OilModule = (() => {
 
         const totalLiters = filteredLogs.reduce((sum, l) => sum + (l.quantity || 0), 0);
 
-        return `
+        const html = `
             <!-- Formulario de registro -->
             <div class="card" style="margin-bottom:var(--space-6);">
                 <h3 style="margin-bottom:var(--space-4);">🛢️ ${I18n.t('oil_add')}</h3>
@@ -514,9 +520,14 @@ const OilModule = (() => {
                 <div class="repair-form-grid">
                     <div class="form-group">
                         <label class="form-label">${I18n.t('mech_vehicle')}</label>
-                        <select class="form-select" id="oilVehicle">
+                        <select class="form-select" id="oilVehicle" onchange="OilModule.prefillOdometer()">
                             ${vehicles.map(v => `<option value="${v.id}">${v.name} — ${v.plate}</option>`).join('')}
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('oil_odometer')} (${Units.distanceLabel()})</label>
+                        <input type="number" class="form-input" id="oilOdometer"
+                            placeholder="${I18n.t('veh_odometer')}" inputmode="numeric">
                     </div>
                     <div class="form-group">
                         <label class="form-label">${I18n.t('oil_quantity')} (${Units.volumeLabel()})</label>
@@ -526,6 +537,21 @@ const OilModule = (() => {
                     <div class="form-group">
                         <label class="form-label">${I18n.t('date')}</label>
                         <input type="date" class="form-input" id="oilDate" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                </div>
+
+                <!-- Checkbox de cambio completo de aceite -->
+                <div class="form-group" style="margin-top:var(--space-3);">
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilIsChange" onchange="OilModule.toggleOilChange()">
+                        <span style="font-weight:600;">🔄 ${I18n.t('oil_change')}</span>
+                    </label>
+                </div>
+                <div id="oilChangeSection" style="display:none; margin-top:var(--space-3);">
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('oil_next_change_km')} (${Units.distanceLabel()})</label>
+                        <input type="number" class="form-input" id="oilNextChangeKm"
+                            placeholder="${I18n.t('oil_next_change_km')}" inputmode="numeric">
                     </div>
                 </div>
 
@@ -561,6 +587,11 @@ const OilModule = (() => {
                 `<p style="color:var(--text-tertiary);">${I18n.t('oil_no_history')}</p>`}
             </div>
         `;
+
+        // Pre-llenar el KM del primer vehículo después de renderizar
+        setTimeout(() => OilModule.prefillOdometer(), 150);
+
+        return html;
     }
 
     async function renderOilTable(logs) {
@@ -570,7 +601,7 @@ const OilModule = (() => {
             const vehicle = await DB.get('vehicles', l.vehicleId);
             const driver = l.driverId ? await DB.get('users', l.driverId) : null;
             const vehName = vehicle ? `${vehicle.name} — ${vehicle.plate || ''}` : `#${l.vehicleId}`;
-            const driverName = driver?.name || '-';
+            const driverName = l.driverName || driver?.name || driver?.email || '-';
             rows += `
                 <tr>
                     <td data-label="${I18n.t('date')}">${new Date(l.date).toLocaleDateString()}</td>
@@ -610,11 +641,20 @@ const OilModule = (() => {
         `;
     }
 
+    function toggleOilChange() {
+        const isChange = document.getElementById('oilIsChange')?.checked;
+        const section = document.getElementById('oilChangeSection');
+        if (section) section.style.display = isChange ? 'block' : 'none';
+    }
+
     async function saveOilLog() {
         const vehicleId = document.getElementById('oilVehicle')?.value;
+        const odometerInput = parseFloat(document.getElementById('oilOdometer')?.value);
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
         const date = document.getElementById('oilDate')?.value;
         const photo = Components.getPhotoData('oilPhoto');
+        const isChange = document.getElementById('oilIsChange')?.checked;
+        const nextChangeKmInput = parseFloat(document.getElementById('oilNextChangeKm')?.value);
 
         if (!vehicleId || vehicleId === '' || !quantity) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
@@ -622,14 +662,49 @@ const OilModule = (() => {
         }
 
         const quantityLiters = Units.toLiters(quantity);
+        const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
 
-        await DB.add('oilLogs', {
+        // Validar KM contra odómetro actual del vehículo
+        if (odometerKm !== null) {
+            const vehicle = await DB.get('vehicles', vehicleId);
+            if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
+                Components.showToast(I18n.t('km_error_lower'), 'danger');
+                return;
+            }
+        }
+
+        const logData = {
             vehicleId,
             driverId: Auth.getUserId(),
+            driverName: Auth.getUserName(),
             quantity: quantityLiters,
             date: date || new Date().toISOString(),
             photo
-        });
+        };
+
+        if (odometerKm !== null) logData.odometer = odometerKm;
+        if (isChange) logData.type = 'change';
+
+        await DB.add('oilLogs', logData);
+
+        // Si es cambio completo, guardar nextOilChangeKm en el vehículo
+        if (isChange && nextChangeKmInput) {
+            const vehicle = await DB.get('vehicles', vehicleId);
+            if (vehicle) {
+                vehicle.nextOilChangeKm = Units.toKm(nextChangeKmInput);
+                if (odometerKm !== null && odometerKm > (vehicle.currentOdometer || 0)) {
+                    vehicle.currentOdometer = odometerKm;
+                }
+                await DB.put('vehicles', vehicle);
+            }
+        } else if (odometerKm !== null) {
+            // Actualizar odómetro si es mayor
+            const vehicle = await DB.get('vehicles', vehicleId);
+            if (vehicle && odometerKm > (vehicle.currentOdometer || 0)) {
+                vehicle.currentOdometer = odometerKm;
+                await DB.put('vehicles', vehicle);
+            }
+        }
 
         Components.showToast(I18n.t('success') + ' ✅', 'success');
         Router.navigate('oil');
@@ -646,5 +721,18 @@ const OilModule = (() => {
         );
     }
 
-    return { render, saveOilLog, deleteOilLog };
+    // --- Pre-llenar KM del vehículo seleccionado ---
+    async function prefillOdometer() {
+        const vehicleId = document.getElementById('oilVehicle')?.value;
+        if (!vehicleId) return;
+        const vehicle = await DB.get('vehicles', vehicleId);
+        const odometerField = document.getElementById('oilOdometer');
+        if (vehicle && vehicle.currentOdometer && odometerField) {
+            odometerField.value = Units.displayDistance(vehicle.currentOdometer);
+        } else if (odometerField) {
+            odometerField.value = '';
+        }
+    }
+
+    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer };
 })();

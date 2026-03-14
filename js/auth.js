@@ -59,7 +59,19 @@ const Auth = (() => {
     }
 
     function getUserName() {
-        return getUser()?.name || '';
+        // FUENTE PRIMARIA: Firebase Auth
+        try {
+            const fbUser = firebase.auth().currentUser;
+            if (fbUser) {
+                console.log('Datos del usuario activo:', fbUser);
+                const nombre = fbUser.displayName || fbUser.email || null;
+                if (nombre) return nombre;
+            }
+        } catch (e) { /* Firebase Auth no disponible */ }
+
+        // Fallback: nombre del sistema custom
+        const user = getUser();
+        return user?.name || user?.email || 'Usuario Desconocido';
     }
 
     function getUserId() {

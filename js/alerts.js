@@ -47,6 +47,18 @@ const Alerts = (() => {
         };
     }
 
+    // Calcular el estado del aceite para un vehículo
+    function getOilChangeStatus(vehicle) {
+        if (!vehicle.nextOilChangeKm) return { level: 'unknown', remainingKm: null };
+
+        const currentKm = vehicle.currentOdometer || 0;
+        const remainingKm = vehicle.nextOilChangeKm - currentKm;
+
+        if (remainingKm <= 0) return { level: 'danger', remainingKm };
+        if (remainingKm <= 500) return { level: 'warning', remainingKm };
+        return { level: 'ok', remainingKm };
+    }
+
     // Obtener todas las alertas de todos los vehículos
     async function getAllAlerts() {
         const vehicles = await DB.getAll('vehicles');
@@ -105,6 +117,34 @@ const Alerts = (() => {
                         vehicle: vehicle.name,
                         date: dateStr,
                         days: vtv.daysLeft
+                    })
+                });
+            }
+        }
+
+        // Alertas de cambio de aceite
+        for (const vehicle of vehicles) {
+            const oil = getOilChangeStatus(vehicle);
+            if (oil.level === 'danger') {
+                alerts.push({
+                    type: 'oil_danger',
+                    vehicle,
+                    data: oil,
+                    message: I18n.t('oil_change_alert', {
+                        vehicle: vehicle.name,
+                        current: Units.formatDistance(vehicle.currentOdometer || 0),
+                        limit: Units.formatDistance(vehicle.nextOilChangeKm)
+                    })
+                });
+            } else if (oil.level === 'warning') {
+                alerts.push({
+                    type: 'oil_warning',
+                    vehicle,
+                    data: oil,
+                    message: I18n.t('oil_change_alert', {
+                        vehicle: vehicle.name,
+                        current: Units.formatDistance(vehicle.currentOdometer || 0),
+                        limit: Units.formatDistance(vehicle.nextOilChangeKm)
                     })
                 });
             }
@@ -193,5 +233,5 @@ const Alerts = (() => {
         `;
     }
 
-    return { getBeltStatus, getAllAlerts, getLicenseAlerts, getLicenseStatus, renderAlertBanner };
+    return { getBeltStatus, getOilChangeStatus, getAllAlerts, getLicenseAlerts, getLicenseStatus, renderAlertBanner };
 })();

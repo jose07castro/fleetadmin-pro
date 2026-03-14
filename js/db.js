@@ -92,7 +92,7 @@ const DB = (() => {
             ...data,
             updatedAt: new Date().toISOString()
         };
-        await db.ref(`${fleetPath(storeName)}/${data.id}`).set(updated);
+        await db.ref(`${fleetPath(storeName)}/${data.id}`).update(updated);
         return data.id;
     }
 

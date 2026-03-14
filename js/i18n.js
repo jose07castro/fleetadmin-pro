@@ -153,6 +153,13 @@ const I18n = (() => {
             oil_added_by: 'Agregado por',
             oil_total_added: 'Total agregado',
 
+            // Aceite - Cambio completo
+            oil_odometer: 'Odómetro',
+            oil_change: 'Cambio Completo de Aceite',
+            oil_next_change_km: 'Próximo cambio de aceite (KM)',
+            oil_change_alert: '🛢️ {vehicle}: Cambio de aceite necesario. Odómetro: {current} — Límite: {limit}',
+            km_error_lower: 'Error: El kilometraje no puede ser menor al anterior',
+
             // Mecánico
             mech_title: 'Panel del Mecánico',
             mech_add_repair: 'Registrar Reparación',
@@ -393,6 +400,13 @@ const I18n = (() => {
             oil_added_by: 'Added by',
             oil_total_added: 'Total added',
 
+            // Oil - Full change
+            oil_odometer: 'Odometer',
+            oil_change: 'Full Oil Change',
+            oil_next_change_km: 'Next oil change (KM)',
+            oil_change_alert: '🛢️ {vehicle}: Oil change needed. Odometer: {current} — Limit: {limit}',
+            km_error_lower: 'Error: Odometer cannot be less than the previous reading',
+
             mech_title: 'Mechanic Panel',
             mech_add_repair: 'Register Repair',
             mech_repair_desc: 'Details & Parts',
@@ -628,6 +642,13 @@ const I18n = (() => {
             oil_no_history: 'Sem registros de óleo',
             oil_added_by: 'Adicionado por',
             oil_total_added: 'Total adicionado',
+
+            // Óleo - Troca completa
+            oil_odometer: 'Odômetro',
+            oil_change: 'Troca Completa de Óleo',
+            oil_next_change_km: 'Próxima troca de óleo (KM)',
+            oil_change_alert: '🛢️ {vehicle}: Troca de óleo necessária. Odômetro: {current} — Limite: {limit}',
+            km_error_lower: 'Erro: A quilometragem não pode ser menor que a anterior',
 
             mech_title: 'Painel do Mecânico',
             mech_add_repair: 'Registrar Reparação',
