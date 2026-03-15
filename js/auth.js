@@ -106,9 +106,24 @@ const Auth = (() => {
         return permissions[role]?.includes(route) || false;
     }
 
+    // Verificar si el perfil del conductor está completo (licencia + fotos)
+    async function isProfileComplete() {
+        const user = getUser();
+        if (!user || user.role !== 'driver') return true; // Solo aplica a conductores
+        try {
+            const fullUser = await DB.get('users', user.id);
+            if (!fullUser) return true;
+            // Requiere: licenseNumber + licenseFrontPhoto + licenseBackPhoto
+            return !!(fullUser.licenseNumber && fullUser.licenseFrontPhoto && fullUser.licenseBackPhoto);
+        } catch (e) {
+            return true; // En caso de error, no bloquear
+        }
+    }
+
     return {
         login, logout, getUser, isLoggedIn, getRole,
         isOwner, isDriver, isMechanic,
-        getUserName, getUserId, getFleetId, authenticate, canAccess
+        getUserName, getUserId, getFleetId, authenticate, canAccess,
+        isProfileComplete
     };
 })();

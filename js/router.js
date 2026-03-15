@@ -15,6 +15,7 @@ const Router = (() => {
         oil: () => OilModule.render(),
         gps: () => GPSModule.render(),
         settings: () => SettingsModule.render(),
+        'complete-profile': () => SettingsModule.renderCompleteProfile(),
     };
 
     // Mapeo de rutas a nombres de módulos (para afterRender)
@@ -34,13 +35,21 @@ const Router = (() => {
         }
 
         // Verificar permisos
-        if (route !== 'login' && !Auth.canAccess(route)) {
+        if (route !== 'login' && route !== 'complete-profile' && !Auth.canAccess(route)) {
             const defaultRoutes = {
                 owner: 'dashboard',
                 driver: 'shifts',
                 mechanic: 'maintenance'
             };
             route = defaultRoutes[Auth.getRole()] || 'login';
+        }
+
+        // Bloqueo de perfil incompleto para conductores
+        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'complete-profile') {
+            const profileOk = await Auth.isProfileComplete();
+            if (!profileOk) {
+                route = 'complete-profile';
+            }
         }
 
         currentRoute = route;
