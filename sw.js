@@ -1,31 +1,31 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v32';
+const CACHE_NAME = 'fleetadmin-v33';
 const ASSETS = [
     './',
-    './index.html?v=32',
-    './css/index.css?v=32',
-    './css/components.css?v=32',
-    './css/modules.css?v=32',
-    './js/i18n.js?v=32',
-    './js/firebase-config.js?v=32',
-    './js/db.js?v=32',
-    './js/units.js?v=32',
-    './js/auth.js?v=32',
-    './js/alerts.js?v=32',
-    './js/components.js?v=32',
-    './js/router.js?v=32',
-    './js/modules/login.js?v=32',
-    './js/modules/dashboard.js?v=32',
-    './js/modules/shifts.js?v=32',
-    './js/modules/maintenance.js?v=32',
-    './js/modules/vehicles.js?v=32',
-    './js/modules/settings.js?v=32',
-    './js/whatsapp.js?v=32',
-    './js/storage.js?v=32',
-    './js/modules/gps.js?v=32',
-    './js/notifications.js?v=32',
-    './js/app.js?v=32',
-    './manifest.json?v=32',
+    './index.html?v=33',
+    './css/index.css?v=33',
+    './css/components.css?v=33',
+    './css/modules.css?v=33',
+    './js/i18n.js?v=33',
+    './js/firebase-config.js?v=33',
+    './js/db.js?v=33',
+    './js/units.js?v=33',
+    './js/auth.js?v=33',
+    './js/alerts.js?v=33',
+    './js/components.js?v=33',
+    './js/router.js?v=33',
+    './js/modules/login.js?v=33',
+    './js/modules/dashboard.js?v=33',
+    './js/modules/shifts.js?v=33',
+    './js/modules/maintenance.js?v=33',
+    './js/modules/vehicles.js?v=33',
+    './js/modules/settings.js?v=33',
+    './js/whatsapp.js?v=33',
+    './js/storage.js?v=33',
+    './js/modules/gps.js?v=33',
+    './js/notifications.js?v=33',
+    './js/app.js?v=33',
+    './manifest.json?v=33',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -102,7 +102,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=32')
+                return caches.match('./index.html?v=33')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

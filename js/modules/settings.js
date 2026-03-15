@@ -755,7 +755,7 @@ const SettingsModule = (() => {
                         <input type="hidden" id="cpBackData" value="">
                     </div>
 
-                    <button class="btn btn-primary" style="width:100%; margin-top:var(--space-4); font-size:var(--font-size-lg); padding:var(--space-3);" onclick="SettingsModule.saveCompleteProfile()">
+                    <button type="button" id="btnSaveCompleteProfile" class="btn btn-primary" style="width:100%; margin-top:var(--space-4); font-size:var(--font-size-lg); padding:var(--space-3);" onclick="console.log('--- BOTON PRESIONADO ---'); SettingsModule.saveCompleteProfile()">
                         ✅ Guardar y Continuar
                     </button>
                 </div>
@@ -764,7 +764,8 @@ const SettingsModule = (() => {
     }
 
     async function saveCompleteProfile() {
-        const btn = document.querySelector('[onclick*="saveCompleteProfile"]');
+        console.log('--- FUNCIÓN saveCompleteProfile EJECUTADA ---');
+        const btn = document.getElementById('btnSaveCompleteProfile');
 
         try {
             // Feedback visual en botón
