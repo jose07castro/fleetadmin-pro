@@ -526,20 +526,58 @@ const DashboardModule = (() => {
     function deleteUser(userId) {
         Components.closeModal();
         Components.showModal(
-            I18n.t('confirm'),
-            `<p>${I18n.t('user_delete_confirm')}</p>`,
+            '🗑️ Eliminar Usuario',
+            `<p style="text-align:center; font-size:var(--font-size-lg);">⚠️</p>
+             <p style="text-align:center;">¿Estás seguro? Esto eliminará al usuario, sus datos y las fotos de licencia del servidor de forma <strong>PERMANENTE</strong>.</p>`,
             `
-                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                <button class="btn btn-danger" onclick="DashboardModule.confirmDeleteUser('${userId}')">${I18n.t('confirm')}</button>
+                <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
+                <button class="btn btn-danger" onclick="DashboardModule.confirmDeleteUser('${userId}')">🗑️ Eliminar Todo</button>
             `
         );
     }
 
     async function confirmDeleteUser(userId) {
-        await DB.remove('users', userId);
-        Components.closeModal();
-        Components.showToast(I18n.t('success'), 'success');
-        showUsers();
+        try {
+            Components.showToast('🗑️ Eliminando usuario y fotos...', 'info');
+
+            const user = await DB.get('users', userId);
+            if (!user) {
+                await DB.remove('users', userId);
+                Components.closeModal();
+                Components.showToast('✅ Usuario eliminado', 'success');
+                showUsers();
+                return;
+            }
+
+            // 1. Borrar fotos de Firebase Storage
+            if (user.licenseFrontPhoto || user.licenseBackPhoto) {
+                console.log('🗑️ Eliminando fotos de Storage...');
+                const result = await StorageUtil.deleteUserPhotos(user);
+                console.log('🗑️ Resultado borrado fotos:', result);
+            }
+
+            // 2. Borrar de globalUsers si tiene globalId
+            if (user.globalId) {
+                try {
+                    await firebaseDB.ref('globalUsers/' + user.globalId).remove();
+                    console.log('🗑️ Eliminado de globalUsers:', user.globalId);
+                } catch (e) {
+                    console.warn('⚠️ No se pudo borrar de globalUsers:', e.message);
+                }
+            }
+
+            // 3. Borrar documento del usuario de la flota
+            await DB.remove('users', userId);
+
+            Components.closeModal();
+            Components.showToast('✅ Usuario y fotos eliminados permanentemente', 'success');
+            showUsers();
+
+        } catch (error) {
+            console.error('❌ Error en eliminación profunda:', error);
+            alert('Error al eliminar: ' + (error.message || error));
+            Components.closeModal();
+        }
     }
 
     return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser };

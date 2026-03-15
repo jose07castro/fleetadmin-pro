@@ -521,6 +521,7 @@ const SettingsModule = (() => {
             // Badge de licencia para conductores
             let licenseBadge = '';
             let editBtn = '';
+            let deleteBtn = '';
             if (u.role === 'driver') {
                 const status = Alerts.getLicenseStatus(u);
                 if (status.level === 'danger') {
@@ -536,6 +537,12 @@ const SettingsModule = (() => {
                     🪪 ${I18n.t('edit')}
                 </button>`;
             }
+            // Botón eliminar (solo no-owners)
+            if (u.role !== 'owner') {
+                deleteBtn = `<button class="btn btn-sm" onclick="SettingsModule.deepDeleteUser('${u.id}')" style="font-size:0.75rem; padding:var(--space-1) var(--space-2); background:#dc2626; color:white; border:none;">
+                    🗑️
+                </button>`;
+            }
 
             html += `
                 <div class="settings-item" style="padding:var(--space-3); border-bottom:1px solid var(--border-color);">
@@ -549,6 +556,7 @@ const SettingsModule = (() => {
                     <div style="display:flex; align-items:center; gap:var(--space-2); flex-shrink:0;">
                         ${licenseBadge}
                         ${editBtn}
+                        ${deleteBtn}
                     </div>
                 </div>
             `;
@@ -843,6 +851,40 @@ const SettingsModule = (() => {
         }
     }
 
+    // Eliminación profunda desde Settings
+    async function deepDeleteUser(userId) {
+        if (!confirm('⚠️ ¿Eliminar este usuario PERMANENTEMENTE?\n\nSe borrarán sus datos y fotos del servidor.')) return;
+
+        try {
+            Components.showToast('🗑️ Eliminando usuario y fotos...', 'info');
+
+            const user = await DB.get('users', userId);
+            if (user) {
+                // 1. Borrar fotos de Storage
+                if (user.licenseFrontPhoto || user.licenseBackPhoto) {
+                    await StorageUtil.deleteUserPhotos(user);
+                }
+                // 2. Borrar de globalUsers
+                if (user.globalId) {
+                    try {
+                        await firebaseDB.ref('globalUsers/' + user.globalId).remove();
+                    } catch (e) {
+                        console.warn('⚠️ No se pudo borrar de globalUsers:', e.message);
+                    }
+                }
+            }
+
+            // 3. Borrar de la flota
+            await DB.remove('users', userId);
+            Components.showToast('✅ Usuario y fotos eliminados', 'success');
+            loadUserList();
+
+        } catch (error) {
+            console.error('❌ Error eliminando:', error);
+            alert('Error al eliminar: ' + (error.message || error));
+        }
+    }
+
     // afterRender: se llama desde Router después de que el HTML fue insertado
     function afterRender() {
         if (Auth.isOwner()) {
@@ -855,6 +897,6 @@ const SettingsModule = (() => {
         afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
-        loadUserList, showEditUser, updateUserLicense
+        loadUserList, showEditUser, updateUserLicense, deepDeleteUser
     };
 })();

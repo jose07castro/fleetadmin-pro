@@ -1,6 +1,6 @@
 /* ============================================
    FleetAdmin Pro — Firebase Storage Utility
-   Subida de imágenes a Firebase Storage
+   Subida y eliminación de imágenes en Firebase Storage
    con compresión automática en el cliente
    ============================================ */
 
@@ -20,7 +20,6 @@ const StorageUtil = (() => {
             img.onload = () => {
                 let { width, height } = img;
 
-                // Redimensionar si excede MAX_DIMENSION
                 if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
                     if (width > height) {
                         height = Math.round(height * (MAX_DIMENSION / width));
@@ -31,14 +30,12 @@ const StorageUtil = (() => {
                     }
                 }
 
-                // Dibujar en canvas para comprimir
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Exportar como JPEG comprimido
                 canvas.toBlob(
                     (blob) => {
                         if (blob) {
@@ -60,10 +57,9 @@ const StorageUtil = (() => {
     }
 
     /**
-     * Sube una imagen (base64 data URL) a Firebase Storage.
-     * Comprime automáticamente antes de subir.
+     * Sube una imagen comprimida a Firebase Storage.
      * @param {string} dataUrl - Data URL (data:image/...).
-     * @param {string} path - Ruta en Storage (ej: 'licencias/userId_front.jpg').
+     * @param {string} path - Ruta en Storage.
      * @returns {Promise<string>} URL pública de descarga.
      */
     async function uploadImage(dataUrl, path) {
@@ -71,29 +67,75 @@ const StorageUtil = (() => {
             throw new Error('Dato de imagen inválido');
         }
 
-        // Comprimir imagen antes de subir
         const blob = await compressImage(dataUrl);
         const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
         console.log(`📦 Tamaño final: ${sizeMB}MB`);
 
         const storageRef = firebaseStorage.ref(path);
-
-        // Subir a Firebase Storage
-        const snapshot = await storageRef.put(blob, {
-            contentType: 'image/jpeg'
-        });
-
-        // Obtener URL pública
+        const snapshot = await storageRef.put(blob, { contentType: 'image/jpeg' });
         const downloadURL = await snapshot.ref.getDownloadURL();
         return downloadURL;
     }
 
     /**
-     * Sube foto de licencia (frente o dorso) con feedback visual.
-     * @param {string} dataUrl - Data URL de la imagen.
-     * @param {string} userId - ID del conductor.
-     * @param {string} side - 'front' o 'back'.
-     * @returns {Promise<string>} URL pública de descarga.
+     * Elimina un archivo de Firebase Storage por su URL de descarga.
+     * @param {string} downloadURL - URL pública del archivo.
+     * @returns {Promise<boolean>} true si se eliminó, false si ya no existía.
+     */
+    async function deleteFile(downloadURL) {
+        if (!downloadURL || typeof downloadURL !== 'string') return false;
+
+        try {
+            // Solo borrar si es una URL de Firebase Storage
+            if (!downloadURL.includes('firebasestorage.googleapis.com') &&
+                !downloadURL.includes('firebasestorage.app')) {
+                console.log('⏭️ No es URL de Storage, saltando:', downloadURL.substring(0, 50));
+                return false;
+            }
+
+            const fileRef = firebaseStorage.refFromURL(downloadURL);
+            await fileRef.delete();
+            console.log('🗑️ Archivo eliminado de Storage:', fileRef.fullPath);
+            return true;
+        } catch (error) {
+            if (error.code === 'storage/object-not-found') {
+                console.warn('⚠️ Archivo ya no existe en Storage:', downloadURL.substring(0, 80));
+                return false;
+            }
+            console.error('❌ Error eliminando archivo de Storage:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Elimina todas las fotos de licencia de un usuario.
+     * @param {object} user - Objeto del usuario con licenseFrontPhoto y licenseBackPhoto.
+     * @returns {Promise<{front: boolean, back: boolean}>}
+     */
+    async function deleteUserPhotos(user) {
+        const result = { front: false, back: false };
+
+        if (user.licenseFrontPhoto) {
+            try {
+                result.front = await deleteFile(user.licenseFrontPhoto);
+            } catch (e) {
+                console.warn('⚠️ No se pudo borrar foto frente:', e.message);
+            }
+        }
+
+        if (user.licenseBackPhoto) {
+            try {
+                result.back = await deleteFile(user.licenseBackPhoto);
+            } catch (e) {
+                console.warn('⚠️ No se pudo borrar foto dorso:', e.message);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Sube foto de licencia (frente o dorso).
      */
     async function uploadLicensePhoto(dataUrl, userId, side) {
         const fleetId = Auth.getFleetId() || 'default';
@@ -103,10 +145,10 @@ const StorageUtil = (() => {
     }
 
     /**
-     * Procesa y sube las fotos de licencia, mostrando feedback.
+     * Procesa fotos: BORRA las viejas de Storage y sube las nuevas.
      * @param {object} user - Objeto del usuario a actualizar.
-     * @param {string|null} frontData - Data URL de frente (null = no cambiar).
-     * @param {string|null} backData - Data URL de dorso (null = no cambiar).
+     * @param {string|null} frontData - Data URL nueva de frente (null = no cambiar).
+     * @param {string|null} backData - Data URL nueva de dorso (null = no cambiar).
      * @returns {Promise<object>} user actualizado con URLs de Storage.
      */
     async function processLicensePhotos(user, frontData, backData) {
@@ -115,13 +157,17 @@ const StorageUtil = (() => {
 
         if (total === 0) return user;
 
-        // Mostrar indicador de carga
         Components.showToast(`📤 Comprimiendo y subiendo fotos...`, 'info');
 
         try {
             if (frontData) {
                 uploadCount++;
-                Components.showToast(`📤 Subiendo foto frente (${uploadCount}/${total})... Por favor espere`, 'info');
+                // Borrar foto vieja antes de subir la nueva
+                if (user.licenseFrontPhoto) {
+                    Components.showToast(`🗑️ Eliminando foto frente anterior...`, 'info');
+                    await deleteFile(user.licenseFrontPhoto).catch(() => {});
+                }
+                Components.showToast(`📤 Subiendo foto frente (${uploadCount}/${total})...`, 'info');
                 const frontURL = await uploadLicensePhoto(frontData, user.id, 'front');
                 user.licenseFrontPhoto = frontURL;
                 console.log('✅ Frente subida:', frontURL);
@@ -129,7 +175,12 @@ const StorageUtil = (() => {
 
             if (backData) {
                 uploadCount++;
-                Components.showToast(`📤 Subiendo foto dorso (${uploadCount}/${total})... Por favor espere`, 'info');
+                // Borrar foto vieja antes de subir la nueva
+                if (user.licenseBackPhoto) {
+                    Components.showToast(`🗑️ Eliminando foto dorso anterior...`, 'info');
+                    await deleteFile(user.licenseBackPhoto).catch(() => {});
+                }
+                Components.showToast(`📤 Subiendo foto dorso (${uploadCount}/${total})...`, 'info');
                 const backURL = await uploadLicensePhoto(backData, user.id, 'back');
                 user.licenseBackPhoto = backURL;
                 console.log('✅ Dorso subida:', backURL);
@@ -145,5 +196,5 @@ const StorageUtil = (() => {
         return user;
     }
 
-    return { compressImage, uploadImage, uploadLicensePhoto, processLicensePhotos };
+    return { compressImage, uploadImage, uploadLicensePhoto, processLicensePhotos, deleteFile, deleteUserPhotos };
 })();
