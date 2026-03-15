@@ -13,6 +13,7 @@ const Router = (() => {
         shifts: () => ShiftsModule.render(),
         maintenance: () => MaintenanceModule.render(),
         oil: () => OilModule.render(),
+        gps: () => GPSModule.render(),
         settings: () => SettingsModule.render(),
     };
 
@@ -23,6 +24,7 @@ const Router = (() => {
         vehicles: 'VehiclesModule',
         shifts: 'ShiftsModule',
         maintenance: 'MaintenanceModule',
+        gps: 'GPSModule',
     };
 
     async function navigate(route) {

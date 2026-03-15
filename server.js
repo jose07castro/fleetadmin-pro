@@ -30,7 +30,7 @@ const MIME_TYPES = {
 };
 
 // --- Stores válidos ---
-const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents'];
 
 // --- Base de datos en memoria (se persiste a disco) ---
 let database = null;
@@ -43,6 +43,7 @@ function getDefaultDB() {
         oilLogs: [],
         repairs: [],
         beltChanges: [],
+        gpsEvents: [],
         settings: {},
         _counters: {}
     };
@@ -237,6 +238,163 @@ async function handleAPI(req, res, urlPath) {
         }
 
         return sendError(res, 'Operación de settings no soportada', 405);
+    }
+
+    // --- GPS Webhook ---
+    if (parts[0] === 'gps' && parts[1] === 'webhook' && method === 'POST') {
+        const data = await parseBody(req);
+
+        // Validar token de seguridad
+        const configToken = database.settings?.gps_webhook_token;
+        const requestToken = req.headers['x-gps-token'];
+        if (configToken && configToken !== requestToken) {
+            return sendError(res, 'Token GPS inválido', 403);
+        }
+
+        const { vehiclePlate, lat, lng, speed, timestamp, event, zone } = data;
+        if (!vehiclePlate) {
+            return sendError(res, 'vehiclePlate es requerido', 400);
+        }
+
+        // Buscar vehículo por patente
+        const vehicle = (database.vehicles || []).find(
+            v => v.plate && v.plate.toUpperCase().replace(/[^A-Z0-9]/g, '') === vehiclePlate.toUpperCase().replace(/[^A-Z0-9]/g, '')
+        );
+
+        let result = { action: 'logged', vehicleFound: !!vehicle };
+
+        // Registrar evento GPS
+        const gpsEvent = {
+            id: getNextId('gpsEvents'),
+            vehiclePlate: vehiclePlate.toUpperCase(),
+            vehicleId: vehicle?.id || null,
+            lat: lat || null,
+            lng: lng || null,
+            speed: speed || 0,
+            timestamp: timestamp || new Date().toISOString(),
+            event: event || 'POSITION',
+            zone: zone || null,
+            autoCheckout: false,
+            createdAt: new Date().toISOString()
+        };
+
+        // Lógica de Geofencing: Auto-checkout
+        if (event === 'ZONE_ENTER' && zone === 'DOMICILIO_CHOFER' && vehicle) {
+            const activeShift = (database.shifts || []).find(
+                s => s.status === 'active' && String(s.vehicleId) === String(vehicle.id)
+            );
+
+            if (activeShift) {
+                const shiftStart = new Date(activeShift.startTime).getTime();
+                const hoursActive = (Date.now() - shiftStart) / 3600000;
+
+                if (hoursActive >= 8) {
+                    // AUTO-CHECKOUT: cerrar turno automáticamente
+                    activeShift.status = 'completed';
+                    activeShift.endTime = new Date().toISOString();
+                    activeShift.endOdometer = activeShift.startOdometer; // mantener mismo KM
+                    activeShift.autoCheckout = true;
+                    activeShift.autoCheckoutReason = `Geofencing: DOMICILIO_CHOFER después de ${Math.round(hoursActive)}h`;
+                    activeShift.updatedAt = new Date().toISOString();
+
+                    gpsEvent.autoCheckout = true;
+                    gpsEvent.shiftId = activeShift.id;
+
+                    result.action = 'auto_checkout';
+                    result.shiftId = activeShift.id;
+                    result.hoursActive = Math.round(hoursActive);
+
+                    // Registrar notificación pendiente para WhatsApp
+                    const notification = {
+                        id: getNextId('gpsEvents'),
+                        type: 'SHIFT_AUTO_CLOSE',
+                        vehiclePlate: vehiclePlate.toUpperCase(),
+                        vehicleName: vehicle.name || '',
+                        driverName: activeShift.driverName || '',
+                        hoursActive: Math.round(hoursActive),
+                        timestamp: new Date().toISOString(),
+                        processed: false,
+                        createdAt: new Date().toISOString()
+                    };
+                    database.gpsEvents.push(notification);
+
+                    // Intentar enviar WhatsApp si está configurado
+                    const waPhone = database.settings?.whatsapp_phone;
+                    const waApiKey = database.settings?.whatsapp_apikey;
+                    if (waPhone && waApiKey) {
+                        const msg = encodeURIComponent(
+                            `🚨 *AUTO-CIERRE DE TURNO*\n\n` +
+                            `🚗 Vehículo: ${vehicle.name} (${vehicle.plate})\n` +
+                            `👤 Conductor: ${activeShift.driverName || 'N/A'}\n` +
+                            `⏱️ Horas activo: ${Math.round(hoursActive)}h\n` +
+                            `📍 Motivo: Zona DOMICILIO_CHOFER\n` +
+                            `📅 ${new Date().toLocaleString()}`
+                        );
+                        // Fire-and-forget WhatsApp (no bloquear respuesta)
+                        const waUrl = `https://api.callmebot.com/whatsapp.php?phone=${waPhone}&text=${msg}&apikey=${waApiKey}`;
+                        try {
+                            const https = require('https');
+                            https.get(waUrl, () => {}).on('error', () => {});
+                        } catch(e) { /* ignore */ }
+                    }
+
+                    saveDB();
+                } else {
+                    result.action = 'shift_active_less_than_8h';
+                    result.hoursActive = Math.round(hoursActive * 10) / 10;
+                }
+            } else {
+                result.action = 'no_active_shift';
+            }
+        }
+
+        database.gpsEvents.push(gpsEvent);
+
+        // Limitar gpsEvents a los últimos 500
+        if (database.gpsEvents.length > 500) {
+            database.gpsEvents = database.gpsEvents.slice(-500);
+        }
+
+        saveDB();
+        return sendJSON(res, result);
+    }
+
+    // --- GPS Events (lectura) ---
+    if (parts[0] === 'gps' && parts[1] === 'events' && method === 'GET') {
+        const events = (database.gpsEvents || []).slice(-50).reverse();
+        return sendJSON(res, events);
+    }
+
+    // --- WhatsApp proxy (evitar CORS) ---
+    if (parts[0] === 'whatsapp' && parts[1] === 'send' && method === 'POST') {
+        const data = await parseBody(req);
+        const { phone, apiKey, message } = data;
+
+        if (!phone || !apiKey || !message) {
+            return sendError(res, 'Faltan parámetros: phone, apiKey, message', 400);
+        }
+
+        const encodedMsg = encodeURIComponent(message);
+        const waUrl = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodedMsg}&apikey=${apiKey}`;
+
+        try {
+            const https = require('https');
+            const waResponse = await new Promise((resolve, reject) => {
+                https.get(waUrl, (resp) => {
+                    let body = '';
+                    resp.on('data', chunk => body += chunk);
+                    resp.on('end', () => resolve({ status: resp.statusCode, body }));
+                }).on('error', reject);
+            });
+
+            if (waResponse.status >= 200 && waResponse.status < 300) {
+                return sendJSON(res, { success: true, status: waResponse.status });
+            } else {
+                return sendJSON(res, { success: false, error: `CallMeBot respondió ${waResponse.status}`, body: waResponse.body }, 502);
+            }
+        } catch (e) {
+            return sendError(res, 'Error conectando con CallMeBot: ' + e.message, 502);
+        }
     }
 
     // --- CRUD genérico para stores ---

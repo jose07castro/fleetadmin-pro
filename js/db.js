@@ -8,7 +8,7 @@ const DB = (() => {
     const db = firebaseDB; // Definido en firebase-config.js
 
     // Stores válidos (dentro de cada flota)
-    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents'];
     const CACHE_PREFIX = 'fleetadmin_cache_';
 
     // --- Fleet ID actual ---

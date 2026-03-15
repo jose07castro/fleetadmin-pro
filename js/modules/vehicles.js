@@ -81,6 +81,7 @@ const VehiclesModule = (() => {
                             </span>
                         ` : ''}
                         ${vtvBadge}
+                        ${v.zonaBaseLabel ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">📍 ${v.zonaBaseLabel}</span>` : ''}
                     </div>
 
                     <div class="vehicle-stats">
@@ -183,6 +184,39 @@ const VehiclesModule = (() => {
                         </div>
                     </div>
                 </div>
+
+                <!-- Zona Base (GPS Geofencing) -->
+                <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
+                        📍 Zona Base (Geofencing)
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Etiqueta de la zona</label>
+                        <input type="text" class="form-input" id="vehZonaBaseLabel"
+                            value="${vehicle?.zonaBaseLabel || ''}" placeholder="Domicilio Chofer - V.G. Gálvez"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Latitud</label>
+                            <input type="number" class="form-input" id="vehZonaBaseLat"
+                                value="${vehicle?.zonaBaseLat || ''}" step="0.0001" placeholder="-33.0232"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Longitud</label>
+                            <input type="number" class="form-input" id="vehZonaBaseLng"
+                                value="${vehicle?.zonaBaseLng || ''}" step="0.0001" placeholder="-60.6389"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Radio (metros)</label>
+                        <input type="number" class="form-input" id="vehZonaBaseRadius"
+                            value="${vehicle?.zonaBaseRadiusM || 200}" placeholder="200"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                    </div>
+                </div>
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -213,6 +247,17 @@ const VehiclesModule = (() => {
             status
         };
 
+        // Zona Base (GPS Geofencing)
+        const zonaBaseLabel = document.getElementById('vehZonaBaseLabel')?.value.trim();
+        const zonaBaseLat = parseFloat(document.getElementById('vehZonaBaseLat')?.value);
+        const zonaBaseLng = parseFloat(document.getElementById('vehZonaBaseLng')?.value);
+        const zonaBaseRadiusM = parseInt(document.getElementById('vehZonaBaseRadius')?.value) || 200;
+
+        if (zonaBaseLabel) data.zonaBaseLabel = zonaBaseLabel;
+        if (!isNaN(zonaBaseLat)) data.zonaBaseLat = zonaBaseLat;
+        if (!isNaN(zonaBaseLng)) data.zonaBaseLng = zonaBaseLng;
+        data.zonaBaseRadiusM = zonaBaseRadiusM;
+
         if (vtvIssueDate) data.vtvIssueDate = vtvIssueDate;
         if (vtvExpiryDate) data.vtvExpiryDate = vtvExpiryDate;
 
@@ -222,6 +267,11 @@ const VehiclesModule = (() => {
             if (existing) {
                 if (!vtvIssueDate && existing.vtvIssueDate) data.vtvIssueDate = existing.vtvIssueDate;
                 if (!vtvExpiryDate && existing.vtvExpiryDate) data.vtvExpiryDate = existing.vtvExpiryDate;
+                // Preservar zona base si no se proporcionó
+                if (!zonaBaseLabel && existing.zonaBaseLabel) data.zonaBaseLabel = existing.zonaBaseLabel;
+                if (isNaN(zonaBaseLat) && existing.zonaBaseLat) data.zonaBaseLat = existing.zonaBaseLat;
+                if (isNaN(zonaBaseLng) && existing.zonaBaseLng) data.zonaBaseLng = existing.zonaBaseLng;
+                if (!data.zonaBaseRadiusM && existing.zonaBaseRadiusM) data.zonaBaseRadiusM = existing.zonaBaseRadiusM;
             }
             data.id = vehicleId;
             await DB.put('vehicles', data);

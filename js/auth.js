@@ -98,7 +98,7 @@ const Auth = (() => {
         if (!role) return false;
 
         const permissions = {
-            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'settings'],
+            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings'],
             driver: ['shifts', 'oil', 'settings'],
             mechanic: ['maintenance', 'settings']
         };

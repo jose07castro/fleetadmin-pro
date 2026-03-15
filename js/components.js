@@ -79,6 +79,7 @@ const Components = (() => {
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
                 { icon: '🔧', label: 'nav_maintenance', route: 'maintenance', section: 'mgmt' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'mgmt' },
+                { icon: '📡', label: 'nav_gps', route: 'gps', section: 'mgmt' },
                 { icon: '⚙️', label: 'nav_settings', route: 'settings', section: 'mgmt' },
             ],
             driver: [
@@ -103,6 +104,7 @@ const Components = (() => {
             maintenance: 'nav_maintenance',
             mechanic: 'nav_mechanic',
             oil: 'nav_oil',
+            gps: 'nav_gps',
             settings: 'nav_settings'
         };
 
