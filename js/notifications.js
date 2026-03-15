@@ -143,7 +143,7 @@ const Notifications = (() => {
                 if (shouldNotify) {
                     const storageKey = `license_notif_${alert.driver.id}_${todayStr}`;
                     if (!localStorage.getItem(storageKey)) {
-                        // Notificar al admin
+                        // Notificar al admin (browser notification)
                         sendNotification(
                             `🪪 ${I18n.t('license_title')}`,
                             alert.message
@@ -155,6 +155,27 @@ const Notifications = (() => {
                                 ? I18n.t('license_alert_expired_driver', { date: new Date(alert.driver.licenseExpiryDate).toLocaleDateString() })
                                 : I18n.t('license_alert_driver', { date: new Date(alert.driver.licenseExpiryDate).toLocaleDateString(), days: daysLeft });
                             sendNotification(`🪪 ${I18n.t('license_title')}`, driverMsg);
+                        }
+
+                        // WhatsApp: notificar al conductor si tiene WhatsApp configurado
+                        if (typeof WhatsApp !== 'undefined' && alert.driver.whatsapp) {
+                            try {
+                                const adminApiKey = await DB.getSetting('whatsapp_apikey');
+                                if (adminApiKey) {
+                                    const waMsg = daysLeft < 0
+                                        ? `🚨 *LICENCIA VENCIDA*\n\n👤 ${alert.driver.name}\n📅 Venció: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n\n⚠️ No podrás iniciar turnos hasta renovarla.\n\n_FleetAdmin Pro_`
+                                        : `🪪 *ALERTA DE LICENCIA*\n\n👤 ${alert.driver.name}\n📅 Vence: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n⏳ Faltan ${daysLeft} días\n\n_Renovála a tiempo. FleetAdmin Pro_`;
+                                    // Enviar al conductor
+                                    WhatsApp.send(alert.driver.whatsapp, adminApiKey, waMsg);
+                                    // Enviar al admin
+                                    const adminPhone = await DB.getSetting('whatsapp_phone');
+                                    if (adminPhone) {
+                                        WhatsApp.send(adminPhone, adminApiKey, waMsg);
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('Error enviando WhatsApp de licencia:', e);
+                            }
                         }
 
                         localStorage.setItem(storageKey, 'true');

@@ -335,6 +335,16 @@ const ShiftsModule = (() => {
             return;
         }
 
+        // Validación 3: Licencia de conducir vencida (BLOQUEO)
+        const currentDriver = await DB.get('users', driverId);
+        if (currentDriver && currentDriver.licenseExpiryDate) {
+            const licenseStatus = Alerts.getLicenseStatus(currentDriver);
+            if (licenseStatus.level === 'danger') {
+                Components.showToast('🚫 LICENCIA VENCIDA — No podés iniciar turno. Actualizá tu documentación en Configuración → Legajo.', 'danger');
+                return;
+            }
+        }
+
         const odometerKm = Units.toKm(odoStart);
 
         // Resolver nombre del vehículo para persistir en el turno
@@ -364,6 +374,15 @@ const ShiftsModule = (() => {
         }
 
         Components.showToast(I18n.t('shift_start') + ' ✅', 'success');
+
+        // Geofencing: vincular domicilio del conductor como zona_base del vehículo
+        if (vehicleData && currentDriver && currentDriver.address) {
+            if (!vehicleData.zonaBaseLabel) {
+                vehicleData.zonaBaseLabel = 'Domicilio ' + (currentDriver.name || 'Chofer');
+                await DB.put('vehicles', vehicleData);
+            }
+        }
+
         Router.navigate('shifts');
     }
 

@@ -223,53 +223,92 @@ const SettingsModule = (() => {
         );
     }
 
+    // ===========================================
+    // LEGAJO DIGITAL DEL CONDUCTOR
+    // ===========================================
+
     function showUserManager() {
         Components.showModal(
             '➕ ' + I18n.t('add') + ' Usuario',
             `
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_name')}</label>
-                    <input type="text" class="form-input" id="newUserName" placeholder="${I18n.t('login_name_placeholder')}">
+                    <label class="form-label">${I18n.t('login_name')} *</label>
+                    <input type="text" class="form-input" id="newUserName" placeholder="${I18n.t('login_name_placeholder')}"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_pin')}</label>
-                    <input type="text" class="form-input" id="newUserPin" placeholder="Hasta 15 dígitos" maxlength="15" inputmode="numeric">
+                    <label class="form-label">${I18n.t('login_pin')} *</label>
+                    <input type="text" class="form-input" id="newUserPin" placeholder="Hasta 15 dígitos" maxlength="15" inputmode="numeric"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Rol</label>
-                    <select class="form-select" id="newUserRole" onchange="SettingsModule.toggleLicenseFields()">
+                    <label class="form-label">Rol *</label>
+                    <select class="form-select" id="newUserRole" onchange="SettingsModule.toggleLicenseFields()"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                         <option value="owner">${I18n.t('role_owner')}</option>
                         <option value="driver">${I18n.t('role_driver')}</option>
                         <option value="mechanic">${I18n.t('role_mechanic')}</option>
                     </select>
                 </div>
 
-                <!-- Campos de licencia (solo para conductores) -->
+                <!-- Legajo del Conductor (solo para drivers) -->
                 <div id="licenseFields" style="display:none; border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
                     <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
-                        🪪 ${I18n.t('license_title')}
+                        📝 Legajo Digital del Conductor
+                    </div>
+
+                    <!-- Datos de Contacto -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
+                    <div class="form-group">
+                        <label class="form-label">Domicilio Real y Actual *</label>
+                        <input type="text" class="form-input" id="driverAddress" placeholder="Calle 123, Villa Gobernador Gálvez"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('license_issue_date')} *</label>
-                        <input type="date" class="form-input" id="licenseIssueDate">
+                        <label class="form-label">Número de WhatsApp * (con código de país)</label>
+                        <input type="text" class="form-input" id="driverWhatsApp" placeholder="5493476123456" inputmode="tel"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
+
+                    <!-- Documentación -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('license_expiry_date')} *</label>
-                        <input type="date" class="form-input" id="licenseExpiryDate">
+                        <label class="form-label">Número de Licencia *</label>
+                        <input type="text" class="form-input" id="licenseNumber" placeholder="N° de licencia"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">${I18n.t('license_photo')}</label>
-                        <div style="display:flex; gap:var(--space-2); flex-wrap:wrap;">
-                            <button type="button" class="btn btn-sm" onclick="SettingsModule.captureLicensePhoto()">
-                                📷 ${I18n.t('license_take_photo')}
-                            </button>
-                            <label class="btn btn-sm" style="cursor:pointer;">
-                                📁 ${I18n.t('license_upload')}
-                                <input type="file" id="licensePhotoFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event)">
-                            </label>
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">${I18n.t('license_issue_date')} *</label>
+                            <input type="date" class="form-input" id="licenseIssueDate"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                         </div>
-                        <div id="licensePhotoPreview" style="margin-top:var(--space-2);"></div>
-                        <input type="hidden" id="licensePhotoData">
+                        <div class="form-group">
+                            <label class="form-label">${I18n.t('license_expiry_date')} *</label>
+                            <input type="date" class="form-input" id="licenseExpiryDate"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                        </div>
+                    </div>
+
+                    <!-- Fotos de Licencia -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">📸 Capturas de Licencia (obligatorias)</div>
+                    <div class="form-group">
+                        <label class="form-label">🆔 Captura Frente Licencia *</label>
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto
+                            <input type="file" id="licenseFrontFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'front')">
+                        </label>
+                        <div id="licenseFrontPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="licenseFrontData">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">🔄 Captura Dorso Licencia *</label>
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto
+                            <input type="file" id="licenseBackFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'back')">
+                        </label>
+                        <div id="licenseBackPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="licenseBackData">
                     </div>
                 </div>
             `,
@@ -288,32 +327,35 @@ const SettingsModule = (() => {
         }
     }
 
-    function handleLicensePhoto(event) {
+    function handleLicensePhoto(event, side) {
         const file = event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
-            document.getElementById('licensePhotoData').value = e.target.result;
-            document.getElementById('licensePhotoPreview').innerHTML = `
-                <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
-            `;
+            if (side === 'front' || side === 'editFront') {
+                const dataId = side === 'editFront' ? 'editLicenseFrontData' : 'licenseFrontData';
+                const previewId = side === 'editFront' ? 'editLicenseFrontPreview' : 'licenseFrontPreview';
+                document.getElementById(dataId).value = e.target.result;
+                document.getElementById(previewId).innerHTML = `
+                    <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
+                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ Frente cargado</div>
+                `;
+            } else if (side === 'back' || side === 'editBack') {
+                const dataId = side === 'editBack' ? 'editLicenseBackData' : 'licenseBackData';
+                const previewId = side === 'editBack' ? 'editLicenseBackPreview' : 'licenseBackPreview';
+                document.getElementById(dataId).value = e.target.result;
+                document.getElementById(previewId).innerHTML = `
+                    <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
+                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ Dorso cargado</div>
+                `;
+            }
         };
         reader.readAsDataURL(file);
     }
 
     async function captureLicensePhoto() {
-        if (typeof Components.capturePhoto === 'function') {
-            const photo = await Components.capturePhoto();
-            if (photo) {
-                document.getElementById('licensePhotoData').value = photo;
-                document.getElementById('licensePhotoPreview').innerHTML = `
-                    <img src="${photo}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
-                `;
-            }
-        } else {
-            // Fallback: usar input file
-            document.getElementById('licensePhotoFile')?.click();
-        }
+        // Fallback: usar input file
+        document.getElementById('licenseFrontFile')?.click();
     }
 
     async function saveUser() {
@@ -328,22 +370,33 @@ const SettingsModule = (() => {
 
         const userData = { name, pin, role };
 
-        // Si es conductor, validar y agregar datos de licencia
+        // Si es conductor, validar legajo completo
         if (role === 'driver') {
+            const address = document.getElementById('driverAddress')?.value.trim();
+            const whatsapp = document.getElementById('driverWhatsApp')?.value.trim();
+            const licenseNumber = document.getElementById('licenseNumber')?.value.trim();
             const issueDate = document.getElementById('licenseIssueDate')?.value;
             const expiryDate = document.getElementById('licenseExpiryDate')?.value;
-            const licensePhoto = document.getElementById('licensePhotoData')?.value;
+            const licenseFront = document.getElementById('licenseFrontData')?.value;
+            const licenseBack = document.getElementById('licenseBackData')?.value;
 
-            if (!issueDate || !expiryDate) {
-                Components.showToast(I18n.t('license_required'), 'danger');
+            if (!address || !whatsapp || !licenseNumber || !issueDate || !expiryDate) {
+                Components.showToast('Completá todos los campos obligatorios del legajo', 'danger');
                 return;
             }
 
+            if (!licenseFront || !licenseBack) {
+                Components.showToast('❌ Debés subir FRENTE y DORSO de la licencia', 'danger');
+                return;
+            }
+
+            userData.address = address;
+            userData.whatsapp = whatsapp;
+            userData.licenseNumber = licenseNumber;
             userData.licenseIssueDate = issueDate;
             userData.licenseExpiryDate = expiryDate;
-            if (licensePhoto) {
-                userData.licensePhoto = licensePhoto;
-            }
+            userData.licenseFrontPhoto = licenseFront;
+            userData.licenseBackPhoto = licenseBack;
         }
 
         const fleetId = Auth.getFleetId();
@@ -471,7 +524,7 @@ const SettingsModule = (() => {
                         <span style="font-size:1.3rem;">${icon}</span>
                         <div style="min-width:0;">
                             <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.name}</div>
-                            <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">${roleName}</div>
+                            <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">${roleName}${u.whatsapp ? ' • 📱 ' + u.whatsapp : ''}</div>
                         </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:var(--space-2); flex-shrink:0;">
@@ -485,41 +538,74 @@ const SettingsModule = (() => {
         container.innerHTML = html;
     }
 
-    // --- Editar licencia de un conductor existente ---
+    // --- Editar legajo de un conductor existente ---
     async function showEditUser(userId) {
         const user = await DB.get('users', userId);
         if (!user) return;
 
         const issueDate = user.licenseIssueDate || '';
         const expiryDate = user.licenseExpiryDate || '';
-        const hasPhoto = !!user.licensePhoto;
+        const hasFront = !!user.licenseFrontPhoto;
+        const hasBack = !!user.licenseBackPhoto;
+        const hasLegacyPhoto = !!user.licensePhoto;
 
         Components.showModal(
-            `🪪 ${I18n.t('license_title')} — ${user.name}`,
+            `🪪 Legajo — ${user.name}`,
             `
+                <!-- Datos de Contacto -->
+                <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
+                <div class="form-group">
+                    <label class="form-label">Domicilio Real y Actual *</label>
+                    <input type="text" class="form-input" id="editDriverAddress" value="${user.address || ''}"
+                        placeholder="Calle 123, Villa Gobernador Gálvez"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Número de WhatsApp *</label>
+                    <input type="text" class="form-input" id="editDriverWhatsApp" value="${user.whatsapp || ''}"
+                        placeholder="5493476123456" inputmode="tel"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                </div>
+
+                <!-- Documentación -->
+                <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
+                <div class="form-group">
+                    <label class="form-label">Número de Licencia *</label>
+                    <input type="text" class="form-input" id="editLicenseNumber" value="${user.licenseNumber || ''}"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('license_issue_date')} *</label>
-                    <input type="date" class="form-input" id="editLicenseIssue" value="${issueDate}">
+                    <input type="date" class="form-input" id="editLicenseIssue" value="${issueDate}"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('license_expiry_date')} *</label>
-                    <input type="date" class="form-input" id="editLicenseExpiry" value="${expiryDate}">
+                    <input type="date" class="form-input" id="editLicenseExpiry" value="${expiryDate}"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                </div>
+
+                <!-- Fotos -->
+                <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">📸 Capturas de Licencia</div>
+                <div class="form-group">
+                    <label class="form-label">🆔 Frente</label>
+                    ${hasFront ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseFrontPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : (hasLegacyPhoto ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);"></div>` : '')}
+                    <label class="btn btn-sm" style="cursor:pointer;">
+                        📷 Actualizar Frente
+                        <input type="file" id="editLicenseFrontFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editFront')">
+                    </label>
+                    <div id="editLicenseFrontPreview" style="margin-top:var(--space-2);"></div>
+                    <input type="hidden" id="editLicenseFrontData" value="">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('license_photo')}</label>
-                    ${hasPhoto ? `
-                        <div style="margin-bottom:var(--space-2);">
-                            <img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
-                        </div>
-                    ` : ''}
-                    <div style="display:flex; gap:var(--space-2); flex-wrap:wrap;">
-                        <label class="btn btn-sm" style="cursor:pointer;">
-                            📁 ${I18n.t('license_upload')}
-                            <input type="file" id="editLicensePhotoFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleEditLicensePhoto(event)">
-                        </label>
-                    </div>
-                    <div id="editLicensePhotoPreview" style="margin-top:var(--space-2);"></div>
-                    <input type="hidden" id="editLicensePhotoData" value="">
+                    <label class="form-label">🔄 Dorso</label>
+                    ${hasBack ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseBackPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : ''}
+                    <label class="btn btn-sm" style="cursor:pointer;">
+                        📷 Actualizar Dorso
+                        <input type="file" id="editLicenseBackFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editBack')">
+                    </label>
+                    <div id="editLicenseBackPreview" style="margin-top:var(--space-2);"></div>
+                    <input type="hidden" id="editLicenseBackData" value="">
                 </div>
             `,
             `
@@ -529,23 +615,14 @@ const SettingsModule = (() => {
         );
     }
 
-    function handleEditLicensePhoto(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            document.getElementById('editLicensePhotoData').value = e.target.result;
-            document.getElementById('editLicensePhotoPreview').innerHTML = `
-                <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);">
-            `;
-        };
-        reader.readAsDataURL(file);
-    }
-
     async function updateUserLicense(userId) {
         const issueDate = document.getElementById('editLicenseIssue')?.value;
         const expiryDate = document.getElementById('editLicenseExpiry')?.value;
-        const newPhoto = document.getElementById('editLicensePhotoData')?.value;
+        const newFront = document.getElementById('editLicenseFrontData')?.value;
+        const newBack = document.getElementById('editLicenseBackData')?.value;
+        const address = document.getElementById('editDriverAddress')?.value.trim();
+        const whatsapp = document.getElementById('editDriverWhatsApp')?.value.trim();
+        const licenseNumber = document.getElementById('editLicenseNumber')?.value.trim();
 
         if (!issueDate || !expiryDate) {
             Components.showToast(I18n.t('license_required'), 'danger');
@@ -557,9 +634,11 @@ const SettingsModule = (() => {
 
         user.licenseIssueDate = issueDate;
         user.licenseExpiryDate = expiryDate;
-        if (newPhoto) {
-            user.licensePhoto = newPhoto;
-        }
+        if (address) user.address = address;
+        if (whatsapp) user.whatsapp = whatsapp;
+        if (licenseNumber) user.licenseNumber = licenseNumber;
+        if (newFront) user.licenseFrontPhoto = newFront;
+        if (newBack) user.licenseBackPhoto = newBack;
 
         await DB.put('users', user);
         Components.closeModal();
@@ -579,6 +658,6 @@ const SettingsModule = (() => {
         render, afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
-        loadUserList, showEditUser, handleEditLicensePhoto, updateUserLicense
+        loadUserList, showEditUser, updateUserLicense
     };
 })();
