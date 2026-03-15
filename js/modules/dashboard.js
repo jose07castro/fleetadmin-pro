@@ -329,6 +329,10 @@ const DashboardModule = (() => {
         const user = await DB.get('users', userId);
         if (!user) return;
 
+        const isDriver = user.role === 'driver';
+        const hasFront = !!user.licenseFrontPhoto;
+        const hasBack = !!user.licenseBackPhoto;
+
         Components.closeModal();
         Components.showModal(
             `✏️ ${I18n.t('edit')} — ${user.name}`,
@@ -342,14 +346,82 @@ const DashboardModule = (() => {
             }
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_name')}</label>
-                    <input type="text" class="form-input" id="editUserName" value="${user.name}">
+                    <label class="form-label">${I18n.t('login_name')} *</label>
+                    <input type="text" class="form-input" id="editUserName" value="${user.name}"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
-                    <input type="text" class="form-input" id="editUserPin" value="${user.pin}" maxlength="15" inputmode="numeric">
+                    <label class="form-label">${I18n.t('login_pin')} * (${I18n.t('login_pin_hint')})</label>
+                    <input type="text" class="form-input" id="editUserPin" value="${user.pin}" maxlength="15" inputmode="numeric"
+                        style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 ${Components.renderPhotoCapture('editUserPhoto', I18n.t('user_change_photo'))}
+
+                ${isDriver ? `
+                <!-- ====== LEGAJO DIGITAL DEL CONDUCTOR ====== -->
+                <div style="border-top:2px solid var(--color-primary); padding-top:var(--space-4); margin-top:var(--space-4);">
+                    <div style="font-weight:700; margin-bottom:var(--space-3); color:var(--color-primary); font-size:var(--font-size-lg);">
+                        📝 Legajo Digital del Conductor
+                    </div>
+
+                    <!-- Datos de Contacto -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
+                    <div class="form-group">
+                        <label class="form-label">Domicilio Real y Actual *</label>
+                        <input type="text" class="form-input" id="editDriverAddress" value="${user.address || ''}"
+                            placeholder="Calle 123, Villa Gobernador Gálvez"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Número de WhatsApp * (con código de país)</label>
+                        <input type="text" class="form-input" id="editDriverWhatsApp" value="${user.whatsapp || ''}"
+                            placeholder="5493476123456" inputmode="tel"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+
+                    <!-- Documentación -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
+                    <div class="form-group">
+                        <label class="form-label">Número de Licencia *</label>
+                        <input type="text" class="form-input" id="editLicenseNumber" value="${user.licenseNumber || ''}"
+                            placeholder="N° de licencia"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_issue_date')} *</label>
+                        <input type="date" class="form-input" id="editLicenseIssue" value="${user.licenseIssueDate || ''}"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_expiry_date')} *</label>
+                        <input type="date" class="form-input" id="editLicenseExpiry" value="${user.licenseExpiryDate || ''}"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+
+                    <!-- Fotos de Licencia -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">📸 Capturas de Licencia (obligatorias)</div>
+                    <div class="form-group">
+                        <label class="form-label">🆔 Frente de Licencia *</label>
+                        ${hasFront ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseFrontPhoto}" style="max-width:100%; max-height:120px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>'}
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto Frente
+                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editFront')">
+                        </label>
+                        <div id="editLicenseFrontPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="editLicenseFrontData" value="">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">🔄 Dorso de Licencia *</label>
+                        ${hasBack ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseBackPhoto}" style="max-width:100%; max-height:120px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>'}
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto Dorso
+                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editBack')">
+                        </label>
+                        <div id="editLicenseBackPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="editLicenseBackData" value="">
+                    </div>
+                </div>
+                ` : ''}
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
@@ -376,6 +448,26 @@ const DashboardModule = (() => {
         if (photo && !photo.includes('data:,')) {
             user.profilePhoto = photo;
         }
+
+        // Si es conductor, capturar campos del legajo
+        if (user.role === 'driver') {
+            const address = document.getElementById('editDriverAddress')?.value.trim();
+            const whatsapp = document.getElementById('editDriverWhatsApp')?.value.trim();
+            const licenseNumber = document.getElementById('editLicenseNumber')?.value.trim();
+            const issueDate = document.getElementById('editLicenseIssue')?.value;
+            const expiryDate = document.getElementById('editLicenseExpiry')?.value;
+            const newFront = document.getElementById('editLicenseFrontData')?.value;
+            const newBack = document.getElementById('editLicenseBackData')?.value;
+
+            if (address) user.address = address;
+            if (whatsapp) user.whatsapp = whatsapp;
+            if (licenseNumber) user.licenseNumber = licenseNumber;
+            if (issueDate) user.licenseIssueDate = issueDate;
+            if (expiryDate) user.licenseExpiryDate = expiryDate;
+            if (newFront) user.licenseFrontPhoto = newFront;
+            if (newBack) user.licenseBackPhoto = newBack;
+        }
+
         await DB.put('users', user);
 
         Components.closeModal();
