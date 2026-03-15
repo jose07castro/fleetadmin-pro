@@ -764,55 +764,82 @@ const SettingsModule = (() => {
     }
 
     async function saveCompleteProfile() {
-        const userId = Auth.getUserId();
-        if (!userId) return;
+        const btn = document.querySelector('[onclick*="saveCompleteProfile"]');
 
-        const address = document.getElementById('cpAddress')?.value.trim();
-        const whatsapp = document.getElementById('cpWhatsApp')?.value.trim();
-        const licenseNumber = document.getElementById('cpLicenseNumber')?.value.trim();
-        const issueDate = document.getElementById('cpIssueDate')?.value;
-        const expiryDate = document.getElementById('cpExpiryDate')?.value;
-        const newFront = document.getElementById('cpFrontData')?.value;
-        const newBack = document.getElementById('cpBackData')?.value;
+        try {
+            // Feedback visual en botón
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Guardando fotos y datos...';
+            }
 
-        if (!address || !whatsapp || !licenseNumber || !issueDate || !expiryDate) {
-            Components.showToast('Completá todos los campos obligatorios', 'danger');
-            return;
-        }
+            console.log('📝 saveCompleteProfile: inicio');
 
-        const user = await DB.get('users', userId);
-        if (!user) return;
+            const address = document.getElementById('cpAddress')?.value.trim();
+            const whatsapp = document.getElementById('cpWhatsApp')?.value.trim();
+            const licenseNumber = document.getElementById('cpLicenseNumber')?.value.trim();
+            const issueDate = document.getElementById('cpIssueDate')?.value;
+            const expiryDate = document.getElementById('cpExpiryDate')?.value;
+            const newFront = document.getElementById('cpFrontData')?.value;
+            const newBack = document.getElementById('cpBackData')?.value;
 
-        // Verificar que tenga fotos (nuevas o existentes)
-        const hasFront = newFront || user.licenseFrontPhoto;
-        const hasBack = newBack || user.licenseBackPhoto;
+            console.log('📝 Valores:', { address, whatsapp, licenseNumber, issueDate, expiryDate, hasFront: !!newFront, hasBack: !!newBack });
 
-        if (!hasFront || !hasBack) {
-            Components.showToast('❌ Debés subir FRENTE y DORSO de la licencia', 'danger');
-            return;
-        }
-
-        user.address = address;
-        user.whatsapp = whatsapp;
-        user.licenseNumber = licenseNumber;
-        user.licenseIssueDate = issueDate;
-        user.licenseExpiryDate = expiryDate;
-
-        // Subir fotos a Firebase Storage (si hay nuevas)
-        if (newFront || newBack) {
-            try {
-                await StorageUtil.processLicensePhotos(user, newFront || null, newBack || null);
-            } catch (err) {
-                Components.showToast('❌ Error al subir fotos: ' + (err.message || 'desconocido'), 'danger');
+            if (!address || !whatsapp || !licenseNumber || !issueDate || !expiryDate) {
+                Components.showToast('Completá todos los campos obligatorios', 'danger');
+                if (btn) { btn.disabled = false; btn.textContent = '✅ Guardar y Continuar'; }
                 return;
             }
+
+            // Buscar usuario en la flota (NO usar Auth.getUserId que es el ID global)
+            const user = await Auth.getFleetUserRecord();
+            console.log('📝 Usuario encontrado:', user ? user.id : 'NULL');
+
+            if (!user) {
+                alert('Error: No se pudo encontrar tu usuario en la base de datos. Cerrá sesión y volvé a entrar.');
+                if (btn) { btn.disabled = false; btn.textContent = '✅ Guardar y Continuar'; }
+                return;
+            }
+
+            // Verificar que tenga fotos (nuevas o existentes)
+            const hasFront = newFront || user.licenseFrontPhoto;
+            const hasBack = newBack || user.licenseBackPhoto;
+
+            if (!hasFront || !hasBack) {
+                Components.showToast('❌ Debés subir FRENTE y DORSO de la licencia', 'danger');
+                if (btn) { btn.disabled = false; btn.textContent = '✅ Guardar y Continuar'; }
+                return;
+            }
+
+            // Actualizar campos de texto
+            user.address = address;
+            user.whatsapp = whatsapp;
+            user.licenseNumber = licenseNumber;
+            user.licenseIssueDate = issueDate;
+            user.licenseExpiryDate = expiryDate;
+
+            // Subir fotos a Firebase Storage (si hay nuevas)
+            if (newFront || newBack) {
+                console.log('📤 Subiendo fotos a Storage...');
+                await StorageUtil.processLicensePhotos(user, newFront || null, newBack || null);
+                console.log('✅ Fotos subidas OK');
+            }
+
+            // Guardar en la base de datos
+            console.log('💾 Guardando en DB:', user.id);
+            await DB.put('users', user);
+            console.log('✅ Guardado OK');
+
+            Components.showToast('✅ Legajo actualizado correctamente', 'success');
+
+            // Redirigir al panel principal
+            setTimeout(() => Router.navigate(Router.getDefaultRoute()), 500);
+
+        } catch (error) {
+            console.error('❌ Error en saveCompleteProfile:', error);
+            alert('Error al guardar perfil: ' + (error.message || error) + '\n\nRevisá la consola del navegador (F12) para más detalles.');
+            if (btn) { btn.disabled = false; btn.textContent = '✅ Guardar y Continuar'; }
         }
-
-        await DB.put('users', user);
-        Components.showToast('✅ Legajo actualizado correctamente', 'success');
-
-        // Redirigir al panel principal
-        setTimeout(() => Router.navigate(Router.getDefaultRoute()), 500);
     }
 
     // afterRender: se llama desde Router después de que el HTML fue insertado
