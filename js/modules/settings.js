@@ -330,23 +330,29 @@ const SettingsModule = (() => {
     function handleLicensePhoto(event, side) {
         const file = event.target.files[0];
         if (!file) return;
+
+        // Mapeo de side -> { dataId, previewId, label }
+        const sideMap = {
+            front:     { dataId: 'licenseFrontData',     previewId: 'licenseFrontPreview',     label: 'Frente' },
+            back:      { dataId: 'licenseBackData',      previewId: 'licenseBackPreview',      label: 'Dorso' },
+            editFront: { dataId: 'editLicenseFrontData', previewId: 'editLicenseFrontPreview', label: 'Frente' },
+            editBack:  { dataId: 'editLicenseBackData',  previewId: 'editLicenseBackPreview',  label: 'Dorso' },
+            cpFront:   { dataId: 'cpFrontData',          previewId: 'cpFrontPreview',          label: 'Frente' },
+            cpBack:    { dataId: 'cpBackData',           previewId: 'cpBackPreview',           label: 'Dorso' },
+        };
+
+        const mapping = sideMap[side];
+        if (!mapping) return;
+
         const reader = new FileReader();
         reader.onload = (e) => {
-            if (side === 'front' || side === 'editFront') {
-                const dataId = side === 'editFront' ? 'editLicenseFrontData' : 'licenseFrontData';
-                const previewId = side === 'editFront' ? 'editLicenseFrontPreview' : 'licenseFrontPreview';
-                document.getElementById(dataId).value = e.target.result;
-                document.getElementById(previewId).innerHTML = `
+            const el = document.getElementById(mapping.dataId);
+            if (el) el.value = e.target.result;
+            const preview = document.getElementById(mapping.previewId);
+            if (preview) {
+                preview.innerHTML = `
                     <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
-                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ Frente cargado</div>
-                `;
-            } else if (side === 'back' || side === 'editBack') {
-                const dataId = side === 'editBack' ? 'editLicenseBackData' : 'licenseBackData';
-                const previewId = side === 'editBack' ? 'editLicenseBackPreview' : 'licenseBackPreview';
-                document.getElementById(dataId).value = e.target.result;
-                document.getElementById(previewId).innerHTML = `
-                    <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
-                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ Dorso cargado</div>
+                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ ${mapping.label} cargado</div>
                 `;
             }
         };
@@ -647,6 +653,139 @@ const SettingsModule = (() => {
         loadUserList();
     }
 
+    // ===========================================
+    // PANTALLA DE COMPLETAR PERFIL (Bloqueo)
+    // ===========================================
+
+    async function renderCompleteProfile() {
+        const user = Auth.getUser();
+        const fullUser = user ? await DB.get('users', user.id) : null;
+
+        return `
+            <div style="max-width:500px; margin:0 auto; padding:var(--space-6) var(--space-4);">
+                <!-- Alerta de Bloqueo -->
+                <div style="background:#dc2626; color:#fff; padding:var(--space-4); border-radius:var(--radius-lg); margin-bottom:var(--space-6); text-align:center;">
+                    <div style="font-size:2.5rem; margin-bottom:var(--space-2);">🚫</div>
+                    <div style="font-size:var(--font-size-lg); font-weight:800; margin-bottom:var(--space-2);">
+                        PERFIL INCOMPLETO
+                    </div>
+                    <div style="font-size:var(--font-size-sm); opacity:0.9;">
+                        Para continuar trabajando, es obligatorio actualizar sus datos de contacto y fotos de la licencia por seguridad de la flota.
+                    </div>
+                </div>
+
+                <div class="card" style="padding:var(--space-5);">
+                    <h3 style="margin-bottom:var(--space-4); text-align:center;">📝 Completar Legajo</h3>
+
+                    <!-- Datos de Contacto -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
+                    <div class="form-group">
+                        <label class="form-label">Domicilio Real y Actual *</label>
+                        <input type="text" class="form-input" id="cpAddress" value="${fullUser?.address || ''}"
+                            placeholder="Calle 123, Villa Gobernador Gálvez"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Número de WhatsApp * (con código de país)</label>
+                        <input type="text" class="form-input" id="cpWhatsApp" value="${fullUser?.whatsapp || ''}"
+                            placeholder="5493476123456" inputmode="tel"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+
+                    <!-- Documentación -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
+                    <div class="form-group">
+                        <label class="form-label">Número de Licencia *</label>
+                        <input type="text" class="form-input" id="cpLicenseNumber" value="${fullUser?.licenseNumber || ''}"
+                            placeholder="N° de licencia"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_issue_date')} *</label>
+                        <input type="date" class="form-input" id="cpIssueDate" value="${fullUser?.licenseIssueDate || ''}"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('license_expiry_date')} *</label>
+                        <input type="date" class="form-input" id="cpExpiryDate" value="${fullUser?.licenseExpiryDate || ''}"
+                            style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
+                    </div>
+
+                    <!-- Fotos de Licencia -->
+                    <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">📸 Capturas de Licencia (obligatorias)</div>
+                    <div class="form-group">
+                        <label class="form-label">🆔 Frente de Licencia *</label>
+                        ${fullUser?.licenseFrontPhoto ? '<div style="margin-bottom:var(--space-2);"><img src="' + fullUser.licenseFrontPhoto + '" style="max-width:100%; max-height:120px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Ya cargada</div></div>' : ''}
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto Frente
+                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'cpFront')">
+                        </label>
+                        <div id="cpFrontPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="cpFrontData" value="">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">🔄 Dorso de Licencia *</label>
+                        ${fullUser?.licenseBackPhoto ? '<div style="margin-bottom:var(--space-2);"><img src="' + fullUser.licenseBackPhoto + '" style="max-width:100%; max-height:120px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Ya cargada</div></div>' : ''}
+                        <label class="btn btn-sm" style="cursor:pointer;">
+                            📷 Tomar / Subir Foto Dorso
+                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'cpBack')">
+                        </label>
+                        <div id="cpBackPreview" style="margin-top:var(--space-2);"></div>
+                        <input type="hidden" id="cpBackData" value="">
+                    </div>
+
+                    <button class="btn btn-primary" style="width:100%; margin-top:var(--space-4); font-size:var(--font-size-lg); padding:var(--space-3);" onclick="SettingsModule.saveCompleteProfile()">
+                        ✅ Guardar y Continuar
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function saveCompleteProfile() {
+        const userId = Auth.getUserId();
+        if (!userId) return;
+
+        const address = document.getElementById('cpAddress')?.value.trim();
+        const whatsapp = document.getElementById('cpWhatsApp')?.value.trim();
+        const licenseNumber = document.getElementById('cpLicenseNumber')?.value.trim();
+        const issueDate = document.getElementById('cpIssueDate')?.value;
+        const expiryDate = document.getElementById('cpExpiryDate')?.value;
+        const newFront = document.getElementById('cpFrontData')?.value;
+        const newBack = document.getElementById('cpBackData')?.value;
+
+        if (!address || !whatsapp || !licenseNumber || !issueDate || !expiryDate) {
+            Components.showToast('Completá todos los campos obligatorios', 'danger');
+            return;
+        }
+
+        const user = await DB.get('users', userId);
+        if (!user) return;
+
+        // Verificar que tenga fotos (nuevas o existentes)
+        const hasFront = newFront || user.licenseFrontPhoto;
+        const hasBack = newBack || user.licenseBackPhoto;
+
+        if (!hasFront || !hasBack) {
+            Components.showToast('❌ Debés subir FRENTE y DORSO de la licencia', 'danger');
+            return;
+        }
+
+        user.address = address;
+        user.whatsapp = whatsapp;
+        user.licenseNumber = licenseNumber;
+        user.licenseIssueDate = issueDate;
+        user.licenseExpiryDate = expiryDate;
+        if (newFront) user.licenseFrontPhoto = newFront;
+        if (newBack) user.licenseBackPhoto = newBack;
+
+        await DB.put('users', user);
+        Components.showToast('✅ Legajo actualizado correctamente', 'success');
+
+        // Redirigir al panel principal
+        setTimeout(() => Router.navigate(Router.getDefaultRoute()), 500);
+    }
+
     // afterRender: se llama desde Router después de que el HTML fue insertado
     function afterRender() {
         if (Auth.isOwner()) {
@@ -655,7 +794,8 @@ const SettingsModule = (() => {
     }
 
     return {
-        render, afterRender, exportData, importData, resetData, showUserManager, saveUser,
+        render, renderCompleteProfile, saveCompleteProfile,
+        afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense

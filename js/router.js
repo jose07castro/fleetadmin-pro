@@ -64,7 +64,7 @@ const Router = (() => {
         const app = document.getElementById('app');
         if (routes[route]) {
             const content = await routes[route]();
-            if (route === 'login') {
+            if (route === 'login' || route === 'complete-profile') {
                 app.innerHTML = content;
             } else {
                 app.innerHTML = Components.renderLayout(content, route);
