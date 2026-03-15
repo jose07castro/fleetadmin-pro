@@ -401,8 +401,7 @@ const SettingsModule = (() => {
             userData.licenseNumber = licenseNumber;
             userData.licenseIssueDate = issueDate;
             userData.licenseExpiryDate = expiryDate;
-            userData.licenseFrontPhoto = licenseFront;
-            userData.licenseBackPhoto = licenseBack;
+            // Las fotos se subirán a Storage después de crear el usuario
         }
 
         const fleetId = Auth.getFleetId();
@@ -414,7 +413,21 @@ const SettingsModule = (() => {
 
         // Crear dentro de la flota
         userData.globalId = globalId;
-        await DB.add('users', userData);
+        const newUserId = await DB.add('users', userData);
+
+        // Subir fotos a Firebase Storage (si es driver y tiene fotos)
+        if (role === 'driver' && (licenseFront || licenseBack)) {
+            try {
+                const savedUser = await DB.get('users', newUserId);
+                if (savedUser) {
+                    await StorageUtil.processLicensePhotos(savedUser, licenseFront || null, licenseBack || null);
+                    await DB.put('users', savedUser);
+                }
+            } catch (err) {
+                Components.showToast('⚠️ Usuario creado pero error al subir fotos: ' + (err.message || 'desconocido'), 'warning');
+            }
+        }
+
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
     }
@@ -643,8 +656,16 @@ const SettingsModule = (() => {
         if (address) user.address = address;
         if (whatsapp) user.whatsapp = whatsapp;
         if (licenseNumber) user.licenseNumber = licenseNumber;
-        if (newFront) user.licenseFrontPhoto = newFront;
-        if (newBack) user.licenseBackPhoto = newBack;
+
+        // Subir fotos a Firebase Storage (si hay nuevas)
+        if (newFront || newBack) {
+            try {
+                await StorageUtil.processLicensePhotos(user, newFront || null, newBack || null);
+            } catch (err) {
+                Components.showToast('❌ Error al subir fotos: ' + (err.message || 'desconocido'), 'danger');
+                return;
+            }
+        }
 
         await DB.put('users', user);
         Components.closeModal();
@@ -776,8 +797,16 @@ const SettingsModule = (() => {
         user.licenseNumber = licenseNumber;
         user.licenseIssueDate = issueDate;
         user.licenseExpiryDate = expiryDate;
-        if (newFront) user.licenseFrontPhoto = newFront;
-        if (newBack) user.licenseBackPhoto = newBack;
+
+        // Subir fotos a Firebase Storage (si hay nuevas)
+        if (newFront || newBack) {
+            try {
+                await StorageUtil.processLicensePhotos(user, newFront || null, newBack || null);
+            } catch (err) {
+                Components.showToast('❌ Error al subir fotos: ' + (err.message || 'desconocido'), 'danger');
+                return;
+            }
+        }
 
         await DB.put('users', user);
         Components.showToast('✅ Legajo actualizado correctamente', 'success');

@@ -464,8 +464,16 @@ const DashboardModule = (() => {
             if (licenseNumber) user.licenseNumber = licenseNumber;
             if (issueDate) user.licenseIssueDate = issueDate;
             if (expiryDate) user.licenseExpiryDate = expiryDate;
-            if (newFront) user.licenseFrontPhoto = newFront;
-            if (newBack) user.licenseBackPhoto = newBack;
+
+            // Subir fotos a Firebase Storage (si hay nuevas)
+            if (newFront || newBack) {
+                try {
+                    await StorageUtil.processLicensePhotos(user, newFront || null, newBack || null);
+                } catch (err) {
+                    Components.showToast('❌ Error al subir fotos: ' + (err.message || 'desconocido'), 'danger');
+                    return;
+                }
+            }
         }
 
         await DB.put('users', user);
