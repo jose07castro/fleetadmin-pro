@@ -196,5 +196,53 @@ const StorageUtil = (() => {
         return user;
     }
 
-    return { compressImage, uploadImage, uploadLicensePhoto, processLicensePhotos, deleteFile, deleteUserPhotos };
+    /**
+     * Elimina UNA SOLA foto (frente o dorso) de un conductor.
+     * Borra de Storage + actualiza DB + refresca UI.
+     * @param {string} userId - ID del usuario en la flota.
+     * @param {string} side - 'front' o 'back'.
+     * @param {string} calledFrom - 'dashboard' o 'settings' para refrescar la UI correcta.
+     */
+    async function deleteSinglePhoto(userId, side, calledFrom) {
+        const label = side === 'front' ? 'FRENTE' : 'DORSO';
+        if (!confirm(`¿Eliminar la foto ${label} de la licencia?\n\nSe borrará del servidor permanentemente.`)) return;
+
+        try {
+            Components.showToast(`🗑️ Eliminando foto ${label}...`, 'info');
+
+            const user = await DB.get('users', userId);
+            if (!user) {
+                alert('Error: Usuario no encontrado');
+                return;
+            }
+
+            const fieldName = side === 'front' ? 'licenseFrontPhoto' : 'licenseBackPhoto';
+            const photoURL = user[fieldName];
+
+            // 1. Borrar de Firebase Storage
+            if (photoURL) {
+                await deleteFile(photoURL);
+            }
+
+            // 2. Limpiar el campo en la base de datos
+            user[fieldName] = null;
+            await DB.put('users', user);
+
+            Components.showToast(`✅ Foto ${label} eliminada`, 'success');
+            console.log(`🗑️ Foto ${label} eliminada para usuario ${userId}`);
+
+            // 3. Refrescar la UI (reabrir el modal de edición)
+            if (calledFrom === 'dashboard') {
+                DashboardModule.editUser(userId);
+            } else if (calledFrom === 'settings') {
+                SettingsModule.showEditUser(userId);
+            }
+
+        } catch (error) {
+            console.error(`❌ Error eliminando foto ${label}:`, error);
+            alert(`Error al eliminar foto ${label}: ${(error.message || error)}`);
+        }
+    }
+
+    return { compressImage, uploadImage, uploadLicensePhoto, processLicensePhotos, deleteFile, deleteUserPhotos, deleteSinglePhoto };
 })();

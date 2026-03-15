@@ -616,7 +616,13 @@ const SettingsModule = (() => {
                 <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">📸 Capturas de Licencia</div>
                 <div class="form-group">
                     <label class="form-label">🆔 Frente</label>
-                    ${hasFront ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseFrontPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : (hasLegacyPhoto ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);"></div>` : '')}
+                    ${hasFront ? `<div style="margin-bottom:var(--space-2);">
+                        <img src="${user.licenseFrontPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
+                        <div style="display:flex; align-items:center; gap:var(--space-2); margin-top:4px;">
+                            <span style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</span>
+                            <button type="button" class="btn btn-sm" onclick="StorageUtil.deleteSinglePhoto('${user.id}', 'front', 'settings')" style="background:#dc2626; color:white; border:none; font-size:11px; padding:2px 8px; cursor:pointer;">🗑️ Eliminar</button>
+                        </div>
+                    </div>` : (hasLegacyPhoto ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);"></div>` : '')}
                     <label class="btn btn-sm" style="cursor:pointer;">
                         📷 Actualizar Frente
                         <input type="file" id="editLicenseFrontFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editFront')">
@@ -626,7 +632,13 @@ const SettingsModule = (() => {
                 </div>
                 <div class="form-group">
                     <label class="form-label">🔄 Dorso</label>
-                    ${hasBack ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licenseBackPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;"><div style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</div></div>` : ''}
+                    ${hasBack ? `<div style="margin-bottom:var(--space-2);">
+                        <img src="${user.licenseBackPhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
+                        <div style="display:flex; align-items:center; gap:var(--space-2); margin-top:4px;">
+                            <span style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</span>
+                            <button type="button" class="btn btn-sm" onclick="StorageUtil.deleteSinglePhoto('${user.id}', 'back', 'settings')" style="background:#dc2626; color:white; border:none; font-size:11px; padding:2px 8px; cursor:pointer;">🗑️ Eliminar</button>
+                        </div>
+                    </div>` : ''}
                     <label class="btn btn-sm" style="cursor:pointer;">
                         📷 Actualizar Dorso
                         <input type="file" id="editLicenseBackFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editBack')">
