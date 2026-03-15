@@ -106,17 +106,44 @@ const Auth = (() => {
         return permissions[role]?.includes(route) || false;
     }
 
-    // Verificar si el perfil del conductor está completo (licencia + fotos)
+    // Verificar si el perfil del conductor está completo
+    // Busca en la colección 'users' de la flota por nombre+rol
     async function isProfileComplete() {
         const user = getUser();
-        if (!user || user.role !== 'driver') return true; // Solo aplica a conductores
+        if (!user || user.role !== 'driver') return true;
         try {
-            const fullUser = await DB.get('users', user.id);
-            if (!fullUser) return true;
-            // Requiere: licenseNumber + licenseFrontPhoto + licenseBackPhoto
-            return !!(fullUser.licenseNumber && fullUser.licenseFrontPhoto && fullUser.licenseBackPhoto);
+            const fleetUser = await getFleetUserRecord();
+            if (!fleetUser) return true; // No encontrado, no bloquear
+            // Todos estos campos son OBLIGATORIOS
+            return !!(
+                fleetUser.address &&
+                fleetUser.whatsapp &&
+                fleetUser.licenseNumber &&
+                fleetUser.licenseFrontPhoto &&
+                fleetUser.licenseBackPhoto
+            );
         } catch (e) {
-            return true; // En caso de error, no bloquear
+            console.warn('Error verificando perfil:', e);
+            return true;
+        }
+    }
+
+    // Obtener el registro del usuario en la flota (no el globalUser)
+    async function getFleetUserRecord() {
+        const user = getUser();
+        if (!user) return null;
+        try {
+            // Intentar primero por ID directo
+            const direct = await DB.get('users', user.id);
+            if (direct && direct.role === user.role) return direct;
+            // Fallback: buscar por nombre y rol en la colección de la flota
+            const allUsers = await DB.getAll('users');
+            return allUsers.find(u =>
+                u.name && u.name.toLowerCase() === user.name.toLowerCase() &&
+                u.role === user.role
+            ) || null;
+        } catch (e) {
+            return null;
         }
     }
 
@@ -124,6 +151,6 @@ const Auth = (() => {
         login, logout, getUser, isLoggedIn, getRole,
         isOwner, isDriver, isMechanic,
         getUserName, getUserId, getFleetId, authenticate, canAccess,
-        isProfileComplete
+        isProfileComplete, getFleetUserRecord
     };
 })();

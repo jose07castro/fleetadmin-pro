@@ -28,8 +28,17 @@ const App = (() => {
             }, 800);
 
             // 5. Navegar a la ruta correcta
-            setTimeout(() => {
+            setTimeout(async () => {
                 if (Auth.isLoggedIn()) {
+                    // Bloqueo de perfil incompleto al restaurar sesión
+                    if (Auth.isDriver()) {
+                        const profileOk = await Auth.isProfileComplete();
+                        if (!profileOk) {
+                            Router.navigate('complete-profile');
+                            startRealtimeSync();
+                            return;
+                        }
+                    }
                     Router.navigate(Router.getDefaultRoute());
                     // 6. Activar sincronización en tiempo real
                     startRealtimeSync();

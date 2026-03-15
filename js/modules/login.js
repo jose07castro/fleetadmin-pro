@@ -117,6 +117,16 @@ const LoginModule = (() => {
             errorEl.style.display = 'none';
             App.startRealtimeSync();
 
+            // BLOQUEO DE PERFIL INCOMPLETO — verificar ANTES de navegar
+            if (Auth.isDriver()) {
+                const profileOk = await Auth.isProfileComplete();
+                if (!profileOk) {
+                    console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
+                    Router.navigate('complete-profile');
+                    return;
+                }
+            }
+
             // Si es owner, verificar si la ubicación está configurada
             if (Auth.isOwner()) {
                 const location = await DB.getSetting('location');
