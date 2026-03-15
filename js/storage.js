@@ -198,10 +198,11 @@ const StorageUtil = (() => {
 
     /**
      * Elimina UNA SOLA foto (frente o dorso) de un conductor.
-     * Borra de Storage + actualiza DB + refresca UI.
+     * Usa update() directo para tocar SOLO ese campo — no toca otros datos.
+     * Actualiza el DOM sin reabrir el modal.
      * @param {string} userId - ID del usuario en la flota.
      * @param {string} side - 'front' o 'back'.
-     * @param {string} calledFrom - 'dashboard' o 'settings' para refrescar la UI correcta.
+     * @param {string} calledFrom - 'dashboard' o 'settings' (no usado, se actualiza in-place).
      */
     async function deleteSinglePhoto(userId, side, calledFrom) {
         const label = side === 'front' ? 'FRENTE' : 'DORSO';
@@ -210,6 +211,7 @@ const StorageUtil = (() => {
         try {
             Components.showToast(`🗑️ Eliminando foto ${label}...`, 'info');
 
+            // Leer SOLO la URL de la foto para borrarla de Storage
             const user = await DB.get('users', userId);
             if (!user) {
                 alert('Error: Usuario no encontrado');
@@ -224,18 +226,40 @@ const StorageUtil = (() => {
                 await deleteFile(photoURL);
             }
 
-            // 2. Limpiar el campo en la base de datos
-            user[fieldName] = null;
-            await DB.put('users', user);
+            // 2. Actualizar SOLO el campo de la foto en la DB (NO tocar nada más)
+            const fleetId = Auth.getFleetId();
+            const updateData = {};
+            updateData[fieldName] = null;
+            updateData['updatedAt'] = new Date().toISOString();
+            await firebaseDB.ref(`fleets/${fleetId}/users/${userId}`).update(updateData);
 
             Components.showToast(`✅ Foto ${label} eliminada`, 'success');
             console.log(`🗑️ Foto ${label} eliminada para usuario ${userId}`);
 
-            // 3. Refrescar la UI (reabrir el modal de edición)
-            if (calledFrom === 'dashboard') {
-                DashboardModule.editUser(userId);
-            } else if (calledFrom === 'settings') {
-                SettingsModule.showEditUser(userId);
+            // 3. Actualizar la UI EN EL LUGAR (sin reabrir el modal)
+            // Buscar el contenedor de la foto y reemplazarlo
+            const previewId = side === 'front' ? 'editLicenseFrontPreview' : 'editLicenseBackPreview';
+            const dataId = side === 'front' ? 'editLicenseFrontData' : 'editLicenseBackData';
+
+            // Buscar el bloque de la foto actual (el div con la miniatura y el botón eliminar)
+            // y reemplazarlo con el indicador de "no cargada"
+            const previewEl = document.getElementById(previewId);
+            const dataEl = document.getElementById(dataId);
+
+            // Limpiar el hidden input por si había una foto nueva pendiente
+            if (dataEl) dataEl.value = '';
+            if (previewEl) previewEl.innerHTML = '';
+
+            // Buscar el img de la foto existente en el form-group padre
+            if (previewEl) {
+                const formGroup = previewEl.closest('.form-group');
+                if (formGroup) {
+                    // Buscar y remover el div que contiene la miniatura + botón eliminar
+                    const photoDiv = formGroup.querySelector('div[style*="position:relative"], div[style*="margin-bottom"]');
+                    if (photoDiv && photoDiv.querySelector('img')) {
+                        photoDiv.innerHTML = '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada — Eliminada</div>';
+                    }
+                }
             }
 
         } catch (error) {
