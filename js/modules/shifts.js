@@ -517,31 +517,31 @@ const ShiftsModule = (() => {
 
             <div class="form-group">
                 <label class="form-label">👤 Conductor</label>
-                <input type="text" id="editShiftDriverName" class="form-input" value="${currentDriverName}">
+                <input type="text" id="editShiftDriverName" class="form-input" value="${currentDriverName}" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
             </div>
             <div class="form-group">
                 <label class="form-label">${I18n.t('shift_odometer_start')} (KM)</label>
-                <input type="number" id="editShiftOdoStart" class="form-input" value="${startOdo}" step="0.1" oninput="ShiftsModule.validateEditKm()">
+                <input type="number" id="editShiftOdoStart" class="form-input" value="${startOdo}" step="0.1" oninput="ShiftsModule.validateEditKm()" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
             </div>
             <div class="form-group">
                 <label class="form-label">${I18n.t('shift_odometer_end')} (KM)</label>
-                <input type="number" id="editShiftOdoEnd" class="form-input" value="${endOdo}" step="0.1" oninput="ShiftsModule.validateEditKm()">
+                <input type="number" id="editShiftOdoEnd" class="form-input" value="${endOdo}" step="0.1" oninput="ShiftsModule.validateEditKm()" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
             </div>
             <div id="editKmError" style="display:none; color:#ef4444; font-size:13px; font-weight:600; margin:-8px 0 12px; padding:6px 10px; background:rgba(239,68,68,0.1); border-radius:6px;">
                 ❌ El KM Final no puede ser menor al KM Inicial
             </div>
             <div class="form-group">
                 <label class="form-label">Hora de Inicio</label>
-                <input type="datetime-local" id="editShiftStartTime" class="form-input" value="${startTimeStr}">
+                <input type="datetime-local" id="editShiftStartTime" class="form-input" value="${startTimeStr}" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
             </div>
             <div class="form-group">
                 <label class="form-label">Hora de Fin</label>
-                <input type="datetime-local" id="editShiftEndTime" class="form-input" value="${endTimeStr}">
+                <input type="datetime-local" id="editShiftEndTime" class="form-input" value="${endTimeStr}" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 <small class="form-help">Dejar en blanco si el turno sigue Activo.</small>
             </div>
             <div class="form-group">
                 <label class="form-label">${I18n.t('shift_earnings')}</label>
-                <input type="number" id="editShiftEarnings" class="form-input" value="${earningsStr}" step="0.1">
+                <input type="number" id="editShiftEarnings" class="form-input" value="${earningsStr}" step="0.1" style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
             </div>
         `;
 
@@ -609,10 +609,9 @@ const ShiftsModule = (() => {
         if (endTime) shift.endTime = new Date(endTime).toISOString();
         if (!isNaN(earnings)) shift.earnings = earnings;
 
-        // Guardar nombre del conductor (Fix persistencia)
-        if (driverName) {
-            shift.driverName = driverName;
-        }
+        // Guardar nombre del conductor — SIEMPRE usar displayName de Firebase Auth
+        const authUser = typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser;
+        shift.driverName = (authUser && authUser.displayName) ? authUser.displayName : (driverName || Auth.getUserName());
 
         // Persistir nombre del vehículo si no existe
         if (!shift.vehicleName) {
