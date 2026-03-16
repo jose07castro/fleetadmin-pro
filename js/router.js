@@ -60,11 +60,6 @@ const Router = (() => {
         const overlay = document.getElementById('sidebarOverlay');
         if (overlay) overlay.classList.remove('active');
 
-        // Limpiar FAB de Veraz al salir de settings
-        if (typeof SettingsModule !== 'undefined' && typeof SettingsModule.removeVerazFAB === 'function') {
-            SettingsModule.removeVerazFAB();
-        }
-
         // Renderizar la ruta
         const app = document.getElementById('app');
         if (routes[route]) {

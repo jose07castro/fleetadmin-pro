@@ -411,6 +411,77 @@
     margin-top: var(--space-1);
 }
 
+/* --- Veraz Expandable Card --- */
+.veraz-card {
+    cursor: pointer;
+    border: 1px solid rgba(220, 53, 69, 0.35);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.veraz-card:hover,
+.veraz-card.veraz-expanded {
+    border-color: rgba(220, 53, 69, 0.7);
+    box-shadow: 0 2px 12px rgba(220, 53, 69, 0.15);
+}
+
+.veraz-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-6);
+    background: linear-gradient(135deg, rgba(220, 53, 69, 0.08), rgba(220, 53, 69, 0.02));
+    user-select: none;
+}
+
+.veraz-card-title {
+    font-weight: 700;
+    font-size: var(--font-size-base);
+    flex: 1;
+    color: #f87171;
+}
+
+.veraz-card-chevron {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    transition: transform 0.3s ease;
+}
+
+.veraz-card-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease, padding 0.35s ease;
+    padding: 0 var(--space-6);
+}
+
+.veraz-card-body.veraz-open {
+    max-height: 200px;
+    padding: var(--space-4) var(--space-6);
+}
+
+.veraz-card-desc {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-3);
+    line-height: 1.5;
+}
+
+.veraz-report-btn {
+    background: #dc3545 !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 700 !important;
+    font-size: 0.85rem !important;
+    padding: var(--space-2) var(--space-4) !important;
+    border-radius: var(--radius-md) !important;
+    cursor: pointer !important;
+    transition: background 0.2s ease, transform 0.15s ease !important;
+}
+
+.veraz-report-btn:hover {
+    background: #b02a37 !important;
+    transform: scale(1.03);
+}
+
 /* --- Página de Vehículos --- */
 .vehicle-detail-header {
     display: flex;

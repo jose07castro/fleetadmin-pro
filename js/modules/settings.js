@@ -166,16 +166,17 @@ const SettingsModule = (() => {
                     <div id="userList" style="margin-top:var(--space-3);"></div>
                 </div>
 
-                <!-- 🚩 Sistema de Reportes Globales (Veraz) -->
-                <div class="settings-section" style="border:2px solid #dc2626; border-radius:var(--radius-lg);">
-                    <div class="settings-section-title" style="color:#dc2626;">🚩 Sistema Global de Reportes</div>
-                    <div class="settings-item">
-                        <div>
-                            <div class="settings-item-label">Reportar Conductor</div>
-                            <div class="settings-item-desc">Registrar un reporte contra un conductor en la base de datos global (Veraz). Otros administradores podrán consultar este historial.</div>
-                        </div>
-                        <button class="btn btn-sm" onclick="SettingsModule.showReportModal()" style="background:#dc2626; color:white; border:none; font-weight:700; font-size:0.85rem; padding:var(--space-2) var(--space-3); white-space:nowrap;">
-                            🚩 Reportar Conductor al Sistema Global
+                <!-- 🚩 Veraz de Conductores — Tarjeta expandible -->
+                <div class="settings-section veraz-card" id="verazCard" onclick="SettingsModule.toggleVerazCard()">
+                    <div class="veraz-card-header">
+                        <span style="font-size:1.4rem;">🚩</span>
+                        <span class="veraz-card-title">Veraz de Conductores</span>
+                        <span class="veraz-card-chevron" id="verazChevron">▼</span>
+                    </div>
+                    <div class="veraz-card-body" id="verazCardBody">
+                        <div class="veraz-card-desc">Sistema global de reportes. Registrá incidentes contra conductores que otros administradores podrán consultar.</div>
+                        <button class="btn btn-sm veraz-report-btn" onclick="event.stopPropagation(); SettingsModule.showReportModal()">
+                            🚩 Reportar Conductor
                         </button>
                     </div>
                 </div>
@@ -1140,61 +1141,27 @@ const SettingsModule = (() => {
 
     // afterRender: se llama desde Router después de que el HTML fue insertado
     function afterRender() {
-        alert('¡Alarma de prueba! Antigravity está conectado a esta vista.');
         if (Auth.isOwner()) {
             loadUserList();
-            _injectVerazFAB();
         }
     }
 
-    // Inyecta el botón flotante (FAB) de Reportar al Veraz directamente en <body>
-    function _injectVerazFAB() {
-        // Evitar duplicados
-        if (document.getElementById('fabReportarVeraz')) return;
-
-        const fab = document.createElement('button');
-        fab.id = 'fabReportarVeraz';
-        fab.textContent = '🚩 Reportar al Veraz';
-        fab.onclick = () => SettingsModule.showReportModal();
-
-        // Estilos inline forzados para flotar por encima de todo
-        fab.style.cssText = `
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 999999;
-            padding: 15px 20px;
-            border-radius: 50px;
-            background-color: #dc3545;
-            color: white;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.4);
-            font-size: 16px;
-            font-weight: 700;
-            border: none;
-            cursor: pointer;
-            font-family: inherit;
-            letter-spacing: 0.3px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        `;
-
-        // Efecto hover
-        fab.addEventListener('mouseenter', () => {
-            fab.style.transform = 'scale(1.07)';
-            fab.style.boxShadow = '0px 6px 16px rgba(0,0,0,0.5)';
-        });
-        fab.addEventListener('mouseleave', () => {
-            fab.style.transform = 'scale(1)';
-            fab.style.boxShadow = '0px 4px 10px rgba(0,0,0,0.4)';
-        });
-
-        // Inyectar directamente en <body>, NO dentro de contenedores
-        document.body.appendChild(fab);
-    }
-
-    // Limpieza: remover FAB al salir de Settings
-    function removeVerazFAB() {
-        const fab = document.getElementById('fabReportarVeraz');
-        if (fab) fab.remove();
+    // Toggle para la tarjeta expandible del Veraz
+    function toggleVerazCard() {
+        const body = document.getElementById('verazCardBody');
+        const chevron = document.getElementById('verazChevron');
+        const card = document.getElementById('verazCard');
+        if (!body) return;
+        const isOpen = body.classList.contains('veraz-open');
+        if (isOpen) {
+            body.classList.remove('veraz-open');
+            card.classList.remove('veraz-expanded');
+            chevron.textContent = '▼';
+        } else {
+            body.classList.add('veraz-open');
+            card.classList.add('veraz-expanded');
+            chevron.textContent = '▲';
+        }
     }
 
     return {
@@ -1204,6 +1171,6 @@ const SettingsModule = (() => {
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
         showReportModal, submitReport, toggleReportDriverType,
-        removeVerazFAB
+        toggleVerazCard
     };
 })();
