@@ -236,21 +236,24 @@ const DashboardModule = (() => {
     async function showUsers() {
         const users = await DB.getAll('users');
 
-        const userCards = users.map(u => `
+        const userCards = users.map(u => {
+            const safeName = u.name || 'Sin nombre';
+            const initial = safeName[0] ? safeName[0].toUpperCase() : '?';
+            return `
             <div style="display:flex; align-items:center; gap:var(--space-4); padding:var(--space-4); border-bottom:1px solid var(--border-color);">
                 <div style="position:relative; cursor:pointer;" onclick="DashboardModule.changeUserPhoto('${u.id}')">
                     ${u.profilePhoto
                 ? `<img src="${u.profilePhoto}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">`
                 : `<div style="width:50px;height:50px;border-radius:50%;background:var(--gradient-primary);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:white;">
-                            ${u.name[0].toUpperCase()}
+                            ${initial}
                           </div>`
             }
                     <div style="position:absolute;bottom:-2px;right:-2px;background:var(--color-primary);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;border:2px solid var(--bg-secondary);">📷</div>
                 </div>
                 <div style="flex:1;">
-                    <div style="font-weight:600;">${u.name}</div>
+                    <div style="font-weight:600;">${safeName}</div>
                     <span class="badge badge-${u.role === 'owner' ? 'primary' : u.role === 'driver' ? 'success' : 'warning'}">
-                        ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + u.role)}
+                        ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
                     </span>
                 </div>
                 <div style="display:flex; gap:var(--space-2);">
@@ -258,7 +261,8 @@ const DashboardModule = (() => {
                     ${u.role !== 'owner' ? `<button class="btn btn-ghost btn-sm" onclick="DashboardModule.deleteUser('${u.id}')">🗑️</button>` : ''}
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
 
         Components.showModal(
             `👥 ${I18n.t('user_list')}`,
@@ -326,33 +330,44 @@ const DashboardModule = (() => {
     }
 
     async function editUser(userId) {
+        try {
         const user = await DB.get('users', userId);
         if (!user) return;
 
         const isDriver = user.role === 'driver';
-        const hasFront = !!user.licenseFrontPhoto;
-        const hasBack = !!user.licenseBackPhoto;
+        // Proteger contra null/undefined en campos de foto
+        const hasFront = !!(user.licenseFrontPhoto && typeof user.licenseFrontPhoto === 'string' && user.licenseFrontPhoto.length > 0);
+        const hasBack = !!(user.licenseBackPhoto && typeof user.licenseBackPhoto === 'string' && user.licenseBackPhoto.length > 0);
+        // Proteger campos de texto contra null/undefined
+        const safeName = user.name || 'Sin nombre';
+        const safePin = user.pin || '';
+        const safeAddress = user.address || '';
+        const safeWhatsapp = user.whatsapp || '';
+        const safeLicenseNumber = user.licenseNumber || '';
+        const safeIssueDate = user.licenseIssueDate || '';
+        const safeExpiryDate = user.licenseExpiryDate || '';
+        const initial = safeName[0] ? safeName[0].toUpperCase() : '?';
 
         Components.closeModal();
         Components.showModal(
-            `✏️ ${I18n.t('edit')} — ${user.name}`,
+            `✏️ ${I18n.t('edit')} — ${safeName}`,
             `
                 <div style="text-align:center; margin-bottom:var(--space-4);">
                     ${user.profilePhoto
                 ? `<img src="${user.profilePhoto}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto;">`
                 : `<div style="width:80px;height:80px;border-radius:50%;background:var(--gradient-primary);display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;color:white;margin:0 auto;">
-                            ${user.name[0].toUpperCase()}
+                            ${initial}
                           </div>`
             }
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('login_name')} *</label>
-                    <input type="text" class="form-input" id="editUserName" value="${user.name}"
+                    <input type="text" class="form-input" id="editUserName" value="${safeName}"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('login_pin')} * (${I18n.t('login_pin_hint')})</label>
-                    <input type="text" class="form-input" id="editUserPin" value="${user.pin}" maxlength="15" inputmode="numeric"
+                    <input type="text" class="form-input" id="editUserPin" value="${safePin}" maxlength="15" inputmode="numeric"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 ${Components.renderPhotoCapture('editUserPhoto', I18n.t('user_change_photo'))}
@@ -368,13 +383,13 @@ const DashboardModule = (() => {
                     <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
                     <div class="form-group">
                         <label class="form-label">Domicilio Real y Actual *</label>
-                        <input type="text" class="form-input" id="editDriverAddress" value="${user.address || ''}"
+                        <input type="text" class="form-input" id="editDriverAddress" value="${safeAddress}"
                             placeholder="Calle 123, Villa Gobernador Gálvez"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Número de WhatsApp * (con código de país)</label>
-                        <input type="text" class="form-input" id="editDriverWhatsApp" value="${user.whatsapp || ''}"
+                        <input type="text" class="form-input" id="editDriverWhatsApp" value="${safeWhatsapp}"
                             placeholder="5493476123456" inputmode="tel"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
@@ -383,18 +398,18 @@ const DashboardModule = (() => {
                     <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
                     <div class="form-group">
                         <label class="form-label">Número de Licencia *</label>
-                        <input type="text" class="form-input" id="editLicenseNumber" value="${user.licenseNumber || ''}"
+                        <input type="text" class="form-input" id="editLicenseNumber" value="${safeLicenseNumber}"
                             placeholder="N° de licencia"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">${I18n.t('license_issue_date')} *</label>
-                        <input type="date" class="form-input" id="editLicenseIssue" value="${user.licenseIssueDate || ''}"
+                        <input type="date" class="form-input" id="editLicenseIssue" value="${safeIssueDate}"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">${I18n.t('license_expiry_date')} *</label>
-                        <input type="date" class="form-input" id="editLicenseExpiry" value="${user.licenseExpiryDate || ''}"
+                        <input type="date" class="form-input" id="editLicenseExpiry" value="${safeExpiryDate}"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
 
@@ -440,6 +455,10 @@ const DashboardModule = (() => {
                 <button class="btn btn-primary" onclick="DashboardModule.saveEditUser('${userId}')">${I18n.t('save')}</button>
             `
         );
+        } catch (error) {
+            console.error('❌ Error al renderizar modal de edición de usuario:', error);
+            alert('Error al abrir editor de usuario: ' + (error.message || error));
+        }
     }
 
     async function saveEditUser(userId) {
