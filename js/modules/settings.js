@@ -1070,7 +1070,10 @@ const SettingsModule = (() => {
             return;
         }
 
-        let conductorData = {};
+        let driver_dni = '';
+        let driver_name = '';
+        let license_front_url = null;
+        let license_back_url = null;
 
         if (driverType === 'fleet') {
             const selectedId = document.getElementById('reportFleetDriverSelect')?.value;
@@ -1078,18 +1081,16 @@ const SettingsModule = (() => {
                 alert('⚠️ Debe seleccionar un conductor de la flota.');
                 return;
             }
-            // Obtener datos del conductor seleccionado
             const driver = await DB.get('users', selectedId);
             if (!driver) {
                 alert('Error: Conductor no encontrado en la flota.');
                 return;
             }
-            conductorData = {
-                tipo: 'flota',
-                conductorId: selectedId,
-                conductorDNI: driver.licenseNumber || driver.dni || '',
-                conductorNombre: driver.name || ''
-            };
+            driver_dni = driver.licenseNumber || driver.dni || '';
+            driver_name = driver.name || '';
+            // Usar URLs de fotos existentes del conductor
+            license_front_url = driver.licenseFrontPhoto || null;
+            license_back_url = driver.licenseBackPhoto || null;
         } else {
             const externalDNI = document.getElementById('reportExternalDNI')?.value?.trim();
             const externalName = document.getElementById('reportExternalName')?.value?.trim();
@@ -1101,27 +1102,70 @@ const SettingsModule = (() => {
                 alert('⚠️ Debe ingresar el nombre completo del conductor.');
                 return;
             }
-            conductorData = {
-                tipo: 'externo',
-                conductorId: null,
-                conductorDNI: externalDNI,
-                conductorNombre: externalName
-            };
+            driver_dni = externalDNI;
+            driver_name = externalName;
+
+            // Subir fotos de conductor externo si se proporcionaron
+            const frontFile = document.getElementById('reportExternalPhotoFront')?.files?.[0];
+            const backFile = document.getElementById('reportExternalPhotoBack')?.files?.[0];
+
+            if (frontFile || backFile) {
+                Components.showToast('📤 Subiendo fotos al servidor...', 'info');
+                try {
+                    if (frontFile) {
+                        const frontData = await _readFileAsDataURL(frontFile);
+                        const path = `veraz/${driver_dni}_front_${Date.now()}.jpg`;
+                        license_front_url = await StorageUtil.uploadImage(frontData, path);
+                    }
+                    if (backFile) {
+                        const backData = await _readFileAsDataURL(backFile);
+                        const path = `veraz/${driver_dni}_back_${Date.now()}.jpg`;
+                        license_back_url = await StorageUtil.uploadImage(backData, path);
+                    }
+                } catch (uploadErr) {
+                    console.error('❌ Error subiendo fotos del reporte:', uploadErr);
+                    Components.showToast('⚠️ Error subiendo fotos, pero se guardará el reporte sin ellas.', 'warning');
+                }
+            }
         }
 
+        // Armar el objeto del reporte con el esquema requerido
         const reportData = {
-            ...conductorData,
-            motivo: motive,
-            detalles: details,
-            reportadoPor: Auth.getUserName(),
-            fleetId: Auth.getFleetId(),
-            fecha: new Date().toISOString()
+            owner_id: (Auth.getUser && Auth.getUser()?.id) || Auth.getUserName(),
+            owner_name: Auth.getUserName(),
+            fleet_id: Auth.getFleetId(),
+            driver_dni: driver_dni,
+            driver_name: driver_name,
+            report_reason: motive + ': ' + details,
+            report_motive: motive,
+            report_details: details,
+            license_front_url: license_front_url,
+            license_back_url: license_back_url,
+            driver_type: driverType
         };
 
-        console.log('🚩 REPORTE DE CONDUCTOR (simulado):', reportData);
+        // Guardar en Firebase
+        try {
+            Components.showToast('📡 Enviando reporte al sistema global...', 'info');
+            const reportId = await DB.addVerazReport(reportData);
+            console.log('🚩 Reporte Veraz guardado con ID:', reportId);
 
-        Components.closeModal();
-        Components.showToast('Interfaz de reporte lista. Fase 1 completada.', 'success');
+            Components.closeModal();
+            Components.showToast('✅ Reporte enviado al sistema global exitosamente', 'success');
+        } catch (error) {
+            console.error('❌ Error guardando reporte Veraz:', error);
+            alert('❌ Error al enviar el reporte: ' + (error.message || error) + '\n\nVerificá tu conexión a internet.');
+        }
+    }
+
+    // Helper: leer un File como Data URL
+    function _readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Error leyendo archivo'));
+            reader.readAsDataURL(file);
+        });
     }
 
     // afterRender: se llama desde Router después de que el HTML fue insertado

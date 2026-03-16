@@ -331,6 +331,45 @@ const DB = (() => {
         db.ref(path).off('value');
     }
 
+    // --- Veraz: Reportes Globales de Conductores ---
+
+    /**
+     * Guarda un reporte en la colección global /veraz_reports/.
+     * Estos datos son visibles para TODAS las flotas.
+     * @param {object} data - Datos del reporte.
+     * @returns {Promise<string>} ID del reporte creado.
+     */
+    async function addVerazReport(data) {
+        const ref = db.ref('veraz_reports').push();
+        const report = {
+            ...data,
+            id: ref.key,
+            created_at: new Date().toISOString()
+        };
+        await ref.set(report);
+        console.log('🚩 Reporte Veraz guardado:', ref.key);
+        return ref.key;
+    }
+
+    /**
+     * Obtiene todos los reportes Veraz para un DNI específico.
+     * @param {string} dni - DNI del conductor.
+     * @returns {Promise<Array>} Lista de reportes.
+     */
+    async function getVerazReportsByDNI(dni) {
+        try {
+            const snap = await fetchWithTimeout(db.ref('veraz_reports'), 7000);
+            const val = snap.val();
+            if (!val) return [];
+            return Object.values(val).filter(r =>
+                String(r.driver_dni).trim() === String(dni).trim()
+            );
+        } catch (e) {
+            console.warn('Error buscando reportes Veraz:', e);
+            return [];
+        }
+    }
+
     return {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, seed, exportAll, importAll, resetAll,
@@ -338,6 +377,8 @@ const DB = (() => {
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers,
-        migrateOldData
+        migrateOldData,
+        // Veraz
+        addVerazReport, getVerazReportsByDNI
     };
 })();
