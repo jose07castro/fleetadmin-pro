@@ -671,6 +671,7 @@ const SettingsModule = (() => {
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
                 <button class="btn btn-primary" onclick="SettingsModule.updateUserLicense('${userId}')">${I18n.t('save')}</button>
+                <button class="btn" onclick="Components.closeModal(); SettingsModule.showReportModal('${userId}')" style="background:#dc2626; color:white; border:none; font-weight:700;">🚩 Reportar Conductor</button>
             `
         );
         } catch (error) {
@@ -922,6 +923,105 @@ const SettingsModule = (() => {
         }
     }
 
+    // ============================================
+    // SISTEMA DE REPORTES GLOBALES (VERAZ) — Fase 1
+    // ============================================
+
+    async function showReportModal(userId) {
+        try {
+            const user = await DB.get('users', userId);
+            if (!user) {
+                alert('Error: Conductor no encontrado');
+                return;
+            }
+
+            const esc = Components.escapeHTML;
+            const safeName = esc(user.name || 'Sin nombre');
+            const safeDNI = esc(user.licenseNumber || user.dni || '');
+
+            Components.showModal(
+                '🚩 Reportar Conductor',
+                `
+                    <div style="background:rgba(220,38,38,0.08); border:2px solid #dc2626; border-radius:var(--radius-lg); padding:var(--space-3); margin-bottom:var(--space-4);">
+                        <div style="color:#dc2626; font-weight:700; font-size:var(--font-size-sm); margin-bottom:var(--space-1);">⚠️ Atención</div>
+                        <div style="color:var(--text-secondary); font-size:var(--font-size-xs);">Este reporte quedará registrado en el sistema global. Otros administradores de flota podrán ver este historial al consultar al conductor.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">🪪 DNI / N° Licencia del Conductor</label>
+                        <input type="text" class="form-input" id="reportDriverDNI" value="${safeDNI}" readonly
+                            style="background:#f3f4f6 !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #d1d5db !important; cursor:not-allowed;">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">👤 Nombre del Conductor</label>
+                        <input type="text" class="form-input" id="reportDriverName" value="${safeName}" readonly
+                            style="background:#f3f4f6 !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #d1d5db !important; cursor:not-allowed;">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">📋 Motivo del Reporte *</label>
+                        <select class="form-input" id="reportMotive" required
+                            style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                            <option value="">— Seleccionar motivo —</option>
+                            <option value="deuda">Deuda económica (Alquiler/Liquidación)</option>
+                            <option value="multas">Acumulación de multas graves</option>
+                            <option value="negligencia">Negligencia al volante / Choque con culpa</option>
+                            <option value="abandono">Abandono de vehículo / Maltrato de unidad</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">📝 Detalles del Reporte *</label>
+                        <textarea class="form-input" id="reportDetails" rows="4" required
+                            placeholder="Describa brevemente la situación..."
+                            style="background:#ffffff !important; color:#000000 !important; font-size:16px !important; font-weight:600 !important; border:2px solid #000000 !important; resize:vertical;"></textarea>
+                    </div>
+                `,
+                `
+                    <button class="btn btn-secondary" onclick="Components.closeModal()">Cancelar</button>
+                    <button class="btn" onclick="SettingsModule.submitReport('${userId}')" style="background:#dc2626; color:white; border:none; font-weight:700; font-size:var(--font-size-base);">🚩 Confirmar Reporte</button>
+                `
+            );
+        } catch (error) {
+            console.error('❌ Error al abrir modal de reporte:', error);
+            alert('Error al abrir formulario de reporte: ' + (error.message || error));
+        }
+    }
+
+    async function submitReport(userId) {
+        const motive = document.getElementById('reportMotive')?.value;
+        const details = document.getElementById('reportDetails')?.value?.trim();
+        const driverDNI = document.getElementById('reportDriverDNI')?.value;
+        const driverName = document.getElementById('reportDriverName')?.value;
+
+        // Validar campos obligatorios
+        if (!motive) {
+            alert('⚠️ Debe seleccionar un motivo de reporte.');
+            return;
+        }
+        if (!details || details.length < 10) {
+            alert('⚠️ Debe escribir una descripción de al menos 10 caracteres.');
+            return;
+        }
+
+        const reportData = {
+            conductorId: userId,
+            conductorDNI: driverDNI,
+            conductorNombre: driverName,
+            motivo: motive,
+            detalles: details,
+            reportadoPor: Auth.getUserName(),
+            fleetId: Auth.getFleetId(),
+            fecha: new Date().toISOString()
+        };
+
+        console.log('🚩 REPORTE DE CONDUCTOR (simulado):', reportData);
+
+        Components.closeModal();
+        Components.showToast('🚩 Reporte simulado con éxito — Pendiente de conexión a Firebase', 'success');
+    }
+
     // afterRender: se llama desde Router después de que el HTML fue insertado
     function afterRender() {
         if (Auth.isOwner()) {
@@ -934,6 +1034,7 @@ const SettingsModule = (() => {
         afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
-        loadUserList, showEditUser, updateUserLicense, deepDeleteUser
+        loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
+        showReportModal, submitReport
     };
 })();

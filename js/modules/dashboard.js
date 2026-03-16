@@ -457,6 +457,7 @@ const DashboardModule = (() => {
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
                 <button class="btn btn-primary" onclick="DashboardModule.saveEditUser('${userId}')">${I18n.t('save')}</button>
+                ${isDriver ? `<button class="btn" onclick="Components.closeModal(); SettingsModule.showReportModal('${userId}')" style="background:#dc2626; color:white; border:none; font-weight:700;">🚩 Reportar Conductor</button>` : ''}
             `
         );
         } catch (error) {
