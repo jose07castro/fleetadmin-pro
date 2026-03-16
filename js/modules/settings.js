@@ -165,21 +165,6 @@ const SettingsModule = (() => {
                     </div>
                     <div id="userList" style="margin-top:var(--space-3);"></div>
                 </div>
-
-                <!-- 🚩 Veraz de Conductores — Tarjeta expandible -->
-                <div class="settings-section veraz-card" id="verazCard" onclick="SettingsModule.toggleVerazCard()">
-                    <div class="veraz-card-header">
-                        <span style="font-size:1.4rem;">🚩</span>
-                        <span class="veraz-card-title">Veraz de Conductores</span>
-                        <span class="veraz-card-chevron" id="verazChevron">▼</span>
-                    </div>
-                    <div class="veraz-card-body" id="verazCardBody">
-                        <div class="veraz-card-desc">Sistema global de reportes. Registrá incidentes contra conductores que otros administradores podrán consultar.</div>
-                        <button class="btn btn-sm veraz-report-btn" onclick="event.stopPropagation(); SettingsModule.showReportModal()">
-                            🚩 Reportar Conductor
-                        </button>
-                    </div>
-                </div>
             ` : ''}
 
             <!-- Acerca de -->
@@ -1146,23 +1131,6 @@ const SettingsModule = (() => {
         }
     }
 
-    // Toggle para la tarjeta expandible del Veraz
-    function toggleVerazCard() {
-        const body = document.getElementById('verazCardBody');
-        const chevron = document.getElementById('verazChevron');
-        const card = document.getElementById('verazCard');
-        if (!body) return;
-        const isOpen = body.classList.contains('veraz-open');
-        if (isOpen) {
-            body.classList.remove('veraz-open');
-            card.classList.remove('veraz-expanded');
-            chevron.textContent = '▼';
-        } else {
-            body.classList.add('veraz-open');
-            card.classList.add('veraz-expanded');
-            chevron.textContent = '▲';
-        }
-    }
 
     return {
         render, renderCompleteProfile, saveCompleteProfile,
@@ -1170,7 +1138,6 @@ const SettingsModule = (() => {
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
-        showReportModal, submitReport, toggleReportDriverType,
-        toggleVerazCard
+        showReportModal, submitReport, toggleReportDriverType
     };
 })();
