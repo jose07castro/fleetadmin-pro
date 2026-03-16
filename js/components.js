@@ -56,6 +56,10 @@ const Components = (() => {
                             <span>${I18n.t(item.label)}</span>
                         </div>`
         ).join('')}
+                    ${role === 'owner' ? `<div class="nav-item" onclick="SettingsModule.showReportModal()">
+                            <span class="nav-icon">🚩</span>
+                            <span>Veraz de Conductores</span>
+                        </div>` : ''}
                 </nav>
                 <div class="sidebar-footer">
                     <div class="sidebar-user">
