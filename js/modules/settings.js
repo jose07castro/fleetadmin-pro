@@ -1140,6 +1140,7 @@ const SettingsModule = (() => {
 
     // afterRender: se llama desde Router después de que el HTML fue insertado
     function afterRender() {
+        alert('¡Alarma de prueba! Antigravity está conectado a esta vista.');
         if (Auth.isOwner()) {
             loadUserList();
             _injectVerazFAB();
