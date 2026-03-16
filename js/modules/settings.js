@@ -165,6 +165,20 @@ const SettingsModule = (() => {
                     </div>
                     <div id="userList" style="margin-top:var(--space-3);"></div>
                 </div>
+
+                <!-- 🚩 Sistema de Reportes Globales (Veraz) -->
+                <div class="settings-section" style="border:2px solid #dc2626; border-radius:var(--radius-lg);">
+                    <div class="settings-section-title" style="color:#dc2626;">🚩 Sistema Global de Reportes</div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Reportar Conductor</div>
+                            <div class="settings-item-desc">Registrar un reporte contra un conductor en la base de datos global (Veraz). Otros administradores podrán consultar este historial.</div>
+                        </div>
+                        <button class="btn btn-sm" onclick="SettingsModule.showReportModal()" style="background:#dc2626; color:white; border:none; font-weight:700; font-size:0.85rem; padding:var(--space-2) var(--space-3); white-space:nowrap;">
+                            🚩 Reportar Conductor al Sistema Global
+                        </button>
+                    </div>
+                </div>
             ` : ''}
 
             <!-- Acerca de -->
@@ -671,7 +685,6 @@ const SettingsModule = (() => {
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
                 <button class="btn btn-primary" onclick="SettingsModule.updateUserLicense('${userId}')">${I18n.t('save')}</button>
-                <button class="btn" onclick="Components.closeModal(); SettingsModule.showReportModal('${userId}')" style="background:#dc2626; color:white; border:none; font-weight:700;">🚩 Reportar Conductor</button>
             `
         );
         } catch (error) {
@@ -927,60 +940,106 @@ const SettingsModule = (() => {
     // SISTEMA DE REPORTES GLOBALES (VERAZ) — Fase 1
     // ============================================
 
-    async function showReportModal(userId) {
+    async function showReportModal() {
         try {
-            const user = await DB.get('users', userId);
-            if (!user) {
-                alert('Error: Conductor no encontrado');
-                return;
-            }
-
+            // Cargar lista de conductores de la flota para el select
+            const allUsers = await DB.getAll('users');
+            const drivers = (allUsers || []).filter(u => u.role === 'driver');
             const esc = Components.escapeHTML;
-            const safeName = esc(user.name || 'Sin nombre');
-            const safeDNI = esc(user.licenseNumber || user.dni || '');
+
+            const driverOptions = drivers.map(d => {
+                const name = esc(d.name || 'Sin nombre');
+                const dni = esc(d.licenseNumber || d.dni || 'Sin DNI');
+                return `<option value="${esc(d.id)}">${name} — ${dni}</option>`;
+            }).join('');
 
             Components.showModal(
-                '🚩 Reportar Conductor',
+                '🚩 Reportar Conductor al Sistema Global',
                 `
                     <div style="background:rgba(220,38,38,0.08); border:2px solid #dc2626; border-radius:var(--radius-lg); padding:var(--space-3); margin-bottom:var(--space-4);">
                         <div style="color:#dc2626; font-weight:700; font-size:var(--font-size-sm); margin-bottom:var(--space-1);">⚠️ Atención</div>
                         <div style="color:var(--text-secondary); font-size:var(--font-size-xs);">Este reporte quedará registrado en el sistema global. Otros administradores de flota podrán ver este historial al consultar al conductor.</div>
                     </div>
 
+                    <!-- A. Selector de tipo de chofer -->
                     <div class="form-group">
-                        <label class="form-label">🪪 DNI / N° Licencia del Conductor</label>
-                        <input type="text" class="form-input" id="reportDriverDNI" value="${safeDNI}" readonly
-                            style="background:#f3f4f6 !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #d1d5db !important; cursor:not-allowed;">
+                        <label class="form-label" style="font-weight:700;">Tipo de Conductor</label>
+                        <div style="display:flex; flex-direction:column; gap:var(--space-2);">
+                            <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; padding:var(--space-2); border:2px solid var(--border-color); border-radius:var(--radius-md);" id="reportOptionFleet">
+                                <input type="radio" name="reportDriverType" value="fleet" checked onchange="SettingsModule.toggleReportDriverType('fleet')">
+                                <span style="font-weight:600;">🚗 Chofer de mi flota actual</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; padding:var(--space-2); border:2px solid var(--border-color); border-radius:var(--radius-md);" id="reportOptionExternal">
+                                <input type="radio" name="reportDriverType" value="external" onchange="SettingsModule.toggleReportDriverType('external')">
+                                <span style="font-weight:600;">📋 Chofer Histórico / Externo</span>
+                            </label>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">👤 Nombre del Conductor</label>
-                        <input type="text" class="form-input" id="reportDriverName" value="${safeName}" readonly
-                            style="background:#f3f4f6 !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #d1d5db !important; cursor:not-allowed;">
+                    <!-- B. Campos condicionales: Flota -->
+                    <div id="reportFleetFields">
+                        <div class="form-group">
+                            <label class="form-label">Seleccionar Conductor de la Flota *</label>
+                            <select class="form-input" id="reportFleetDriverSelect"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                                <option value="">— Seleccionar conductor —</option>
+                                ${driverOptions}
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">📋 Motivo del Reporte *</label>
-                        <select class="form-input" id="reportMotive" required
-                            style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
-                            <option value="">— Seleccionar motivo —</option>
-                            <option value="deuda">Deuda económica (Alquiler/Liquidación)</option>
-                            <option value="multas">Acumulación de multas graves</option>
-                            <option value="negligencia">Negligencia al volante / Choque con culpa</option>
-                            <option value="abandono">Abandono de vehículo / Maltrato de unidad</option>
-                        </select>
+                    <!-- B. Campos condicionales: Externo (oculto por defecto) -->
+                    <div id="reportExternalFields" style="display:none;">
+                        <div class="form-group">
+                            <label class="form-label">🪪 DNI del Conductor *</label>
+                            <input type="text" class="form-input" id="reportExternalDNI" placeholder="Ej: 30123456"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">👤 Nombre Completo *</label>
+                            <input type="text" class="form-input" id="reportExternalName" placeholder="Nombre y Apellido"
+                                style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">📷 Foto Frente Licencia (Opcional)</label>
+                            <input type="file" class="form-input" id="reportExternalPhotoFront" accept="image/*"
+                                style="background:#ffffff !important; color:#000000 !important; border:2px solid #d1d5db !important;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">📷 Foto Dorso Licencia (Opcional)</label>
+                            <input type="file" class="form-input" id="reportExternalPhotoBack" accept="image/*"
+                                style="background:#ffffff !important; color:#000000 !important; border:2px solid #d1d5db !important;">
+                        </div>
+                        <small style="color:#dc2626; font-weight:600; display:block; margin-bottom:var(--space-3);">
+                            ⚠️ Aviso legal: Al subir imágenes de terceros, el administrador confirma poseer el consentimiento para su uso en la plataforma.
+                        </small>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">📝 Detalles del Reporte *</label>
-                        <textarea class="form-input" id="reportDetails" rows="4" required
-                            placeholder="Describa brevemente la situación..."
-                            style="background:#ffffff !important; color:#000000 !important; font-size:16px !important; font-weight:600 !important; border:2px solid #000000 !important; resize:vertical;"></textarea>
+                    <!-- C. Campos globales (siempre visibles) -->
+                    <div style="border-top:2px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                        <div class="form-group">
+                            <label class="form-label">📋 Motivo del Reporte *</label>
+                            <select class="form-input" id="reportMotive" required
+                                style="background:#ffffff !important; color:#000000 !important; font-size:18px !important; font-weight:700 !important; border:2px solid #000000 !important;">
+                                <option value="">— Seleccionar motivo —</option>
+                                <option value="deuda">Deuda económica (Alquiler/Liquidación)</option>
+                                <option value="multas">Acumulación de multas graves</option>
+                                <option value="negligencia">Negligencia al volante / Choque con culpa</option>
+                                <option value="abandono">Abandono de vehículo / Maltrato de unidad</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">📝 Detalles del incidente *</label>
+                            <textarea class="form-input" id="reportDetails" rows="4" required
+                                placeholder="Describa brevemente la situación..."
+                                style="background:#ffffff !important; color:#000000 !important; font-size:16px !important; font-weight:600 !important; border:2px solid #000000 !important; resize:vertical;"></textarea>
+                        </div>
                     </div>
                 `,
                 `
                     <button class="btn btn-secondary" onclick="Components.closeModal()">Cancelar</button>
-                    <button class="btn" onclick="SettingsModule.submitReport('${userId}')" style="background:#dc2626; color:white; border:none; font-weight:700; font-size:var(--font-size-base);">🚩 Confirmar Reporte</button>
+                    <button class="btn" onclick="SettingsModule.submitReport()" style="background:#dc2626; color:white; border:none; font-weight:700; font-size:var(--font-size-base);">🚩 Confirmar Reporte</button>
                 `
             );
         } catch (error) {
@@ -989,13 +1048,33 @@ const SettingsModule = (() => {
         }
     }
 
-    async function submitReport(userId) {
+    // Toggle entre campos de flota y campos externos
+    function toggleReportDriverType(type) {
+        const fleetFields = document.getElementById('reportFleetFields');
+        const externalFields = document.getElementById('reportExternalFields');
+        const optFleet = document.getElementById('reportOptionFleet');
+        const optExternal = document.getElementById('reportOptionExternal');
+
+        if (type === 'fleet') {
+            fleetFields.style.display = 'block';
+            externalFields.style.display = 'none';
+            if (optFleet) optFleet.style.borderColor = 'var(--color-primary)';
+            if (optExternal) optExternal.style.borderColor = 'var(--border-color)';
+        } else {
+            fleetFields.style.display = 'none';
+            externalFields.style.display = 'block';
+            if (optFleet) optFleet.style.borderColor = 'var(--border-color)';
+            if (optExternal) optExternal.style.borderColor = 'var(--color-primary)';
+        }
+    }
+
+    async function submitReport() {
+        // Determinar tipo de conductor
+        const driverType = document.querySelector('input[name="reportDriverType"]:checked')?.value;
         const motive = document.getElementById('reportMotive')?.value;
         const details = document.getElementById('reportDetails')?.value?.trim();
-        const driverDNI = document.getElementById('reportDriverDNI')?.value;
-        const driverName = document.getElementById('reportDriverName')?.value;
 
-        // Validar campos obligatorios
+        // Validar motivo y detalles
         if (!motive) {
             alert('⚠️ Debe seleccionar un motivo de reporte.');
             return;
@@ -1005,10 +1084,47 @@ const SettingsModule = (() => {
             return;
         }
 
+        let conductorData = {};
+
+        if (driverType === 'fleet') {
+            const selectedId = document.getElementById('reportFleetDriverSelect')?.value;
+            if (!selectedId) {
+                alert('⚠️ Debe seleccionar un conductor de la flota.');
+                return;
+            }
+            // Obtener datos del conductor seleccionado
+            const driver = await DB.get('users', selectedId);
+            if (!driver) {
+                alert('Error: Conductor no encontrado en la flota.');
+                return;
+            }
+            conductorData = {
+                tipo: 'flota',
+                conductorId: selectedId,
+                conductorDNI: driver.licenseNumber || driver.dni || '',
+                conductorNombre: driver.name || ''
+            };
+        } else {
+            const externalDNI = document.getElementById('reportExternalDNI')?.value?.trim();
+            const externalName = document.getElementById('reportExternalName')?.value?.trim();
+            if (!externalDNI) {
+                alert('⚠️ Debe ingresar el DNI del conductor.');
+                return;
+            }
+            if (!externalName) {
+                alert('⚠️ Debe ingresar el nombre completo del conductor.');
+                return;
+            }
+            conductorData = {
+                tipo: 'externo',
+                conductorId: null,
+                conductorDNI: externalDNI,
+                conductorNombre: externalName
+            };
+        }
+
         const reportData = {
-            conductorId: userId,
-            conductorDNI: driverDNI,
-            conductorNombre: driverName,
+            ...conductorData,
             motivo: motive,
             detalles: details,
             reportadoPor: Auth.getUserName(),
@@ -1019,7 +1135,7 @@ const SettingsModule = (() => {
         console.log('🚩 REPORTE DE CONDUCTOR (simulado):', reportData);
 
         Components.closeModal();
-        Components.showToast('🚩 Reporte simulado con éxito — Pendiente de conexión a Firebase', 'success');
+        Components.showToast('Interfaz de reporte lista. Fase 1 completada.', 'success');
     }
 
     // afterRender: se llama desde Router después de que el HTML fue insertado
@@ -1035,6 +1151,6 @@ const SettingsModule = (() => {
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
-        showReportModal, submitReport
+        showReportModal, submitReport, toggleReportDriverType
     };
 })();
