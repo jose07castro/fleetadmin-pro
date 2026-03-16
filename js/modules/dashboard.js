@@ -53,6 +53,27 @@ const DashboardModule = (() => {
             </div>
             ` : ''}
 
+            ${Auth.isOwner() ? `
+            <!-- 🚩 Botón de Reporte Global (Veraz) -->
+            <div class="card" style="background:linear-gradient(135deg, #dc2626, #991b1b); color:white; padding:var(--space-4); margin-bottom:var(--space-6); border:none; cursor:pointer;" onclick="SettingsModule.showReportModal()">
+                <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
+                    <div style="font-size:2.5rem;">🚩</div>
+                    <div style="flex:1; min-width:200px;">
+                        <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">
+                            Reportar Conductor al Sistema Global
+                        </div>
+                        <div style="opacity:0.9; font-size:var(--font-size-sm);">
+                            Registrar un reporte en la base de datos Veraz de conductores
+                        </div>
+                    </div>
+                    <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:700; font-size:var(--font-size-base);" onclick="event.stopPropagation(); SettingsModule.showReportModal()">
+                        🚩 Reportar
+                    </button>
+                </div>
+            </div>
+            <script>console.log('✅ Botón Veraz inyectado exitosamente en el DOM');</script>
+            ` : ''}
+
             <!-- Alertas de mantenimiento -->
             ${alerts.length > 0 ? `
                 <div class="dashboard-section">
