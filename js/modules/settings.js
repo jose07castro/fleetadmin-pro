@@ -1142,7 +1142,58 @@ const SettingsModule = (() => {
     function afterRender() {
         if (Auth.isOwner()) {
             loadUserList();
+            _injectVerazFAB();
         }
+    }
+
+    // Inyecta el botón flotante (FAB) de Reportar al Veraz directamente en <body>
+    function _injectVerazFAB() {
+        // Evitar duplicados
+        if (document.getElementById('fabReportarVeraz')) return;
+
+        const fab = document.createElement('button');
+        fab.id = 'fabReportarVeraz';
+        fab.textContent = '🚩 Reportar al Veraz';
+        fab.onclick = () => SettingsModule.showReportModal();
+
+        // Estilos inline forzados para flotar por encima de todo
+        fab.style.cssText = `
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 999999;
+            padding: 15px 20px;
+            border-radius: 50px;
+            background-color: #dc3545;
+            color: white;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.4);
+            font-size: 16px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            letter-spacing: 0.3px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        `;
+
+        // Efecto hover
+        fab.addEventListener('mouseenter', () => {
+            fab.style.transform = 'scale(1.07)';
+            fab.style.boxShadow = '0px 6px 16px rgba(0,0,0,0.5)';
+        });
+        fab.addEventListener('mouseleave', () => {
+            fab.style.transform = 'scale(1)';
+            fab.style.boxShadow = '0px 4px 10px rgba(0,0,0,0.4)';
+        });
+
+        // Inyectar directamente en <body>, NO dentro de contenedores
+        document.body.appendChild(fab);
+    }
+
+    // Limpieza: remover FAB al salir de Settings
+    function removeVerazFAB() {
+        const fab = document.getElementById('fabReportarVeraz');
+        if (fab) fab.remove();
     }
 
     return {
@@ -1151,6 +1202,7 @@ const SettingsModule = (() => {
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
-        showReportModal, submitReport, toggleReportDriverType
+        showReportModal, submitReport, toggleReportDriverType,
+        removeVerazFAB
     };
 })();
