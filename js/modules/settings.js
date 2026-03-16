@@ -515,22 +515,29 @@ const SettingsModule = (() => {
         let html = '';
 
         for (const u of users) {
+            try {
             const icon = roleIcons[u.role] || '👤';
-            const roleName = I18n.t('role_' + u.role) || u.role;
+            const roleName = I18n.t('role_' + (u.role || 'driver')) || u.role;
+            const safeName = u.name || 'Sin nombre';
 
             // Badge de licencia para conductores
             let licenseBadge = '';
             let editBtn = '';
             let deleteBtn = '';
             if (u.role === 'driver') {
-                const status = Alerts.getLicenseStatus(u);
-                if (status.level === 'danger') {
-                    licenseBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('license_expired')}</span>`;
-                } else if (status.level === 'warning') {
-                    licenseBadge = `<span class="badge badge-warning" style="font-size:0.7rem;">🟡 ${I18n.t('license_expiring')} (${status.daysLeft}d)</span>`;
-                } else if (status.level === 'ok') {
-                    licenseBadge = `<span class="badge badge-success" style="font-size:0.7rem;">🟢 ${I18n.t('license_valid')} (${status.daysLeft}d)</span>`;
-                } else {
+                try {
+                    const status = Alerts.getLicenseStatus(u);
+                    if (status.level === 'danger') {
+                        licenseBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('license_expired')}</span>`;
+                    } else if (status.level === 'warning') {
+                        licenseBadge = `<span class="badge badge-warning" style="font-size:0.7rem;">🟡 ${I18n.t('license_expiring')} (${status.daysLeft}d)</span>`;
+                    } else if (status.level === 'ok') {
+                        licenseBadge = `<span class="badge badge-success" style="font-size:0.7rem;">🟢 ${I18n.t('license_valid')} (${status.daysLeft}d)</span>`;
+                    } else {
+                        licenseBadge = `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">⚪ Sin licencia</span>`;
+                    }
+                } catch (alertErr) {
+                    console.warn('⚠️ Error obteniendo estado de licencia para', safeName, alertErr);
                     licenseBadge = `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">⚪ Sin licencia</span>`;
                 }
                 editBtn = `<button class="btn btn-sm" onclick="SettingsModule.showEditUser('${u.id}')" style="font-size:0.75rem; padding:var(--space-1) var(--space-2);">
@@ -549,7 +556,7 @@ const SettingsModule = (() => {
                     <div style="display:flex; align-items:center; gap:var(--space-2); flex:1; min-width:0;">
                         <span style="font-size:1.3rem;">${icon}</span>
                         <div style="min-width:0;">
-                            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${u.name}</div>
+                            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeName}</div>
                             <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">${roleName}${u.whatsapp ? ' • 📱 ' + u.whatsapp : ''}</div>
                         </div>
                     </div>
@@ -560,6 +567,9 @@ const SettingsModule = (() => {
                     </div>
                 </div>
             `;
+            } catch (userErr) {
+                console.error('⚠️ Error renderizando usuario en lista:', u?.id, userErr);
+            }
         }
 
         container.innerHTML = html;
@@ -567,29 +577,36 @@ const SettingsModule = (() => {
 
     // --- Editar legajo de un conductor existente ---
     async function showEditUser(userId) {
+        try {
         const user = await DB.get('users', userId);
         if (!user) return;
 
-        const issueDate = user.licenseIssueDate || '';
-        const expiryDate = user.licenseExpiryDate || '';
-        const hasFront = !!user.licenseFrontPhoto;
-        const hasBack = !!user.licenseBackPhoto;
-        const hasLegacyPhoto = !!user.licensePhoto;
+        // Proteger campos contra null/undefined
+        const safeName = user.name || 'Sin nombre';
+        const safeAddress = user.address || '';
+        const safeWhatsapp = user.whatsapp || '';
+        const safeLicenseNumber = user.licenseNumber || '';
+        const safeIssueDate = user.licenseIssueDate || '';
+        const safeExpiryDate = user.licenseExpiryDate || '';
+        // Validación estricta de fotos: debe ser string no vacío
+        const hasFront = !!(user.licenseFrontPhoto && typeof user.licenseFrontPhoto === 'string' && user.licenseFrontPhoto.length > 0);
+        const hasBack = !!(user.licenseBackPhoto && typeof user.licenseBackPhoto === 'string' && user.licenseBackPhoto.length > 0);
+        const hasLegacyPhoto = !!(user.licensePhoto && typeof user.licensePhoto === 'string' && user.licensePhoto.length > 0);
 
         Components.showModal(
-            `🪪 Legajo — ${user.name}`,
+            `🪪 Legajo — ${safeName}`,
             `
                 <!-- Datos de Contacto -->
                 <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
                 <div class="form-group">
                     <label class="form-label">Domicilio Real y Actual *</label>
-                    <input type="text" class="form-input" id="editDriverAddress" value="${user.address || ''}"
+                    <input type="text" class="form-input" id="editDriverAddress" value="${safeAddress}"
                         placeholder="Calle 123, Villa Gobernador Gálvez"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Número de WhatsApp *</label>
-                    <input type="text" class="form-input" id="editDriverWhatsApp" value="${user.whatsapp || ''}"
+                    <input type="text" class="form-input" id="editDriverWhatsApp" value="${safeWhatsapp}"
                         placeholder="5493476123456" inputmode="tel"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
@@ -598,17 +615,17 @@ const SettingsModule = (() => {
                 <div style="font-weight:600; margin-bottom:var(--space-2); margin-top:var(--space-4); font-size:var(--font-size-sm); color:var(--text-secondary);">🪪 Documentación</div>
                 <div class="form-group">
                     <label class="form-label">Número de Licencia *</label>
-                    <input type="text" class="form-input" id="editLicenseNumber" value="${user.licenseNumber || ''}"
+                    <input type="text" class="form-input" id="editLicenseNumber" value="${safeLicenseNumber}"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('license_issue_date')} *</label>
-                    <input type="date" class="form-input" id="editLicenseIssue" value="${issueDate}"
+                    <input type="date" class="form-input" id="editLicenseIssue" value="${safeIssueDate}"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('license_expiry_date')} *</label>
-                    <input type="date" class="form-input" id="editLicenseExpiry" value="${expiryDate}"
+                    <input type="date" class="form-input" id="editLicenseExpiry" value="${safeExpiryDate}"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
 
@@ -622,7 +639,7 @@ const SettingsModule = (() => {
                             <span style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</span>
                             <button type="button" class="btn btn-sm" onclick="StorageUtil.deleteSinglePhoto('${user.id}', 'front', 'settings')" style="background:#dc2626; color:white; border:none; font-size:11px; padding:2px 8px; cursor:pointer;">🗑️ Eliminar</button>
                         </div>
-                    </div>` : (hasLegacyPhoto ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);"></div>` : '')}
+                    </div>` : (hasLegacyPhoto ? `<div style="margin-bottom:var(--space-2);"><img src="${user.licensePhoto}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid var(--border-color);"></div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>')}
                     <label class="btn btn-sm" style="cursor:pointer;">
                         📷 Actualizar Frente
                         <input type="file" id="editLicenseFrontFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editFront')">
@@ -638,7 +655,7 @@ const SettingsModule = (() => {
                             <span style="color:#22c55e; font-weight:700; font-size:12px;">✅ Cargada</span>
                             <button type="button" class="btn btn-sm" onclick="StorageUtil.deleteSinglePhoto('${user.id}', 'back', 'settings')" style="background:#dc2626; color:white; border:none; font-size:11px; padding:2px 8px; cursor:pointer;">🗑️ Eliminar</button>
                         </div>
-                    </div>` : ''}
+                    </div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>'}
                     <label class="btn btn-sm" style="cursor:pointer;">
                         📷 Actualizar Dorso
                         <input type="file" id="editLicenseBackFile" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editBack')">
@@ -652,6 +669,10 @@ const SettingsModule = (() => {
                 <button class="btn btn-primary" onclick="SettingsModule.updateUserLicense('${userId}')">${I18n.t('save')}</button>
             `
         );
+        } catch (error) {
+            console.error('❌ Error al renderizar modal de edición de legajo:', error);
+            alert('Error al abrir legajo: ' + (error.message || error));
+        }
     }
 
     async function updateUserLicense(userId) {
