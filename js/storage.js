@@ -227,40 +227,39 @@ const StorageUtil = (() => {
             }
 
             // 2. Actualizar SOLO el campo de la foto en la DB (NO tocar nada más)
-            const fleetId = Auth.getFleetId();
-            const updateData = {};
-            updateData[fieldName] = null;
-            updateData['updatedAt'] = new Date().toISOString();
-            await firebaseDB.ref(`fleets/${fleetId}/users/${userId}`).update(updateData);
+            //    Usamos DB.put con un objeto mínimo: solo id + el campo de la foto en null.
+            //    DB.put usa .update() internamente, así que NO sobreescribe los demás campos.
+            const minimalUpdate = { id: userId };
+            minimalUpdate[fieldName] = null;
+            await DB.put('users', minimalUpdate);
 
             Components.showToast(`✅ Foto ${label} eliminada`, 'success');
             console.log(`🗑️ Foto ${label} eliminada para usuario ${userId}`);
 
-            // 3. Actualizar la UI EN EL LUGAR (sin reabrir el modal)
-            // Buscar el contenedor de la foto y reemplazarlo
+            // 3. Actualizar la UI EN EL LUGAR (sin reabrir el modal ni tocar otros campos)
             const previewId = side === 'front' ? 'editLicenseFrontPreview' : 'editLicenseBackPreview';
             const dataId = side === 'front' ? 'editLicenseFrontData' : 'editLicenseBackData';
 
-            // Buscar el bloque de la foto actual (el div con la miniatura y el botón eliminar)
-            // y reemplazarlo con el indicador de "no cargada"
             const previewEl = document.getElementById(previewId);
             const dataEl = document.getElementById(dataId);
 
-            // Limpiar el hidden input por si había una foto nueva pendiente
+            // Limpiar SOLO el hidden input de esta foto (por si había una nueva pendiente)
             if (dataEl) dataEl.value = '';
+            // Limpiar SOLO el preview de esta foto
             if (previewEl) previewEl.innerHTML = '';
 
-            // Buscar el img de la foto existente en el form-group padre
+            // Buscar el div con la miniatura + botón eliminar de esta foto y reemplazarlo
             if (previewEl) {
                 const formGroup = previewEl.closest('.form-group');
                 if (formGroup) {
-                    // Buscar y remover el div que contiene la miniatura + botón eliminar
                     const photoDiv = formGroup.querySelector('div[style*="position:relative"], div[style*="margin-bottom"]');
                     if (photoDiv && photoDiv.querySelector('img')) {
                         photoDiv.innerHTML = '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada — Eliminada</div>';
                     }
                 }
             }
+
+            // ¡NO hacer form.reset(), NO limpiar otros campos, NO reabrir el modal!
 
         } catch (error) {
             console.error(`❌ Error eliminando foto ${label}:`, error);
