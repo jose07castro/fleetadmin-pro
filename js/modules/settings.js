@@ -581,13 +581,17 @@ const SettingsModule = (() => {
         const user = await DB.get('users', userId);
         if (!user) return;
 
-        // Proteger campos contra null/undefined
-        const safeName = user.name || 'Sin nombre';
-        const safeAddress = user.address || '';
-        const safeWhatsapp = user.whatsapp || '';
-        const safeLicenseNumber = user.licenseNumber || '';
-        const safeIssueDate = user.licenseIssueDate || '';
-        const safeExpiryDate = user.licenseExpiryDate || '';
+        // 🔍 DEBUG: Verificar datos recibidos en el celular
+        alert('🔍 DEBUG showEditUser\nID: ' + userId + '\nNombre: ' + (user.name || 'NULL') + '\nDomicilio: ' + (user.address || 'NULL') + '\nWhatsApp: ' + (user.whatsapp || 'NULL') + '\n¿Foto frente?: ' + !!user.licenseFrontPhoto + '\n¿Foto dorso?: ' + !!user.licenseBackPhoto);
+
+        // Proteger campos contra null/undefined Y escapar para HTML
+        const esc = Components.escapeHTML;
+        const safeName = esc(user.name || 'Sin nombre');
+        const safeAddress = esc(user.address || '');
+        const safeWhatsapp = esc(user.whatsapp || '');
+        const safeLicenseNumber = esc(user.licenseNumber || '');
+        const safeIssueDate = esc(user.licenseIssueDate || '');
+        const safeExpiryDate = esc(user.licenseExpiryDate || '');
         // Validación estricta de fotos: debe ser string no vacío
         const hasFront = !!(user.licenseFrontPhoto && typeof user.licenseFrontPhoto === 'string' && user.licenseFrontPhoto.length > 0);
         const hasBack = !!(user.licenseBackPhoto && typeof user.licenseBackPhoto === 'string' && user.licenseBackPhoto.length > 0);

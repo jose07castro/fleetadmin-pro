@@ -4,6 +4,13 @@
 
 const Components = (() => {
 
+    // Helper: escapar valores para insertar de forma segura en atributos HTML (value="...")
+    // Previene que comillas, &, < en datos del usuario rompan el HTML en móviles
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     // --- Layout principal con sidebar ---
     function renderLayout(content, activeRoute) {
         const user = Auth.getUser();
@@ -282,6 +289,6 @@ const Components = (() => {
         renderLayout, renderSidebar, renderHeader, renderUnitToggles,
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
-        renderEmptyState, confirm
+        renderEmptyState, confirm, escapeHTML
     };
 })();

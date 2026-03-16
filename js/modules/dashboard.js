@@ -334,19 +334,23 @@ const DashboardModule = (() => {
         const user = await DB.get('users', userId);
         if (!user) return;
 
+        // 🔍 DEBUG: Verificar datos recibidos en el celular
+        alert('🔍 DEBUG editUser\nID: ' + userId + '\nNombre: ' + (user.name || 'NULL') + '\nDomicilio: ' + (user.address || 'NULL') + '\nWhatsApp: ' + (user.whatsapp || 'NULL') + '\n¿Foto frente?: ' + !!user.licenseFrontPhoto + '\n¿Foto dorso?: ' + !!user.licenseBackPhoto);
+
         const isDriver = user.role === 'driver';
         // Proteger contra null/undefined en campos de foto
         const hasFront = !!(user.licenseFrontPhoto && typeof user.licenseFrontPhoto === 'string' && user.licenseFrontPhoto.length > 0);
         const hasBack = !!(user.licenseBackPhoto && typeof user.licenseBackPhoto === 'string' && user.licenseBackPhoto.length > 0);
-        // Proteger campos de texto contra null/undefined
-        const safeName = user.name || 'Sin nombre';
-        const safePin = user.pin || '';
-        const safeAddress = user.address || '';
-        const safeWhatsapp = user.whatsapp || '';
-        const safeLicenseNumber = user.licenseNumber || '';
-        const safeIssueDate = user.licenseIssueDate || '';
-        const safeExpiryDate = user.licenseExpiryDate || '';
-        const initial = safeName[0] ? safeName[0].toUpperCase() : '?';
+        // Proteger campos de texto contra null/undefined Y escapar para HTML
+        const esc = Components.escapeHTML;
+        const safeName = esc(user.name || 'Sin nombre');
+        const safePin = esc(user.pin || '');
+        const safeAddress = esc(user.address || '');
+        const safeWhatsapp = esc(user.whatsapp || '');
+        const safeLicenseNumber = esc(user.licenseNumber || '');
+        const safeIssueDate = esc(user.licenseIssueDate || '');
+        const safeExpiryDate = esc(user.licenseExpiryDate || '');
+        const initial = (user.name || '?')[0].toUpperCase();
 
         Components.closeModal();
         Components.showModal(
