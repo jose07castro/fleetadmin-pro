@@ -585,11 +585,56 @@
     box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
 }
 
-.community-header-btn:hover {
-    background: rgba(99, 102, 241, 0.22);
+.community-header-btn-xl {
+    padding: 14px 36px;
+    font-size: 1.1rem;
+    min-width: 280px;
+    justify-content: center;
+    gap: var(--space-3);
+    border-radius: var(--radius-xl);
+    background: rgba(99, 102, 241, 0.18);
+    border: 1.5px solid rgba(129, 140, 248, 0.5);
+    box-shadow: 0 0 18px rgba(99, 102, 241, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+}
+
+.community-btn-icon {
+    font-size: 1.4rem;
+}
+
+.community-btn-label {
+    letter-spacing: 0.01em;
+}
+
+.community-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    border-radius: 50px;
+    background: #dc3545;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: var(--space-1);
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.45);
+    animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+}
+
+.community-header-btn:hover,
+.community-header-btn-xl:hover {
+    background: rgba(99, 102, 241, 0.28);
     border-color: var(--color-primary-light);
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.35);
-    transform: translateY(-1px);
+    box-shadow: 0 0 28px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+    transform: translateY(-2px);
 }
 
 .community-header {
@@ -713,9 +758,11 @@
         flex-direction: column;
     }
 
-    .community-header-btn {
+    .community-header-btn,
+    .community-header-btn-xl {
         width: 100%;
         justify-content: center;
         padding: var(--space-3) var(--space-5);
+        min-width: unset;
     }
 }

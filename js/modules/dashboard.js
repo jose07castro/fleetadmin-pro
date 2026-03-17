@@ -34,9 +34,10 @@ const DashboardModule = (() => {
                     ` : ''}
                 </div>
                 ${Auth.isOwner() ? `
-                    <button class="community-header-btn" onclick="Router.navigate('community')">
-                        <span style="font-size:1.2rem;">💬</span>
-                        <span>Comunidad de Dueños</span>
+                    <button class="community-header-btn community-header-btn-xl" onclick="Router.navigate('community')">
+                        <span class="community-btn-icon">💬</span>
+                        <span class="community-btn-label">Comunidad de Dueños</span>
+                        <span class="community-badge" id="communityBadge">…</span>
                     </button>
                 ` : ''}
             </div>
@@ -623,5 +624,20 @@ const DashboardModule = (() => {
         }
     }
 
-    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser };
+    // afterRender: cargar badge de comunidad sin bloquear el render
+    async function afterRender() {
+        const badge = document.getElementById('communityBadge');
+        if (badge) {
+            try {
+                const snap = await firebaseDB.ref('community_posts').once('value');
+                const count = snap.numChildren();
+                badge.textContent = count > 99 ? '99+' : String(count);
+                if (count === 0) badge.style.display = 'none';
+            } catch (e) {
+                badge.textContent = '0';
+            }
+        }
+    }
+
+    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser };
 })();
