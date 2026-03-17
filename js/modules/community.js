@@ -130,28 +130,26 @@ const CommunityModule = (() => {
 
             <!-- Columna de Sponsors (30%) — Carrusel -->
             <div class="community-sponsors-col">
-                <div class="community-sponsor-card sponsor-ad-card sponsor-carousel" id="sponsorCarousel">
+                <div class="community-sponsor-card sponsor-ad-card sponsor-carousel" id="sponsorCarousel"
+                     onmouseenter="CommunityModule.pauseCarousel()"
+                     onmouseleave="CommunityModule.resumeCarousel()">
                     <h4>🤝 Sponsors</h4>
-                    <div class="sponsor-carousel-track">
-                        ${SPONSORS.map((s, i) => `
-                        <div class="sponsor-slide ${i === 0 ? 'sponsor-slide-active' : ''}" data-slide="${i}">
-                            <div class="sponsor-ad-image-wrapper">
-                                <img src="${s.image}" alt="${s.alt}" class="sponsor-ad-image" />
-                            </div>
-                            <div class="sponsor-ad-info">
-                                <h3 class="sponsor-ad-name">${s.name}</h3>
-                                <p class="sponsor-ad-location">${s.location}</p>
-                                <p class="sponsor-ad-phone">${s.phone}</p>
-                            </div>
-                            <a href="${s.whatsapp}" target="_blank" rel="noopener noreferrer" class="sponsor-ad-cta">
-                                💬 Contactar
-                            </a>
+                    <div class="sponsor-slide-container" id="sponsorSlideContainer">
+                        <div class="sponsor-ad-image-wrapper">
+                            <img id="sponsorImg" src="${SPONSORS[0].image}" alt="${SPONSORS[0].alt}" class="sponsor-ad-image" />
                         </div>
-                        `).join('')}
+                        <div class="sponsor-ad-info">
+                            <h3 class="sponsor-ad-name" id="sponsorName">${SPONSORS[0].name}</h3>
+                            <p class="sponsor-ad-location" id="sponsorLocation">${SPONSORS[0].location}</p>
+                            <p class="sponsor-ad-phone" id="sponsorPhone">${SPONSORS[0].phone}</p>
+                        </div>
+                        <a id="sponsorCta" href="${SPONSORS[0].whatsapp}" target="_blank" rel="noopener noreferrer" class="sponsor-ad-cta">
+                            💬 Contactar
+                        </a>
                     </div>
-                    <div class="sponsor-carousel-dots">
+                    <div class="sponsor-carousel-dots" id="sponsorDots">
                         ${SPONSORS.map((_, i) => `
-                            <button class="sponsor-dot ${i === 0 ? 'active' : ''}" data-dot="${i}" aria-label="Sponsor ${i + 1}"></button>
+                            <button class="sponsor-dot ${i === 0 ? 'active' : ''}" data-dot="${i}" aria-label="Sponsor ${i + 1}" onclick="CommunityModule.goToSponsor(${i})"></button>
                         `).join('')}
                     </div>
                 </div>
@@ -280,41 +278,72 @@ const CommunityModule = (() => {
         _initSponsorCarousel();
     }
 
-    function _initSponsorCarousel() {
-        // Clear any previous interval
+    // --- Sponsor Carousel (single-slot, DOM swap with fade) ---
+    let _currentSponsor = 0;
+
+    function _startCarouselTimer() {
         if (_sponsorInterval) clearInterval(_sponsorInterval);
-
-        const slides = document.querySelectorAll('.sponsor-slide');
-        const dots = document.querySelectorAll('.sponsor-dot');
-        if (slides.length <= 1) return;
-
-        let current = 0;
-
-        function goToSlide(index) {
-            slides[current].classList.remove('sponsor-slide-active');
-            dots[current]?.classList.remove('active');
-            current = index % slides.length;
-            slides[current].classList.add('sponsor-slide-active');
-            dots[current]?.classList.add('active');
-        }
-
-        // Auto-rotate every 7 seconds
         _sponsorInterval = setInterval(() => {
-            goToSlide(current + 1);
-        }, 7000);
+            _currentSponsor = (_currentSponsor + 1) % SPONSORS.length;
+            _showSponsor(_currentSponsor);
+        }, 6000);
+    }
 
-        // Dot click navigation
-        dots.forEach(dot => {
-            dot.addEventListener('click', () => {
-                const idx = parseInt(dot.dataset.dot, 10);
-                goToSlide(idx);
-                // Reset timer on manual click
-                clearInterval(_sponsorInterval);
-                _sponsorInterval = setInterval(() => {
-                    goToSlide(current + 1);
-                }, 7000);
+    function _showSponsor(index) {
+        const container = document.getElementById('sponsorSlideContainer');
+        if (!container) return;
+
+        // Fade out
+        container.classList.add('sponsor-fading');
+
+        setTimeout(() => {
+            const s = SPONSORS[index];
+            // Swap content
+            const img = document.getElementById('sponsorImg');
+            const name = document.getElementById('sponsorName');
+            const loc = document.getElementById('sponsorLocation');
+            const phone = document.getElementById('sponsorPhone');
+            const cta = document.getElementById('sponsorCta');
+
+            if (img) { img.src = s.image; img.alt = s.alt; }
+            if (name) name.textContent = s.name;
+            if (loc) loc.textContent = s.location;
+            if (phone) phone.textContent = s.phone;
+            if (cta) cta.href = s.whatsapp;
+
+            // Update dots
+            document.querySelectorAll('.sponsor-dot').forEach((dot, i) => {
+                dot.classList.toggle('active', i === index);
             });
-        });
+
+            // Fade in
+            container.classList.remove('sponsor-fading');
+        }, 400);
+    }
+
+    function _initSponsorCarousel() {
+        if (SPONSORS.length <= 1) return;
+        _currentSponsor = 0;
+        _startCarouselTimer();
+        console.log('✅ Sponsor carousel iniciado — ' + SPONSORS.length + ' sponsors, rotando cada 6s');
+    }
+
+    function pauseCarousel() {
+        if (_sponsorInterval) {
+            clearInterval(_sponsorInterval);
+            _sponsorInterval = null;
+        }
+    }
+
+    function resumeCarousel() {
+        _startCarouselTimer();
+    }
+
+    function goToSponsor(index) {
+        _currentSponsor = index;
+        _showSponsor(index);
+        // Reset timer
+        _startCarouselTimer();
     }
 
     // --- Helpers de Firebase ---
@@ -364,5 +393,5 @@ const CommunityModule = (() => {
         return div.innerHTML;
     }
 
-    return { render, afterRender, submitPost, reactToPost };
+    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor };
 })();
