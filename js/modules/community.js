@@ -92,11 +92,19 @@ const CommunityModule = (() => {
 
             <!-- Columna de Sponsors (30%) -->
             <div class="community-sponsors-col">
-                <div class="community-sponsor-card">
+                <div class="community-sponsor-card sponsor-ad-card">
                     <h4>🤝 Sponsors</h4>
-                    <div class="community-sponsor-placeholder">
-                        Espacio disponible para patrocinadores y anuncios de la comunidad
+                    <div class="sponsor-ad-image-wrapper">
+                        <img src="assets/sponsor_leo_mecanica.png" alt="LEO MECÁNICA — Taller mecánico profesional" class="sponsor-ad-image" />
                     </div>
+                    <div class="sponsor-ad-info">
+                        <h3 class="sponsor-ad-name">🔧 LEO MECÁNICA</h3>
+                        <p class="sponsor-ad-location">📍 Dorrego 330, Villa Gobernador Gálvez</p>
+                        <p class="sponsor-ad-phone">📞 Tel/WA: 3413650105</p>
+                    </div>
+                    <a href="https://wa.me/543413650105?text=Hola%20Leo,%20te%20contacto%20desde%20FleetAdmin%20Pro" target="_blank" rel="noopener noreferrer" class="sponsor-ad-cta">
+                        💬 Contactar
+                    </a>
                 </div>
             </div>
         </div>

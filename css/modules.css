@@ -688,6 +688,7 @@
     border-radius: var(--radius-xl);
     padding: var(--space-5);
     text-align: center;
+    overflow: hidden;
 }
 
 .community-sponsor-card h4 {
@@ -697,6 +698,88 @@
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.06em;
+}
+
+/* --- Sponsor Ad Card Styles --- */
+.sponsor-ad-card {
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.sponsor-ad-card h4 {
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: 0;
+    background: rgba(99, 102, 241, 0.08);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sponsor-ad-image-wrapper {
+    width: 100%;
+    overflow: hidden;
+}
+
+.sponsor-ad-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+    border-radius: 0;
+    transition: transform 0.4s ease;
+}
+
+.sponsor-ad-image:hover {
+    transform: scale(1.03);
+}
+
+.sponsor-ad-info {
+    padding: var(--space-4);
+    text-align: left;
+    background: rgba(15, 23, 42, 0.6);
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.sponsor-ad-name {
+    font-size: var(--font-size-base);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: var(--space-2);
+    letter-spacing: 0.02em;
+}
+
+.sponsor-ad-location {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+    line-height: 1.4;
+}
+
+.sponsor-ad-phone {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.sponsor-ad-cta {
+    display: block;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: linear-gradient(135deg, #25d366, #128c7e);
+    color: #fff;
+    font-weight: 700;
+    font-size: var(--font-size-sm);
+    text-align: center;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    letter-spacing: 0.02em;
+}
+
+.sponsor-ad-cta:hover {
+    background: linear-gradient(135deg, #2be872, #14a68e);
+    box-shadow: 0 4px 16px rgba(37, 211, 102, 0.35);
 }
 
 .community-sponsor-placeholder {
