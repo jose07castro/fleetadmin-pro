@@ -646,8 +646,20 @@
     flex-wrap: wrap;
 }
 
+.community-wall {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
 .community-compose {
     margin-bottom: var(--space-6);
+}
+
+.community-publish-btn {
+    padding: var(--space-2) var(--space-6);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
 }
 
 .community-avatar {

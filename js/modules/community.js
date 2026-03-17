@@ -6,11 +6,42 @@
 
 const CommunityModule = (() => {
 
+    // Mockup posts de prueba (se muestran si no hay posts reales)
+    const MOCK_POSTS = [
+        {
+            id: 'mock1',
+            author_name: 'Carlos M.',
+            fleet_city: 'Buenos Aires',
+            content: '¡Atención colegas! Hoy varios conductores reportaron controles de la CNRT en la autopista Dellepiane, altura Lanús. Lleven toda la documentación al día.',
+            likes: 12, insights: 5,
+            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+        },
+        {
+            id: 'mock2',
+            author_name: 'Laura G.',
+            fleet_city: 'Rosario',
+            content: 'Consejo: Encontré un taller mecánico en zona sur que hace service completo para Cronos y Argo a muy buen precio. Si necesitan el contacto, escriban por acá. 🔧',
+            likes: 8, insights: 14,
+            created_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
+        },
+        {
+            id: 'mock3',
+            author_name: 'Martín R.',
+            fleet_city: 'Córdoba',
+            content: 'Pregunta para otros dueños: ¿Qué seguro están usando para la flota? La póliza de La Caja me subió un 40% este mes y estoy evaluando cambiar. Agradezco recomendaciones.',
+            likes: 6, insights: 9,
+            created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        }
+    ];
+
     async function render() {
         const posts = await _getPosts();
         const userName = Auth.getUserName();
+        const displayPosts = posts.length > 0 ? posts : MOCK_POSTS;
+        const isMock = posts.length === 0;
 
         return `
+        <div class="community-wall">
             <div class="community-header">
                 <div>
                     <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-1);">
@@ -25,19 +56,19 @@ const CommunityModule = (() => {
                 </button>
             </div>
 
-            <!-- Caja para escribir publicación -->
+            <!-- Caja de publicación -->
             <div class="community-compose card">
                 <div style="display:flex; gap:var(--space-3); align-items:flex-start;">
                     <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
                     <div style="flex:1;">
                         <textarea id="communityPostText" class="form-input community-textarea"
-                            placeholder="¿Qué querés compartir con la comunidad?" rows="3"
+                            placeholder="¿Qué información o alerta querés compartir con la comunidad?" rows="3"
                             maxlength="500"></textarea>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-2);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-3);">
                             <span id="communityCharCount" style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
                                 0 / 500
                             </span>
-                            <button class="btn btn-primary btn-sm community-post-btn" onclick="CommunityModule.submitPost()">
+                            <button class="btn btn-primary community-publish-btn" onclick="CommunityModule.submitPost()">
                                 📤 Publicar
                             </button>
                         </div>
@@ -45,23 +76,21 @@ const CommunityModule = (() => {
                 </div>
             </div>
 
-            <!-- Feed de publicaciones -->
-            <div class="community-feed" id="communityFeed">
-                ${posts.length > 0
-                    ? posts.map(p => _renderPost(p)).join('')
-                    : `<div class="community-empty">
-                        <div style="font-size:3rem; margin-bottom:var(--space-3);">🌟</div>
-                        <div style="font-weight:600; margin-bottom:var(--space-1);">¡Sé el primero en publicar!</div>
-                        <div style="color:var(--text-tertiary); font-size:var(--font-size-sm);">
-                            La comunidad está esperando tus experiencias y consejos.
-                        </div>
-                    </div>`
-                }
+            ${isMock ? `
+            <div style="text-align:center; padding:var(--space-3) 0 var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); border-bottom:1px solid var(--border-color); margin-bottom:var(--space-4);">
+                ✨ Publicaciones de ejemplo — ¡Publicá la primera para reemplazarlas!
             </div>
+            ` : ''}
+
+            <!-- Feed -->
+            <div class="community-feed" id="communityFeed">
+                ${displayPosts.map(p => _renderPost(p, isMock)).join('')}
+            </div>
+        </div>
         `;
     }
 
-    function _renderPost(post) {
+    function _renderPost(post, isMock = false) {
         const date = new Date(post.created_at);
         const timeAgo = _timeAgo(date);
         const initial = (post.author_name || '?')[0].toUpperCase();
@@ -82,11 +111,14 @@ const CommunityModule = (() => {
                 </div>
                 <div class="community-post-body">${_escapeHTML(post.content)}</div>
                 <div class="community-post-footer">
-                    <button class="community-react-btn" onclick="CommunityModule.reactToPost('${post.id}', '👍')">
+                    <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '👍')"`}>
                         👍 ${post.likes || 0}
                     </button>
-                    <button class="community-react-btn" onclick="CommunityModule.reactToPost('${post.id}', '💡')">
+                    <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '💡')"`}>
                         💡 ${post.insights || 0}
+                    </button>
+                    <button class="community-react-btn">
+                        💬 Comentar
                     </button>
                 </div>
             </div>
