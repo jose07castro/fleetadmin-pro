@@ -34,6 +34,30 @@ const CommunityModule = (() => {
         }
     ];
 
+    // --- Sponsors para el carrusel ---
+    const SPONSORS = [
+        {
+            id: 'leo_mecanica',
+            name: '🔧 LEO MECÁNICA',
+            image: 'assets/sponsor_leo_chevrolet.png?v=2',
+            alt: 'LEO MECÁNICA — Chevrolet clásico rojo',
+            location: '📍 Dorrego 330, Villa Gobernador Gálvez',
+            phone: '📞 Tel/WA: 3413650105',
+            whatsapp: 'https://wa.me/543413650105?text=Hola%20Leo,%20te%20contacto%20desde%20FleetAdmin%20Pro'
+        },
+        {
+            id: 'lavadero_ayala',
+            name: '🚿 LAVADERO AYALA',
+            image: 'assets/sponsor_lavadero_ayala.png',
+            alt: 'Lavadero Ayala — Lavado profesional',
+            location: '📍 Av. San Martín 1520, Rosario',
+            phone: '📞 Tel/WA: 3415551234',
+            whatsapp: 'https://wa.me/543415551234?text=Hola,%20te%20contacto%20desde%20FleetAdmin%20Pro'
+        }
+    ];
+
+    let _sponsorInterval = null;
+
     async function render() {
         const posts = await _getPosts();
         const userName = Auth.getUserName();
@@ -104,21 +128,32 @@ const CommunityModule = (() => {
                 </div>
             </div>
 
-            <!-- Columna de Sponsors (30%) -->
+            <!-- Columna de Sponsors (30%) — Carrusel -->
             <div class="community-sponsors-col">
-                <div class="community-sponsor-card sponsor-ad-card">
+                <div class="community-sponsor-card sponsor-ad-card sponsor-carousel" id="sponsorCarousel">
                     <h4>🤝 Sponsors</h4>
-                    <div class="sponsor-ad-image-wrapper">
-                        <img src="assets/sponsor_leo_chevrolet.png?v=2" alt="LEO MECÁNICA — Chevrolet clásico rojo restaurado" class="sponsor-ad-image" />
+                    <div class="sponsor-carousel-track">
+                        ${SPONSORS.map((s, i) => `
+                        <div class="sponsor-slide ${i === 0 ? 'sponsor-slide-active' : ''}" data-slide="${i}">
+                            <div class="sponsor-ad-image-wrapper">
+                                <img src="${s.image}" alt="${s.alt}" class="sponsor-ad-image" />
+                            </div>
+                            <div class="sponsor-ad-info">
+                                <h3 class="sponsor-ad-name">${s.name}</h3>
+                                <p class="sponsor-ad-location">${s.location}</p>
+                                <p class="sponsor-ad-phone">${s.phone}</p>
+                            </div>
+                            <a href="${s.whatsapp}" target="_blank" rel="noopener noreferrer" class="sponsor-ad-cta">
+                                💬 Contactar
+                            </a>
+                        </div>
+                        `).join('')}
                     </div>
-                    <div class="sponsor-ad-info">
-                        <h3 class="sponsor-ad-name">🔧 LEO MECÁNICA</h3>
-                        <p class="sponsor-ad-location">📍 Dorrego 330, Villa Gobernador Gálvez</p>
-                        <p class="sponsor-ad-phone">📞 Tel/WA: 3413650105</p>
+                    <div class="sponsor-carousel-dots">
+                        ${SPONSORS.map((_, i) => `
+                            <button class="sponsor-dot ${i === 0 ? 'active' : ''}" data-dot="${i}" aria-label="Sponsor ${i + 1}"></button>
+                        `).join('')}
                     </div>
-                    <a href="https://wa.me/543413650105?text=Hola%20Leo,%20te%20contacto%20desde%20FleetAdmin%20Pro" target="_blank" rel="noopener noreferrer" class="sponsor-ad-cta">
-                        💬 Contactar
-                    </a>
                 </div>
             </div>
         </div>
@@ -215,7 +250,7 @@ const CommunityModule = (() => {
         }
     }
 
-    // --- afterRender: configurar compose card ---
+    // --- afterRender: configurar compose card + carrusel sponsors ---
     function afterRender() {
         // JS fallback: add class for left-alignment override (for browsers without :has())
         const appContent = document.querySelector('.app-content');
@@ -235,10 +270,49 @@ const CommunityModule = (() => {
         document.querySelectorAll('.compose-category-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 btn.classList.toggle('active');
-                // Deselect others
                 document.querySelectorAll('.compose-category-btn').forEach(b => {
                     if (b !== btn) b.classList.remove('active');
                 });
+            });
+        });
+
+        // --- Sponsor Carousel ---
+        _initSponsorCarousel();
+    }
+
+    function _initSponsorCarousel() {
+        // Clear any previous interval
+        if (_sponsorInterval) clearInterval(_sponsorInterval);
+
+        const slides = document.querySelectorAll('.sponsor-slide');
+        const dots = document.querySelectorAll('.sponsor-dot');
+        if (slides.length <= 1) return;
+
+        let current = 0;
+
+        function goToSlide(index) {
+            slides[current].classList.remove('sponsor-slide-active');
+            dots[current]?.classList.remove('active');
+            current = index % slides.length;
+            slides[current].classList.add('sponsor-slide-active');
+            dots[current]?.classList.add('active');
+        }
+
+        // Auto-rotate every 7 seconds
+        _sponsorInterval = setInterval(() => {
+            goToSlide(current + 1);
+        }, 7000);
+
+        // Dot click navigation
+        dots.forEach(dot => {
+            dot.addEventListener('click', () => {
+                const idx = parseInt(dot.dataset.dot, 10);
+                goToSlide(idx);
+                // Reset timer on manual click
+                clearInterval(_sponsorInterval);
+                _sponsorInterval = setInterval(() => {
+                    goToSlide(current + 1);
+                }, 7000);
             });
         });
     }
