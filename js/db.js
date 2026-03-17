@@ -17,14 +17,15 @@ const DB = (() => {
     function setFleet(fleetId) {
         currentFleetId = fleetId;
         if (fleetId) {
-            sessionStorage.setItem('fleetadmin_fleetId', fleetId);
+            localStorage.setItem('fleetadmin_fleetId', fleetId);
         }
         console.log(`🏢 Fleet activa: ${fleetId}`);
     }
 
     function getFleet() {
         if (!currentFleetId) {
-            currentFleetId = sessionStorage.getItem('fleetadmin_fleetId');
+            currentFleetId = localStorage.getItem('fleetadmin_fleetId')
+                || sessionStorage.getItem('fleetadmin_fleetId');
         }
         return currentFleetId;
     }

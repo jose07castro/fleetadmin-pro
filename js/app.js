@@ -21,6 +21,9 @@ const App = (() => {
             // 3. Seed (no-op en multi-tenencia, migración en login)
             await DB.seed();
 
+            // 3.5. Activar manejo de reconexión (móvil)
+            setupReconnectionHandler();
+
             // 4. Ocultar pantalla de carga
             setTimeout(() => {
                 const splash = document.getElementById('splash-screen');
@@ -145,6 +148,58 @@ const App = (() => {
         if (sidebar) {
             sidebar.classList.toggle('open');
             if (overlay) overlay.classList.toggle('active');
+        }
+    }
+
+    // --- Reconexión al volver del segundo plano (móvil) ---
+    function setupReconnectionHandler() {
+        // Al volver a la pestaña (después de que el SO la mató o puso en background)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log('📱 App volvió al primer plano');
+                _restoreSessionOnResume();
+            }
+        });
+
+        // Al recuperar conexión WiFi/datos
+        window.addEventListener('online', () => {
+            console.log('🌐 Conexión recuperada');
+            if (Auth.isLoggedIn()) {
+                const currentRoute = Router.getCurrentRoute();
+                if (currentRoute && currentRoute !== 'login') {
+                    Router.navigate(currentRoute);
+                }
+            }
+        });
+    }
+
+    // Restaurar sesión y refrescar vista si estamos logueados
+    async function _restoreSessionOnResume() {
+        try {
+            // Forzar re-lectura de localStorage (el SO pudo haberla limpiado de RAM)
+            const user = Auth.getUser();
+            if (!user) {
+                console.warn('📱 No hay sesión guardada — redirigir a login');
+                Router.navigate('login');
+                return;
+            }
+
+            // Asegurar que el fleetId está configurado
+            if (user.fleetId) {
+                DB.setFleet(user.fleetId);
+            }
+
+            // Re-verificar conectividad con Firebase
+            await DB.open();
+
+            // Refrescar la vista actual (esto re-obtiene turnos activos del DB)
+            const currentRoute = Router.getCurrentRoute();
+            if (currentRoute && currentRoute !== 'login') {
+                console.log(`📱 Restaurando vista: ${currentRoute}`);
+                Router.navigate(currentRoute);
+            }
+        } catch (e) {
+            console.warn('📱 Error al restaurar sesión:', e);
         }
     }
 

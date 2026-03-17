@@ -9,7 +9,7 @@ const Auth = (() => {
 
     function login(user) {
         currentUser = user;
-        sessionStorage.setItem('fleetadmin_user', JSON.stringify(user));
+        localStorage.setItem('fleetadmin_user', JSON.stringify(user));
         // Activar la flota del usuario
         if (user.fleetId) {
             DB.setFleet(user.fleetId);
@@ -18,16 +18,23 @@ const Auth = (() => {
 
     function logout() {
         currentUser = null;
+        localStorage.removeItem('fleetadmin_user');
+        localStorage.removeItem('fleetadmin_fleetId');
+        // Limpiar sessionStorage legacy también
         sessionStorage.removeItem('fleetadmin_user');
         sessionStorage.removeItem('fleetadmin_fleetId');
     }
 
     function getUser() {
         if (!currentUser) {
-            const saved = sessionStorage.getItem('fleetadmin_user');
+            // Prioridad: localStorage (persistente) > sessionStorage (legacy)
+            const saved = localStorage.getItem('fleetadmin_user')
+                || sessionStorage.getItem('fleetadmin_user');
             if (saved) {
                 try {
                     currentUser = JSON.parse(saved);
+                    // Migrar de session a local si estaba en legacy
+                    localStorage.setItem('fleetadmin_user', saved);
                     // Restaurar fleetId en DB
                     if (currentUser.fleetId) {
                         DB.setFleet(currentUser.fleetId);
