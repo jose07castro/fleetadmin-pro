@@ -58,26 +58,6 @@ const CommunityModule = (() => {
                     </button>
                 </div>
 
-                <!-- Caja de publicación -->
-                <div class="community-compose card">
-                    <div style="display:flex; gap:var(--space-3); align-items:flex-start;">
-                        <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
-                        <div style="flex:1;">
-                            <textarea id="communityPostText" class="form-input community-textarea"
-                                placeholder="¿Qué información o alerta querés compartir con la comunidad?" rows="3"
-                                maxlength="500"></textarea>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-3);">
-                                <span id="communityCharCount" style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
-                                    0 / 500
-                                </span>
-                                <button class="btn btn-primary community-publish-btn" onclick="CommunityModule.submitPost()">
-                                    📤 Publicar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 ${isMock ? `
                 <div style="text-align:center; padding:var(--space-3) 0 var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); border-bottom:1px solid var(--border-color); margin-bottom:var(--space-4);">
                     ✨ Publicaciones de ejemplo — ¡Publicá la primera para reemplazarlas!
@@ -86,6 +66,43 @@ const CommunityModule = (() => {
 
                 <!-- Feed -->
                 <div class="community-feed" id="communityFeed">
+                    <!-- Compose card integrada como primer post -->
+                    <div class="community-post card community-compose-card" id="communityComposeCard">
+                        <div class="compose-card-top">
+                            <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
+                            <div class="compose-card-input-wrapper" id="composeInputWrapper">
+                                <div class="compose-card-placeholder" id="composePlaceholder">
+                                    ¿Qué tema querés debatir en la comunidad hoy?
+                                </div>
+                                <textarea id="communityPostText" class="compose-card-textarea"
+                                    placeholder="Escribí tu publicación acá..."
+                                    maxlength="500"></textarea>
+                            </div>
+                        </div>
+                        <div class="compose-card-bottom" id="composeBottom">
+                            <div class="compose-card-divider"></div>
+                            <div class="compose-card-actions">
+                                <div class="compose-card-categories">
+                                    <button class="compose-category-btn" data-category="debate" title="Debate">
+                                        💬 Debate
+                                    </button>
+                                    <button class="compose-category-btn" data-category="consulta" title="Consulta">
+                                        ❓ Consulta
+                                    </button>
+                                    <button class="compose-category-btn" data-category="alerta" title="Alerta">
+                                        🚨 Alerta
+                                    </button>
+                                </div>
+                                <div class="compose-card-right">
+                                    <span id="communityCharCount" class="compose-card-counter">0 / 500</span>
+                                    <button class="btn btn-primary community-publish-btn" onclick="CommunityModule.submitPost()">
+                                        📤 Publicar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     ${displayPosts.map(p => _renderPost(p, isMock)).join('')}
                 </div>
             </div>
@@ -201,19 +218,57 @@ const CommunityModule = (() => {
         }
     }
 
-    // --- afterRender: configurar contador de caracteres ---
+    // --- afterRender: configurar compose card interactiva ---
     function afterRender() {
         // JS fallback: add class for left-alignment override (for browsers without :has())
         const appContent = document.querySelector('.app-content');
         if (appContent) appContent.classList.add('community-active');
 
+        const card = document.getElementById('communityComposeCard');
         const textarea = document.getElementById('communityPostText');
         const counter = document.getElementById('communityCharCount');
+        const placeholder = document.getElementById('composePlaceholder');
+        const bottom = document.getElementById('composeBottom');
+
         if (textarea && counter) {
+            // Expand on click
+            const expandCompose = () => {
+                card?.classList.add('compose-expanded');
+                placeholder && (placeholder.style.display = 'none');
+                textarea.style.display = 'block';
+                textarea.focus();
+            };
+
+            placeholder?.addEventListener('click', expandCompose);
+            textarea.addEventListener('focus', expandCompose);
+
+            // Collapse if empty and blur
+            textarea.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (!textarea.value.trim()) {
+                        card?.classList.remove('compose-expanded');
+                        placeholder && (placeholder.style.display = 'block');
+                        textarea.style.display = 'none';
+                    }
+                }, 200);
+            });
+
+            // Char counter
             textarea.addEventListener('input', () => {
                 counter.textContent = `${textarea.value.length} / 500`;
             });
         }
+
+        // Category buttons toggle
+        document.querySelectorAll('.compose-category-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('active');
+                // Deselect others
+                document.querySelectorAll('.compose-category-btn').forEach(b => {
+                    if (b !== btn) b.classList.remove('active');
+                });
+            });
+        });
     }
 
     // --- Helpers de Firebase ---
