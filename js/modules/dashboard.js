@@ -21,15 +21,23 @@ const DashboardModule = (() => {
         const netProfit = totalEarnings - totalRepairCost;
 
         return `
-            <div class="dashboard-welcome">
-                <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
-                <p>${I18n.t('dash_summary')}</p>
-                ${location && location.city ? `
-                    <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
-                        <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
-                            📍 ${location.city}, ${location.province}, ${location.country}
-                        </span>
-                    </p>
+            <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
+                <div>
+                    <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
+                    <p>${I18n.t('dash_summary')}</p>
+                    ${location && location.city ? `
+                        <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
+                            <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
+                                📍 ${location.city}, ${location.province}, ${location.country}
+                            </span>
+                        </p>
+                    ` : ''}
+                </div>
+                ${Auth.isOwner() ? `
+                    <button class="community-header-btn" onclick="Router.navigate('community')">
+                        <span style="font-size:1.2rem;">💬</span>
+                        <span>Comunidad de Dueños</span>
+                    </button>
                 ` : ''}
             </div>
 

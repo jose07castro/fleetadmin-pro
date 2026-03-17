@@ -15,6 +15,7 @@ const Router = (() => {
         oil: () => OilModule.render(),
         gps: () => GPSModule.render(),
         settings: () => SettingsModule.render(),
+        community: () => CommunityModule.render(),
         'complete-profile': () => SettingsModule.renderCompleteProfile(),
     };
 
@@ -26,6 +27,7 @@ const Router = (() => {
         shifts: 'ShiftsModule',
         maintenance: 'MaintenanceModule',
         gps: 'GPSModule',
+        community: 'CommunityModule',
     };
 
     async function navigate(route) {
