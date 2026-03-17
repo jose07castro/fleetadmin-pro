@@ -791,8 +791,140 @@
     line-height: 1.5;
 }
 
-.community-compose {
-    margin-bottom: var(--space-6);
+/* --- Compose Card (integrada en el feed) --- */
+.community-compose-card {
+    border: 1px solid var(--border-color);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    cursor: text;
+}
+
+.community-compose-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 2px 16px rgba(99, 102, 241, 0.08);
+}
+
+.community-compose-card.compose-expanded {
+    border-color: rgba(99, 102, 241, 0.45);
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.12);
+    cursor: default;
+}
+
+.compose-card-top {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-4) var(--space-5);
+}
+
+.compose-card-input-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+
+.compose-card-placeholder {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    padding: var(--space-2) 0;
+    cursor: text;
+    user-select: none;
+    line-height: 1.5;
+}
+
+.compose-card-textarea {
+    display: none;
+    width: 100%;
+    min-height: 80px;
+    max-height: 220px;
+    padding: var(--space-3);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    line-height: 1.6;
+    resize: vertical;
+    transition: border-color 0.2s ease, min-height 0.3s ease;
+}
+
+.compose-card-textarea:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+
+.compose-expanded .compose-card-top {
+    align-items: flex-start;
+}
+
+/* --- Bottom section (separator + actions) --- */
+.compose-card-bottom {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.35s ease, opacity 0.25s ease, padding 0.35s ease;
+}
+
+.compose-expanded .compose-card-bottom {
+    max-height: 120px;
+    opacity: 1;
+}
+
+.compose-card-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0 var(--space-5);
+}
+
+.compose-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-5) var(--space-4);
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.compose-card-categories {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.compose-category-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.compose-category-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(99, 102, 241, 0.25);
+}
+
+.compose-category-btn.active {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: rgba(99, 102, 241, 0.45);
+    color: var(--color-primary-light);
+    font-weight: 600;
+}
+
+.compose-card-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+}
+
+.compose-card-counter {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
 }
 
 .community-publish-btn {
@@ -814,12 +946,6 @@
     font-size: var(--font-size-sm);
     color: white;
     flex-shrink: 0;
-}
-
-.community-textarea {
-    resize: vertical;
-    min-height: 70px;
-    max-height: 200px;
 }
 
 .community-post-btn {
