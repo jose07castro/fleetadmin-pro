@@ -95,7 +95,7 @@ const CommunityModule = (() => {
                 <div class="community-sponsor-card sponsor-ad-card">
                     <h4>🤝 Sponsors</h4>
                     <div class="sponsor-ad-image-wrapper">
-                        <img src="assets/sponsor_leo_mecanica.png" alt="LEO MECÁNICA — Taller mecánico profesional" class="sponsor-ad-image" />
+                        <img src="assets/sponsor_leo_chevrolet.png" alt="LEO MECÁNICA — Chevrolet clásico rojo restaurado" class="sponsor-ad-image" />
                     </div>
                     <div class="sponsor-ad-info">
                         <h3 class="sponsor-ad-name">🔧 LEO MECÁNICA</h3>
