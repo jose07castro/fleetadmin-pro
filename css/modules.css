@@ -647,8 +647,51 @@
 }
 
 .community-wall {
-    max-width: 800px;
-    margin: 0 auto;
+    display: flex;
+    gap: var(--space-6);
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    align-items: flex-start;
+}
+
+.community-main-col {
+    flex: 7;
+    min-width: 0;
+}
+
+.community-sponsors-col {
+    flex: 3;
+    min-width: 220px;
+    max-width: 320px;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-6));
+}
+
+.community-sponsor-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5);
+    text-align: center;
+}
+
+.community-sponsor-card h4 {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    margin-bottom: var(--space-3);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.community-sponsor-placeholder {
+    padding: var(--space-8) var(--space-4);
+    border: 2px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs);
+    line-height: 1.5;
 }
 
 .community-compose {
@@ -766,6 +809,15 @@
 }
 
 @media (max-width: 768px) {
+    .community-wall {
+        flex-direction: column;
+    }
+
+    .community-sponsors-col {
+        max-width: 100%;
+        position: static;
+    }
+
     .community-header {
         flex-direction: column;
     }

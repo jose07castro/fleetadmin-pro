@@ -42,49 +42,62 @@ const CommunityModule = (() => {
 
         return `
         <div class="community-wall">
-            <div class="community-header">
-                <div>
-                    <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-1);">
-                        💬 Comunidad de Dueños
-                    </h2>
-                    <p style="color:var(--text-secondary); font-size:var(--font-size-sm);">
-                        Compartí experiencias, consejos y novedades con otros administradores de flota
-                    </p>
+            <!-- Columna principal del feed (70%) -->
+            <div class="community-main-col">
+                <div class="community-header">
+                    <div>
+                        <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-1);">
+                            💬 Comunidad de Dueños
+                        </h2>
+                        <p style="color:var(--text-secondary); font-size:var(--font-size-sm);">
+                            Compartí experiencias, consejos y novedades con otros administradores de flota
+                        </p>
+                    </div>
+                    <button class="btn btn-ghost" onclick="Router.navigate('dashboard')" style="flex-shrink:0;">
+                        ← Volver al Panel
+                    </button>
                 </div>
-                <button class="btn btn-ghost" onclick="Router.navigate('dashboard')" style="flex-shrink:0;">
-                    ← Volver al Panel
-                </button>
-            </div>
 
-            <!-- Caja de publicación -->
-            <div class="community-compose card">
-                <div style="display:flex; gap:var(--space-3); align-items:flex-start;">
-                    <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
-                    <div style="flex:1;">
-                        <textarea id="communityPostText" class="form-input community-textarea"
-                            placeholder="¿Qué información o alerta querés compartir con la comunidad?" rows="3"
-                            maxlength="500"></textarea>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-3);">
-                            <span id="communityCharCount" style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
-                                0 / 500
-                            </span>
-                            <button class="btn btn-primary community-publish-btn" onclick="CommunityModule.submitPost()">
-                                📤 Publicar
-                            </button>
+                <!-- Caja de publicación -->
+                <div class="community-compose card">
+                    <div style="display:flex; gap:var(--space-3); align-items:flex-start;">
+                        <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
+                        <div style="flex:1;">
+                            <textarea id="communityPostText" class="form-input community-textarea"
+                                placeholder="¿Qué información o alerta querés compartir con la comunidad?" rows="3"
+                                maxlength="500"></textarea>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-3);">
+                                <span id="communityCharCount" style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
+                                    0 / 500
+                                </span>
+                                <button class="btn btn-primary community-publish-btn" onclick="CommunityModule.submitPost()">
+                                    📤 Publicar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                ${isMock ? `
+                <div style="text-align:center; padding:var(--space-3) 0 var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); border-bottom:1px solid var(--border-color); margin-bottom:var(--space-4);">
+                    ✨ Publicaciones de ejemplo — ¡Publicá la primera para reemplazarlas!
+                </div>
+                ` : ''}
+
+                <!-- Feed -->
+                <div class="community-feed" id="communityFeed">
+                    ${displayPosts.map(p => _renderPost(p, isMock)).join('')}
+                </div>
             </div>
 
-            ${isMock ? `
-            <div style="text-align:center; padding:var(--space-3) 0 var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); border-bottom:1px solid var(--border-color); margin-bottom:var(--space-4);">
-                ✨ Publicaciones de ejemplo — ¡Publicá la primera para reemplazarlas!
-            </div>
-            ` : ''}
-
-            <!-- Feed -->
-            <div class="community-feed" id="communityFeed">
-                ${displayPosts.map(p => _renderPost(p, isMock)).join('')}
+            <!-- Columna de Sponsors (30%) -->
+            <div class="community-sponsors-col">
+                <div class="community-sponsor-card">
+                    <h4>🤝 Sponsors</h4>
+                    <div class="community-sponsor-placeholder">
+                        Espacio disponible para patrocinadores y anuncios de la comunidad
+                    </div>
+                </div>
             </div>
         </div>
         `;
