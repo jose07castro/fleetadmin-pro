@@ -195,6 +195,10 @@ const CommunityModule = (() => {
 
     // --- afterRender: configurar contador de caracteres ---
     function afterRender() {
+        // JS fallback: add class for left-alignment override (for browsers without :has())
+        const appContent = document.querySelector('.app-content');
+        if (appContent) appContent.classList.add('community-active');
+
         const textarea = document.getElementById('communityPostText');
         const counter = document.getElementById('communityCharCount');
         if (textarea && counter) {
