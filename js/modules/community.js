@@ -71,11 +71,8 @@ const CommunityModule = (() => {
                         <div class="compose-card-top">
                             <div class="community-avatar">${(userName || 'U')[0].toUpperCase()}</div>
                             <div class="compose-card-input-wrapper" id="composeInputWrapper">
-                                <div class="compose-card-placeholder" id="composePlaceholder">
-                                    ¿Qué tema querés debatir en la comunidad hoy?
-                                </div>
                                 <textarea id="communityPostText" class="compose-card-textarea"
-                                    placeholder="Escribí tu publicación acá..."
+                                    placeholder="¿Qué tema querés debatir en la comunidad hoy?"
                                     maxlength="500"></textarea>
                             </div>
                         </div>
@@ -218,42 +215,17 @@ const CommunityModule = (() => {
         }
     }
 
-    // --- afterRender: configurar compose card interactiva ---
+    // --- afterRender: configurar compose card ---
     function afterRender() {
         // JS fallback: add class for left-alignment override (for browsers without :has())
         const appContent = document.querySelector('.app-content');
         if (appContent) appContent.classList.add('community-active');
 
-        const card = document.getElementById('communityComposeCard');
         const textarea = document.getElementById('communityPostText');
         const counter = document.getElementById('communityCharCount');
-        const placeholder = document.getElementById('composePlaceholder');
-        const bottom = document.getElementById('composeBottom');
 
+        // Char counter
         if (textarea && counter) {
-            // Expand on click
-            const expandCompose = () => {
-                card?.classList.add('compose-expanded');
-                placeholder && (placeholder.style.display = 'none');
-                textarea.style.display = 'block';
-                textarea.focus();
-            };
-
-            placeholder?.addEventListener('click', expandCompose);
-            textarea.addEventListener('focus', expandCompose);
-
-            // Collapse if empty and blur
-            textarea.addEventListener('blur', () => {
-                setTimeout(() => {
-                    if (!textarea.value.trim()) {
-                        card?.classList.remove('compose-expanded');
-                        placeholder && (placeholder.style.display = 'block');
-                        textarea.style.display = 'none';
-                    }
-                }, 200);
-            });
-
-            // Char counter
             textarea.addEventListener('input', () => {
                 counter.textContent = `${textarea.value.length} / 500`;
             });
