@@ -60,12 +60,24 @@ const CommunityModule = (() => {
     let _selectedCategory = '';
     let _selectedImageFile = null;
     let _selectedImagePreview = null;
+    let _userInteractions = 0;
+
+    // --- Reaction definitions ---
+    const REACTIONS = [
+        { key: 'mate',     emoji: '🧉', label: 'Mate',            level: 0 },
+        { key: 'estrella', emoji: '⭐',   label: 'Estrella',        level: 1 },
+        { key: 'doradas',  emoji: '🌟',   label: 'Estrellas Doradas', level: 2 },
+        { key: 'copa',     emoji: '🏆',   label: 'Copa del Mundo',  level: 3, unlockAt: 10 }
+    ];
 
     async function render() {
         const posts = await _getPosts();
         const userName = Auth.getUserName();
         const displayPosts = posts.length > 0 ? posts : MOCK_POSTS;
         const isMock = posts.length === 0;
+
+        // Count user interactions for gamification
+        await _countUserInteractions();
 
         return `
         <div class="community-wall">
@@ -216,12 +228,29 @@ const CommunityModule = (() => {
                     </div>
                 ` : ''}
                 <div class="community-post-footer">
-                    <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '👍')"`}>
-                        👍 ${post.likes || 0}
-                    </button>
-                    <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '💡')"`}>
-                        💡 ${post.insights || 0}
-                    </button>
+                    <div class="reaction-trigger-wrapper">
+                        <button class="community-react-btn reaction-main-btn" onclick="event.stopPropagation(); CommunityModule.toggleReactionPicker('${post.id}')">
+                            ❤️ Reaccionar
+                        </button>
+                        <div class="reaction-picker" id="reaction-picker-${post.id}">
+                            ${REACTIONS.map(r => {
+                                const isLocked = r.unlockAt && _userInteractions < r.unlockAt;
+                                return `
+                                    <button class="reaction-option ${isLocked ? 'reaction-locked' : ''}" 
+                                        onclick="CommunityModule.reactToPost('${post.id}', '${r.key}')"
+                                        title="${r.label}${isLocked ? ' (Bloqueado)' : ''}">
+                                        <span class="reaction-emoji">${r.emoji}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    <div class="reaction-counts">
+                        ${REACTIONS.map(r => {
+                            const count = (post.reactions && post.reactions[r.key]) || 0;
+                            return count > 0 ? `<span class="reaction-count-badge">${r.emoji} ${count}</span>` : '';
+                        }).join('')}
+                    </div>
                     <button class="community-react-btn" onclick="CommunityModule.toggleComment('${post.id}')">
                         💬 Comentar
                     </button>
@@ -303,15 +332,58 @@ const CommunityModule = (() => {
     }
 
     // --- Reaccionar a un post ---
-    async function reactToPost(postId, type) {
+    async function reactToPost(postId, reactionKey) {
+        // Check if locked
+        const reactionDef = REACTIONS.find(r => r.key === reactionKey);
+        if (reactionDef && reactionDef.unlockAt && _userInteractions < reactionDef.unlockAt) {
+            Components.showToast(`🔒 ¡Interactú ${reactionDef.unlockAt} veces en la comunidad para desbloquear la ${reactionDef.label}! (Llevás ${_userInteractions})`, 'warning');
+            return;
+        }
+
+        // Close picker
+        document.querySelectorAll('.reaction-picker.open').forEach(p => p.classList.remove('open'));
+
         try {
-            const field = type === '👍' ? 'likes' : 'insights';
-            const ref = firebaseDB.ref(`community_posts/${postId}/${field}`);
+            const ref = firebaseDB.ref(`community_posts/${postId}/reactions/${reactionKey}`);
             await ref.transaction(current => (current || 0) + 1);
-            // Refrescar
             Router.navigate('community');
         } catch (e) {
             console.warn('Error al reaccionar:', e);
+        }
+    }
+
+    // --- Toggle reaction picker ---
+    function toggleReactionPicker(postId) {
+        // Close all others
+        document.querySelectorAll('.reaction-picker.open').forEach(p => p.classList.remove('open'));
+        const picker = document.getElementById('reaction-picker-' + postId);
+        if (picker) picker.classList.toggle('open');
+    }
+
+    // --- Count user interactions (posts + comments) ---
+    async function _countUserInteractions() {
+        try {
+            const userId = Auth.getUserId() || Auth.getUserName();
+            if (!userId) { _userInteractions = 0; return; }
+            const snap = await firebaseDB.ref('community_posts').once('value');
+            const posts = snap.val();
+            if (!posts) { _userInteractions = 0; return; }
+
+            let count = 0;
+            Object.values(posts).forEach(post => {
+                // Count posts by this user
+                if (post.author_id === userId) count++;
+                // Count comments by this user
+                if (post.comments) {
+                    Object.values(post.comments).forEach(c => {
+                        if (c.author === (Auth.getUserName() || userId)) count++;
+                    });
+                }
+            });
+            _userInteractions = count;
+        } catch (e) {
+            console.warn('Error contando interacciones:', e);
+            _userInteractions = 0;
         }
     }
 
@@ -331,9 +403,10 @@ const CommunityModule = (() => {
             });
         }
 
-        // Close post menus on click outside
+        // Close post menus and reaction pickers on click outside
         document.addEventListener('click', () => {
             document.querySelectorAll('.post-menu-dropdown.open').forEach(m => m.classList.remove('open'));
+            document.querySelectorAll('.reaction-picker.open').forEach(p => p.classList.remove('open'));
         });
 
         // --- Sponsor Carousel ---
@@ -615,5 +688,5 @@ const CommunityModule = (() => {
         if (input) input.value = '';
     }
 
-    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage };
+    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage, toggleReactionPicker };
 })();

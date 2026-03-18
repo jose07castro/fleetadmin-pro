@@ -1063,6 +1063,101 @@
     color: var(--text-primary);
 }
 
+/* --- Reaction Picker System --- */
+.reaction-trigger-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.reaction-main-btn {
+    position: relative;
+}
+
+.reaction-picker {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    z-index: 60;
+    white-space: nowrap;
+    gap: var(--space-1);
+}
+
+.reaction-picker.open {
+    display: flex;
+    animation: reactionBounce 0.3s ease;
+}
+
+@keyframes reactionBounce {
+    0%   { opacity: 0; transform: translateX(-50%) scale(0.6) translateY(8px); }
+    70%  { transform: translateX(-50%) scale(1.05) translateY(-2px); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+}
+
+.reaction-option {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-1);
+    border-radius: var(--radius-full);
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.reaction-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.35);
+}
+
+.reaction-emoji {
+    font-size: 1.5rem;
+    display: block;
+}
+
+/* Locked reaction (trophy) */
+.reaction-locked {
+    filter: grayscale(1) opacity(0.4);
+    cursor: not-allowed;
+}
+
+.reaction-locked:hover {
+    filter: grayscale(0.7) opacity(0.6);
+    transform: scale(1.15);
+}
+
+/* Reaction counts displayed inline */
+.reaction-counts {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+}
+
+.reaction-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.reaction-count-badge:hover {
+    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(99, 102, 241, 0.08);
+}
+
 /* --- Comment Box (inline per post) --- */
 .community-comment-box {
     padding: var(--space-3) var(--space-4);
