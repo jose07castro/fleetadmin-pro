@@ -628,6 +628,17 @@ button {
     white-space: nowrap;
 }
 
+/* Mobile logout button — red to prevent accidental taps */
+.mobile-nav-logout {
+    color: var(--color-danger) !important;
+    opacity: 0.85;
+}
+
+.mobile-nav-logout:active {
+    opacity: 1;
+    color: #fca5a5 !important;
+}
+
 /* --- SOS Floating Action Button (drivers mobile) --- */
 .sos-fab {
     display: none; /* Hidden on desktop */

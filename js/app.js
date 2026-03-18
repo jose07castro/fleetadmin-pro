@@ -120,11 +120,52 @@ const App = (() => {
         console.log('📡 Sincronización en tiempo real desactivada');
     }
 
-    // Cerrar sesión
-    function logout() {
-        stopRealtimeSync();
-        Auth.logout();
-        Router.navigate('login');
+    // Cerrar sesión (completo: limpia listeners, Firebase Auth, storage)
+    async function logout() {
+        // Confirmación para evitar toques accidentales
+        const confirmed = confirm('¿Cerrar sesión?\nSe desconectará de esta cuenta.');
+        if (!confirmed) return;
+
+        try {
+            // 1. Detener sincronización en tiempo real (Firebase listeners)
+            stopRealtimeSync();
+
+            // 2. Detener SOS listener si está activo
+            if (typeof SOSModule !== 'undefined' && typeof SOSModule.stopListening === 'function') {
+                try { SOSModule.stopListening(); } catch (e) { /* ignorar */ }
+            }
+
+            // 3. Detener notifications checker si está activo
+            if (typeof Notifications !== 'undefined' && typeof Notifications.stop === 'function') {
+                try { Notifications.stop(); } catch (e) { /* ignorar */ }
+            }
+
+            // 4. Cerrar sesión en Firebase Auth
+            try {
+                await firebase.auth().signOut();
+                console.log('🔒 Firebase Auth: sesión cerrada');
+            } catch (e) {
+                console.warn('Firebase Auth signOut error (no crítico):', e);
+            }
+
+            // 5. Desconectar Firebase Realtime Database
+            try {
+                firebase.database().goOffline();
+            } catch (e) { /* ignorar */ }
+
+            // 6. Limpiar estado de Auth (localStorage, sessionStorage, currentUser)
+            Auth.logout();
+
+            // 7. Redirigir forzosamente a login
+            Router.navigate('login');
+
+            console.log('🚪 Sesión cerrada correctamente');
+        } catch (error) {
+            console.error('Error durante logout:', error);
+            // Forzar limpieza y navegación aunque haya error
+            Auth.logout();
+            Router.navigate('login');
+        }
     }
 
     // Cambiar idioma y refrescar la vista actual

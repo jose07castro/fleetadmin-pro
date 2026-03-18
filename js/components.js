@@ -116,30 +116,42 @@ const Components = (() => {
                 { icon: '📊', label: 'Panel', route: 'dashboard' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
-                { icon: '⚙️', label: 'Config', route: 'settings' }
+                { icon: '⚙️', label: 'Config', route: 'settings' },
+                { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             driver: [
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🛢️', label: 'Aceite', route: 'oil' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
-                { icon: '⚙️', label: 'Config', route: 'settings' }
+                { icon: '⚙️', label: 'Config', route: 'settings' },
+                { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             mechanic: [
                 { icon: '🔧', label: 'Taller', route: 'maintenance' },
-                { icon: '⚙️', label: 'Config', route: 'settings' }
+                { icon: '⚙️', label: 'Config', route: 'settings' },
+                { icon: '🚪', label: 'Salir', route: '__logout__' }
             ]
         };
         const items = mobileItems[role] || [];
 
         return `
             <nav class="mobile-bottom-nav">
-                ${items.map(item => `
+                ${items.map(item => {
+                    if (item.route === '__logout__') {
+                        return `
+                        <div class="mobile-nav-item mobile-nav-logout" 
+                             onclick="App.logout()">
+                            <span class="mobile-nav-icon">${item.icon}</span>
+                            <span class="mobile-nav-label">${item.label}</span>
+                        </div>`;
+                    }
+                    return `
                     <div class="mobile-nav-item ${activeRoute === item.route ? 'active' : ''}" 
                          onclick="Router.navigate('${item.route}')">
                         <span class="mobile-nav-icon">${item.icon}</span>
                         <span class="mobile-nav-label">${item.label}</span>
-                    </div>
-                `).join('')}
+                    </div>`;
+                }).join('')}
             </nav>
         `;
     }
