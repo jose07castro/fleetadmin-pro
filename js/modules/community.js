@@ -58,6 +58,8 @@ const CommunityModule = (() => {
 
     let _sponsorInterval = null;
     let _selectedCategory = '';
+    let _selectedImageFile = null;
+    let _selectedImagePreview = null;
 
     async function render() {
         const posts = await _getPosts();
@@ -99,6 +101,10 @@ const CommunityModule = (() => {
                                 <textarea id="communityPostText" class="compose-card-textarea"
                                     placeholder="¿Qué tema querés debatir en la comunidad hoy?"
                                     maxlength="500"></textarea>
+                                <div class="compose-image-preview" id="composeImagePreview" style="display:none;">
+                                    <img id="composeImageThumb" src="" alt="Preview" />
+                                    <button class="compose-image-remove" onclick="CommunityModule.removeImage()" title="Quitar imagen">✕</button>
+                                </div>
                             </div>
                         </div>
                         <div class="compose-card-bottom" id="composeBottom">
@@ -114,6 +120,10 @@ const CommunityModule = (() => {
                                     <button class="compose-category-btn" data-category="alerta" onclick="CommunityModule.selectCategory('alerta')">
                                         🚨 Alerta
                                     </button>
+                                    <label class="compose-category-btn compose-photo-btn" for="composeImageInput">
+                                        📷 Foto
+                                    </label>
+                                    <input type="file" id="composeImageInput" accept="image/*" style="display:none;" onchange="CommunityModule.onImageSelected(this)" />
                                 </div>
                                 <div class="compose-card-right">
                                     <span id="communityCharCount" class="compose-card-counter">0 / 500</span>
@@ -200,6 +210,11 @@ const CommunityModule = (() => {
                     ${postMenu}
                 </div>
                 <div class="community-post-body" id="post-body-${post.id}">${escapedContent}</div>
+                ${post.image_url ? `
+                    <div class="community-post-image">
+                        <img src="${post.image_url}" alt="Imagen del post" loading="lazy" onclick="window.open('${post.image_url}','_blank')" />
+                    </div>
+                ` : ''}
                 <div class="community-post-footer">
                     <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '👍')"`}>
                         👍 ${post.likes || 0}
@@ -237,6 +252,20 @@ const CommunityModule = (() => {
         try {
             Components.showToast('📤 Publicando...', 'info');
 
+            // Upload image if selected
+            let imageUrl = '';
+            if (_selectedImageFile) {
+                try {
+                    const fileName = `community_images/${Date.now()}_${_selectedImageFile.name}`;
+                    const storageRef = firebaseStorage.ref(fileName);
+                    const snapshot = await storageRef.put(_selectedImageFile);
+                    imageUrl = await snapshot.ref.getDownloadURL();
+                } catch (imgErr) {
+                    console.error('Error subiendo imagen:', imgErr);
+                    Components.showToast('⚠️ Error al subir la imagen, publicando sin imagen...', 'warning');
+                }
+            }
+
             // Obtener ciudad de la flota para mostrar en el post
             let fleetCity = '';
             try {
@@ -253,11 +282,17 @@ const CommunityModule = (() => {
                 fleet_city: fleetCity,
                 category: _selectedCategory || '',
                 content: content,
+                image_url: imageUrl,
                 likes: 0,
                 insights: 0
             };
 
             await _addPost(postData);
+
+            // Reset state
+            _selectedImageFile = null;
+            _selectedImagePreview = null;
+            _selectedCategory = '';
 
             Components.showToast('✅ ¡Publicación enviada!', 'success');
             Router.navigate('community');
@@ -545,5 +580,40 @@ const CommunityModule = (() => {
         if (body) body.textContent = decodeURIComponent(encodedOriginal);
     }
 
-    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost };
+    // --- Image Upload Helpers ---
+    function onImageSelected(input) {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        // Validate: max 5MB
+        if (file.size > 5 * 1024 * 1024) {
+            Components.showToast('⚠️ La imagen no puede superar 5MB.', 'warning');
+            input.value = '';
+            return;
+        }
+
+        _selectedImageFile = file;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            _selectedImagePreview = e.target.result;
+            const preview = document.getElementById('composeImagePreview');
+            const thumb = document.getElementById('composeImageThumb');
+            if (preview && thumb) {
+                thumb.src = _selectedImagePreview;
+                preview.style.display = 'block';
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function removeImage() {
+        _selectedImageFile = null;
+        _selectedImagePreview = null;
+        const preview = document.getElementById('composeImagePreview');
+        const input = document.getElementById('composeImageInput');
+        if (preview) preview.style.display = 'none';
+        if (input) input.value = '';
+    }
+
+    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage };
 })();
