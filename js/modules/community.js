@@ -163,8 +163,26 @@ const CommunityModule = (() => {
         const date = new Date(post.created_at);
         const timeAgo = _timeAgo(date);
         const initial = (post.author_name || '?')[0].toUpperCase();
+        const currentUserId = Auth.getUserId() || Auth.getUserName();
+        const isAuthor = !isMock && (post.author_id === currentUserId);
 
         const categoryBadge = post.category ? `<span class="community-category-badge community-cat-${post.category}">${post.category === 'debate' ? '🗣️ Debate' : post.category === 'consulta' ? '❓ Consulta' : '🚨 Alerta'}</span>` : '';
+
+        const escapedContent = _escapeHTML(post.content);
+
+        const postMenu = isAuthor ? `
+            <div class="post-menu-wrapper">
+                <button class="post-menu-trigger" onclick="event.stopPropagation(); CommunityModule.togglePostMenu('${post.id}')" title="Opciones">⋮</button>
+                <div class="post-menu-dropdown" id="post-menu-${post.id}">
+                    <button class="post-menu-item" onclick="CommunityModule.editPost('${post.id}')">
+                        ✏️ Editar
+                    </button>
+                    <button class="post-menu-item post-menu-danger" onclick="CommunityModule.deletePost('${post.id}')">
+                        🗑️ Eliminar
+                    </button>
+                </div>
+            </div>
+        ` : '';
 
         return `
             <div class="community-post card" id="post-${post.id}">
@@ -179,8 +197,9 @@ const CommunityModule = (() => {
                             📍 ${post.fleet_city}
                         </span>
                     ` : ''}
+                    ${postMenu}
                 </div>
-                <div class="community-post-body">${_escapeHTML(post.content)}</div>
+                <div class="community-post-body" id="post-body-${post.id}">${escapedContent}</div>
                 <div class="community-post-footer">
                     <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '👍')"`}>
                         👍 ${post.likes || 0}
@@ -276,6 +295,11 @@ const CommunityModule = (() => {
                 counter.textContent = `${textarea.value.length} / 500`;
             });
         }
+
+        // Close post menus on click outside
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.post-menu-dropdown.open').forEach(m => m.classList.remove('open'));
+        });
 
         // --- Sponsor Carousel ---
         _initSponsorCarousel();
@@ -450,5 +474,76 @@ const CommunityModule = (() => {
         }
     }
 
-    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment };
+    // --- Post Menu (three-dot) ---
+    function togglePostMenu(postId) {
+        const menu = document.getElementById('post-menu-' + postId);
+        if (!menu) return;
+        // Close all other open menus first
+        document.querySelectorAll('.post-menu-dropdown.open').forEach(m => {
+            if (m !== menu) m.classList.remove('open');
+        });
+        menu.classList.toggle('open');
+    }
+
+    // --- Delete Post ---
+    async function deletePost(postId) {
+        // Close menu
+        document.querySelectorAll('.post-menu-dropdown.open').forEach(m => m.classList.remove('open'));
+
+        const confirmed = confirm('¿Estás seguro de que querés eliminar esta publicación?');
+        if (!confirmed) return;
+
+        try {
+            await firebaseDB.ref('community_posts/' + postId).remove();
+            Components.showToast('🗑️ Publicación eliminada', 'success');
+            Router.navigate('community');
+        } catch (e) {
+            console.error('Error al eliminar post:', e);
+            Components.showToast('❌ Error al eliminar', 'danger');
+        }
+    }
+
+    // --- Edit Post (inline) ---
+    function editPost(postId) {
+        // Close menu
+        document.querySelectorAll('.post-menu-dropdown.open').forEach(m => m.classList.remove('open'));
+
+        const body = document.getElementById('post-body-' + postId);
+        if (!body) return;
+
+        const currentText = body.textContent;
+        body.innerHTML = `
+            <textarea class="post-edit-textarea" id="post-edit-text-${postId}" maxlength="500">${_escapeHTML(currentText)}</textarea>
+            <div class="post-edit-actions">
+                <button class="btn btn-sm btn-primary" onclick="CommunityModule.saveEditPost('${postId}')">✅ Guardar Cambios</button>
+                <button class="btn btn-sm btn-ghost" onclick="CommunityModule.cancelEditPost('${postId}', '${encodeURIComponent(currentText)}')">❌ Cancelar</button>
+            </div>
+        `;
+        const ta = document.getElementById('post-edit-text-' + postId);
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    }
+
+    async function saveEditPost(postId) {
+        const ta = document.getElementById('post-edit-text-' + postId);
+        const newText = ta?.value?.trim();
+        if (!newText || newText.length < 3) {
+            Components.showToast('⚠️ El texto debe tener al menos 3 caracteres.', 'warning');
+            return;
+        }
+        try {
+            await firebaseDB.ref('community_posts/' + postId).update({ content: newText });
+            Components.showToast('✅ Publicación editada', 'success');
+            Router.navigate('community');
+        } catch (e) {
+            console.error('Error al editar post:', e);
+            Components.showToast('❌ Error al guardar', 'danger');
+        }
+    }
+
+    function cancelEditPost(postId, encodedOriginal) {
+        const body = document.getElementById('post-body-' + postId);
+        if (body) body.textContent = decodeURIComponent(encodedOriginal);
+    }
+
+    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost };
 })();

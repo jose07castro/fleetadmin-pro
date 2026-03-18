@@ -1149,6 +1149,108 @@
     color: #fca5a5;
 }
 
+/* --- Post Menu (three-dot) --- */
+.post-menu-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: var(--space-2);
+}
+
+.post-menu-trigger {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    transition: all 0.15s ease;
+    line-height: 1;
+    letter-spacing: 1px;
+}
+
+.post-menu-trigger:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.post-menu-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 50;
+    min-width: 150px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: var(--space-1);
+    animation: fadeIn 0.15s ease;
+}
+
+.post-menu-dropdown.open {
+    display: block;
+}
+
+.post-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: none;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    text-align: left;
+}
+
+.post-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.post-menu-danger {
+    color: #f87171;
+}
+
+.post-menu-danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* --- Post Edit Mode (inline) --- */
+.post-edit-textarea {
+    width: 100% !important;
+    min-height: 80px;
+    padding: var(--space-3) !important;
+    background: var(--bg-primary) !important;
+    border: 1px solid rgba(99, 102, 241, 0.4) !important;
+    border-radius: var(--radius-lg) !important;
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: 400 !important;
+    font-family: inherit;
+    line-height: 1.6;
+    resize: vertical;
+    transition: border-color 0.2s ease;
+}
+
+.post-edit-textarea:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.7) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.post-edit-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    justify-content: flex-end;
+}
+
 .community-empty {
     text-align: center;
     padding: var(--space-12) var(--space-6);
