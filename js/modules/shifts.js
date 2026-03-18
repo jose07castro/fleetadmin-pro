@@ -8,6 +8,9 @@ const ShiftsModule = (() => {
 
     let shiftTimer = null;
     let selectedShiftType = 'day'; // 'day' o 'night'
+    let _activeShiftId = null;
+    let _activeVehicleId = null;
+    let _activeVehicleName = '';
 
     function selectShiftType(type) {
         selectedShiftType = type;
@@ -97,6 +100,12 @@ const ShiftsModule = (() => {
     // --- Turno activo ---
     function renderActiveShift(shift, vehicles) {
         const vehicle = vehicles.find(v => v.id === shift.vehicleId);
+        
+        // Guardar datos del turno activo para el SOS FAB
+        _activeShiftId = shift.id;
+        _activeVehicleId = shift.vehicleId;
+        _activeVehicleName = vehicle ? `${vehicle.name} — ${vehicle.plate}` : '';
+
         const startTime = new Date(shift.startTime);
         const shiftDuration = 12 * 60 * 60 * 1000; // 12 horas en ms
         const endTime = new Date(startTime.getTime() + shiftDuration);
@@ -685,5 +694,7 @@ const ShiftsModule = (() => {
         );
     }
 
-    return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm };
+    return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
+        getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName })
+    };
 })();

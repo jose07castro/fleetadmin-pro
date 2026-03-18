@@ -26,6 +26,8 @@ const Components = (() => {
                         ${content}
                     </div>
                 </div>
+                ${renderMobileBottomNav(activeRoute, role)}
+                ${role === 'driver' ? renderSOSFab() : ''}
             </div>
         `;
     }
@@ -105,6 +107,53 @@ const Components = (() => {
             ]
         };
         return items[role] || [];
+    }
+
+    // --- Mobile bottom navigation bar ---
+    function renderMobileBottomNav(activeRoute, role) {
+        const mobileItems = {
+            owner: [
+                { icon: '📊', label: 'Panel', route: 'dashboard' },
+                { icon: '⏱️', label: 'Turnos', route: 'shifts' },
+                { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '⚙️', label: 'Config', route: 'settings' }
+            ],
+            driver: [
+                { icon: '⏱️', label: 'Turnos', route: 'shifts' },
+                { icon: '🛢️', label: 'Aceite', route: 'oil' },
+                { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '⚙️', label: 'Config', route: 'settings' }
+            ],
+            mechanic: [
+                { icon: '🔧', label: 'Taller', route: 'maintenance' },
+                { icon: '⚙️', label: 'Config', route: 'settings' }
+            ]
+        };
+        const items = mobileItems[role] || [];
+
+        return `
+            <nav class="mobile-bottom-nav">
+                ${items.map(item => `
+                    <div class="mobile-nav-item ${activeRoute === item.route ? 'active' : ''}" 
+                         onclick="Router.navigate('${item.route}')">
+                        <span class="mobile-nav-icon">${item.icon}</span>
+                        <span class="mobile-nav-label">${item.label}</span>
+                    </div>
+                `).join('')}
+            </nav>
+        `;
+    }
+
+    // --- SOS Floating Action Button (drivers only, mobile) ---
+    function renderSOSFab() {
+        return `
+            <button class="sos-fab" onclick="(function(){
+                var d = typeof ShiftsModule !== 'undefined' ? ShiftsModule.getActiveShiftData() : {};
+                SOSModule.triggerSOS(d.shiftId || '', d.vehicleId || '', d.vehicleName || '');
+            })()" title="SOS Emergencia">
+                🆘
+            </button>
+        `;
     }
 
     // --- Header ---
