@@ -1,31 +1,33 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v36';
+const CACHE_NAME = 'fleetadmin-v41';
 const ASSETS = [
     './',
-    './index.html?v=36',
-    './css/index.css?v=36',
-    './css/components.css?v=36',
-    './css/modules.css?v=36',
-    './js/i18n.js?v=36',
-    './js/firebase-config.js?v=36',
-    './js/db.js?v=36',
-    './js/units.js?v=36',
-    './js/auth.js?v=36',
-    './js/alerts.js?v=36',
-    './js/components.js?v=36',
-    './js/router.js?v=36',
-    './js/modules/login.js?v=36',
-    './js/modules/dashboard.js?v=36',
-    './js/modules/shifts.js?v=36',
-    './js/modules/maintenance.js?v=36',
-    './js/modules/vehicles.js?v=36',
-    './js/modules/settings.js?v=36',
-    './js/whatsapp.js?v=36',
-    './js/storage.js?v=36',
-    './js/modules/gps.js?v=36',
-    './js/notifications.js?v=36',
-    './js/app.js?v=36',
-    './manifest.json?v=36',
+    './index.html?v=41',
+    './css/index.css?v=41',
+    './css/components.css?v=41',
+    './css/modules.css?v=41',
+    './js/i18n.js?v=41',
+    './js/firebase-config.js?v=41',
+    './js/db.js?v=41',
+    './js/units.js?v=41',
+    './js/auth.js?v=41',
+    './js/alerts.js?v=41',
+    './js/components.js?v=41',
+    './js/router.js?v=41',
+    './js/modules/login.js?v=41',
+    './js/modules/dashboard.js?v=41',
+    './js/modules/shifts.js?v=41',
+    './js/modules/maintenance.js?v=41',
+    './js/modules/vehicles.js?v=41',
+    './js/modules/settings.js?v=41',
+    './js/modules/community.js?v=41',
+    './js/modules/sos.js?v=41',
+    './js/whatsapp.js?v=41',
+    './js/storage.js?v=41',
+    './js/modules/gps.js?v=41',
+    './js/notifications.js?v=41',
+    './js/app.js?v=41',
+    './manifest.json?v=41',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -102,7 +104,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=36')
+                return caches.match('./index.html?v=41')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }
