@@ -152,6 +152,8 @@ const App = (() => {
     }
 
     // --- Reconexión al volver del segundo plano (móvil) ---
+    let _lastResumeTime = 0;
+
     function setupReconnectionHandler() {
         // Al volver a la pestaña (después de que el SO la mató o puso en background)
         document.addEventListener('visibilitychange', () => {
@@ -161,9 +163,19 @@ const App = (() => {
             }
         });
 
+        // Algunos mobile browsers disparan pageshow en lugar de visibilitychange
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                console.log('📱 Página restaurada desde bfcache');
+                _restoreSessionOnResume();
+            }
+        });
+
         // Al recuperar conexión WiFi/datos
         window.addEventListener('online', () => {
             console.log('🌐 Conexión recuperada');
+            // Forzar reconexión de Firebase
+            try { firebase.database().goOnline(); } catch(e) {}
             if (Auth.isLoggedIn()) {
                 const currentRoute = Router.getCurrentRoute();
                 if (currentRoute && currentRoute !== 'login') {
@@ -171,12 +183,22 @@ const App = (() => {
                 }
             }
         });
+
+        // Al perder conexión
+        window.addEventListener('offline', () => {
+            console.warn('📱 Sin conexión — modo offline');
+        });
     }
 
     // Restaurar sesión y refrescar vista si estamos logueados
     async function _restoreSessionOnResume() {
+        // Debounce: no restaurar más de 1 vez cada 3 segundos 
+        const now = Date.now();
+        if (now - _lastResumeTime < 3000) return;
+        _lastResumeTime = now;
+
         try {
-            // Forzar re-lectura de localStorage (el SO pudo haberla limpiado de RAM)
+            // 1. Forzar re-lectura de localStorage
             const user = Auth.getUser();
             if (!user) {
                 console.warn('📱 No hay sesión guardada — redirigir a login');
@@ -184,15 +206,30 @@ const App = (() => {
                 return;
             }
 
-            // Asegurar que el fleetId está configurado
+            console.log('📱 Sesión encontrada:', user.name, '| Rol:', user.role, '| Fleet:', user.fleetId);
+
+            // 2. Asegurar que el fleetId está configurado
             if (user.fleetId) {
                 DB.setFleet(user.fleetId);
             }
 
-            // Re-verificar conectividad con Firebase
+            // 3. Reconectar Firebase Realtime Database
+            try {
+                firebase.database().goOnline();
+                console.log('📱 Firebase DB reconectada');
+            } catch (e) {
+                console.warn('📱 No se pudo reconectar Firebase:', e);
+            }
+
+            // 4. Re-verificar conectividad con Firebase
             await DB.open();
 
-            // Refrescar la vista actual (esto re-obtiene turnos activos del DB)
+            // 5. Reiniciar realtime sync si no está activa
+            if (!realtimeListenersActive) {
+                startRealtimeSync();
+            }
+
+            // 6. Refrescar la vista actual (esto re-obtiene datos del DB)
             const currentRoute = Router.getCurrentRoute();
             if (currentRoute && currentRoute !== 'login') {
                 console.log(`📱 Restaurando vista: ${currentRoute}`);
@@ -200,6 +237,7 @@ const App = (() => {
             }
         } catch (e) {
             console.warn('📱 Error al restaurar sesión:', e);
+            // No forzar logout, el usuario puede seguir offline
         }
     }
 

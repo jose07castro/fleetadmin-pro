@@ -299,6 +299,13 @@ const ShiftsModule = (() => {
 
     // --- Iniciar turno ---
     async function startShift() {
+        // Guard: verificar sesión activa
+        if (!Auth.isLoggedIn()) {
+            alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
+            Router.navigate('login');
+            return;
+        }
+
         const vehicleId = document.getElementById('shiftVehicle')?.value;
         const odoStart = parseFloat(document.getElementById('shiftOdometerStart')?.value);
         const photo = Components.getPhotoData('shiftOdoStart');
@@ -388,6 +395,13 @@ const ShiftsModule = (() => {
 
     // --- Finalizar turno ---
     async function endShift(shiftId) {
+        // Guard: verificar sesión activa
+        if (!Auth.isLoggedIn()) {
+            alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
+            Router.navigate('login');
+            return;
+        }
+
         const odoEnd = parseFloat(document.getElementById('shiftOdometerEnd')?.value);
         const earnings = parseFloat(document.getElementById('shiftEarnings')?.value) || 0;
         const odoPhoto = Components.getPhotoData('shiftOdoEnd');
