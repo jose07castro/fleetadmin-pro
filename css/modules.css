@@ -1063,6 +1063,92 @@
     color: var(--text-primary);
 }
 
+/* --- Comment Box (inline per post) --- */
+.community-comment-box {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-color);
+    animation: fadeIn 0.2s ease;
+}
+
+.comment-input-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.comment-input {
+    flex: 1;
+    padding: var(--space-2) var(--space-3) !important;
+    background: var(--bg-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-full) !important;
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-xs) !important;
+    font-weight: 400 !important;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.comment-input:focus {
+    border-color: rgba(99, 102, 241, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.08);
+}
+
+.comment-input::placeholder {
+    color: var(--text-tertiary) !important;
+    font-weight: 400 !important;
+    font-size: var(--font-size-xs) !important;
+}
+
+.comment-send-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: var(--gradient-primary);
+    color: white;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.25);
+}
+
+.comment-send-btn:hover {
+    filter: brightness(1.15);
+    transform: scale(1.05);
+}
+
+/* --- Category Badge on Posts --- */
+.community-category-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin-left: var(--space-2);
+    vertical-align: middle;
+    letter-spacing: 0.03em;
+}
+
+.community-cat-debate {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--color-primary-light);
+}
+
+.community-cat-consulta {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+.community-cat-alerta {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+
 .community-empty {
     text-align: center;
     padding: var(--space-12) var(--space-6);

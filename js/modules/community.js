@@ -57,6 +57,7 @@ const CommunityModule = (() => {
     ];
 
     let _sponsorInterval = null;
+    let _selectedCategory = '';
 
     async function render() {
         const posts = await _getPosts();
@@ -104,13 +105,13 @@ const CommunityModule = (() => {
                             <div class="compose-card-divider"></div>
                             <div class="compose-card-actions">
                                 <div class="compose-card-categories">
-                                    <button class="compose-category-btn" data-category="debate" title="Debate">
-                                        💬 Debate
+                                    <button class="compose-category-btn" data-category="debate" onclick="CommunityModule.selectCategory('debate')">
+                                        🗣️ Debate
                                     </button>
-                                    <button class="compose-category-btn" data-category="consulta" title="Consulta">
+                                    <button class="compose-category-btn" data-category="consulta" onclick="CommunityModule.selectCategory('consulta')">
                                         ❓ Consulta
                                     </button>
-                                    <button class="compose-category-btn" data-category="alerta" title="Alerta">
+                                    <button class="compose-category-btn" data-category="alerta" onclick="CommunityModule.selectCategory('alerta')">
                                         🚨 Alerta
                                     </button>
                                 </div>
@@ -163,12 +164,14 @@ const CommunityModule = (() => {
         const timeAgo = _timeAgo(date);
         const initial = (post.author_name || '?')[0].toUpperCase();
 
+        const categoryBadge = post.category ? `<span class="community-category-badge community-cat-${post.category}">${post.category === 'debate' ? '🗣️ Debate' : post.category === 'consulta' ? '❓ Consulta' : '🚨 Alerta'}</span>` : '';
+
         return `
-            <div class="community-post card">
+            <div class="community-post card" id="post-${post.id}">
                 <div class="community-post-header">
                     <div class="community-avatar">${initial}</div>
                     <div style="flex:1;">
-                        <div class="community-post-author">${post.author_name || 'Anónimo'}</div>
+                        <div class="community-post-author">${post.author_name || 'Anónimo'} ${categoryBadge}</div>
                         <div class="community-post-time">${timeAgo}</div>
                     </div>
                     ${post.fleet_city ? `
@@ -185,9 +188,18 @@ const CommunityModule = (() => {
                     <button class="community-react-btn" ${isMock ? '' : `onclick="CommunityModule.reactToPost('${post.id}', '💡')"`}>
                         💡 ${post.insights || 0}
                     </button>
-                    <button class="community-react-btn">
+                    <button class="community-react-btn" onclick="CommunityModule.toggleComment('${post.id}')">
                         💬 Comentar
                     </button>
+                </div>
+                <div class="community-comment-box" id="comment-box-${post.id}" style="display:none;">
+                    <div class="comment-input-row">
+                        <input type="text" class="comment-input" id="comment-input-${post.id}"
+                            placeholder="Escribí tu comentario..." maxlength="280" />
+                        <button class="comment-send-btn" onclick="CommunityModule.submitComment('${post.id}')">
+                            ➤
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -220,6 +232,7 @@ const CommunityModule = (() => {
                 author_name: Auth.getUserName(),
                 fleet_id: Auth.getFleetId(),
                 fleet_city: fleetCity,
+                category: _selectedCategory || '',
                 content: content,
                 likes: 0,
                 insights: 0
@@ -263,16 +276,6 @@ const CommunityModule = (() => {
                 counter.textContent = `${textarea.value.length} / 500`;
             });
         }
-
-        // Category buttons toggle
-        document.querySelectorAll('.compose-category-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                btn.classList.toggle('active');
-                document.querySelectorAll('.compose-category-btn').forEach(b => {
-                    if (b !== btn) b.classList.remove('active');
-                });
-            });
-        });
 
         // --- Sponsor Carousel ---
         _initSponsorCarousel();
@@ -393,5 +396,59 @@ const CommunityModule = (() => {
         return div.innerHTML;
     }
 
-    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor };
+    // --- Selección de categoría ---
+    function selectCategory(cat) {
+        if (_selectedCategory === cat) {
+            _selectedCategory = '';
+        } else {
+            _selectedCategory = cat;
+        }
+        // Update button highlights
+        document.querySelectorAll('.compose-category-btn').forEach(btn => {
+            const btnCat = btn.getAttribute('data-category');
+            btn.classList.toggle('active', btnCat === _selectedCategory);
+        });
+    }
+
+    // --- Toggle comment box en un post ---
+    function toggleComment(postId) {
+        const box = document.getElementById('comment-box-' + postId);
+        if (!box) return;
+        const isVisible = box.style.display !== 'none';
+        box.style.display = isVisible ? 'none' : 'block';
+        if (!isVisible) {
+            const input = document.getElementById('comment-input-' + postId);
+            if (input) input.focus();
+        }
+    }
+
+    // --- Enviar comentario (simulado) ---
+    async function submitComment(postId) {
+        const input = document.getElementById('comment-input-' + postId);
+        const text = input?.value?.trim();
+        if (!text || text.length < 2) {
+            Components.showToast('⚠️ Escribí al menos 2 caracteres.', 'warning');
+            return;
+        }
+        try {
+            const userName = Auth.getUserName() || 'Anónimo';
+            const commentData = {
+                author: userName,
+                text: text,
+                created_at: new Date().toISOString()
+            };
+            const ref = firebaseDB.ref(`community_posts/${postId}/comments`).push();
+            await ref.set(commentData);
+            input.value = '';
+            Components.showToast('✅ Comentario enviado', 'success');
+            // Ocultar caja después de enviar
+            const box = document.getElementById('comment-box-' + postId);
+            if (box) box.style.display = 'none';
+        } catch (e) {
+            console.error('Error al comentar:', e);
+            Components.showToast('❌ Error al comentar', 'danger');
+        }
+    }
+
+    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment };
 })();
