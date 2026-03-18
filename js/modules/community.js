@@ -81,6 +81,15 @@ const CommunityModule = (() => {
         // Count user interactions for gamification
         await _countUserInteractions();
 
+        const role = Auth.getRole();
+        const isDriver = role === 'driver';
+        const communityTitle = isDriver ? '\ud83d\udcac Comunidad de Choferes' : '\ud83d\udcac Comunidad de Due\u00f1os';
+        const communitySubtitle = isDriver
+            ? 'Compart\u00ed el estado de la calle, alertas y novedades con tus compa\u00f1eros de ruta.'
+            : 'Compart\u00ed experiencias, consejos y novedades con otros administradores de flota.';
+        const backRoute = isDriver ? 'shifts' : 'dashboard';
+        const backLabel = isDriver ? '\u2190 Volver a Turnos' : '\u2190 Volver al Panel';
+
         return `
         <div class="community-wall">
             <!-- Columna principal del feed (70%) -->
@@ -88,14 +97,14 @@ const CommunityModule = (() => {
                 <div class="community-header">
                     <div>
                         <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-1);">
-                            💬 Comunidad de Dueños
+                            ${communityTitle}
                         </h2>
                         <p style="color:var(--text-secondary); font-size:var(--font-size-sm);">
-                            Compartí experiencias, consejos y novedades con otros administradores de flota
+                            ${communitySubtitle}
                         </p>
                     </div>
-                    <button class="btn btn-ghost" onclick="Router.navigate('dashboard')" style="flex-shrink:0;">
-                        ← Volver al Panel
+                    <button class="btn btn-ghost" onclick="Router.navigate('${backRoute}')" style="flex-shrink:0;">
+                        ${backLabel}
                     </button>
                 </div>
 
