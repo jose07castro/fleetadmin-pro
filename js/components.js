@@ -96,6 +96,7 @@ const Components = (() => {
             driver: [
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'ops' },
+                { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
                 { icon: '⚙️', label: 'nav_settings', route: 'settings', section: 'mgmt' },
             ],
             mechanic: [
@@ -116,7 +117,8 @@ const Components = (() => {
             mechanic: 'nav_mechanic',
             oil: 'nav_oil',
             gps: 'nav_gps',
-            settings: 'nav_settings'
+            settings: 'nav_settings',
+            community: 'nav_community'
         };
 
         return `

@@ -106,7 +106,7 @@ const Auth = (() => {
 
         const permissions = {
             owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community'],
-            driver: ['shifts', 'oil', 'settings'],
+            driver: ['shifts', 'oil', 'settings', 'community'],
             mechanic: ['maintenance', 'settings']
         };
 

@@ -1,7 +1,9 @@
 /* ============================================
-   FleetAdmin Pro — Comunidad de Dueños
-   Feed social para administradores de flota
+   FleetAdmin Pro — Comunidad
+   Feed social para administradores y choferes
    Datos globales en /community_posts/
+   Aislamiento por rol: dueños ven posts de dueños,
+   choferes ven posts de choferes.
    ============================================ */
 
 const CommunityModule = (() => {
@@ -312,6 +314,7 @@ const CommunityModule = (() => {
                 category: _selectedCategory || '',
                 content: content,
                 image_url: imageUrl,
+                targetAudience: Auth.getRole() || 'owner',
                 likes: 0,
                 insights: 0
             };
@@ -497,12 +500,21 @@ const CommunityModule = (() => {
         try {
             const snap = await firebaseDB.ref('community_posts')
                 .orderByChild('created_at')
-                .limitToLast(50)
+                .limitToLast(100)
                 .once('value');
             const val = snap.val();
             if (!val) return [];
+
+            // Filtrar por rol del usuario activo
+            const userRole = Auth.getRole() || 'owner';
             return Object.values(val)
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                .filter(p => {
+                    // Posts sin targetAudience (legacy) se muestran a owners
+                    if (!p.targetAudience) return userRole === 'owner';
+                    return p.targetAudience === userRole;
+                })
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                .slice(0, 50);
         } catch (e) {
             console.warn('Error cargando posts de comunidad:', e);
             return [];
