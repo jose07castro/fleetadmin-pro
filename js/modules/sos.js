@@ -156,60 +156,59 @@ const SOSModule = (() => {
         }
     }
 
+    // =============================================
+    // 🔊 SIRENA SOS — Web Audio API (PRIMARIA)
+    // No depende de archivos externos ni red
+    // Genera una sirena real oscilando 400-800Hz
+    // =============================================
+    let _sirenInterval = null;
+
     function _initAlarm() {
-        if (_sosAlarm) return;
-        try {
-            _sosAlarm = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
-            _sosAlarm.loop = true;
-            _sosAlarm.volume = 1.0;
-            _sosAlarm.preload = 'auto';
-
-            // Error handler para problemas de red/CORS
-            _sosAlarm.addEventListener('error', (e) => {
-                const mediaErr = _sosAlarm.error;
-                console.error('🚨 SOS ALARM: ❌ Error cargando audio:',
-                    mediaErr ? `code=${mediaErr.code} msg=${mediaErr.message}` : e);
-            });
-
-            console.log('🚨 SOS ALARM: Audio inicializado (OGG)');
-        } catch (e) {
-            console.error('🚨 SOS ALARM: ❌ No se pudo crear Audio:', e.name, e.message);
-            _sosAlarm = null;
+        // Legacy: intentar crear HTML5 Audio como SECUNDARIO (best-effort)
+        if (!_sosAlarm) {
+            try {
+                _sosAlarm = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+                _sosAlarm.loop = true;
+                _sosAlarm.volume = 1.0;
+                _sosAlarm.preload = 'auto';
+                _sosAlarm.addEventListener('error', () => {
+                    console.warn('🚨 SOS ALARM: HTML5 Audio no disponible (OGG) — usando Web Audio API');
+                    _sosAlarm = null;
+                });
+            } catch (e) {
+                _sosAlarm = null;
+            }
         }
     }
 
     function _startAlarm() {
-        _initAlarm();
+        console.log('🚨 SOS ALARM: 🚀 Iniciando alarma...');
 
         // VIBRACIÓN FÍSICA (funciona incluso con audio bloqueado)
         _startVibration();
 
-        // Intento 1: HTML5 Audio
+        // ========================================
+        // MÉTODO PRIMARIO: Web Audio API Siren
+        // No requiere archivos externos ni red
+        // ========================================
+        _startWebAudioSiren();
+
+        // MÉTODO SECUNDARIO: HTML5 Audio (best-effort, puede fallar)
+        _initAlarm();
         if (_sosAlarm) {
             try {
                 _sosAlarm.currentTime = 0;
-                const playPromise = _sosAlarm.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        console.log('🚨 SOS ALARM: 🔊 Sirena OGG activada');
-                    }).catch(err => {
-                        console.error('🚨 SOS ALARM: ❌ play() falló:', err.name, '-', err.message);
-                        // Fallback: Web Audio API beep
-                        _startFallbackBeep();
-                    });
-                }
-                return;
-            } catch (e) {
-                console.error('🚨 SOS ALARM: ❌ Error en play():', e.name, e.message);
-            }
+                const p = _sosAlarm.play();
+                if (p) p.catch(() => { /* ignorar — Web Audio API ya está sonando */ });
+            } catch (e) { /* ignorar */ }
         }
-
-        // Intento 2: Web Audio API fallback
-        _startFallbackBeep();
     }
 
-    // Fallback: genera un beep con Web Audio API (no requiere URL ni red)
-    function _startFallbackBeep() {
+    // Sirena con Web Audio API — oscila entre 400Hz y 800Hz
+    function _startWebAudioSiren() {
+        // Limpiar sirena anterior si existe
+        _stopWebAudioSiren();
+
         try {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             if (!AudioCtx) {
@@ -218,59 +217,76 @@ const SOSModule = (() => {
             }
 
             _fallbackAudioCtx = new AudioCtx();
+
+            // Resumir contexto si está suspendido (requiere interacción previa del usuario)
+            if (_fallbackAudioCtx.state === 'suspended') {
+                _fallbackAudioCtx.resume().catch(() => {});
+            }
+
             _fallbackOscillator = _fallbackAudioCtx.createOscillator();
             const gainNode = _fallbackAudioCtx.createGain();
 
             _fallbackOscillator.type = 'square';
-            _fallbackOscillator.frequency.setValueAtTime(800, _fallbackAudioCtx.currentTime);
-            gainNode.gain.setValueAtTime(0.3, _fallbackAudioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.5, _fallbackAudioCtx.currentTime);
 
             _fallbackOscillator.connect(gainNode);
             gainNode.connect(_fallbackAudioCtx.destination);
-            _fallbackOscillator.start();
 
-            // Modular frecuencia para efecto sirena
+            // Programar efecto sirena: oscila 400Hz ↔ 800Hz cada 0.5s durante 120s
             const now = _fallbackAudioCtx.currentTime;
-            _fallbackOscillator.frequency.setValueAtTime(800, now);
-            _fallbackOscillator.frequency.linearRampToValueAtTime(1200, now + 0.5);
-            _fallbackOscillator.frequency.linearRampToValueAtTime(800, now + 1.0);
-            // Repetir efecto sirena
-            for (let i = 1; i < 60; i++) {
-                _fallbackOscillator.frequency.linearRampToValueAtTime(1200, now + i + 0.5);
-                _fallbackOscillator.frequency.linearRampToValueAtTime(800, now + i + 1.0);
+            for (let i = 0; i < 120; i++) {
+                _fallbackOscillator.frequency.setValueAtTime(400, now + i);
+                _fallbackOscillator.frequency.linearRampToValueAtTime(800, now + i + 0.5);
+                _fallbackOscillator.frequency.linearRampToValueAtTime(400, now + i + 1.0);
             }
 
-            console.log('🚨 SOS ALARM: 🔊 Fallback beep (Web Audio API) activado');
+            _fallbackOscillator.start();
+
+            // Safety: auto-detener después de 120 segundos
+            _sirenInterval = setTimeout(() => {
+                console.log('🚨 SOS ALARM: ⏱️ Auto-stop después de 120s');
+                _stopWebAudioSiren();
+            }, 120000);
+
+            console.log('🚨 SOS ALARM: 🔊✅ Sirena Web Audio API ACTIVADA (400-800Hz)');
         } catch (e) {
-            console.error('🚨 SOS ALARM: ❌ Fallback beep falló:', e.name, e.message);
+            console.error('🚨 SOS ALARM: ❌ Web Audio API falló:', e.name, e.message);
+        }
+    }
+
+    function _stopWebAudioSiren() {
+        if (_sirenInterval) {
+            clearTimeout(_sirenInterval);
+            _sirenInterval = null;
+        }
+        if (_fallbackOscillator) {
+            try {
+                _fallbackOscillator.stop();
+                _fallbackOscillator.disconnect();
+            } catch (e) { /* ignorar */ }
+            _fallbackOscillator = null;
+        }
+        if (_fallbackAudioCtx) {
+            try {
+                _fallbackAudioCtx.close();
+            } catch (e) { /* ignorar */ }
+            _fallbackAudioCtx = null;
         }
     }
 
     function _stopAlarm() {
         // Parar vibración
         _stopVibration();
-        // Parar HTML5 Audio
+        // Parar Web Audio API siren (PRIMARIA)
+        _stopWebAudioSiren();
+        // Parar HTML5 Audio (SECUNDARIA)
         if (_sosAlarm) {
             try {
                 _sosAlarm.pause();
                 _sosAlarm.currentTime = 0;
             } catch (e) { /* ignorar */ }
         }
-        // Parar Web Audio API fallback
-        if (_fallbackOscillator) {
-            try {
-                _fallbackOscillator.stop();
-                _fallbackOscillator.disconnect();
-                _fallbackOscillator = null;
-            } catch (e) { /* ignorar */ }
-        }
-        if (_fallbackAudioCtx) {
-            try {
-                _fallbackAudioCtx.close();
-                _fallbackAudioCtx = null;
-            } catch (e) { /* ignorar */ }
-        }
-        console.log('🚨 SOS ALARM: 🔇 Alarma detenida (audio + vibración)');
+        console.log('🚨 SOS ALARM: 🔇 Alarma detenida (siren + vibración)');
     }
 
     // =============================================
