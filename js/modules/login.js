@@ -132,6 +132,11 @@ const LoginModule = (() => {
                 errorEl.style.display = 'none';
                 App.startRealtimeSync();
 
+                // Activar listener SOS para TODOS los roles
+                if (typeof SOSModule !== 'undefined') {
+                    SOSModule.startListening();
+                }
+
                 // BLOQUEO DE PERFIL INCOMPLETO — verificar ANTES de navegar
                 if (Auth.isDriver()) {
                     const profileOk = await Auth.isProfileComplete();

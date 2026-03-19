@@ -49,8 +49,8 @@ const App = (() => {
                     if (typeof Notifications !== 'undefined') {
                         Notifications.init();
                     }
-                    // 8. Activar listener SOS para dueños
-                    if (typeof SOSModule !== 'undefined' && Auth.isOwner()) {
+                    // 8. Activar listener SOS para TODOS (dueños y conductores)
+                    if (typeof SOSModule !== 'undefined') {
                         SOSModule.startListening();
                     }
                 } else {
