@@ -2,7 +2,7 @@
    FleetAdmin Pro — Módulo SOS
    Botón de emergencia con GPS tracker + fallback
    Alertas en tiempo real vía Firebase
-   v46 — Alarma sonora al recibir SOS
+   v48 — Radar 30km geoespacial + alarma sonora
    ============================================ */
 
 const SOSModule = (() => {
@@ -18,6 +18,9 @@ const SOSModule = (() => {
 
     let _currentAlertId = null;
     let _sosListenerRef = null;
+    let _positionWatchId = null;
+    let _positionInterval = null;
+    let _myLastPosition = null; // { lat, lng }
 
     // =============================================
     // ALARMA SONORA (loop hasta que el dueño reaccione)
@@ -311,17 +314,101 @@ const SOSModule = (() => {
     }
 
     // =============================================
-    // LISTENER DEL DUEÑO — escucha alertas SOS en tiempo real
+    // HAVERSINE — distancia en km entre dos coordenadas
     // =============================================
+    function _haversineKm(lat1, lng1, lat2, lng2) {
+        const R = 6371; // Radio de la Tierra en km
+        const toRad = (deg) => deg * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                  Math.sin(dLng / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // =============================================
+    // TRACKING DE POSICIÓN DEL CONDUCTOR
+    // =============================================
+    function _startPositionTracking() {
+        const userId = Auth.getUserId() || Auth.getUserName();
+        if (!userId || !navigator.geolocation) {
+            console.warn('🚨 SOS POSITION: Sin geolocation o userId');
+            return;
+        }
+
+        console.log('🚨 SOS POSITION: Iniciando tracking para', userId);
+
+        // Guardar posición inmediatamente
+        _savePosition(userId);
+
+        // Actualizar cada 60 segundos
+        _positionInterval = setInterval(() => _savePosition(userId), 60000);
+
+        // Watch para actualización continua en memoria
+        try {
+            _positionWatchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    _myLastPosition = {
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude
+                    };
+                },
+                (err) => {
+                    console.warn('🚨 SOS POSITION: watchPosition error:', err.message);
+                },
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 }
+            );
+        } catch (e) {
+            console.warn('🚨 SOS POSITION: watchPosition no disponible:', e);
+        }
+    }
+
+    async function _savePosition(userId) {
+        try {
+            const pos = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+                    (e) => reject(e),
+                    { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
+                );
+            });
+            _myLastPosition = pos;
+            await firebaseDB.ref(`driver_positions/${userId}`).set({
+                lat: pos.lat,
+                lng: pos.lng,
+                updated_at: new Date().toISOString()
+            });
+            console.log('🚨 SOS POSITION: ✅ Guardada:', pos.lat.toFixed(4), pos.lng.toFixed(4));
+        } catch (e) {
+            console.warn('🚨 SOS POSITION: Error guardando posición:', e.message || e);
+        }
+    }
+
+    function _stopPositionTracking() {
+        if (_positionWatchId !== null) {
+            navigator.geolocation.clearWatch(_positionWatchId);
+            _positionWatchId = null;
+        }
+        if (_positionInterval) {
+            clearInterval(_positionInterval);
+            _positionInterval = null;
+        }
+        console.log('🚨 SOS POSITION: Tracking detenido');
+    }
+
+    // =============================================
+    // LISTENER DUAL — Dueños (siempre) + Conductores (radar 30km)
+    // =============================================
+    const SOS_RADIUS_KM = 30;
+
     function startListening() {
         const fleetId = Auth.getFleetId();
         const isOwner = Auth.isOwner();
-        console.log('🚨 SOS LISTENER: Intentando activar. isOwner:', isOwner, '| fleetId:', fleetId);
-
-        if (!isOwner) {
-            console.log('🚨 SOS LISTENER: No es dueño, no se activa');
-            return;
-        }
+        const role = Auth.getRole();
+        const myUserId = Auth.getUserId() || Auth.getUserName();
+        console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId);
 
         // Limpiar listener anterior si existe
         if (_sosListenerRef) {
@@ -329,51 +416,83 @@ const SOSModule = (() => {
             _sosListenerRef.off('child_added');
         }
 
-        // Escuchar TODOS los sos_alerts nuevos (sin filtro orderByChild para evitar problemas de índice)
+        // Si es conductor, iniciar tracking de posición
+        if (!isOwner) {
+            _startPositionTracking();
+        }
+
         _sosListenerRef = firebaseDB.ref('sos_alerts');
-        
-        // Usar limitToLast(1) + on('child_added') para solo captar nuevas alertas
-        // Primero, registrar la marca de tiempo actual para ignorar alertas viejas
         const _listenerStartTime = Date.now();
         console.log('🚨 SOS LISTENER: Start time:', new Date(_listenerStartTime).toISOString());
 
         _sosListenerRef.on('child_added', (snap) => {
             const alertData = snap.val();
-            if (!alertData) {
-                console.log('🚨 SOS LISTENER: Snap sin datos, ignorando');
-                return;
-            }
+            if (!alertData) return;
 
-            console.log('🚨 SOS LISTENER: child_added recibido:', snap.key);
-            console.log('🚨 SOS LISTENER: alertData.fleetId:', alertData.fleetId, '| mi fleetId:', fleetId);
-            console.log('🚨 SOS LISTENER: alertData.status:', alertData.status);
-            console.log('🚨 SOS LISTENER: alertData.created_at:', alertData.created_at);
+            console.log('🚨 SOS LISTENER: child_added:', snap.key, '| status:', alertData.status);
 
             // Filtrar: solo alertas activas
-            if (alertData.status !== 'active') {
-                console.log('🚨 SOS LISTENER: ⏩ Estado no es "active", ignorando');
-                return;
-            }
+            if (alertData.status !== 'active') return;
 
-            // Filtrar: solo de mi flota (si tenemos fleetId, sino mostrar todas)
-            if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
-                console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide, ignorando');
-                return;
-            }
-
-            // Filtrar: solo alertas creadas DESPUÉS de que empezamos a escuchar
+            // Filtrar: solo alertas nuevas (creadas después del listener)
             const alertTime = new Date(alertData.created_at).getTime();
-            if (alertTime < _listenerStartTime - 5000) { // 5s de gracia
-                console.log('🚨 SOS LISTENER: ⏩ Alerta vieja (antes del listener), ignorando');
+            if (alertTime < _listenerStartTime - 5000) return;
+
+            // ====================================
+            // 👑 DUEÑO: SIEMPRE recibe alertas de su flota
+            // ====================================
+            if (isOwner) {
+                // Filtrar por flota
+                if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
+                    console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide (owner)');
+                    return;
+                }
+                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando + alarma...');
+                _startAlarm();
+                _showOwnerSOSNotification(alertData);
                 return;
             }
 
-            console.log('🚨 SOS LISTENER: ✅✅✅ ¡ALERTA VÁLIDA RECIBIDA! Mostrando notificación + alarma...');
+            // ====================================
+            // 🚗 CONDUCTOR: Solo si está dentro del RADAR 30km
+            // ====================================
+
+            // No mostrar mi propia alerta SOS
+            if (alertData.driverId === myUserId) {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Es mi propia alerta, ignorando');
+                return;
+            }
+
+            // Si la alerta no tiene coordenadas, no podemos calcular distancia
+            if (!alertData.lat || !alertData.lng) {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Alerta sin coordenadas, no se puede calcular distancia');
+                return;
+            }
+
+            // Si no tengo posición guardada, no puedo filtrar por distancia
+            if (!_myLastPosition) {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Sin posición propia, no puedo calcular radar');
+                return;
+            }
+
+            const distKm = _haversineKm(
+                _myLastPosition.lat, _myLastPosition.lng,
+                alertData.lat, alertData.lng
+            );
+
+            console.log(`🚨 SOS LISTENER (DRIVER): Distancia al SOS: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
+
+            if (distKm > SOS_RADIUS_KM) {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
+                return;
+            }
+
+            console.log('🚨 SOS LISTENER (DRIVER): ✅ ¡DENTRO DEL RADAR! Mostrando alerta + alarma...');
             _startAlarm();
-            _showOwnerSOSNotification(alertData);
+            _showOwnerSOSNotification(alertData, distKm);
         });
 
-        console.log('🚨 SOS LISTENER: ✅ Listener activado para dueño en sos_alerts/');
+        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'}`);
     }
 
     function stopListening() {
@@ -382,17 +501,24 @@ const SOSModule = (() => {
             _sosListenerRef = null;
             console.log('🚨 SOS LISTENER: Desactivado');
         }
+        _stopPositionTracking();
     }
 
     // =============================================
-    // Notificación al dueño
+    // Notificación SOS (dueño o conductor cercano)
     // =============================================
-    function _showOwnerSOSNotification(alert) {
-        console.log('🚨 SOS OWNER: Mostrando modal de alerta para:', alert.driverName);
+    function _showOwnerSOSNotification(alert, distKm) {
+        const isOwner = Auth.isOwner();
+        const roleLabel = isOwner ? 'DUEÑO' : 'CONDUCTOR';
+        console.log(`🚨 SOS ${roleLabel}: Mostrando modal de alerta para:`, alert.driverName);
 
         const mapsLink = alert.mapsUrl
             ? `<a href="${alert.mapsUrl}" target="_blank" style="color:var(--color-primary); font-weight:700;">📍 Ver en Google Maps</a>`
             : '<span style="color:var(--text-tertiary);">📍 Ubicación no disponible</span>';
+
+        const distInfo = (distKm !== undefined && distKm !== null)
+            ? `<br/>📡 A ${distKm.toFixed(1)} km de tu ubicación`
+            : '';
 
         const bodyHTML = `
             <div style="text-align:center; margin-bottom:var(--space-4);">
@@ -405,7 +531,7 @@ const SOSModule = (() => {
                 <div style="font-size:var(--font-size-sm); color:var(--text-secondary); margin-bottom:var(--space-2);">
                     🚗 ${alert.vehicleName || 'Vehículo'}<br/>
                     📡 Fuente GPS: ${alert.gpsSource === 'tracker' ? 'Rastreador IoT' : alert.gpsSource === 'mobile' ? 'Celular' : 'No disponible'}<br/>
-                    🕐 ${new Date(alert.created_at).toLocaleString()}
+                    🕐 ${new Date(alert.created_at).toLocaleString()}${distInfo}
                 </div>
                 <div style="margin-top:var(--space-3);">
                     ${mapsLink}
@@ -419,10 +545,13 @@ const SOSModule = (() => {
             </div>
         `;
 
-        const footerHTML = `
+        const footerHTML = isOwner ? `
             <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Cerrar</button>
             ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Abrir Mapa</a>` : ''}
             <button class="btn btn-primary" onclick="SOSModule.resolveAlert('${alert.id}')">✅ Marcar Resuelta</button>
+        ` : `
+            <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Entendido</button>
+            ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Ver Ubicación</a>` : ''}
         `;
 
         Components.showModal('🚨 ¡ALERTA SOS RECIBIDA!', bodyHTML, footerHTML);
