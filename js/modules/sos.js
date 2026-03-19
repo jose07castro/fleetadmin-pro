@@ -709,33 +709,37 @@ const SOSModule = (() => {
                 return;
             }
 
-            // Si la alerta no tiene coordenadas, no podemos calcular distancia
-            if (!alertData.lat || !alertData.lng) {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Alerta sin coordenadas, no se puede calcular distancia');
+            // Filtrar por flota (si tenemos fleetId)
+            if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ FleetId no coincide, ignorando');
                 return;
             }
 
-            // Si no tengo posición guardada, no puedo filtrar por distancia
-            if (!_myLastPosition) {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Sin posición propia, no puedo calcular radar');
-                return;
+            // Intentar filtro por distancia (30km radar) — BEST EFFORT
+            let distKm = null;
+            let canCalculateDistance = false;
+
+            if (alertData.lat && alertData.lng && _myLastPosition && _myLastPosition.lat && _myLastPosition.lng) {
+                canCalculateDistance = true;
+                distKm = _haversineKm(
+                    _myLastPosition.lat, _myLastPosition.lng,
+                    alertData.lat, alertData.lng
+                );
+                console.log(`🚨 SOS LISTENER (DRIVER): Distancia al SOS: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
+
+                if (distKm > SOS_RADIUS_KM) {
+                    console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
+                    return;
+                }
+                console.log('🚨 SOS LISTENER (DRIVER): ✅ ¡DENTRO DEL RADAR! Mostrando alerta + alarma...');
+            } else {
+                // NO podemos calcular distancia — mostrar alerta de todos modos por seguridad
+                const reason = !_myLastPosition ? 'sin posición propia' : 'alerta sin coordenadas';
+                console.log(`🚨 SOS LISTENER (DRIVER): ⚠️ ${reason} — mostrando alerta por seguridad (sin filtro radar)`);
             }
 
-            const distKm = _haversineKm(
-                _myLastPosition.lat, _myLastPosition.lng,
-                alertData.lat, alertData.lng
-            );
-
-            console.log(`🚨 SOS LISTENER (DRIVER): Distancia al SOS: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
-
-            if (distKm > SOS_RADIUS_KM) {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
-                return;
-            }
-
-            console.log('🚨 SOS LISTENER (DRIVER): ✅ ¡DENTRO DEL RADAR! Mostrando alerta + alarma...');
             _startAlarm();
-            _showOwnerSOSNotification(alertData, distKm);
+            _showOwnerSOSNotification(alertData, canCalculateDistance ? distKm : null);
         });
 
         console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'}`);
