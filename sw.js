@@ -2,32 +2,32 @@
 const CACHE_NAME = 'fleetadmin-v57';
 const ASSETS = [
     './',
-    './index.html?v=57',
-    './css/index.css?v=57',
-    './css/components.css?v=57',
-    './css/modules.css?v=57',
-    './js/i18n.js?v=57',
-    './js/firebase-config.js?v=57',
-    './js/db.js?v=57',
-    './js/units.js?v=57',
-    './js/auth.js?v=57',
-    './js/alerts.js?v=57',
-    './js/components.js?v=57',
-    './js/router.js?v=57',
-    './js/modules/login.js?v=57',
-    './js/modules/dashboard.js?v=57',
-    './js/modules/shifts.js?v=57',
-    './js/modules/maintenance.js?v=57',
-    './js/modules/vehicles.js?v=57',
-    './js/modules/settings.js?v=57',
-    './js/modules/community.js?v=57',
-    './js/modules/sos.js?v=57',
-    './js/whatsapp.js?v=57',
-    './js/storage.js?v=57',
-    './js/modules/gps.js?v=57',
-    './js/notifications.js?v=57',
-    './js/app.js?v=57',
-    './manifest.json?v=57',
+    './index.html?v=58',
+    './css/index.css?v=58',
+    './css/components.css?v=58',
+    './css/modules.css?v=58',
+    './js/i18n.js?v=58',
+    './js/firebase-config.js?v=58',
+    './js/db.js?v=58',
+    './js/units.js?v=58',
+    './js/auth.js?v=58',
+    './js/alerts.js?v=58',
+    './js/components.js?v=58',
+    './js/router.js?v=58',
+    './js/modules/login.js?v=58',
+    './js/modules/dashboard.js?v=58',
+    './js/modules/shifts.js?v=58',
+    './js/modules/maintenance.js?v=58',
+    './js/modules/vehicles.js?v=58',
+    './js/modules/settings.js?v=58',
+    './js/modules/community.js?v=58',
+    './js/modules/sos.js?v=58',
+    './js/whatsapp.js?v=58',
+    './js/storage.js?v=58',
+    './js/modules/gps.js?v=58',
+    './js/notifications.js?v=58',
+    './js/app.js?v=58',
+    './manifest.json?v=58',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -113,20 +113,31 @@ self.addEventListener('fetch', event => {
     );
 });
 
-// Manejo de clicks en notificaciones
+// Manejo de clicks en notificaciones SOS
 self.addEventListener('notificationclick', event => {
     event.notification.close();
+
+    const data = event.notification.data || {};
+    const action = event.action;
+
+    // Si el usuario tocó "Ver Mapa" y tenemos URL de Google Maps
+    if (action === 'open-map' && data.mapsUrl) {
+        event.waitUntil(clients.openWindow(data.mapsUrl));
+        return;
+    }
+
+    // Para cualquier otro click/acción: abrir/focus la app
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+            // Buscar si la app ya está abierta
             for (let client of windowClients) {
-                // Si la app ya está abierta, hacer foco
-                if (client.url === event.notification.data.url && 'focus' in client) {
+                if (client.url.includes(self.location.origin) && 'focus' in client) {
                     return client.focus();
                 }
             }
-            // Si la app está cerrada, abrirla
+            // Si no está abierta, abrir
             if (clients.openWindow) {
-                return clients.openWindow(event.notification.data.url || '/');
+                return clients.openWindow(data.url || '/');
             }
         })
     );

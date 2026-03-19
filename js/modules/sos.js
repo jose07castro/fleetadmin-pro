@@ -633,9 +633,84 @@ const SOSModule = (() => {
     }
 
     // =============================================
-    // LISTENER DUAL — Dueños (siempre) + Conductores (radar 30km)
+    // LISTENER DUAL — Dueños (siempre) + Conductores (radar 50km)
     // =============================================
-    const SOS_RADIUS_KM = 30;
+    const SOS_RADIUS_KM = 50;
+
+    // =============================================
+    // NOTIFICACIÓN NATIVA DEL OS (Web Notification API)
+    // Funciona con browser minimizado / en background
+    // =============================================
+    function _requestNotificationPermission() {
+        if (!('Notification' in window)) {
+            console.log('🚨 SOS NOTIFY: Notification API no soportada');
+            return;
+        }
+        if (Notification.permission === 'granted') {
+            console.log('🚨 SOS NOTIFY: ✅ Permisos ya otorgados');
+            return;
+        }
+        if (Notification.permission === 'denied') {
+            console.warn('🚨 SOS NOTIFY: ❌ Permisos denegados por el usuario');
+            return;
+        }
+        // Pedir permiso
+        Notification.requestPermission().then(permission => {
+            console.log('🚨 SOS NOTIFY: Permiso:', permission);
+            if (permission === 'granted') {
+                Components.showToast('🔔 Notificaciones SOS activadas', 'success');
+            }
+        });
+    }
+
+    async function _sendNativeNotification(alertData, distKm) {
+        if (!('Notification' in window) || Notification.permission !== 'granted') {
+            console.log('🚨 SOS NOTIFY: Sin permisos, saltando notificación nativa');
+            return;
+        }
+
+        const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || 'Emergencia';
+        const title = '🚨 ¡ALERTA SOS!';
+        const body = `${alertData.driverName || 'Conductor'} — ${typeLabel}\n🚗 ${alertData.vehicleName || 'Vehículo'}${distKm != null ? ` (${distKm.toFixed(1)} km)` : ''}`;
+
+        try {
+            // Usar Service Worker para notificaciones persistentes (funcionan en background)
+            const registration = await navigator.serviceWorker?.getRegistration();
+            if (registration) {
+                await registration.showNotification(title, {
+                    body: body,
+                    icon: './assets/icon-192.png',
+                    badge: './assets/icon-192.png',
+                    tag: 'sos-alert-' + (alertData.id || Date.now()),
+                    requireInteraction: true, // No se descarta sola
+                    vibrate: [1000, 500, 1000, 500, 1000],
+                    data: {
+                        url: self.location?.origin || '/',
+                        alertId: alertData.id,
+                        mapsUrl: alertData.mapsUrl
+                    },
+                    actions: alertData.mapsUrl ? [
+                        { action: 'open-map', title: '📍 Ver Mapa' },
+                        { action: 'open-app', title: '🚨 Abrir App' }
+                    ] : [
+                        { action: 'open-app', title: '🚨 Abrir App' }
+                    ]
+                });
+                console.log('🚨 SOS NOTIFY: ✅ Notificación nativa enviada via Service Worker');
+            } else {
+                // Fallback: Notification API directa (no persiste en background)
+                new Notification(title, {
+                    body: body,
+                    icon: './assets/icon-192.png',
+                    tag: 'sos-alert-' + (alertData.id || Date.now()),
+                    requireInteraction: true
+                });
+                console.log('🚨 SOS NOTIFY: ✅ Notificación nativa enviada (fallback)');
+            }
+        } catch (e) {
+            console.error('🚨 SOS NOTIFY: Error enviando notificación:', e);
+        }
+    }
 
     function startListening() {
         const fleetId = Auth.getFleetId();
@@ -643,6 +718,9 @@ const SOSModule = (() => {
         const role = Auth.getRole();
         const myUserId = Auth.getUserId() || Auth.getUserName();
         console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId);
+
+        // Pedir permisos de notificación nativa
+        _requestNotificationPermission();
 
         // Limpiar listener anterior si existe
         if (_sosListenerRef) {
@@ -687,8 +765,9 @@ const SOSModule = (() => {
                     console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide (owner)');
                     return;
                 }
-                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando + alarma...');
+                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando + alarma + notificación nativa...');
                 _startAlarm();
+                _sendNativeNotification(alertData, null);
                 _showOwnerSOSNotification(alertData);
                 return;
             }
@@ -733,6 +812,7 @@ const SOSModule = (() => {
             }
 
             _startAlarm();
+            _sendNativeNotification(alertData, canCalculateDistance ? distKm : null);
             _showOwnerSOSNotification(alertData, canCalculateDistance ? distKm : null);
         });
 
