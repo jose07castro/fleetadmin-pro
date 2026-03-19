@@ -319,15 +319,25 @@ const CommunityModule = (() => {
                 }
             } catch (e) { /* sin ubicación */ }
 
+            // Determinar rol ESTRICTAMENTE — NO usar fallback 'owner'
+            const currentRole = Auth.getRole();
+            console.log('📝 Comunidad: Rol del usuario al publicar:', currentRole);
+            if (!currentRole) {
+                console.error('❌ Comunidad: No se pudo determinar el rol del usuario');
+                Components.showToast('❌ Error: sesión no válida. Cerrá e iniciá sesión de nuevo.', 'danger');
+                return;
+            }
+
             const postData = {
                 author_id: Auth.getUserId() || Auth.getUserName(),
                 author_name: Auth.getUserName(),
+                author_role: currentRole,
                 fleet_id: Auth.getFleetId(),
                 fleet_city: fleetCity,
                 category: _selectedCategory || '',
                 content: content,
                 image_url: imageUrl,
-                targetAudience: Auth.getRole() || 'owner',
+                targetAudience: currentRole,
                 likes: 0,
                 insights: 0
             };
@@ -518,14 +528,29 @@ const CommunityModule = (() => {
             const val = snap.val();
             if (!val) return [];
 
-            // Filtrar por rol del usuario activo
-            const userRole = Auth.getRole() || 'owner';
-            return Object.values(val)
-                .filter(p => {
-                    // Posts sin targetAudience (legacy) se muestran a owners
-                    if (!p.targetAudience) return userRole === 'owner';
-                    return p.targetAudience === userRole;
-                })
+            // Filtrar por rol del usuario activo — SIN fallback peligroso
+            const userRole = Auth.getRole();
+            console.log('📋 Comunidad: Cargando posts para rol:', userRole);
+
+            if (!userRole) {
+                console.warn('⚠️ Comunidad: Rol no definido, no se pueden filtrar posts');
+                return [];
+            }
+
+            const allPosts = Object.values(val);
+            const filtered = allPosts.filter(p => {
+                // Posts sin targetAudience (legacy) — intentar usar authorRole como fallback
+                const audience = p.targetAudience || p.author_role;
+                if (!audience) {
+                    // Posts legacy sin ningún campo de rol, solo mostrar a owners
+                    return userRole === 'owner';
+                }
+                return audience === userRole;
+            });
+
+            console.log(`📋 Comunidad: ${allPosts.length} posts totales → ${filtered.length} para rol '${userRole}'`);
+
+            return filtered
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .slice(0, 50);
         } catch (e) {
