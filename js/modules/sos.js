@@ -367,129 +367,35 @@ const SOSModule = (() => {
     }
 
     // =============================================
-    // PASO PRINCIPAL: Disparar SOS
+    // PASO PRINCIPAL: Botón SOS presionado
+    // SOLO abre el modal de selección de motivo
     // =============================================
-    async function triggerSOS(shiftId, vehicleId, vehicleName) {
+    let _pendingSOSContext = null; // { shiftId, vehicleId, vehicleName }
+
+    function triggerSOS(shiftId, vehicleId, vehicleName) {
         console.log('🚨 ========================');
-        console.log('🚨 SOS [Paso 1]: BOTÓN SOS PRESIONADO');
+        console.log('🚨 SOS [Paso 1]: BOTÓN SOS PRESIONADO — abriendo selector de motivo');
         console.log('🚨 SOS [Paso 1]: shiftId:', shiftId, '| vehicleId:', vehicleId, '| vehicleName:', vehicleName);
-        console.log('🚨 SOS [Paso 1]: Usuario:', Auth.getUserName(), '| Rol:', Auth.getRole(), '| FleetId:', Auth.getFleetId());
         console.log('🚨 ========================');
 
-        try {
-            // Session guard
-            if (!Auth.isLoggedIn()) {
-                console.error('🚨 SOS: ❌ Sesión no encontrada');
-                alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
-                Router.navigate('login');
-                return;
-            }
-
-            // Double confirmation
-            if (!confirm('🚨 ¿ESTÁS SEGURO DE ENVIAR UNA ALERTA SOS?\n\nEsto notificará inmediatamente al propietario de tu flota.')) {
-                console.log('🚨 SOS: Cancelado por el usuario');
-                return;
-            }
-
-            _isSendingSOS = true; // Bloquear listener mientras enviamos
-
-            Components.showToast('🚨 Obteniendo ubicación...', 'warning');
-
-            // Step 1: Try tracker GPS
-            let position = await _getTrackerPosition(vehicleId);
-
-            // Step 2: Fallback to mobile GPS
-            if (!position) {
-                Components.showToast('📱 Usando GPS del celular...', 'info');
-                position = await _getMobilePosition();
-            }
-
-            // Step 3: No GPS at all — still send alert
-            if (!position) {
-                console.warn('🚨 SOS [Paso 4]: ⚠️ Sin coordenadas — enviando alerta sin ubicación');
-                position = { lat: null, lng: null, source: 'unavailable' };
-                Components.showToast('⚠️ Sin ubicación — enviando alerta de todas formas', 'warning');
-            }
-
-            console.log('🚨 SOS [Paso 4]: Coordenadas finales:', position.lat, position.lng, '| Fuente:', position.source);
-
-            // Build Google Maps URL
-            const mapsUrl = position.lat
-                ? `https://www.google.com/maps?q=${position.lat},${position.lng}`
-                : '';
-
-            // Step 4: Verify Firebase connectivity BEFORE writing
-            console.log('🚨 SOS [Paso 5]: Verificando conexión con Firebase...');
-            const fleetId = Auth.getFleetId();
-            console.log('🚨 SOS [Paso 5]: FleetId que se guardará:', fleetId);
-
-            // Connectivity check — try to read a tiny ref with timeout
-            try {
-                await Promise.race([
-                    firebaseDB.ref('.info/connected').once('value'),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase connection timeout')), 6000))
-                ]);
-                console.log('🚨 SOS [Paso 5]: ✅ Firebase conectado');
-            } catch (connErr) {
-                console.error('🚨 SOS [Paso 5]: ❌ Sin conexión a Firebase:', connErr.message);
-                alert('🚨 ERROR: Sin conexión con la central.\n\nVerificá tu conexión a internet e intentá de nuevo.');
-                Components.showToast('❌ Sin conexión — no se pudo enviar la alerta SOS', 'danger');
-                return;
-            }
-
-            console.log('🚨 SOS [Paso 5]: Guardando alerta en Firebase...');
-            const alertRef = firebaseDB.ref('sos_alerts').push();
-            const alertData = {
-                id: alertRef.key,
-                driverId: Auth.getUserId() || Auth.getUserName(),
-                driverName: Auth.getUserName(),
-                fleetId: fleetId || 'unknown',
-                shiftId: shiftId || '',
-                vehicleId: vehicleId || '',
-                vehicleName: vehicleName || '',
-                lat: position.lat,
-                lng: position.lng,
-                gpsSource: position.source,
-                locationText: position.lat ? `${position.lat}, ${position.lng}` : 'No disponible (Error GPS/Permisos)',
-                mapsUrl: mapsUrl,
-                status: 'active',
-                emergencyType: null,
-                emergencyDetails: null,
-                created_at: new Date().toISOString(),
-                resolved_at: null
-            };
-
-            console.log('🚨 SOS [Paso 5]: Payload:', JSON.stringify(alertData));
-
-            // Write with timeout to prevent silent hangs
-            await Promise.race([
-                alertRef.set(alertData),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (10s)')), 10000))
-            ]);
-            _currentAlertId = alertRef.key;
-
-            console.log('🚨 SOS [Paso 5]: ✅ Alerta guardada con ID:', alertRef.key);
-            Components.showToast('🚨 ¡ALERTA SOS ENVIADA! El propietario fue notificado.', 'danger');
-
-            // Step 5: Abrir modal de tipo de emergencia con pequeño delay
-            // para que el toast no interfiera con el modal
-            console.log('🚨 SOS [Paso 6]: Abriendo modal de tipo de emergencia en 600ms...');
-            setTimeout(() => {
-                console.log('🚨 SOS [Paso 6]: Ejecutando _showEmergencyModal()...');
-                _showEmergencyModal();
-            }, 600);
-
-        } catch (e) {
-            console.error('🚨 SOS: ❌❌❌ ERROR CRÍTICO:', e);
-            console.error('🚨 SOS: Stack:', e.stack);
-            alert('Error al enviar alerta SOS: ' + e.message + '\n\nVerificá tu conexión a internet y permisos de ubicación.');
-            Components.showToast('❌ Error crítico en SOS: ' + e.message, 'danger');
-            _isSendingSOS = false;
+        // Session guard
+        if (!Auth.isLoggedIn()) {
+            console.error('🚨 SOS: ❌ Sesión no encontrada');
+            alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
+            Router.navigate('login');
+            return;
         }
+
+        // Guardar contexto para cuando el usuario confirme
+        _pendingSOSContext = { shiftId, vehicleId, vehicleName };
+        _isSendingSOS = true;
+
+        // Mostrar modal de selección de emergencia (sin GPS ni Firebase todavía)
+        _showEmergencyModal();
     }
 
     // =============================================
-    // Modal de tipo de emergencia
+    // Modal de tipo de emergencia (PRIMER PASO)
     // =============================================
     function _showEmergencyModal() {
         const buttonsHTML = EMERGENCY_TYPES.map(t => `
@@ -503,7 +409,8 @@ const SOSModule = (() => {
             <div class="sos-modal-content">
                 <div class="sos-modal-header-icon">🚨</div>
                 <p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4);">
-                    Tu alerta fue enviada. <strong>Seleccioná el tipo de emergencia:</strong>
+                    <strong>¿Cuál es la emergencia?</strong><br>
+                    Seleccioná el tipo y presioná "Enviar Alerta"
                 </p>
                 <div class="sos-type-grid">
                     ${buttonsHTML}
@@ -519,41 +426,124 @@ const SOSModule = (() => {
         `;
 
         const footerHTML = `
-            <button class="btn btn-ghost" onclick="Components.closeModal()">Cerrar</button>
+            <button class="btn btn-ghost" onclick="SOSModule.cancelSOS()">Cancelar</button>
         `;
 
         Components.showModal('🚨 ¿Cuál es la emergencia?', bodyHTML, footerHTML);
     }
 
     // =============================================
-    // Enviar detalles de la emergencia
+    // Cancelar SOS (desde modal)
+    // =============================================
+    function cancelSOS() {
+        _pendingSOSContext = null;
+        _isSendingSOS = false;
+        Components.closeModal();
+        console.log('🚨 SOS: Cancelado por el usuario');
+    }
+
+    // =============================================
+    // CONFIRMAR emergencia: obtener GPS + enviar a Firebase
+    // Se ejecuta SOLO al seleccionar el tipo de emergencia
     // =============================================
     async function submitSOSDetails(type) {
-        if (!_currentAlertId) {
-            console.warn('🚨 SOS: No hay alerta activa para actualizar');
+        if (!_pendingSOSContext) {
+            console.warn('🚨 SOS: No hay contexto pendiente');
             return;
         }
 
+        const { shiftId, vehicleId, vehicleName } = _pendingSOSContext;
         const details = document.getElementById('sosDetails')?.value?.trim() || '';
         const emergencyDef = EMERGENCY_TYPES.find(t => t.key === type);
 
+        // Cerrar modal y mostrar feedback inmediato
+        Components.closeModal();
+        Components.showToast('🚨 Enviando alerta SOS...', 'warning');
+
         try {
-            console.log('🚨 SOS: Actualizando alerta', _currentAlertId, 'con tipo:', type);
-            await firebaseDB.ref(`sos_alerts/${_currentAlertId}`).update({
+            // --- PASO 2: Obtener GPS ---
+            console.log('🚨 SOS [Paso 2]: Obteniendo ubicación...');
+
+            let position = await _getTrackerPosition(vehicleId);
+
+            if (!position) {
+                Components.showToast('📱 Usando GPS del celular...', 'info');
+                position = await _getMobilePosition();
+            }
+
+            if (!position) {
+                console.warn('🚨 SOS [Paso 3]: ⚠️ Sin coordenadas — enviando sin ubicación');
+                position = { lat: null, lng: null, source: 'unavailable' };
+            }
+
+            console.log('🚨 SOS [Paso 3]: Coordenadas:', position.lat, position.lng, '| Fuente:', position.source);
+
+            const mapsUrl = position.lat
+                ? `https://www.google.com/maps?q=${position.lat},${position.lng}`
+                : '';
+
+            // --- PASO 3: Verificar Firebase ---
+            console.log('🚨 SOS [Paso 4]: Verificando conexión Firebase...');
+            const fleetId = Auth.getFleetId();
+
+            try {
+                await Promise.race([
+                    firebaseDB.ref('.info/connected').once('value'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase connection timeout')), 6000))
+                ]);
+                console.log('🚨 SOS [Paso 4]: ✅ Firebase conectado');
+            } catch (connErr) {
+                console.error('🚨 SOS [Paso 4]: ❌ Sin conexión:', connErr.message);
+                alert('🚨 ERROR: Sin conexión con la central.\n\nVerificá tu conexión a internet e intentá de nuevo.');
+                Components.showToast('❌ Sin conexión — no se pudo enviar la alerta SOS', 'danger');
+                _isSendingSOS = false;
+                return;
+            }
+
+            // --- PASO 4: Escribir alerta con MOTIVO incluido ---
+            console.log('🚨 SOS [Paso 5]: Guardando alerta en Firebase CON motivo:', type);
+            const alertRef = firebaseDB.ref('sos_alerts').push();
+            const alertData = {
+                id: alertRef.key,
+                driverId: Auth.getUserId() || Auth.getUserName(),
+                driverName: Auth.getUserName(),
+                fleetId: fleetId || 'unknown',
+                shiftId: shiftId || '',
+                vehicleId: vehicleId || '',
+                vehicleName: vehicleName || '',
+                lat: position.lat,
+                lng: position.lng,
+                gpsSource: position.source,
+                locationText: position.lat ? `${position.lat}, ${position.lng}` : 'No disponible (Error GPS/Permisos)',
+                mapsUrl: mapsUrl,
+                status: 'active',
                 emergencyType: type,
                 emergencyTypeLabel: emergencyDef ? `${emergencyDef.icon} ${emergencyDef.label}` : type,
-                emergencyDetails: details,
-                updated_at: new Date().toISOString()
-            });
+                emergencyDetails: details || null,
+                created_at: new Date().toISOString(),
+                resolved_at: null
+            };
 
-            Components.closeModal();
-            Components.showToast(`${emergencyDef?.icon || '🚨'} Tipo de emergencia registrado: ${emergencyDef?.label || type}`, 'success');
-            console.log('🚨 SOS: ✅ Detalles actualizados');
+            console.log('🚨 SOS [Paso 5]: Payload:', JSON.stringify(alertData));
+
+            await Promise.race([
+                alertRef.set(alertData),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (10s)')), 10000))
+            ]);
+
+            console.log('🚨 SOS [Paso 5]: ✅ Alerta guardada con ID:', alertRef.key);
+            Components.showToast(`${emergencyDef?.icon || '🚨'} ¡ALERTA SOS ENVIADA! — ${emergencyDef?.label || type}`, 'danger');
+
+            _pendingSOSContext = null;
             _currentAlertId = null;
-            _isSendingSOS = false; // Desbloquear listener
+            _isSendingSOS = false;
+
         } catch (e) {
-            console.error('🚨 SOS: Error actualizando alerta:', e);
-            Components.showToast('Error al actualizar: ' + e.message, 'danger');
+            console.error('🚨 SOS: ❌❌❌ ERROR CRÍTICO:', e);
+            console.error('🚨 SOS: Stack:', e.stack);
+            alert('Error al enviar alerta SOS: ' + e.message + '\n\nVerificá tu conexión a internet y permisos de ubicación.');
+            Components.showToast('❌ Error crítico en SOS: ' + e.message, 'danger');
+            _isSendingSOS = false;
         }
     }
 
@@ -847,7 +837,7 @@ const SOSModule = (() => {
     }
 
     return {
-        triggerSOS, submitSOSDetails, startListening, stopListening,
+        triggerSOS, submitSOSDetails, cancelSOS, startListening, stopListening,
         resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm,
         unlockAudio: _manualUnlockAudio, renderAudioActivationBanner,
         isAudioUnlocked: () => _audioUnlocked
