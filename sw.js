@@ -1,33 +1,33 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v56';
+const CACHE_NAME = 'fleetadmin-v57';
 const ASSETS = [
     './',
-    './index.html?v=56',
-    './css/index.css?v=56',
-    './css/components.css?v=56',
-    './css/modules.css?v=56',
-    './js/i18n.js?v=56',
-    './js/firebase-config.js?v=56',
-    './js/db.js?v=56',
-    './js/units.js?v=56',
-    './js/auth.js?v=56',
-    './js/alerts.js?v=56',
-    './js/components.js?v=56',
-    './js/router.js?v=56',
-    './js/modules/login.js?v=56',
-    './js/modules/dashboard.js?v=56',
-    './js/modules/shifts.js?v=56',
-    './js/modules/maintenance.js?v=56',
-    './js/modules/vehicles.js?v=56',
-    './js/modules/settings.js?v=56',
-    './js/modules/community.js?v=56',
-    './js/modules/sos.js?v=56',
-    './js/whatsapp.js?v=56',
-    './js/storage.js?v=56',
-    './js/modules/gps.js?v=56',
-    './js/notifications.js?v=56',
-    './js/app.js?v=56',
-    './manifest.json?v=56',
+    './index.html?v=57',
+    './css/index.css?v=57',
+    './css/components.css?v=57',
+    './css/modules.css?v=57',
+    './js/i18n.js?v=57',
+    './js/firebase-config.js?v=57',
+    './js/db.js?v=57',
+    './js/units.js?v=57',
+    './js/auth.js?v=57',
+    './js/alerts.js?v=57',
+    './js/components.js?v=57',
+    './js/router.js?v=57',
+    './js/modules/login.js?v=57',
+    './js/modules/dashboard.js?v=57',
+    './js/modules/shifts.js?v=57',
+    './js/modules/maintenance.js?v=57',
+    './js/modules/vehicles.js?v=57',
+    './js/modules/settings.js?v=57',
+    './js/modules/community.js?v=57',
+    './js/modules/sos.js?v=57',
+    './js/whatsapp.js?v=57',
+    './js/storage.js?v=57',
+    './js/modules/gps.js?v=57',
+    './js/notifications.js?v=57',
+    './js/app.js?v=57',
+    './manifest.json?v=57',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -104,7 +104,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=56')
+                return caches.match('./index.html?v=57')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

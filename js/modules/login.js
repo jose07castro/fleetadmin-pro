@@ -108,7 +108,7 @@ const LoginModule = (() => {
         if (loginBtn) {
             loginBtn.disabled = true;
             loginBtn._originalText = loginBtn.textContent;
-            loginBtn.textContent = '⏳ Conectando...';
+            loginBtn.textContent = '⏳ Conectando al servidor... (puede tardar un minuto)';
             loginBtn.style.opacity = '0.7';
         }
 
@@ -120,7 +120,7 @@ const LoginModule = (() => {
             for (let loginAttempt = 1; loginAttempt <= MAX_LOGIN_RETRIES; loginAttempt++) {
                 try {
                     if (loginBtn && loginAttempt > 1) {
-                        loginBtn.textContent = `🔄 Reintentando (${loginAttempt}/${MAX_LOGIN_RETRIES})...`;
+                        loginBtn.textContent = `🔄 Reintentando conexión (${loginAttempt}/${MAX_LOGIN_RETRIES})... esperá un momento`;
                     }
 
                     success = await Auth.authenticate(name, pin, selectedRole);
@@ -152,8 +152,8 @@ const LoginModule = (() => {
                         wasConnectionError = true;
                         console.warn(`🔐 LOGIN: Conexión fallida (intento ${loginAttempt}/${MAX_LOGIN_RETRIES})`);
                         if (loginAttempt < MAX_LOGIN_RETRIES) {
-                            if (loginBtn) loginBtn.textContent = `📡 Reconectando (${loginAttempt + 1}/${MAX_LOGIN_RETRIES})...`;
-                            await new Promise(r => setTimeout(r, 2000));
+                            if (loginBtn) loginBtn.textContent = `📡 El servidor está despertando... (${loginAttempt + 1}/${MAX_LOGIN_RETRIES})`;
+                            await new Promise(r => setTimeout(r, 3000));
                             continue;
                         }
                     } else {
@@ -192,7 +192,7 @@ const LoginModule = (() => {
             } else if (wasConnectionError) {
                 // All retries failed due to connection
                 errorEl.style.display = 'block';
-                errorEl.innerHTML = '📡 <strong>Sin conexión al servidor.</strong><br>Verificá tu internet e intentá de nuevo.';
+                errorEl.innerHTML = '📡 <strong>El servidor está despertando.</strong><br>Esperá unos segundos e intentá de nuevo. (Puede tardar hasta un minuto en la primera conexión)';
                 errorEl.style.background = 'rgba(234, 179, 8, 0.15)';
                 errorEl.style.borderColor = '#eab308';
                 errorEl.style.color = '#ca8a04';

@@ -181,7 +181,7 @@ const DB = (() => {
     // THROWS on connection failure — caller must handle
     async function findGlobalUser(name, pin, role) {
         const MAX_RETRIES = 3;
-        const TIMEOUTS = [10000, 15000, 20000]; // Escalando generosamente
+        const TIMEOUTS = [15000, 25000, 35000]; // Generoso para cold starts (Render Free Tier ~50s)
         const CACHE_KEY = 'fleetadmin_cache_globalUsers';
 
         console.log(`🔐 LOGIN: Buscando usuario global: "${name}" rol:${role} (max ${MAX_RETRIES} intentos)`);
@@ -190,9 +190,9 @@ const DB = (() => {
         try {
             await new Promise((resolve, reject) => {
                 const connTimeout = setTimeout(() => {
-                    console.warn('🔐 LOGIN: Timeout esperando conexión Firebase (5s)');
+                    console.warn('🔐 LOGIN: Timeout esperando conexión Firebase (10s)');
                     resolve(); // continuar igualmente, puede funcionar
-                }, 5000);
+                }, 10000);
                 const connRef = firebase.database().ref('.info/connected');
                 connRef.once('value', (snap) => {
                     clearTimeout(connTimeout);
