@@ -2,7 +2,7 @@
    FleetAdmin Pro — Módulo SOS
    Botón de emergencia con GPS tracker + fallback
    Alertas en tiempo real vía Firebase
-   v42 — Resilencia multi-dispositivo + fallback GPS
+   v46 — Alarma sonora al recibir SOS
    ============================================ */
 
 const SOSModule = (() => {
@@ -18,6 +18,51 @@ const SOSModule = (() => {
 
     let _currentAlertId = null;
     let _sosListenerRef = null;
+
+    // =============================================
+    // ALARMA SONORA (loop hasta que el dueño reaccione)
+    // =============================================
+    let _sosAlarm = null;
+
+    function _initAlarm() {
+        if (_sosAlarm) return;
+        try {
+            _sosAlarm = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+            _sosAlarm.loop = true;
+            _sosAlarm.volume = 1.0;
+            _sosAlarm.preload = 'auto';
+            console.log('🚨 SOS ALARM: Audio inicializado');
+        } catch (e) {
+            console.warn('🚨 SOS ALARM: No se pudo crear Audio:', e);
+        }
+    }
+
+    function _startAlarm() {
+        _initAlarm();
+        if (!_sosAlarm) return;
+        try {
+            _sosAlarm.currentTime = 0;
+            const playPromise = _sosAlarm.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn('🚨 SOS ALARM: Autoplay bloqueado por el navegador:', err.message);
+                    // El modal visual se muestra de todas formas
+                });
+            }
+            console.log('🚨 SOS ALARM: 🔊 Sirena activada');
+        } catch (e) {
+            console.warn('🚨 SOS ALARM: Error al reproducir:', e);
+        }
+    }
+
+    function _stopAlarm() {
+        if (!_sosAlarm) return;
+        try {
+            _sosAlarm.pause();
+            _sosAlarm.currentTime = 0;
+            console.log('🚨 SOS ALARM: 🔇 Sirena detenida');
+        } catch (e) { /* ignorar */ }
+    }
 
     // =============================================
     // PASO 1: Obtener posición del tracker GPS IoT
@@ -323,7 +368,8 @@ const SOSModule = (() => {
                 return;
             }
 
-            console.log('🚨 SOS LISTENER: ✅✅✅ ¡ALERTA VÁLIDA RECIBIDA! Mostrando notificación...');
+            console.log('🚨 SOS LISTENER: ✅✅✅ ¡ALERTA VÁLIDA RECIBIDA! Mostrando notificación + alarma...');
+            _startAlarm();
             _showOwnerSOSNotification(alertData);
         });
 
@@ -374,8 +420,8 @@ const SOSModule = (() => {
         `;
 
         const footerHTML = `
-            <button class="btn btn-secondary" onclick="Components.closeModal()">Cerrar</button>
-            ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger">📍 Abrir Mapa</a>` : ''}
+            <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Cerrar</button>
+            ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Abrir Mapa</a>` : ''}
             <button class="btn btn-primary" onclick="SOSModule.resolveAlert('${alert.id}')">✅ Marcar Resuelta</button>
         `;
 
@@ -386,6 +432,7 @@ const SOSModule = (() => {
     // Resolver alerta
     // =============================================
     async function resolveAlert(alertId) {
+        _stopAlarm();
         try {
             await firebaseDB.ref(`sos_alerts/${alertId}`).update({
                 status: 'resolved',
@@ -418,6 +465,6 @@ const SOSModule = (() => {
 
     return {
         triggerSOS, submitSOSDetails, startListening, stopListening,
-        resolveAlert, renderSOSButton
+        resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm
     };
 })();
