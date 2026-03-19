@@ -21,6 +21,7 @@ const SOSModule = (() => {
     let _positionWatchId = null;
     let _positionInterval = null;
     let _myLastPosition = null; // { lat, lng }
+    let _isSendingSOS = false; // Guard: previene que el listener sobreescriba el modal de tipo
 
     // =============================================
     // ALARMA SONORA (loop hasta que el dueño reaccione)
@@ -351,6 +352,8 @@ const SOSModule = (() => {
                 return;
             }
 
+            _isSendingSOS = true; // Bloquear listener mientras enviamos
+
             Components.showToast('🚨 Obteniendo ubicación...', 'warning');
 
             // Step 1: Try tracker GPS
@@ -429,14 +432,20 @@ const SOSModule = (() => {
             console.log('🚨 SOS [Paso 5]: ✅ Alerta guardada con ID:', alertRef.key);
             Components.showToast('🚨 ¡ALERTA SOS ENVIADA! El propietario fue notificado.', 'danger');
 
-            // Step 5: Open emergency type modal
-            _showEmergencyModal();
+            // Step 5: Abrir modal de tipo de emergencia con pequeño delay
+            // para que el toast no interfiera con el modal
+            console.log('🚨 SOS [Paso 6]: Abriendo modal de tipo de emergencia en 600ms...');
+            setTimeout(() => {
+                console.log('🚨 SOS [Paso 6]: Ejecutando _showEmergencyModal()...');
+                _showEmergencyModal();
+            }, 600);
 
         } catch (e) {
             console.error('🚨 SOS: ❌❌❌ ERROR CRÍTICO:', e);
             console.error('🚨 SOS: Stack:', e.stack);
             alert('Error al enviar alerta SOS: ' + e.message + '\n\nVerificá tu conexión a internet y permisos de ubicación.');
             Components.showToast('❌ Error crítico en SOS: ' + e.message, 'danger');
+            _isSendingSOS = false;
         }
     }
 
@@ -502,6 +511,7 @@ const SOSModule = (() => {
             Components.showToast(`${emergencyDef?.icon || '🚨'} Tipo de emergencia registrado: ${emergencyDef?.label || type}`, 'success');
             console.log('🚨 SOS: ✅ Detalles actualizados');
             _currentAlertId = null;
+            _isSendingSOS = false; // Desbloquear listener
         } catch (e) {
             console.error('🚨 SOS: Error actualizando alerta:', e);
             Components.showToast('Error al actualizar: ' + e.message, 'danger');
@@ -623,6 +633,12 @@ const SOSModule = (() => {
         _sosListenerRef.on('child_added', (snap) => {
             const alertData = snap.val();
             if (!alertData) return;
+
+            // Guard: si estoy enviando un SOS, no mostrar notificaciones que sobreescriban el modal
+            if (_isSendingSOS) {
+                console.log('🚨 SOS LISTENER: ⏩ Ignorando (estoy en flujo de envío SOS)');
+                return;
+            }
 
             console.log('🚨 SOS LISTENER: child_added:', snap.key, '| status:', alertData.status);
 
