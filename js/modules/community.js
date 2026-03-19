@@ -123,7 +123,7 @@ const CommunityModule = (() => {
                             <div class="compose-card-input-wrapper" id="composeInputWrapper">
                                 <textarea id="communityPostText" class="compose-card-textarea"
                                     placeholder="¿Qué tema querés debatir en la comunidad hoy?"
-                                    maxlength="500"></textarea>
+                                    maxlength="500" spellcheck="true" lang="es" autocorrect="on"></textarea>
                                 <div class="compose-image-preview" id="composeImagePreview" style="display:none;">
                                     <img id="composeImageThumb" src="" alt="Preview" />
                                     <button class="compose-image-remove" onclick="CommunityModule.removeImage()" title="Quitar imagen">✕</button>
@@ -273,6 +273,7 @@ const CommunityModule = (() => {
                     <div class="comment-input-row">
                         <input type="text" class="comment-input" id="comment-input-${post.id}"
                             placeholder="Escribí tu comentario..." maxlength="280"
+                            spellcheck="true" lang="es" autocorrect="on"
                             onkeydown="if(event.key==='Enter'){CommunityModule.submitComment('${post.id}');event.preventDefault();}" />
                         <button class="comment-send-btn" onclick="CommunityModule.submitComment('${post.id}')">
                             ➤

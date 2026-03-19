@@ -221,6 +221,7 @@ const SOSModule = (() => {
                     <label class="form-label">Detalles adicionales (opcional)</label>
                     <textarea class="form-input" id="sosDetails" rows="2" 
                         placeholder="Describí brevemente la situación..."
+                        spellcheck="true" lang="es" autocorrect="on"
                         style="resize:none;"></textarea>
                 </div>
             </div>
