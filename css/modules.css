@@ -1217,6 +1217,79 @@
     transform: scale(1.05);
 }
 
+.comment-send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* --- Comment List (existing comments) --- */
+.comment-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: var(--space-3);
+}
+
+.comment-list:empty {
+    display: none;
+    margin-bottom: 0;
+}
+
+.comment-item {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+}
+
+.comment-item:last-child {
+    border-bottom: none;
+}
+
+.comment-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+
+.comment-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1);
+    line-height: 1.4;
+}
+
+.comment-author {
+    font-weight: 700;
+    font-size: var(--font-size-xs);
+    color: var(--color-primary-light);
+}
+
+.comment-text {
+    font-size: var(--font-size-xs);
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.comment-time {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    margin-left: var(--space-1);
+}
+
 /* --- Category Badge on Posts --- */
 .community-category-badge {
     display: inline-block;

@@ -267,9 +267,13 @@ const CommunityModule = (() => {
                     </button>
                 </div>
                 <div class="community-comment-box" id="comment-box-${post.id}" style="display:none;">
+                    <div class="comment-list" id="comment-list-${post.id}">
+                        ${_renderComments(post.comments)}
+                    </div>
                     <div class="comment-input-row">
                         <input type="text" class="comment-input" id="comment-input-${post.id}"
-                            placeholder="Escribí tu comentario..." maxlength="280" />
+                            placeholder="Escribí tu comentario..." maxlength="280"
+                            onkeydown="if(event.key==='Enter'){CommunityModule.submitComment('${post.id}');event.preventDefault();}" />
                         <button class="comment-send-btn" onclick="CommunityModule.submitComment('${post.id}')">
                             ➤
                         </button>
@@ -563,6 +567,29 @@ const CommunityModule = (() => {
         });
     }
 
+    // --- Render existing comments ---
+    function _renderComments(comments) {
+        if (!comments) return '';
+        const commentArr = Object.values(comments);
+        if (commentArr.length === 0) return '';
+        return commentArr
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            .map(c => {
+                const initial = (c.author || '?')[0].toUpperCase();
+                const timeAgo = _timeAgo(new Date(c.created_at));
+                return `
+                    <div class="comment-item">
+                        <div class="comment-avatar">${initial}</div>
+                        <div class="comment-body">
+                            <span class="comment-author">${_escapeHTML(c.author || 'Anónimo')}</span>
+                            <span class="comment-text">${_escapeHTML(c.text)}</span>
+                            <span class="comment-time">${timeAgo}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+    }
+
     // --- Toggle comment box en un post ---
     function toggleComment(postId) {
         const box = document.getElementById('comment-box-' + postId);
@@ -575,31 +602,63 @@ const CommunityModule = (() => {
         }
     }
 
-    // --- Enviar comentario (simulado) ---
+    // --- Enviar comentario ---
     async function submitComment(postId) {
         const input = document.getElementById('comment-input-' + postId);
-        const text = input?.value?.trim();
+        if (!input) {
+            console.error('❌ Comment input not found for postId:', postId);
+            return;
+        }
+        const text = input.value?.trim();
         if (!text || text.length < 2) {
             Components.showToast('⚠️ Escribí al menos 2 caracteres.', 'warning');
             return;
         }
+
+        // Disable button to prevent double-submit
+        const sendBtn = input.parentElement?.querySelector('.comment-send-btn');
+        if (sendBtn) sendBtn.disabled = true;
+
         try {
             const userName = Auth.getUserName() || 'Anónimo';
+            const now = new Date().toISOString();
             const commentData = {
                 author: userName,
                 text: text,
-                created_at: new Date().toISOString()
+                created_at: now
             };
+
+            console.log('💬 Enviando comentario al post:', postId, commentData);
+
             const ref = firebaseDB.ref(`community_posts/${postId}/comments`).push();
             await ref.set(commentData);
+
+            console.log('💬 ✅ Comentario guardado con ID:', ref.key);
+
+            // Optimistic UI update — append comment immediately without reload
+            const commentList = document.getElementById('comment-list-' + postId);
+            if (commentList) {
+                const initial = (userName || '?')[0].toUpperCase();
+                const newCommentHTML = `
+                    <div class="comment-item" style="animation: fadeIn 0.3s ease;">
+                        <div class="comment-avatar">${initial}</div>
+                        <div class="comment-body">
+                            <span class="comment-author">${_escapeHTML(userName)}</span>
+                            <span class="comment-text">${_escapeHTML(text)}</span>
+                            <span class="comment-time">hace un momento</span>
+                        </div>
+                    </div>
+                `;
+                commentList.insertAdjacentHTML('beforeend', newCommentHTML);
+            }
+
             input.value = '';
             Components.showToast('✅ Comentario enviado', 'success');
-            // Ocultar caja después de enviar
-            const box = document.getElementById('comment-box-' + postId);
-            if (box) box.style.display = 'none';
         } catch (e) {
-            console.error('Error al comentar:', e);
-            Components.showToast('❌ Error al comentar', 'danger');
+            console.error('❌ Error al comentar en post', postId, ':', e);
+            Components.showToast('❌ Error al comentar: ' + (e.message || e), 'danger');
+        } finally {
+            if (sendBtn) sendBtn.disabled = false;
         }
     }
 
