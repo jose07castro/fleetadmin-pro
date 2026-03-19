@@ -54,6 +54,13 @@ const Router = (() => {
             }
         }
 
+        // Cleanup previous module if needed
+        if (currentRoute === 'community' && route !== 'community') {
+            if (typeof CommunityModule !== 'undefined' && typeof CommunityModule.cleanup === 'function') {
+                CommunityModule.cleanup();
+            }
+        }
+
         currentRoute = route;
 
         // Cerrar sidebar en móvil

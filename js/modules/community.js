@@ -64,6 +64,15 @@ const CommunityModule = (() => {
     let _selectedImagePreview = null;
     let _userInteractions = 0;
 
+    // --- TTS Voice Notification state ---
+    let _realtimeListenersActive = false;
+    let _childAddedRef = null;
+    let _childChangedRef = null;
+    let _initialLoadComplete = false;
+    let _lastTTSTime = 0;
+    const TTS_COOLDOWN_MS = 3000; // 3 seconds between voice notifications
+    let _knownPostKeys = new Set(); // Track posts loaded initially to skip them
+
     // --- Reaction definitions ---
     const REACTIONS = [
         { key: 'mate',     emoji: '🧉', label: 'Mate',            level: 0 },
@@ -438,6 +447,9 @@ const CommunityModule = (() => {
 
         // --- Sponsor Carousel ---
         _initSponsorCarousel();
+
+        // --- Real-time TTS listeners for new posts/comments ---
+        _startRealtimeListeners();
     }
 
     // --- Sponsor Carousel (single-slot, DOM swap with fade) ---
@@ -650,6 +662,7 @@ const CommunityModule = (() => {
             const now = new Date().toISOString();
             const commentData = {
                 author: userName,
+                author_id: Auth.getUserId() || Auth.getUserName(),
                 text: text,
                 created_at: now
             };
@@ -794,5 +807,166 @@ const CommunityModule = (() => {
         if (input) input.value = '';
     }
 
-    return { render, afterRender, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage, toggleReactionPicker };
+    // ============================================
+    // TTS Voice Notification — "Comunidad"
+    // ============================================
+
+    /**
+     * Speak "Comunidad" using Web Speech API.
+     * Includes cooldown to prevent rapid-fire and browser compatibility guard.
+     */
+    function _speakComunidad() {
+        try {
+            if (!('speechSynthesis' in window)) {
+                console.warn('🔇 TTS: speechSynthesis no soportado en este navegador');
+                return;
+            }
+
+            const now = Date.now();
+            if (now - _lastTTSTime < TTS_COOLDOWN_MS) {
+                console.log('🔇 TTS: cooldown activo, omitiendo');
+                return;
+            }
+            _lastTTSTime = now;
+
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance('Comunidad');
+            utterance.lang = 'es-ES';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+            console.log('🔊 TTS: "Comunidad" reproducido');
+        } catch (e) {
+            console.warn('🔇 TTS: Error al reproducir voz:', e);
+        }
+    }
+
+    /**
+     * Start Firebase real-time listeners for new posts and comments.
+     * Skips initial data load and own actions.
+     */
+    function _startRealtimeListeners() {
+        if (_realtimeListenersActive) return;
+
+        const currentUserId = Auth.getUserId() || Auth.getUserName();
+        const currentRole = Auth.getRole();
+        if (!currentUserId || !currentRole) {
+            console.warn('⚠️ TTS: No hay usuario/rol activo, listeners no iniciados');
+            return;
+        }
+
+        console.log('🔊 TTS: Iniciando listeners en tiempo real para rol:', currentRole);
+
+        _initialLoadComplete = false;
+        _knownPostKeys.clear();
+
+        const postsRef = firebaseDB.ref('community_posts');
+
+        // Step 1: Load existing post keys first, THEN activate listeners
+        postsRef.once('value').then(snap => {
+            const val = snap.val();
+            if (val) {
+                Object.keys(val).forEach(key => _knownPostKeys.add(key));
+            }
+            _initialLoadComplete = true;
+            console.log(`🔊 TTS: ${_knownPostKeys.size} posts existentes cargados, listeners activos`);
+        }).catch(e => {
+            console.warn('⚠️ TTS: Error cargando posts iniciales:', e);
+            _initialLoadComplete = true; // Proceed anyway
+        });
+
+        // --- Listener: new posts (child_added) ---
+        _childAddedRef = postsRef.on('child_added', (snapshot) => {
+            if (!_initialLoadComplete) return; // Skip initial load
+
+            const post = snapshot.val();
+            if (!post) return;
+
+            // Already known? (safety check)
+            if (_knownPostKeys.has(snapshot.key)) return;
+            _knownPostKeys.add(snapshot.key);
+
+            // Filter by role/audience
+            const audience = post.targetAudience || post.author_role;
+            if (audience !== currentRole) return;
+
+            // Filter own posts
+            if (post.author_id === currentUserId) return;
+
+            console.log('🔊 TTS: Nuevo post detectado de:', post.author_name);
+            _speakComunidad();
+        });
+
+        // --- Listener: new comments (child_changed on post) ---
+        _childChangedRef = postsRef.on('child_changed', (snapshot) => {
+            if (!_initialLoadComplete) return;
+
+            const post = snapshot.val();
+            if (!post || !post.comments) return;
+
+            // Filter by role/audience
+            const audience = post.targetAudience || post.author_role;
+            if (audience !== currentRole) return;
+
+            // Find the latest comment
+            const commentEntries = Object.values(post.comments);
+            if (commentEntries.length === 0) return;
+
+            const latestComment = commentEntries.reduce((latest, c) => {
+                if (!latest) return c;
+                return new Date(c.created_at) > new Date(latest.created_at) ? c : latest;
+            }, null);
+
+            if (!latestComment) return;
+
+            // Filter own comments (check both author_id and author name)
+            const commentAuthorId = latestComment.author_id || latestComment.author;
+            if (commentAuthorId === currentUserId || latestComment.author === Auth.getUserName()) return;
+
+            // Only notify if comment is recent (within last 10 seconds)
+            const commentAge = Date.now() - new Date(latestComment.created_at).getTime();
+            if (commentAge > 10000) return;
+
+            console.log('🔊 TTS: Nuevo comentario detectado de:', latestComment.author);
+            _speakComunidad();
+        });
+
+        _realtimeListenersActive = true;
+    }
+
+    /**
+     * Stop and detach all Firebase real-time listeners.
+     */
+    function _stopRealtimeListeners() {
+        if (!_realtimeListenersActive) return;
+
+        const postsRef = firebaseDB.ref('community_posts');
+        if (_childAddedRef) {
+            postsRef.off('child_added', _childAddedRef);
+            _childAddedRef = null;
+        }
+        if (_childChangedRef) {
+            postsRef.off('child_changed', _childChangedRef);
+            _childChangedRef = null;
+        }
+
+        _realtimeListenersActive = false;
+        _initialLoadComplete = false;
+        _knownPostKeys.clear();
+        console.log('🔊 TTS: Listeners detenidos');
+    }
+
+    /**
+     * Cleanup — called when navigating away from Community.
+     */
+    function cleanup() {
+        _stopRealtimeListeners();
+        if (_sponsorInterval) {
+            clearInterval(_sponsorInterval);
+            _sponsorInterval = null;
+        }
+    }
+
+    return { render, afterRender, cleanup, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage, toggleReactionPicker };
 })();
