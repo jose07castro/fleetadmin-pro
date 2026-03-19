@@ -27,7 +27,7 @@ const SOSModule = (() => {
     // ALARMA SONORA (loop hasta que el dueño reaccione)
     // =============================================
     let _sosAlarm = null;
-    let _audioUnlocked = false;
+    let _audioUnlocked = localStorage.getItem('fleetadmin_audio_unlocked') === 'true';
     let _fallbackOscillator = null;
     let _fallbackAudioCtx = null;
     let _vibrationInterval = null;
@@ -54,6 +54,7 @@ const SOSModule = (() => {
                 _sosAlarm.currentTime = 0;
                 _sosAlarm.volume = 1.0;
                 _audioUnlocked = true;
+                localStorage.setItem('fleetadmin_audio_unlocked', 'true');
                 _removeUnlockListeners();
                 _updateAudioBanner();
                 console.log('🚨 SOS ALARM: ✅ Audio desbloqueado por interacción del usuario');
@@ -73,7 +74,9 @@ const SOSModule = (() => {
     }
 
     function _setupAudioUnlock() {
-        if (_audioUnlocked || _unlockListenersAdded) return;
+        // Siempre registrar listeners: el AudioContext del navegador se resetea en cada recarga
+        // _audioUnlocked de localStorage solo controla la visibilidad del banner
+        if (_unlockListenersAdded) return;
         document.addEventListener('click', _unlockHandler, true);
         document.addEventListener('touchstart', _unlockHandler, true);
         document.addEventListener('touchend', _unlockHandler, true);
@@ -97,6 +100,7 @@ const SOSModule = (() => {
                 _sosAlarm.currentTime = 0;
                 _sosAlarm.volume = 1.0;
                 _audioUnlocked = true;
+                localStorage.setItem('fleetadmin_audio_unlocked', 'true');
                 _removeUnlockListeners();
                 _updateAudioBanner();
                 Components.showToast('🔊 Alertas sonoras activadas correctamente', 'success');
