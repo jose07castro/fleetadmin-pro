@@ -30,47 +30,119 @@ const SOSModule = (() => {
     let _fallbackOscillator = null;
     let _fallbackAudioCtx = null;
 
-    // --- Audio Unlock Hack ---
+    // --- Audio Unlock Hack (cross-browser) ---
     // Los navegadores bloquean autoplay hasta que el usuario interactúa.
     // Este hack hace play+pause silencioso en el primer toque para desbloquear.
+    let _unlockListenersAdded = false;
+
+    function _unlockHandler() {
+        if (_audioUnlocked) {
+            _removeUnlockListeners();
+            return;
+        }
+
+        _initAlarm();
+        if (!_sosAlarm) return;
+
+        _sosAlarm.volume = 0;
+        const p = _sosAlarm.play();
+        if (p !== undefined) {
+            p.then(() => {
+                _sosAlarm.pause();
+                _sosAlarm.currentTime = 0;
+                _sosAlarm.volume = 1.0;
+                _audioUnlocked = true;
+                _removeUnlockListeners();
+                _updateAudioBanner();
+                console.log('🚨 SOS ALARM: ✅ Audio desbloqueado por interacción del usuario');
+            }).catch(() => {
+                _sosAlarm.volume = 1.0;
+                console.warn('🚨 SOS ALARM: Unlock falló, se reintentará en próxima interacción');
+            });
+        }
+    }
+
+    function _removeUnlockListeners() {
+        document.removeEventListener('click', _unlockHandler, true);
+        document.removeEventListener('touchstart', _unlockHandler, true);
+        document.removeEventListener('touchend', _unlockHandler, true);
+        document.removeEventListener('keydown', _unlockHandler, true);
+        _unlockListenersAdded = false;
+    }
+
     function _setupAudioUnlock() {
-        if (_audioUnlocked) return;
+        if (_audioUnlocked || _unlockListenersAdded) return;
+        document.addEventListener('click', _unlockHandler, true);
+        document.addEventListener('touchstart', _unlockHandler, true);
+        document.addEventListener('touchend', _unlockHandler, true);
+        document.addEventListener('keydown', _unlockHandler, true);
+        _unlockListenersAdded = true;
+        console.log('🚨 SOS ALARM: Listeners de unlock registrados (click/touch/keydown)');
+    }
 
-        const unlockHandler = () => {
-            _initAlarm();
-            if (_sosAlarm) {
-                _sosAlarm.volume = 0;
-                const p = _sosAlarm.play();
-                if (p !== undefined) {
-                    p.then(() => {
-                        _sosAlarm.pause();
-                        _sosAlarm.currentTime = 0;
-                        _sosAlarm.volume = 1.0;
-                        _audioUnlocked = true;
-                        console.log('🚨 SOS ALARM: ✅ Audio desbloqueado por interacción del usuario');
-                    }).catch(() => {
-                        _sosAlarm.volume = 1.0;
-                        console.warn('🚨 SOS ALARM: Unlock falló, se reintentará');
-                    });
-                }
-            }
-            // Remover listeners después del primer intento exitoso
-            if (_audioUnlocked) {
-                document.removeEventListener('click', unlockHandler, true);
-                document.removeEventListener('touchstart', unlockHandler, true);
-                document.removeEventListener('touchend', unlockHandler, true);
-            }
-        };
+    // Desbloqueo manual exportable (para botón visible)
+    function _manualUnlockAudio() {
+        _initAlarm();
+        if (!_sosAlarm) {
+            console.warn('🚨 SOS ALARM: No se pudo inicializar audio para unlock manual');
+            return;
+        }
+        _sosAlarm.volume = 0;
+        const p = _sosAlarm.play();
+        if (p !== undefined) {
+            p.then(() => {
+                _sosAlarm.pause();
+                _sosAlarm.currentTime = 0;
+                _sosAlarm.volume = 1.0;
+                _audioUnlocked = true;
+                _removeUnlockListeners();
+                _updateAudioBanner();
+                Components.showToast('🔊 Alertas sonoras activadas correctamente', 'success');
+                console.log('🚨 SOS ALARM: ✅ Audio desbloqueado manualmente');
+            }).catch(err => {
+                _sosAlarm.volume = 1.0;
+                console.error('🚨 SOS ALARM: ❌ Unlock manual falló:', err.name, err.message);
+                Components.showToast('❌ No se pudo activar el audio. Intentá de nuevo.', 'danger');
+            });
+        }
+    }
 
-        document.addEventListener('click', unlockHandler, true);
-        document.addEventListener('touchstart', unlockHandler, true);
-        document.addEventListener('touchend', unlockHandler, true);
-        console.log('🚨 SOS ALARM: Listeners de unlock registrados (esperando primer toque)');
+    // Actualizar banner visual si existe
+    function _updateAudioBanner() {
+        const banner = document.getElementById('sos-audio-banner');
+        if (!banner) return;
+        if (_audioUnlocked) {
+            banner.innerHTML = `
+                <span style="color: var(--color-success); font-size: var(--font-size-xs);">
+                    🔊 Alertas sonoras activas
+                </span>
+            `;
+            banner.style.cursor = 'default';
+            banner.onclick = null;
+            // Ocultar después de 3 segundos
+            setTimeout(() => { if (banner) banner.style.display = 'none'; }, 3000);
+        }
+    }
+
+    // Renderizar botón de fallback para el dashboard
+    function renderAudioActivationBanner() {
+        if (_audioUnlocked) return ''; // Ya está desbloqueado
+        return `
+            <div id="sos-audio-banner" 
+                 onclick="SOSModule.unlockAudio()" 
+                 style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; 
+                        background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); 
+                        border-radius:20px; cursor:pointer; transition:all 0.2s ease;
+                        font-size:0.75rem; color:#fca5a5; font-weight:600;"
+                 onmouseover="this.style.background='rgba(239,68,68,0.2)'"
+                 onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+                🔊 Activar Alertas Sonoras
+            </div>
+        `;
     }
 
     // Iniciar el hack apenas cargue el módulo
     if (typeof document !== 'undefined') {
-        // Esperar a que el DOM esté listo
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', _setupAudioUnlock);
         } else {
@@ -717,6 +789,8 @@ const SOSModule = (() => {
 
     return {
         triggerSOS, submitSOSDetails, startListening, stopListening,
-        resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm
+        resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm,
+        unlockAudio: _manualUnlockAudio, renderAudioActivationBanner,
+        isAudioUnlocked: () => _audioUnlocked
     };
 })();

@@ -34,11 +34,14 @@ const DashboardModule = (() => {
                     ` : ''}
                 </div>
                 ${Auth.isOwner() ? `
-                    <button class="community-header-btn community-header-btn-xl" onclick="Router.navigate('community')">
-                        <span class="community-btn-icon">💬</span>
-                        <span class="community-btn-label">Comunidad de Dueños</span>
-                        <span class="community-badge" id="communityBadge">…</span>
-                    </button>
+                    <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
+                        <button class="community-header-btn community-header-btn-xl" onclick="Router.navigate('community')">
+                            <span class="community-btn-icon">💬</span>
+                            <span class="community-btn-label">Comunidad de Dueños</span>
+                            <span class="community-badge" id="communityBadge">…</span>
+                        </button>
+                        ${typeof SOSModule !== 'undefined' ? SOSModule.renderAudioActivationBanner() : ''}
+                    </div>
                 ` : ''}
             </div>
 
