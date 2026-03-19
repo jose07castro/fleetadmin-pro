@@ -248,9 +248,33 @@ const DashboardModule = (() => {
     async function showUsers() {
         const users = await DB.getAll('users');
 
+        // Identificar Super Admin para protección
+        let superAdminId = null;
+        try {
+            const fleetId = Auth.getFleetId();
+            if (fleetId) {
+                const globalUsers = await DB.getGlobalUsersByFleet(fleetId);
+                const owners = globalUsers.filter(u => u.role === 'owner');
+                if (owners.length > 0) {
+                    owners.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                    superAdminId = owners[0].id;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
         const userCards = users.map(u => {
             const safeName = u.name || 'Sin nombre';
             const initial = safeName[0] ? safeName[0].toUpperCase() : '?';
+            const isSuperAdmin = superAdminId && (u.globalId === superAdminId || u.id === superAdminId);
+
+            // Delete button: Super Admin gets badge, everyone else gets trash button
+            let deleteAction = '';
+            if (isSuperAdmin) {
+                deleteAction = `<span class="badge" style="font-size:0.65rem; background:linear-gradient(135deg, #f59e0b, #d97706); color:white; padding:3px 8px; border-radius:20px; font-weight:700;">🛡️ Fundador</span>`;
+            } else {
+                deleteAction = `<button class="btn btn-ghost btn-sm" onclick="DashboardModule.deleteUser('${u.id}')">🗑️</button>`;
+            }
+
             return `
             <div style="display:flex; align-items:center; gap:var(--space-4); padding:var(--space-4); border-bottom:1px solid var(--border-color);">
                 <div style="position:relative; cursor:pointer;" onclick="DashboardModule.changeUserPhoto('${u.id}')">
@@ -268,9 +292,9 @@ const DashboardModule = (() => {
                         ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
                     </span>
                 </div>
-                <div style="display:flex; gap:var(--space-2);">
+                <div style="display:flex; gap:var(--space-2); align-items:center;">
                     <button class="btn btn-ghost btn-sm" onclick="DashboardModule.editUser('${u.id}')">✏️</button>
-                    ${u.role !== 'owner' ? `<button class="btn btn-ghost btn-sm" onclick="DashboardModule.deleteUser('${u.id}')">🗑️</button>` : ''}
+                    ${deleteAction}
                 </div>
             </div>
         `;
@@ -335,7 +359,22 @@ const DashboardModule = (() => {
             return;
         }
 
-        await DB.add('users', { name, pin, role, profilePhoto: photo });
+        // Hash PIN before saving
+        let hashedPin = pin;
+        try {
+            hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+        } catch (e) {
+            console.warn('⚠️ bcrypt no disponible, guardando PIN sin hash:', e);
+        }
+
+        const fleetId = Auth.getFleetId();
+
+        // Crear en globalUsers para que pueda loguearse
+        const globalId = await DB.addGlobalUser({
+            name, pin: hashedPin, role, fleetId
+        });
+
+        await DB.add('users', { name, pin: hashedPin, role, profilePhoto: photo, globalId });
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
         showUsers();
@@ -585,9 +624,28 @@ const DashboardModule = (() => {
 
     async function confirmDeleteUser(userId) {
         try {
+            const user = await DB.get('users', userId);
+
+            // 🛡️ PROTECCIÓN SUPER ADMIN
+            try {
+                const fleetId = Auth.getFleetId();
+                if (fleetId) {
+                    const globalUsers = await DB.getGlobalUsersByFleet(fleetId);
+                    const owners = globalUsers.filter(u => u.role === 'owner');
+                    if (owners.length > 0) {
+                        owners.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                        const superAdminId = owners[0].id;
+                        if (user && superAdminId && (user.globalId === superAdminId || user.id === superAdminId)) {
+                            Components.closeModal();
+                            Components.showToast('🛡️ Acción denegada: No se puede eliminar al Super Administrador', 'danger');
+                            return;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
             Components.showToast('🗑️ Eliminando usuario y fotos...', 'info');
 
-            const user = await DB.get('users', userId);
             if (!user) {
                 await DB.remove('users', userId);
                 Components.closeModal();
