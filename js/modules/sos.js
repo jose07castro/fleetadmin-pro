@@ -719,8 +719,8 @@ const SOSModule = (() => {
         const myUserId = Auth.getUserId() || Auth.getUserName();
         console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId);
 
-        // Pedir permisos de notificación nativa
-        _requestNotificationPermission();
+        // Pedir permisos de notificación nativa (aislado — no puede romper el listener)
+        try { _requestNotificationPermission(); } catch(e) { /* ignorar */ }
 
         // Limpiar listener anterior si existe
         if (_sosListenerRef) {
@@ -765,10 +765,11 @@ const SOSModule = (() => {
                     console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide (owner)');
                     return;
                 }
-                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando + alarma + notificación nativa...');
+                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando alarma + modal...');
                 _startAlarm();
-                _sendNativeNotification(alertData, null);
                 _showOwnerSOSNotification(alertData);
+                // Push notification AISLADA — no puede bloquear alarma/modal
+                try { _sendNativeNotification(alertData, null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
                 return;
             }
 
@@ -812,8 +813,9 @@ const SOSModule = (() => {
             }
 
             _startAlarm();
-            _sendNativeNotification(alertData, canCalculateDistance ? distKm : null);
             _showOwnerSOSNotification(alertData, canCalculateDistance ? distKm : null);
+            // Push notification AISLADA — no puede bloquear alarma/modal
+            try { _sendNativeNotification(alertData, canCalculateDistance ? distKm : null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
         });
 
         console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'}`);
