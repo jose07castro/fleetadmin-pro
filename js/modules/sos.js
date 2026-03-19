@@ -30,6 +30,7 @@ const SOSModule = (() => {
     let _audioUnlocked = false;
     let _fallbackOscillator = null;
     let _fallbackAudioCtx = null;
+    let _vibrationInterval = null;
 
     // --- Audio Unlock Hack (cross-browser) ---
     // Los navegadores bloquean autoplay hasta que el usuario interactúa.
@@ -176,6 +177,9 @@ const SOSModule = (() => {
     function _startAlarm() {
         _initAlarm();
 
+        // VIBRACIÓN FÍSICA (funciona incluso con audio bloqueado)
+        _startVibration();
+
         // Intento 1: HTML5 Audio
         if (_sosAlarm) {
             try {
@@ -239,6 +243,8 @@ const SOSModule = (() => {
     }
 
     function _stopAlarm() {
+        // Parar vibración
+        _stopVibration();
         // Parar HTML5 Audio
         if (_sosAlarm) {
             try {
@@ -260,7 +266,36 @@ const SOSModule = (() => {
                 _fallbackAudioCtx = null;
             } catch (e) { /* ignorar */ }
         }
-        console.log('🚨 SOS ALARM: 🔇 Sirena detenida');
+        console.log('🚨 SOS ALARM: 🔇 Alarma detenida (audio + vibración)');
+    }
+
+    // =============================================
+    // VIBRACIÓN NATIVA (Vibration API — mobile)
+    // =============================================
+    function _startVibration() {
+        if (!navigator.vibrate) {
+            console.log('🚨 SOS VIBRATE: Vibration API no soportada');
+            return;
+        }
+        // Patrón: vibrar 1s, pausa 0.5s, vibrar 1s, pausa 0.5s, vibrar 1s
+        const pattern = [1000, 500, 1000, 500, 1000];
+        navigator.vibrate(pattern);
+        // navigator.vibrate no repite — usamos interval para loop
+        _vibrationInterval = setInterval(() => {
+            try { navigator.vibrate(pattern); } catch(e) { /* ignorar */ }
+        }, 5500); // 1000+500+1000+500+1000 = 4000ms + 1500ms pausa
+        console.log('🚨 SOS VIBRATE: 📳 Vibración activada (loop)');
+    }
+
+    function _stopVibration() {
+        if (_vibrationInterval) {
+            clearInterval(_vibrationInterval);
+            _vibrationInterval = null;
+        }
+        if (navigator.vibrate) {
+            try { navigator.vibrate(0); } catch(e) { /* ignorar */ }
+        }
+        console.log('🚨 SOS VIBRATE: 📳 Vibración detenida');
     }
 
     // =============================================
