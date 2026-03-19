@@ -95,6 +95,7 @@ const LoginModule = (() => {
         const name = document.getElementById('loginName').value.trim();
         const pin = document.getElementById('loginPin').value.trim();
         const errorEl = document.getElementById('loginError');
+        const loginBtn = document.querySelector('.btn-primary.btn-block.btn-lg');
 
         if (!name || !pin) {
             errorEl.style.display = 'block';
@@ -102,47 +103,73 @@ const LoginModule = (() => {
             return;
         }
 
-        // Verificar si hay datos viejos sin migrar
-        const hasGlobal = await DB.hasGlobalUsers();
-        if (!hasGlobal) {
-            // Primera vez con la nueva versión: migrar datos viejos
-            const migratedFleetId = await DB.migrateOldData();
-            if (migratedFleetId) {
-                console.log('📦 Datos migrados, reintentando login...');
-            }
+        // --- Loading state ---
+        errorEl.style.display = 'none';
+        if (loginBtn) {
+            loginBtn.disabled = true;
+            loginBtn._originalText = loginBtn.textContent;
+            loginBtn.textContent = '⏳ Conectando...';
+            loginBtn.style.opacity = '0.7';
         }
 
-        const success = await Auth.authenticate(name, pin, selectedRole);
-        if (success) {
-            errorEl.style.display = 'none';
-            App.startRealtimeSync();
+        try {
+            // Intento principal de login
+            let success = await Auth.authenticate(name, pin, selectedRole);
 
-            // BLOQUEO DE PERFIL INCOMPLETO — verificar ANTES de navegar
-            if (Auth.isDriver()) {
-                const profileOk = await Auth.isProfileComplete();
-                if (!profileOk) {
-                    console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
-                    Router.navigate('complete-profile');
-                    return;
+            // Si falla, intentar migración de datos viejos y reintentar
+            if (!success) {
+                const hasGlobal = await DB.hasGlobalUsers();
+                if (!hasGlobal) {
+                    const migratedFleetId = await DB.migrateOldData();
+                    if (migratedFleetId) {
+                        console.log('📦 Datos migrados, reintentando login...');
+                        success = await Auth.authenticate(name, pin, selectedRole);
+                    }
                 }
             }
 
-            // Si es owner, verificar si la ubicación está configurada
-            if (Auth.isOwner()) {
-                const location = await DB.getSetting('location');
-                if (!location || !location.country) {
-                    Router.navigate(Router.getDefaultRoute());
-                    setTimeout(() => SettingsModule.showLocationSetup(), 500);
-                    return;
-                }
-            }
+            if (success) {
+                errorEl.style.display = 'none';
+                App.startRealtimeSync();
 
-            Router.navigate(Router.getDefaultRoute());
-        } else {
+                // BLOQUEO DE PERFIL INCOMPLETO — verificar ANTES de navegar
+                if (Auth.isDriver()) {
+                    const profileOk = await Auth.isProfileComplete();
+                    if (!profileOk) {
+                        console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
+                        Router.navigate('complete-profile');
+                        return;
+                    }
+                }
+
+                // Si es owner, verificar si la ubicación está configurada
+                if (Auth.isOwner()) {
+                    const location = await DB.getSetting('location');
+                    if (!location || !location.country) {
+                        Router.navigate(Router.getDefaultRoute());
+                        setTimeout(() => SettingsModule.showLocationSetup(), 500);
+                        return;
+                    }
+                }
+
+                Router.navigate(Router.getDefaultRoute());
+            } else {
+                errorEl.style.display = 'block';
+                errorEl.textContent = I18n.t('login_error');
+                errorEl.parentElement.style.animation = 'shake 0.4s ease';
+                setTimeout(() => errorEl.parentElement.style.animation = '', 400);
+            }
+        } catch (e) {
+            console.error('🔐 LOGIN: Error inesperado:', e);
             errorEl.style.display = 'block';
-            errorEl.textContent = I18n.t('login_error');
-            errorEl.parentElement.style.animation = 'shake 0.4s ease';
-            setTimeout(() => errorEl.parentElement.style.animation = '', 400);
+            errorEl.textContent = '❌ Error de conexión. Verificá tu internet.';
+        } finally {
+            // --- Restaurar botón ---
+            if (loginBtn) {
+                loginBtn.disabled = false;
+                loginBtn.textContent = loginBtn._originalText || I18n.t('login_enter');
+                loginBtn.style.opacity = '1';
+            }
         }
     }
 

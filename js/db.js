@@ -177,21 +177,75 @@ const DB = (() => {
     }
 
     // Buscar usuario global por nombre, pin y rol
+    // Con retry + cache para evitar fallos en cold start
     async function findGlobalUser(name, pin, role) {
-        try {
-            const snap = await fetchWithTimeout(db.ref('globalUsers'), 7000);
-            const val = snap.val();
-            if (!val) return null;
-            const users = Object.values(val);
-            return users.find(u =>
-                u.name.toLowerCase() === name.toLowerCase() &&
-                u.pin === pin &&
-                u.role === role
-            ) || null;
-        } catch (e) {
-            console.warn('Error buscando usuario global:', e);
-            return null;
+        const MAX_RETRIES = 3;
+        const TIMEOUTS = [8000, 12000, 15000]; // Escalando
+        const CACHE_KEY = 'fleetadmin_cache_globalUsers';
+
+        console.log(`🔐 LOGIN: Buscando usuario global: "${name}" rol:${role} (max ${MAX_RETRIES} intentos)`);
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const timeout = TIMEOUTS[attempt - 1] || 15000;
+                console.log(`🔐 LOGIN: Intento ${attempt}/${MAX_RETRIES} (timeout: ${timeout}ms)...`);
+
+                const snap = await fetchWithTimeout(db.ref('globalUsers'), timeout);
+                const val = snap.val();
+
+                if (!val) {
+                    console.warn('🔐 LOGIN: globalUsers está vacío en Firebase');
+                    return null;
+                }
+
+                const users = Object.values(val);
+                console.log(`🔐 LOGIN: ✅ ${users.length} usuarios globales cargados`);
+
+                // Guardar en caché para fallback
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify(users)); } catch(ce) { /* quota */ }
+
+                const found = users.find(u =>
+                    u.name && u.name.toLowerCase() === name.toLowerCase() &&
+                    u.pin === pin &&
+                    u.role === role
+                ) || null;
+
+                if (found) {
+                    console.log(`🔐 LOGIN: ✅ Usuario encontrado: ${found.name} (${found.role}) fleetId: ${found.fleetId}`);
+                } else {
+                    console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (nombre/pin/rol incorrecto)`);
+                }
+                return found;
+
+            } catch (e) {
+                console.warn(`🔐 LOGIN: ❌ Intento ${attempt}/${MAX_RETRIES} falló: ${e.message}`);
+                if (attempt < MAX_RETRIES) {
+                    // Esperar 1s antes de reintentar
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
         }
+
+        // Último recurso: caché local
+        console.warn('🔐 LOGIN: ⚠️ Todos los intentos fallaron. Probando caché local...');
+        try {
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (cached) {
+                const users = JSON.parse(cached);
+                const found = users.find(u =>
+                    u.name && u.name.toLowerCase() === name.toLowerCase() &&
+                    u.pin === pin &&
+                    u.role === role
+                ) || null;
+                if (found) {
+                    console.log('🔐 LOGIN: ✅ Usuario encontrado en caché local (offline mode)');
+                    return found;
+                }
+            }
+        } catch(ce) { /* caché corrupta */ }
+
+        console.error('🔐 LOGIN: ❌ No se pudo autenticar (sin conexión y sin caché)');
+        return null;
     }
 
     // Buscar todos los usuarios globales de una flota
