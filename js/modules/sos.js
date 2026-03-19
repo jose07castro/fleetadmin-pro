@@ -2,7 +2,7 @@
    FleetAdmin Pro — Módulo SOS
    Botón de emergencia con GPS tracker + fallback
    Alertas en tiempo real vía Firebase
-   v41 — Con logging de depuración completo
+   v42 — Resilencia multi-dispositivo + fallback GPS
    ============================================ */
 
 const SOSModule = (() => {
@@ -69,15 +69,16 @@ const SOSModule = (() => {
                 (err) => {
                     let reason = 'Error desconocido';
                     if (err.code === 1) reason = 'PERMISO DENEGADO por el usuario';
-                    if (err.code === 2) reason = 'Posición no disponible';
-                    if (err.code === 3) reason = 'Timeout (10s)';
+                    if (err.code === 2) reason = 'Posición no disponible (sin HTTPS o GPS apagado)';
+                    if (err.code === 3) reason = 'Timeout (5s)';
                     console.warn('🚨 SOS [Paso 3]: ❌ GPS celular falló —', reason, err.message);
                     if (err.code === 1) {
                         Components.showToast('⚠️ Permiso de GPS denegado. Activá la ubicación en tu celular.', 'warning');
                     }
+                    // FALLBACK: SOS se envía SIN GPS de todas formas
                     resolve(null);
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         });
     }
@@ -132,11 +133,26 @@ const SOSModule = (() => {
                 ? `https://www.google.com/maps?q=${position.lat},${position.lng}`
                 : '';
 
-            // Step 4: Save alert to Firebase
-            console.log('🚨 SOS [Paso 5]: Guardando alerta en Firebase...');
+            // Step 4: Verify Firebase connectivity BEFORE writing
+            console.log('🚨 SOS [Paso 5]: Verificando conexión con Firebase...');
             const fleetId = Auth.getFleetId();
             console.log('🚨 SOS [Paso 5]: FleetId que se guardará:', fleetId);
 
+            // Connectivity check — try to read a tiny ref with timeout
+            try {
+                await Promise.race([
+                    firebaseDB.ref('.info/connected').once('value'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase connection timeout')), 6000))
+                ]);
+                console.log('🚨 SOS [Paso 5]: ✅ Firebase conectado');
+            } catch (connErr) {
+                console.error('🚨 SOS [Paso 5]: ❌ Sin conexión a Firebase:', connErr.message);
+                alert('🚨 ERROR: Sin conexión con la central.\n\nVerificá tu conexión a internet e intentá de nuevo.');
+                Components.showToast('❌ Sin conexión — no se pudo enviar la alerta SOS', 'danger');
+                return;
+            }
+
+            console.log('🚨 SOS [Paso 5]: Guardando alerta en Firebase...');
             const alertRef = firebaseDB.ref('sos_alerts').push();
             const alertData = {
                 id: alertRef.key,
@@ -149,6 +165,7 @@ const SOSModule = (() => {
                 lat: position.lat,
                 lng: position.lng,
                 gpsSource: position.source,
+                locationText: position.lat ? `${position.lat}, ${position.lng}` : 'No disponible (Error GPS/Permisos)',
                 mapsUrl: mapsUrl,
                 status: 'active',
                 emergencyType: null,
@@ -158,7 +175,12 @@ const SOSModule = (() => {
             };
 
             console.log('🚨 SOS [Paso 5]: Payload:', JSON.stringify(alertData));
-            await alertRef.set(alertData);
+
+            // Write with timeout to prevent silent hangs
+            await Promise.race([
+                alertRef.set(alertData),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (10s)')), 10000))
+            ]);
             _currentAlertId = alertRef.key;
 
             console.log('🚨 SOS [Paso 5]: ✅ Alerta guardada con ID:', alertRef.key);
