@@ -112,18 +112,52 @@ const LoginModule = (() => {
             loginBtn.style.opacity = '0.7';
         }
 
-        try {
-            // Intento principal de login
-            let success = await Auth.authenticate(name, pin, selectedRole);
+        const MAX_LOGIN_RETRIES = 3;
+        let success = false;
+        let wasConnectionError = false;
 
-            // Si falla, intentar migración de datos viejos y reintentar
-            if (!success) {
-                const hasGlobal = await DB.hasGlobalUsers();
-                if (!hasGlobal) {
-                    const migratedFleetId = await DB.migrateOldData();
-                    if (migratedFleetId) {
-                        console.log('📦 Datos migrados, reintentando login...');
-                        success = await Auth.authenticate(name, pin, selectedRole);
+        try {
+            for (let loginAttempt = 1; loginAttempt <= MAX_LOGIN_RETRIES; loginAttempt++) {
+                try {
+                    if (loginBtn && loginAttempt > 1) {
+                        loginBtn.textContent = `🔄 Reintentando (${loginAttempt}/${MAX_LOGIN_RETRIES})...`;
+                    }
+
+                    success = await Auth.authenticate(name, pin, selectedRole);
+
+                    // If authenticate returned (didn't throw), connection worked
+                    wasConnectionError = false;
+
+                    if (success) break;
+
+                    // Not a connection error, genuinely wrong credentials — try migration
+                    if (!success && loginAttempt === 1) {
+                        const hasGlobal = await DB.hasGlobalUsers();
+                        if (!hasGlobal) {
+                            const migratedFleetId = await DB.migrateOldData();
+                            if (migratedFleetId) {
+                                console.log('📦 Datos migrados, reintentando login...');
+                                success = await Auth.authenticate(name, pin, selectedRole);
+                                if (success) break;
+                            }
+                        }
+                    }
+
+                    // Credentials are wrong, no point retrying
+                    break;
+
+                } catch (authErr) {
+                    // CONNECTION_FAILED — Firebase couldn't connect
+                    if (authErr.code === 'CONNECTION_FAILED' || authErr.message === 'CONNECTION_FAILED') {
+                        wasConnectionError = true;
+                        console.warn(`🔐 LOGIN: Conexión fallida (intento ${loginAttempt}/${MAX_LOGIN_RETRIES})`);
+                        if (loginAttempt < MAX_LOGIN_RETRIES) {
+                            if (loginBtn) loginBtn.textContent = `📡 Reconectando (${loginAttempt + 1}/${MAX_LOGIN_RETRIES})...`;
+                            await new Promise(r => setTimeout(r, 2000));
+                            continue;
+                        }
+                    } else {
+                        throw authErr; // unexpected error — rethrow
                     }
                 }
             }
@@ -132,12 +166,10 @@ const LoginModule = (() => {
                 errorEl.style.display = 'none';
                 App.startRealtimeSync();
 
-                // Activar listener SOS para TODOS los roles
                 if (typeof SOSModule !== 'undefined') {
                     SOSModule.startListening();
                 }
 
-                // BLOQUEO DE PERFIL INCOMPLETO — verificar ANTES de navegar
                 if (Auth.isDriver()) {
                     const profileOk = await Auth.isProfileComplete();
                     if (!profileOk) {
@@ -147,7 +179,6 @@ const LoginModule = (() => {
                     }
                 }
 
-                // Si es owner, verificar si la ubicación está configurada
                 if (Auth.isOwner()) {
                     const location = await DB.getSetting('location');
                     if (!location || !location.country) {
@@ -158,18 +189,28 @@ const LoginModule = (() => {
                 }
 
                 Router.navigate(Router.getDefaultRoute());
+            } else if (wasConnectionError) {
+                // All retries failed due to connection
+                errorEl.style.display = 'block';
+                errorEl.innerHTML = '📡 <strong>Sin conexión al servidor.</strong><br>Verificá tu internet e intentá de nuevo.';
+                errorEl.style.background = 'rgba(234, 179, 8, 0.15)';
+                errorEl.style.borderColor = '#eab308';
+                errorEl.style.color = '#ca8a04';
             } else {
+                // Genuine wrong credentials
                 errorEl.style.display = 'block';
                 errorEl.textContent = I18n.t('login_error');
+                errorEl.style.background = '';
+                errorEl.style.borderColor = '';
+                errorEl.style.color = '';
                 errorEl.parentElement.style.animation = 'shake 0.4s ease';
                 setTimeout(() => errorEl.parentElement.style.animation = '', 400);
             }
         } catch (e) {
             console.error('🔐 LOGIN: Error inesperado:', e);
             errorEl.style.display = 'block';
-            errorEl.textContent = '❌ Error de conexión. Verificá tu internet.';
+            errorEl.textContent = '❌ Error inesperado. Verificá la consola (F12).';
         } finally {
-            // --- Restaurar botón ---
             if (loginBtn) {
                 loginBtn.disabled = false;
                 loginBtn.textContent = loginBtn._originalText || I18n.t('login_enter');

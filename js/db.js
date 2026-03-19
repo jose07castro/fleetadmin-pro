@@ -178,16 +178,63 @@ const DB = (() => {
 
     // Buscar usuario global por nombre, pin y rol
     // Con retry + cache para evitar fallos en cold start
+    // THROWS on connection failure — caller must handle
     async function findGlobalUser(name, pin, role) {
         const MAX_RETRIES = 3;
-        const TIMEOUTS = [8000, 12000, 15000]; // Escalando
+        const TIMEOUTS = [10000, 15000, 20000]; // Escalando generosamente
         const CACHE_KEY = 'fleetadmin_cache_globalUsers';
 
         console.log(`🔐 LOGIN: Buscando usuario global: "${name}" rol:${role} (max ${MAX_RETRIES} intentos)`);
 
+        // --- Paso 0: Esperar a que Firebase se conecte ---
+        try {
+            await new Promise((resolve, reject) => {
+                const connTimeout = setTimeout(() => {
+                    console.warn('🔐 LOGIN: Timeout esperando conexión Firebase (5s)');
+                    resolve(); // continuar igualmente, puede funcionar
+                }, 5000);
+                const connRef = firebase.database().ref('.info/connected');
+                connRef.once('value', (snap) => {
+                    clearTimeout(connTimeout);
+                    if (snap.val() === true) {
+                        console.log('🔐 LOGIN: ✅ Firebase conectado');
+                    } else {
+                        console.warn('🔐 LOGIN: ⚠️ Firebase reporta no conectado, intentando igualmente');
+                    }
+                    resolve();
+                });
+            });
+        } catch (connErr) {
+            console.warn('🔐 LOGIN: Error verificando conexión:', connErr);
+        }
+
+        // --- Helper: comparar PIN (bcrypt o plain-text) ---
+        function _matchPin(storedPin, inputPin) {
+            if (!storedPin) return false;
+            // Si el PIN está hasheado con bcrypt
+            if (storedPin.startsWith('$2')) {
+                if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) {
+                    try {
+                        return dcodeIO.bcrypt.compareSync(inputPin, storedPin);
+                    } catch (e) {
+                        console.error('🔐 LOGIN: Error en bcrypt.compareSync:', e);
+                        return false;
+                    }
+                } else {
+                    // bcrypt CDN not loaded — PIN está hasheado pero no podemos comparar
+                    console.error('🔐 LOGIN: ❌ bcrypt no disponible, no se puede comparar PIN hasheado');
+                    return false;
+                }
+            }
+            // Plain-text comparison (legacy)
+            return storedPin === inputPin;
+        }
+
+        let lastError = null;
+
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const timeout = TIMEOUTS[attempt - 1] || 15000;
+                const timeout = TIMEOUTS[attempt - 1] || 20000;
                 console.log(`🔐 LOGIN: Intento ${attempt}/${MAX_RETRIES} (timeout: ${timeout}ms)...`);
 
                 const snap = await fetchWithTimeout(db.ref('globalUsers'), timeout);
@@ -195,7 +242,7 @@ const DB = (() => {
 
                 if (!val) {
                     console.warn('🔐 LOGIN: globalUsers está vacío en Firebase');
-                    return null;
+                    return null; // Legitimate "no users" — not a connection error
                 }
 
                 const users = Object.values(val);
@@ -207,13 +254,7 @@ const DB = (() => {
                 const found = users.find(u => {
                     if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
                     if (u.role !== role) return false;
-                    // Dual PIN comparison: bcrypt hash or plain-text (legacy)
-                    try {
-                        if (u.pin && u.pin.startsWith('$2')) {
-                            return dcodeIO.bcrypt.compareSync(pin, u.pin);
-                        }
-                    } catch (e) { /* bcrypt not available or comparison error */ }
-                    return u.pin === pin; // plain-text fallback
+                    return _matchPin(u.pin, pin);
                 }) || null;
 
                 if (found) {
@@ -221,10 +262,12 @@ const DB = (() => {
                     // Auto-migrate: hash plain-text PIN for future security
                     if (found.pin && !found.pin.startsWith('$2')) {
                         try {
-                            const hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
-                            db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
-                            found.pin = hashedPin;
-                            console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash');
+                            if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) {
+                                const hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+                                db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
+                                found.pin = hashedPin;
+                                console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash');
+                            }
                         } catch (hashErr) {
                             console.warn('🔐 LOGIN: ⚠️ No se pudo migrar PIN:', hashErr);
                         }
@@ -232,18 +275,18 @@ const DB = (() => {
                 } else {
                     console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (nombre/pin/rol incorrecto)`);
                 }
-                return found;
+                return found; // SUCCESS — either found or legitimately not found
 
             } catch (e) {
+                lastError = e;
                 console.warn(`🔐 LOGIN: ❌ Intento ${attempt}/${MAX_RETRIES} falló: ${e.message}`);
                 if (attempt < MAX_RETRIES) {
-                    // Esperar 1s antes de reintentar
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 1500));
                 }
             }
         }
 
-        // Último recurso: caché local
+        // All retries failed — try cache
         console.warn('🔐 LOGIN: ⚠️ Todos los intentos fallaron. Probando caché local...');
         try {
             const cached = localStorage.getItem(CACHE_KEY);
@@ -252,12 +295,7 @@ const DB = (() => {
                 const found = users.find(u => {
                     if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
                     if (u.role !== role) return false;
-                    try {
-                        if (u.pin && u.pin.startsWith('$2')) {
-                            return dcodeIO.bcrypt.compareSync(pin, u.pin);
-                        }
-                    } catch (e) { /* bcrypt not available */ }
-                    return u.pin === pin;
+                    return _matchPin(u.pin, pin);
                 }) || null;
                 if (found) {
                     console.log('🔐 LOGIN: ✅ Usuario encontrado en caché local (offline mode)');
@@ -266,8 +304,12 @@ const DB = (() => {
             }
         } catch(ce) { /* caché corrupta */ }
 
-        console.error('🔐 LOGIN: ❌ No se pudo autenticar (sin conexión y sin caché)');
-        return null;
+        // THROW instead of returning null — this is a CONNECTION problem, not wrong credentials
+        console.error('🔐 LOGIN: ❌ No se pudo conectar a Firebase después de', MAX_RETRIES, 'intentos');
+        const connError = new Error('CONNECTION_FAILED');
+        connError.code = 'CONNECTION_FAILED';
+        connError.originalError = lastError;
+        throw connError;
     }
 
     // Buscar todos los usuarios globales de una flota
