@@ -694,7 +694,51 @@ const ShiftsModule = (() => {
         );
     }
 
+    // --- Verificación de turno activo (Shift Hydration) ---
+    // Consulta Firebase para ver si el conductor logueado tiene un turno abierto.
+    // Devuelve el objeto del turno activo o null.
+    async function checkActiveShift() {
+        try {
+            const driverId = Auth.getUserId();
+            if (!driverId) return null;
+
+            const allShifts = await DB.getAllByIndex('shifts', 'driverId', driverId);
+            const activeShift = allShifts.find(s => s.status === 'active');
+
+            if (activeShift) {
+                // Hidratar datos internos del módulo
+                const vehicles = await DB.getAll('vehicles');
+                const vehicle = vehicles.find(v => v.id === activeShift.vehicleId);
+                _activeShiftId = activeShift.id;
+                _activeVehicleId = activeShift.vehicleId;
+                _activeVehicleName = vehicle ? `${vehicle.name} — ${vehicle.plate}` : '';
+                console.log(`🔄 Shift hydration: turno activo encontrado (ID: ${activeShift.id}, Vehículo: ${_activeVehicleName})`);
+                return activeShift;
+            }
+
+            console.log('🔄 Shift hydration: no hay turno activo');
+            return null;
+        } catch (e) {
+            console.warn('🔄 Shift hydration: error al verificar turno activo:', e);
+            return null;
+        }
+    }
+
+    // --- Hidratación pública: restaurar estado del turno al volver del background ---
+    // Llamada desde App._restoreSessionOnResume() para conductores.
+    // Si hay turno activo, fuerza la navegación a la vista de turnos.
+    async function hydrateActiveShift() {
+        const activeShift = await checkActiveShift();
+        if (activeShift) {
+            // Forzar la vista de turnos para que renderice el turno activo
+            Router.navigate('shifts');
+            return true;
+        }
+        return false;
+    }
+
     return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
-        getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName })
+        getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName }),
+        checkActiveShift, hydrateActiveShift
     };
 })();

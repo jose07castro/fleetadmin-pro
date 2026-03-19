@@ -274,7 +274,18 @@ const App = (() => {
                 startRealtimeSync();
             }
 
-            // 6. Refrescar la vista actual (esto re-obtiene datos del DB)
+            // 6. SHIFT HYDRATION: Si es conductor, verificar turno activo ANTES de refrescar
+            if (Auth.isDriver() && typeof ShiftsModule !== 'undefined') {
+                console.log('📱 Conductor detectado — verificando turno activo (hydration)...');
+                const hadActiveShift = await ShiftsModule.hydrateActiveShift();
+                if (hadActiveShift) {
+                    console.log('📱 ✅ Turno activo restaurado correctamente');
+                    return; // hydrateActiveShift ya navegó a 'shifts'
+                }
+                console.log('📱 No hay turno activo — continuando navegación normal');
+            }
+
+            // 7. Refrescar la vista actual (esto re-obtiene datos del DB)
             const currentRoute = Router.getCurrentRoute();
             if (currentRoute && currentRoute !== 'login') {
                 console.log(`📱 Restaurando vista: ${currentRoute}`);
