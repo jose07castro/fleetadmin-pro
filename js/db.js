@@ -204,14 +204,31 @@ const DB = (() => {
                 // Guardar en caché para fallback
                 try { localStorage.setItem(CACHE_KEY, JSON.stringify(users)); } catch(ce) { /* quota */ }
 
-                const found = users.find(u =>
-                    u.name && u.name.toLowerCase() === name.toLowerCase() &&
-                    u.pin === pin &&
-                    u.role === role
-                ) || null;
+                const found = users.find(u => {
+                    if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
+                    if (u.role !== role) return false;
+                    // Dual PIN comparison: bcrypt hash or plain-text (legacy)
+                    try {
+                        if (u.pin && u.pin.startsWith('$2')) {
+                            return dcodeIO.bcrypt.compareSync(pin, u.pin);
+                        }
+                    } catch (e) { /* bcrypt not available or comparison error */ }
+                    return u.pin === pin; // plain-text fallback
+                }) || null;
 
                 if (found) {
                     console.log(`🔐 LOGIN: ✅ Usuario encontrado: ${found.name} (${found.role}) fleetId: ${found.fleetId}`);
+                    // Auto-migrate: hash plain-text PIN for future security
+                    if (found.pin && !found.pin.startsWith('$2')) {
+                        try {
+                            const hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+                            db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
+                            found.pin = hashedPin;
+                            console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash');
+                        } catch (hashErr) {
+                            console.warn('🔐 LOGIN: ⚠️ No se pudo migrar PIN:', hashErr);
+                        }
+                    }
                 } else {
                     console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (nombre/pin/rol incorrecto)`);
                 }
@@ -232,11 +249,16 @@ const DB = (() => {
             const cached = localStorage.getItem(CACHE_KEY);
             if (cached) {
                 const users = JSON.parse(cached);
-                const found = users.find(u =>
-                    u.name && u.name.toLowerCase() === name.toLowerCase() &&
-                    u.pin === pin &&
-                    u.role === role
-                ) || null;
+                const found = users.find(u => {
+                    if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
+                    if (u.role !== role) return false;
+                    try {
+                        if (u.pin && u.pin.startsWith('$2')) {
+                            return dcodeIO.bcrypt.compareSync(pin, u.pin);
+                        }
+                    } catch (e) { /* bcrypt not available */ }
+                    return u.pin === pin;
+                }) || null;
                 if (found) {
                     console.log('🔐 LOGIN: ✅ Usuario encontrado en caché local (offline mode)');
                     return found;

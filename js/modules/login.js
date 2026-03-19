@@ -249,10 +249,18 @@ const LoginModule = (() => {
             // 1. Crear un fleetId nuevo para esta flota
             const fleetId = DB.createFleetId();
 
+            // Hash PIN before saving
+            let hashedPin = pin;
+            try {
+                hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+            } catch (e) {
+                console.warn('⚠️ bcrypt no disponible, guardando PIN sin hash:', e);
+            }
+
             // 2. Registrar en globalUsers con su fleetId
             const globalId = await DB.addGlobalUser({
                 name,
-                pin,
+                pin: hashedPin,
                 role: 'owner',
                 fleetId
             });
@@ -263,7 +271,7 @@ const LoginModule = (() => {
             // 4. Crear el usuario dentro de la flota
             await DB.add('users', {
                 name,
-                pin,
+                pin: hashedPin,
                 role: 'owner',
                 globalId
             });
@@ -274,7 +282,7 @@ const LoginModule = (() => {
             Auth.login({
                 id: globalId,
                 name,
-                pin,
+                pin: hashedPin,
                 role: 'owner',
                 fleetId
             });

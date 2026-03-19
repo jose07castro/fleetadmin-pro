@@ -406,12 +406,21 @@ const SettingsModule = (() => {
 
         const fleetId = Auth.getFleetId();
 
+        // Hash PIN before saving
+        let hashedPin = pin;
+        try {
+            hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+        } catch (e) {
+            console.warn('⚠️ bcrypt no disponible, guardando PIN sin hash:', e);
+        }
+
         // Crear en globalUsers para que pueda loguearse
         const globalId = await DB.addGlobalUser({
-            name, pin, role, fleetId
+            name, pin: hashedPin, role, fleetId
         });
 
         // Crear dentro de la flota
+        userData.pin = hashedPin;
         userData.globalId = globalId;
         const newUserId = await DB.add('users', userData);
 
