@@ -635,7 +635,9 @@ const SOSModule = (() => {
     // =============================================
     // LISTENER DUAL — Dueños (siempre) + Conductores (radar 50km)
     // =============================================
-    const SOS_RADIUS_KM = 50;
+    // ⚠️ BYPASS TEMPORAL: Radio aumentado a 1000km para diagnóstico
+    // TODO: Restaurar a 50km una vez confirmado que los eventos llegan correctamente
+    const SOS_RADIUS_KM = 1000;
 
     // =============================================
     // NOTIFICACIÓN NATIVA DEL OS (Web Notification API)
@@ -739,6 +741,7 @@ const SOSModule = (() => {
 
         _sosListenerRef.on('child_added', (snap) => {
             const alertData = snap.val();
+            console.log('🚨 SOS LISTENER: 📩 child_added disparado — key:', snap.key, '| data:', alertData ? 'OK' : 'NULL');
             if (!alertData) return;
 
             // Guard: si estoy enviando un SOS, no mostrar notificaciones que sobreescriban el modal
@@ -774,12 +777,13 @@ const SOSModule = (() => {
             }
 
             // ====================================
-            // 🚗 CONDUCTOR: Solo si está dentro del RADAR 30km
+            // 🚗 CONDUCTOR: Solo si está dentro del RADAR
             // ====================================
+            console.log('🚨 SOS LISTENER (DRIVER): 🔍 Evaluando alerta para conductor. myUserId:', myUserId, '| alertData.driverId:', alertData.driverId, '| alertData.driverName:', alertData.driverName);
 
-            // No mostrar mi propia alerta SOS
-            if (alertData.driverId === myUserId) {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Es mi propia alerta, ignorando');
+            // CRÍTICO: No mostrar mi propia alerta SOS (evitar bucle infinito)
+            if (alertData.driverId === myUserId || alertData.driverName === Auth.getUserName()) {
+                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Es mi propia alerta, ignorando (driverId o driverName coinciden)');
                 return;
             }
 
@@ -789,9 +793,13 @@ const SOSModule = (() => {
                 return;
             }
 
-            // Intentar filtro por distancia (30km radar) — BEST EFFORT
+            // Intentar filtro por distancia — BEST EFFORT
+            // ⚠️ BYPASS TEMPORAL: radio = 1000km para diagnóstico
             let distKm = null;
             let canCalculateDistance = false;
+
+            console.log('🚨 SOS LISTENER (DRIVER): 📍 Mi posición:', _myLastPosition ? `${_myLastPosition.lat}, ${_myLastPosition.lng}` : 'NULL');
+            console.log('🚨 SOS LISTENER (DRIVER): 📍 Posición SOS:', alertData.lat, alertData.lng);
 
             if (alertData.lat && alertData.lng && _myLastPosition && _myLastPosition.lat && _myLastPosition.lng) {
                 canCalculateDistance = true;
@@ -801,6 +809,7 @@ const SOSModule = (() => {
                 );
                 console.log(`🚨 SOS LISTENER (DRIVER): Distancia al SOS: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
 
+                // bypass distance check — temporalmente radio = 1000km
                 if (distKm > SOS_RADIUS_KM) {
                     console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
                     return;
@@ -812,8 +821,9 @@ const SOSModule = (() => {
                 console.log(`🚨 SOS LISTENER (DRIVER): ⚠️ ${reason} — mostrando alerta por seguridad (sin filtro radar)`);
             }
 
+            console.log('🚨 SOS LISTENER (DRIVER): 🚀🚀🚀 DISPARANDO ALARMA + MODAL INVASIVO');
             _startAlarm();
-            _showOwnerSOSNotification(alertData, canCalculateDistance ? distKm : null);
+            _showDriverSOSAlert(alertData, canCalculateDistance ? distKm : null);
             // Push notification AISLADA — no puede bloquear alarma/modal
             try { _sendNativeNotification(alertData, canCalculateDistance ? distKm : null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
         });
@@ -831,12 +841,10 @@ const SOSModule = (() => {
     }
 
     // =============================================
-    // Notificación SOS (dueño o conductor cercano)
+    // Notificación SOS — DUEÑO (modal estándar)
     // =============================================
     function _showOwnerSOSNotification(alert, distKm) {
-        const isOwner = Auth.isOwner();
-        const roleLabel = isOwner ? 'DUEÑO' : 'CONDUCTOR';
-        console.log(`🚨 SOS ${roleLabel}: Mostrando modal de alerta para:`, alert.driverName);
+        console.log('🚨 SOS DUEÑO: Mostrando modal de alerta para:', alert.driverName);
 
         const mapsLink = alert.mapsUrl
             ? `<a href="${alert.mapsUrl}" target="_blank" style="color:var(--color-primary); font-weight:700;">📍 Ver en Google Maps</a>`
@@ -871,16 +879,135 @@ const SOSModule = (() => {
             </div>
         `;
 
-        const footerHTML = isOwner ? `
+        const footerHTML = `
             <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Cerrar</button>
             ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Abrir Mapa</a>` : ''}
             <button class="btn btn-primary" onclick="SOSModule.resolveAlert('${alert.id}')">✅ Marcar Resuelta</button>
-        ` : `
-            <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Entendido</button>
-            ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Ver Ubicación</a>` : ''}
         `;
 
         Components.showModal('🚨 ¡ALERTA SOS RECIBIDA!', bodyHTML, footerHTML);
+    }
+
+    // =============================================
+    // 🚨 ALERTA INVASIVA FULLSCREEN — CONDUCTOR
+    // Modal a pantalla completa con animación pulsante
+    // =============================================
+    function _showDriverSOSAlert(alertData, distKm) {
+        console.log('🚨 SOS DRIVER ALERT: 🔴 Disparando alerta invasiva fullscreen para:', alertData.driverName);
+
+        // Remover overlay anterior si existe
+        const existing = document.getElementById('sos-driver-fullscreen-overlay');
+        if (existing) existing.remove();
+
+        const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || '⚠️ Emergencia';
+        const distText = (distKm !== null && distKm !== undefined) ? `📡 A ${distKm.toFixed(1)} km de tu ubicación` : '';
+        const mapsBtn = alertData.mapsUrl
+            ? `<a href="${alertData.mapsUrl}" target="_blank" 
+                  style="display:inline-block; margin-top:16px; padding:14px 32px; 
+                         background:#fff; color:#dc2626; font-weight:800; font-size:1.1rem;
+                         border-radius:12px; text-decoration:none; 
+                         box-shadow:0 4px 20px rgba(0,0,0,0.3);"
+                  onclick="SOSModule.silenceAlarm()">
+                  📍 VER UBICACIÓN EN MAPA
+               </a>`
+            : '';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'sos-driver-fullscreen-overlay';
+        overlay.innerHTML = `
+            <style>
+                @keyframes sosPulse {
+                    0%   { background: rgba(220, 38, 38, 0.95); }
+                    50%  { background: rgba(185, 28, 28, 1); }
+                    100% { background: rgba(220, 38, 38, 0.95); }
+                }
+                @keyframes sosIconBounce {
+                    0%, 100% { transform: scale(1); }
+                    50%      { transform: scale(1.3); }
+                }
+                #sos-driver-fullscreen-overlay {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 999999;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    animation: sosPulse 1.5s ease-in-out infinite;
+                    color: #fff;
+                    text-align: center;
+                    padding: 24px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
+                .sos-fullscreen-icon {
+                    font-size: 5rem;
+                    animation: sosIconBounce 1s ease-in-out infinite;
+                    margin-bottom: 16px;
+                    text-shadow: 0 0 30px rgba(255,255,255,0.5);
+                }
+                .sos-fullscreen-title {
+                    font-size: 2rem;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    margin-bottom: 12px;
+                    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                }
+                .sos-fullscreen-driver {
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                    margin-bottom: 8px;
+                }
+                .sos-fullscreen-type {
+                    font-size: 1.2rem;
+                    font-weight: 600;
+                    background: rgba(0,0,0,0.2);
+                    padding: 8px 20px;
+                    border-radius: 30px;
+                    margin-bottom: 8px;
+                }
+                .sos-fullscreen-details {
+                    font-size: 0.95rem;
+                    opacity: 0.9;
+                    margin-bottom: 4px;
+                }
+                .sos-fullscreen-dismiss {
+                    margin-top: 24px;
+                    padding: 16px 48px;
+                    background: rgba(255,255,255,0.15);
+                    color: #fff;
+                    font-weight: 800;
+                    font-size: 1.1rem;
+                    border: 2px solid rgba(255,255,255,0.5);
+                    border-radius: 12px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .sos-fullscreen-dismiss:hover {
+                    background: rgba(255,255,255,0.3);
+                }
+            </style>
+            <div class="sos-fullscreen-icon">🚨</div>
+            <div class="sos-fullscreen-title">¡ALERTA SOS!</div>
+            <div class="sos-fullscreen-driver">${alertData.driverName || 'Un conductor'} pide AUXILIO</div>
+            <div class="sos-fullscreen-type">${typeLabel}</div>
+            <div class="sos-fullscreen-details">🚗 ${alertData.vehicleName || 'Vehículo'}</div>
+            ${alertData.emergencyDetails ? `<div class="sos-fullscreen-details">📝 ${alertData.emergencyDetails}</div>` : ''}
+            ${distText ? `<div class="sos-fullscreen-details">${distText}</div>` : ''}
+            <div class="sos-fullscreen-details">🕐 ${new Date(alertData.created_at).toLocaleString()}</div>
+            ${mapsBtn}
+            <button class="sos-fullscreen-dismiss" onclick="SOSModule.dismissDriverAlert()">✅ ENTENDIDO</button>
+        `;
+
+        document.body.appendChild(overlay);
+    }
+
+    // Cerrar alerta invasiva del conductor
+    function _dismissDriverAlert() {
+        _stopAlarm();
+        const overlay = document.getElementById('sos-driver-fullscreen-overlay');
+        if (overlay) overlay.remove();
+        console.log('🚨 SOS DRIVER ALERT: Modal invasivo cerrado por el conductor');
     }
 
     // =============================================
@@ -922,6 +1049,7 @@ const SOSModule = (() => {
         triggerSOS, submitSOSDetails, cancelSOS, startListening, stopListening,
         resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm,
         unlockAudio: _manualUnlockAudio, renderAudioActivationBanner,
-        isAudioUnlocked: () => _audioUnlocked
+        isAudioUnlocked: () => _audioUnlocked,
+        dismissDriverAlert: _dismissDriverAlert
     };
 })();
