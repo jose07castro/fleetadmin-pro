@@ -509,6 +509,28 @@ const SettingsModule = (() => {
         }
     }
 
+    // --- Identificar al Super Admin (fundador de la flota) ---
+    let _cachedSuperAdminId = null;
+
+    async function _getSuperAdminId() {
+        if (_cachedSuperAdminId) return _cachedSuperAdminId;
+        try {
+            const fleetId = Auth.getFleetId();
+            if (!fleetId) return null;
+            const globalUsers = await DB.getGlobalUsersByFleet(fleetId);
+            // El Super Admin es el owner más antiguo (primer createdAt)
+            const owners = globalUsers.filter(u => u.role === 'owner');
+            if (owners.length === 0) return null;
+            owners.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            _cachedSuperAdminId = owners[0].id;
+            console.log('🛡️ Super Admin identificado:', owners[0].name, '(', _cachedSuperAdminId, ')');
+            return _cachedSuperAdminId;
+        } catch (e) {
+            console.warn('⚠️ Error identificando Super Admin:', e);
+            return null;
+        }
+    }
+
     // --- Lista de usuarios con estado de licencia ---
     async function loadUserList() {
         const container = document.getElementById('userList');
@@ -521,6 +543,7 @@ const SettingsModule = (() => {
         }
 
         const roleIcons = { owner: '👑', driver: '🚗', mechanic: '🔧' };
+        const superAdminId = await _getSuperAdminId();
         let html = '';
 
         for (const u of users) {
@@ -528,6 +551,7 @@ const SettingsModule = (() => {
             const icon = roleIcons[u.role] || '👤';
             const roleName = I18n.t('role_' + (u.role || 'driver')) || u.role;
             const safeName = u.name || 'Sin nombre';
+            const isSuperAdmin = (u.globalId === superAdminId) || (u.id === superAdminId);
 
             // Badge de licencia para conductores
             let licenseBadge = '';
@@ -553,8 +577,10 @@ const SettingsModule = (() => {
                     🪪 ${I18n.t('edit')}
                 </button>`;
             }
-            // Botón eliminar (solo no-owners)
-            if (u.role !== 'owner') {
+            // Botón eliminar: todos excepto Super Admin
+            if (isSuperAdmin) {
+                deleteBtn = `<span class="badge" style="font-size:0.7rem; background:linear-gradient(135deg, #f59e0b, #d97706); color:white; padding:4px 10px; border-radius:20px; font-weight:700;">🛡️ Super Admin</span>`;
+            } else {
                 deleteBtn = `<button class="btn btn-sm" onclick="SettingsModule.deepDeleteUser('${u.id}')" style="font-size:0.75rem; padding:var(--space-1) var(--space-2); background:#dc2626; color:white; border:none;">
                     🗑️
                 </button>`;
@@ -899,24 +925,36 @@ const SettingsModule = (() => {
 
     // Eliminación profunda desde Settings
     async function deepDeleteUser(userId) {
-        if (!confirm('⚠️ ¿Eliminar este usuario PERMANENTEMENTE?\n\nSe borrarán sus datos y fotos del servidor.')) return;
-
         try {
+            const user = await DB.get('users', userId);
+            if (!user) {
+                Components.showToast('❌ Usuario no encontrado', 'danger');
+                return;
+            }
+
+            // 🛡️ PROTECCIÓN SUPER ADMIN: bloquear eliminación del fundador
+            const superAdminId = await _getSuperAdminId();
+            if (superAdminId && (user.globalId === superAdminId || user.id === superAdminId)) {
+                Components.showToast('🛡️ Acción denegada: No se puede eliminar al Super Administrador', 'danger');
+                console.warn('🛡️ 403 Forbidden: intento de eliminar al Super Admin bloqueado');
+                return;
+            }
+
+            const userName = user.name || 'este usuario';
+            if (!confirm(`⚠️ ¿Eliminar a ${userName}?\n\nSe borrarán TODOS sus datos, fotos y acceso al sistema.\n\nEsta acción NO se puede deshacer.`)) return;
+
             Components.showToast('🗑️ Eliminando usuario y fotos...', 'info');
 
-            const user = await DB.get('users', userId);
-            if (user) {
-                // 1. Borrar fotos de Storage
-                if (user.licenseFrontPhoto || user.licenseBackPhoto) {
-                    await StorageUtil.deleteUserPhotos(user);
-                }
-                // 2. Borrar de globalUsers
-                if (user.globalId) {
-                    try {
-                        await firebaseDB.ref('globalUsers/' + user.globalId).remove();
-                    } catch (e) {
-                        console.warn('⚠️ No se pudo borrar de globalUsers:', e.message);
-                    }
+            // 1. Borrar fotos de Storage
+            if (user.licenseFrontPhoto || user.licenseBackPhoto) {
+                await StorageUtil.deleteUserPhotos(user);
+            }
+            // 2. Borrar de globalUsers
+            if (user.globalId) {
+                try {
+                    await firebaseDB.ref('globalUsers/' + user.globalId).remove();
+                } catch (e) {
+                    console.warn('⚠️ No se pudo borrar de globalUsers:', e.message);
                 }
             }
 
