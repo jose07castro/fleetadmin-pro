@@ -330,7 +330,7 @@ const SOSModule = (() => {
             }
             const snap = await Promise.race([
                 firebaseDB.ref(`gps_tracker/${vehicleId}/last_position`).once('value'),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Tracker timeout (5s)')), 5000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Tracker timeout (3s)')), 3000))
             ]);
             const data = snap.val();
             if (data && data.lat && data.lng) {
@@ -349,10 +349,12 @@ const SOSModule = (() => {
     // PASO 2: Fallback GPS del celular
     // =============================================
     function _getMobilePosition() {
-        console.log('🚨 SOS [Paso 3]: Intentando GPS del celular...');
-        return new Promise((resolve) => {
+        console.log('🚨 SOS [Paso 3]: Intentando GPS del celular (timeout 4s)...');
+
+        // Promesa interna del Geolocation API
+        const geoPromise = new Promise((resolve) => {
             if (!navigator.geolocation) {
-                console.warn('🚨 SOS [Paso 3]: ❌ Geolocation API no soportada en este navegador');
+                console.warn('🚨 SOS [Paso 3]: ❌ Geolocation API no soportada');
                 resolve(null);
                 return;
             }
@@ -369,17 +371,26 @@ const SOSModule = (() => {
                     let reason = 'Error desconocido';
                     if (err.code === 1) reason = 'PERMISO DENEGADO por el usuario';
                     if (err.code === 2) reason = 'Posición no disponible (sin HTTPS o GPS apagado)';
-                    if (err.code === 3) reason = 'Timeout (5s)';
-                    console.warn('🚨 SOS [Paso 3]: ❌ GPS celular falló —', reason, err.message);
+                    if (err.code === 3) reason = 'Timeout nativo';
+                    console.warn('🚨 SOS [Paso 3]: ❌ GPS celular falló —', reason);
                     if (err.code === 1) {
-                        Components.showToast('⚠️ Permiso de GPS denegado. Activá la ubicación en tu celular.', 'warning');
+                        Components.showToast('⚠️ GPS denegado — el SOS se enviará sin ubicación', 'warning');
                     }
-                    // FALLBACK: SOS se envía SIN GPS de todas formas
                     resolve(null);
                 },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 3500, maximumAge: 10000 }
             );
         });
+
+        // ⚡ TIMEOUT DURO de 4 segundos — si el GPS no responde, seguimos SIN él
+        const hardTimeout = new Promise((resolve) => {
+            setTimeout(() => {
+                console.warn('🚨 SOS [Paso 3]: ⏱️ HARD TIMEOUT 4s — GPS no respondió, continuando sin ubicación');
+                resolve(null);
+            }, 4000);
+        });
+
+        return Promise.race([geoPromise, hardTimeout]);
     }
 
     // =============================================
@@ -477,47 +488,43 @@ const SOSModule = (() => {
         Components.showToast('🚨 Enviando alerta SOS...', 'warning');
 
         try {
-            // --- PASO 2: Obtener GPS ---
-            console.log('🚨 SOS [Paso 2]: Obteniendo ubicación...');
+            // --- PASO 2: Obtener GPS (máx 7s total: 3s tracker + 4s celular) ---
+            console.log('🚨 SOS [Paso 2]: Obteniendo ubicación (no bloquea el envío)...');
 
-            let position = await _getTrackerPosition(vehicleId);
-
-            if (!position) {
-                Components.showToast('📱 Usando GPS del celular...', 'info');
-                position = await _getMobilePosition();
+            let position = null;
+            try {
+                position = await _getTrackerPosition(vehicleId);
+            } catch (e) {
+                console.warn('🚨 SOS [Paso 2]: Tracker falló —', e.message);
             }
 
             if (!position) {
-                console.warn('🚨 SOS [Paso 3]: ⚠️ Sin coordenadas — enviando sin ubicación');
+                Components.showToast('📱 Intentando GPS del celular...', 'info');
+                try {
+                    position = await _getMobilePosition();
+                } catch (e) {
+                    console.warn('🚨 SOS [Paso 3]: GPS celular falló —', e.message);
+                }
+            }
+
+            // ⚡ FALLBACK SEGURO: Si NO hay GPS, el SOS se envía IGUAL
+            const locationAvailable = !!(position && position.lat && position.lng);
+            if (!locationAvailable) {
+                console.warn('🚨 SOS [Paso 3]: ⚠️ SIN COORDENADAS — enviando SOS sin ubicación (NUNCA se bloquea)');
                 position = { lat: null, lng: null, source: 'unavailable' };
             }
 
-            console.log('🚨 SOS [Paso 3]: Coordenadas:', position.lat, position.lng, '| Fuente:', position.source);
+            console.log('🚨 SOS [Paso 3]: Coordenadas:', position.lat, position.lng, '| Fuente:', position.source, '| Disponible:', locationAvailable);
 
-            const mapsUrl = position.lat
+            const mapsUrl = locationAvailable
                 ? `https://www.google.com/maps?q=${position.lat},${position.lng}`
                 : '';
 
-            // --- PASO 3: Verificar Firebase ---
-            console.log('🚨 SOS [Paso 4]: Verificando conexión Firebase...');
+            // --- PASO 3: Escribir alerta DIRECTAMENTE (sin pre-check de conexión) ---
+            // El pre-check de .info/connected agregaba 6s+ en redes lentas
+            // Firebase RTDB tiene retry interno — mejor intentar escribir directo
+            console.log('🚨 SOS [Paso 4]: Guardando alerta en Firebase CON motivo:', type);
             const fleetId = Auth.getFleetId();
-
-            try {
-                await Promise.race([
-                    firebaseDB.ref('.info/connected').once('value'),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase connection timeout')), 6000))
-                ]);
-                console.log('🚨 SOS [Paso 4]: ✅ Firebase conectado');
-            } catch (connErr) {
-                console.error('🚨 SOS [Paso 4]: ❌ Sin conexión:', connErr.message);
-                alert('🚨 ERROR: Sin conexión con la central.\n\nVerificá tu conexión a internet e intentá de nuevo.');
-                Components.showToast('❌ Sin conexión — no se pudo enviar la alerta SOS', 'danger');
-                _isSendingSOS = false;
-                return;
-            }
-
-            // --- PASO 4: Escribir alerta con MOTIVO incluido ---
-            console.log('🚨 SOS [Paso 5]: Guardando alerta en Firebase CON motivo:', type);
             const alertRef = firebaseDB.ref('sos_alerts').push();
             const alertData = {
                 id: alertRef.key,
@@ -530,7 +537,8 @@ const SOSModule = (() => {
                 lat: position.lat,
                 lng: position.lng,
                 gpsSource: position.source,
-                locationText: position.lat ? `${position.lat}, ${position.lng}` : 'No disponible (Error GPS/Permisos)',
+                locationAvailable: locationAvailable,
+                locationText: locationAvailable ? `${position.lat}, ${position.lng}` : 'No disponible (Error GPS/Permisos)',
                 mapsUrl: mapsUrl,
                 status: 'active',
                 emergencyType: type,
@@ -540,14 +548,14 @@ const SOSModule = (() => {
                 resolved_at: null
             };
 
-            console.log('🚨 SOS [Paso 5]: Payload:', JSON.stringify(alertData));
+            console.log('🚨 SOS [Paso 4]: Payload:', JSON.stringify(alertData));
 
             await Promise.race([
                 alertRef.set(alertData),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (10s)')), 10000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (15s)')), 15000))
             ]);
 
-            console.log('🚨 SOS [Paso 5]: ✅ Alerta guardada con ID:', alertRef.key);
+            console.log('🚨 SOS [Paso 4]: ✅ Alerta guardada con ID:', alertRef.key);
             Components.showToast(`${emergencyDef?.icon || '🚨'} ¡ALERTA SOS ENVIADA! — ${emergencyDef?.label || type}`, 'danger');
 
             _pendingSOSContext = null;
@@ -862,11 +870,12 @@ const SOSModule = (() => {
     function _showOwnerSOSNotification(alert, distKm) {
         console.log('🚨 SOS DUEÑO: Mostrando modal de alerta para:', alert.driverName);
 
-        const mapsLink = alert.mapsUrl
+        const gpsUnavailable = alert.locationAvailable === false || (!alert.lat && !alert.lng);
+        const mapsLink = (!gpsUnavailable && alert.mapsUrl)
             ? `<a href="${alert.mapsUrl}" target="_blank" style="color:var(--color-primary); font-weight:700;">📍 Ver en Google Maps</a>`
-            : '<span style="color:var(--text-tertiary);">📍 Ubicación no disponible</span>';
+            : '<span style="color:#ef4444; font-weight:700;">⚠️ Ubicación GPS no disponible</span>';
 
-        const distInfo = (distKm !== undefined && distKm !== null)
+        const distInfo = (distKm !== undefined && distKm !== null && !gpsUnavailable)
             ? `<br/>📡 A ${distKm.toFixed(1)} km de tu ubicación`
             : '';
 
@@ -880,7 +889,7 @@ const SOSModule = (() => {
                 </div>
                 <div style="font-size:var(--font-size-sm); color:var(--text-secondary); margin-bottom:var(--space-2);">
                     🚗 ${alert.vehicleName || 'Vehículo'}<br/>
-                    📡 Fuente GPS: ${alert.gpsSource === 'tracker' ? 'Rastreador IoT' : alert.gpsSource === 'mobile' ? 'Celular' : 'No disponible'}<br/>
+                    📡 Fuente GPS: ${gpsUnavailable ? '<span style="color:#ef4444;">No disponible</span>' : (alert.gpsSource === 'tracker' ? 'Rastreador IoT' : alert.gpsSource === 'mobile' ? 'Celular' : 'No disponible')}<br/>
                     🕐 ${new Date(alert.created_at).toLocaleString()}${distInfo}
                 </div>
                 <div style="margin-top:var(--space-3);">
@@ -916,8 +925,9 @@ const SOSModule = (() => {
         if (existing) existing.remove();
 
         const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || '⚠️ Emergencia';
-        const distText = (distKm !== null && distKm !== undefined) ? `📡 A ${distKm.toFixed(1)} km de tu ubicación` : '';
-        const mapsBtn = alertData.mapsUrl
+        const driverGpsUnavailable = alertData.locationAvailable === false || (!alertData.lat && !alertData.lng);
+        const distText = (distKm !== null && distKm !== undefined && !driverGpsUnavailable) ? `📡 A ${distKm.toFixed(1)} km de tu ubicación` : '';
+        const mapsBtn = (!driverGpsUnavailable && alertData.mapsUrl)
             ? `<a href="${alertData.mapsUrl}" target="_blank" 
                   style="display:inline-block; margin-top:16px; padding:14px 32px; 
                          background:#fff; color:#dc2626; font-weight:800; font-size:1.1rem;
@@ -926,7 +936,10 @@ const SOSModule = (() => {
                   onclick="SOSModule.silenceAlarm()">
                   📍 VER UBICACIÓN EN MAPA
                </a>`
-            : '';
+            : `<div style="margin-top:16px; padding:10px 20px; background:rgba(0,0,0,0.2); 
+                          border-radius:8px; font-weight:700; color:#fca5a5;">
+                  ⚠️ Ubicación GPS no disponible
+               </div>`;
 
         const overlay = document.createElement('div');
         overlay.id = 'sos-driver-fullscreen-overlay';
