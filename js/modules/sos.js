@@ -665,8 +665,10 @@ const SOSModule = (() => {
 
     // =============================================
     // NOTIFICACIÓN NATIVA DEL OS (Web Notification API)
-    // Funciona con browser minimizado / en background
+    // OBLIGATORIA para conductores — sin permisos no hay alerta en background
     // =============================================
+    let _permissionRetryTimer = null;
+
     function _requestNotificationPermission() {
         if (!('Notification' in window)) {
             console.log('🚨 SOS NOTIFY: Notification API no soportada');
@@ -677,16 +679,73 @@ const SOSModule = (() => {
             return;
         }
         if (Notification.permission === 'denied') {
-            console.warn('🚨 SOS NOTIFY: ❌ Permisos denegados por el usuario');
+            console.warn('🚨 SOS NOTIFY: ❌ Permisos denegados — mostrando aviso persistente');
+            Components.showToast('⚠️ Notificaciones SOS bloqueadas. Andá a Configuración del navegador y activá las notificaciones para recibir alertas de emergencia.', 'danger');
             return;
         }
-        // Pedir permiso
+        // Pedir permiso (estado: 'default')
         Notification.requestPermission().then(permission => {
             console.log('🚨 SOS NOTIFY: Permiso:', permission);
             if (permission === 'granted') {
-                Components.showToast('🔔 Notificaciones SOS activadas', 'success');
+                Components.showToast('🔔 Notificaciones SOS activadas — recibirás alertas en segundo plano', 'success');
+                if (_permissionRetryTimer) {
+                    clearInterval(_permissionRetryTimer);
+                    _permissionRetryTimer = null;
+                }
+            } else {
+                Components.showToast('⚠️ Sin notificaciones no recibirás alertas SOS en segundo plano', 'warning');
             }
         });
+    }
+
+    // Para conductores: solicitar permisos de forma persistente
+    function _requestMandatoryNotificationPermission() {
+        _requestNotificationPermission();
+
+        // Si no estamos granted, reintentar cada 30s con toast
+        if ('Notification' in window && Notification.permission === 'default') {
+            _permissionRetryTimer = setInterval(() => {
+                if (Notification.permission === 'granted') {
+                    clearInterval(_permissionRetryTimer);
+                    _permissionRetryTimer = null;
+                    return;
+                }
+                if (Notification.permission === 'default') {
+                    Components.showToast('🔔 Activá las notificaciones para recibir alertas SOS de emergencia', 'warning');
+                    _requestNotificationPermission();
+                }
+            }, 30000);
+        }
+    }
+
+    // =============================================
+    // 📨 BRIDGE: Enviar alerta SOS al Service Worker
+    // Para que dispare notificación en background
+    // =============================================
+    async function _postMessageToSW(alertData) {
+        try {
+            const registration = await navigator.serviceWorker?.getRegistration();
+            if (registration && registration.active) {
+                registration.active.postMessage({
+                    type: 'SOS_ALERT',
+                    alertData: {
+                        id: alertData.id,
+                        driverName: alertData.driverName,
+                        vehicleName: alertData.vehicleName,
+                        emergencyType: alertData.emergencyType,
+                        emergencyTypeLabel: alertData.emergencyTypeLabel,
+                        emergencyDetails: alertData.emergencyDetails,
+                        mapsUrl: alertData.mapsUrl,
+                        created_at: alertData.created_at
+                    }
+                });
+                console.log('🚨 SOS NOTIFY: 📨 postMessage enviado al Service Worker');
+            } else {
+                console.warn('🚨 SOS NOTIFY: Service Worker no activo, usando fallback');
+            }
+        } catch (e) {
+            console.warn('🚨 SOS NOTIFY: Error en postMessage:', e);
+        }
     }
 
     async function _sendNativeNotification(alertData, distKm) {
@@ -745,8 +804,15 @@ const SOSModule = (() => {
         const myUserId = Auth.getUserId() || Auth.getUserName();
         console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId);
 
-        // Pedir permisos de notificación nativa (aislado — no puede romper el listener)
-        try { _requestNotificationPermission(); } catch(e) { /* ignorar */ }
+        // Pedir permisos de notificación nativa
+        // OBLIGATORIO para conductores — persistente hasta que acepten
+        try {
+            if (!isOwner) {
+                _requestMandatoryNotificationPermission();
+            } else {
+                _requestNotificationPermission();
+            }
+        } catch(e) { /* ignorar */ }
 
         // Limpiar listener anterior si existe
         if (_sosListenerRef) {
@@ -797,6 +863,10 @@ const SOSModule = (() => {
                 _showOwnerSOSNotification(alertData);
                 // Push notification AISLADA — no puede bloquear alarma/modal
                 try { _sendNativeNotification(alertData, null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
+                // 📨 Si la pestaña no es visible, notificar via SW también
+                if (document.visibilityState !== 'visible') {
+                    try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
+                }
                 return;
             }
 
@@ -850,6 +920,10 @@ const SOSModule = (() => {
             _showDriverSOSAlert(alertData, canCalculateDistance ? distKm : null);
             // Push notification AISLADA — no puede bloquear alarma/modal
             try { _sendNativeNotification(alertData, canCalculateDistance ? distKm : null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
+            // 📨 Si la pestaña no es visible, notificar via SW también
+            if (document.visibilityState !== 'visible') {
+                try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
+            }
         });
 
         console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'}`);

@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v59';
+const CACHE_NAME = 'fleetadmin-v60';
 const ASSETS = [
     './',
     './index.html?v=59',
@@ -141,4 +141,78 @@ self.addEventListener('notificationclick', event => {
             }
         })
     );
+});
+
+// =============================================
+// 🚨 SOS: Listener de mensajes desde el main thread
+// Permite disparar notificaciones incluso cuando
+// el OS está suspendiendo la pestaña (background)
+// =============================================
+self.addEventListener('message', event => {
+    const msg = event.data;
+    if (!msg || msg.type !== 'SOS_ALERT') return;
+
+    console.log('🚨 SW: Mensaje SOS_ALERT recibido del main thread');
+
+    const alertData = msg.alertData || {};
+    const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || 'Emergencia';
+    const title = '🚨 ¡ALERTA SOS!';
+    const body = `${alertData.driverName || 'Un conductor'} necesita ayuda\n${typeLabel}\n🚗 ${alertData.vehicleName || 'Vehículo'}`;
+
+    event.waitUntil(
+        self.registration.showNotification(title, {
+            body: body,
+            icon: './assets/icon-192.png',
+            badge: './assets/icon-192.png',
+            tag: 'sos-bg-' + (alertData.id || Date.now()),
+            requireInteraction: true,
+            vibrate: [500, 250, 500, 250, 500, 250, 500],
+            data: {
+                url: self.location.origin || '/',
+                alertId: alertData.id,
+                mapsUrl: alertData.mapsUrl || null
+            },
+            actions: alertData.mapsUrl ? [
+                { action: 'open-map', title: '📍 Ver Mapa' },
+                { action: 'open-app', title: '🚨 Abrir App' }
+            ] : [
+                { action: 'open-app', title: '🚨 Abrir App' }
+            ]
+        }).then(() => {
+            console.log('🚨 SW: ✅ Notificación SOS de background mostrada');
+        }).catch(err => {
+            console.error('🚨 SW: ❌ Error mostrando notificación:', err);
+        })
+    );
+});
+
+// =============================================
+// 🔔 Push Event (preparado para FCM futuro)
+// Si se integra Firebase Cloud Messaging, este
+// handler disparará la notificación push real
+// =============================================
+self.addEventListener('push', event => {
+    let data = {};
+    try {
+        data = event.data ? event.data.json() : {};
+    } catch (e) {
+        data = { title: '🚨 ¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
+    }
+
+    const title = data.title || '🚨 ¡ALERTA SOS!';
+    const options = {
+        body: data.body || 'Un conductor necesita ayuda',
+        icon: './assets/icon-192.png',
+        badge: './assets/icon-192.png',
+        tag: 'sos-push-' + Date.now(),
+        requireInteraction: true,
+        vibrate: [500, 250, 500, 250, 500, 250, 500],
+        data: {
+            url: data.url || self.location.origin || '/',
+            alertId: data.alertId || null,
+            mapsUrl: data.mapsUrl || null
+        }
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
 });
