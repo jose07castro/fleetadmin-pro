@@ -802,7 +802,7 @@ const SOSModule = (() => {
         const isOwner = Auth.isOwner();
         const role = Auth.getRole();
         const myUserId = Auth.getUserId() || Auth.getUserName();
-        console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId);
+        console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId, '| myUserId:', myUserId);
 
         // Pedir permisos de notificación nativa
         // OBLIGATORIO para conductores — persistente hasta que acepten
@@ -815,10 +815,7 @@ const SOSModule = (() => {
         } catch(e) { /* ignorar */ }
 
         // Limpiar listener anterior si existe
-        if (_sosListenerRef) {
-            console.log('🚨 SOS LISTENER: Limpiando listener anterior');
-            _sosListenerRef.off('child_added');
-        }
+        stopListening();
 
         // Si es conductor, iniciar tracking de posición
         if (!isOwner) {
@@ -826,8 +823,9 @@ const SOSModule = (() => {
         }
 
         _sosListenerRef = firebaseDB.ref('sos_alerts');
-        const _listenerStartTime = Date.now();
-        console.log('🚨 SOS LISTENER: Start time:', new Date(_listenerStartTime).toISOString());
+        // Usar timestamp con 30s de tolerancia para reconexiones
+        const _listenerStartTime = Date.now() - 30000;
+        console.log('🚨 SOS LISTENER: Start time (con 30s tolerancia):', new Date(_listenerStartTime).toISOString());
 
         _sosListenerRef.on('child_added', (snap) => {
             const alertData = snap.val();
@@ -845,9 +843,12 @@ const SOSModule = (() => {
             // Filtrar: solo alertas activas
             if (alertData.status !== 'active') return;
 
-            // Filtrar: solo alertas nuevas (creadas después del listener)
+            // Filtrar: solo alertas recientes (con tolerancia de 30s)
             const alertTime = new Date(alertData.created_at).getTime();
-            if (alertTime < _listenerStartTime - 5000) return;
+            if (alertTime < _listenerStartTime) {
+                console.log('🚨 SOS LISTENER: ⏩ Alerta vieja, ignorando. AlertTime:', new Date(alertTime).toISOString());
+                return;
+            }
 
             // ====================================
             // 👑 DUEÑO: SIEMPRE recibe alertas de su flota
@@ -926,14 +927,45 @@ const SOSModule = (() => {
             }
         });
 
-        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'}`);
+        // =============================================
+        // 🔄 KEEPALIVE: Ping Firebase cada 45s para mantener conexión en móvil
+        // Los browsers en 4G/LTE matan conexiones WebSocket idle
+        // =============================================
+        if (_keepaliveInterval) clearInterval(_keepaliveInterval);
+        _keepaliveInterval = setInterval(() => {
+            try {
+                firebaseDB.ref('.info/connected').once('value').then(snap => {
+                    const connected = snap.val();
+                    if (!connected) {
+                        console.warn('🚨 SOS KEEPALIVE: ❌ Firebase desconectado — forzando reconexión');
+                        try { firebase.database().goOffline(); } catch(e) {}
+                        setTimeout(() => { try { firebase.database().goOnline(); } catch(e) {} }, 500);
+                    }
+                }).catch(() => {
+                    console.warn('🚨 SOS KEEPALIVE: Error en ping');
+                });
+            } catch(e) { /* ignorar */ }
+        }, 45000);
+
+        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'} + keepalive 45s`);
     }
+
+    // Variable para keepalive interval
+    let _keepaliveInterval = null;
 
     function stopListening() {
         if (_sosListenerRef) {
             _sosListenerRef.off('child_added');
             _sosListenerRef = null;
             console.log('🚨 SOS LISTENER: Desactivado');
+        }
+        if (_keepaliveInterval) {
+            clearInterval(_keepaliveInterval);
+            _keepaliveInterval = null;
+        }
+        if (_permissionRetryTimer) {
+            clearInterval(_permissionRetryTimer);
+            _permissionRetryTimer = null;
         }
         _stopPositionTracking();
     }

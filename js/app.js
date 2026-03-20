@@ -205,6 +205,12 @@ const App = (() => {
             if (document.visibilityState === 'visible') {
                 console.log('📱 App volvió al primer plano');
                 _restoreSessionOnResume();
+            } else {
+                // Al ir a background: hacer un ping a Firebase para mantener conexión
+                try {
+                    firebaseDB.ref('.info/connected').once('value');
+                    console.log('📱 App en background — ping Firebase enviado');
+                } catch(e) { /* ignorar */ }
             }
         });
 
@@ -272,6 +278,15 @@ const App = (() => {
             // 5. Reiniciar realtime sync si no está activa
             if (!realtimeListenersActive) {
                 startRealtimeSync();
+            }
+
+            // 5.5. CRÍTICO: Reiniciar SOS listener (se muere en background móvil)
+            if (typeof SOSModule !== 'undefined') {
+                console.log('📱 Reiniciando SOS listener después de resume...');
+                try { SOSModule.stopListening(); } catch(e) { /* ignorar */ }
+                try { SOSModule.startListening(); } catch(e) {
+                    console.error('📱 Error reiniciando SOS listener:', e);
+                }
             }
 
             // 6. SHIFT HYDRATION: Si es conductor, verificar turno activo ANTES de refrescar
