@@ -550,12 +550,19 @@ const SOSModule = (() => {
 
             console.log('🚨 SOS [Paso 4]: Payload:', JSON.stringify(alertData));
 
-            await Promise.race([
-                alertRef.set(alertData),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase write timeout (15s)')), 15000))
-            ]);
+            // 🔥 FIRE-AND-FORGET: No esperar confirmación del servidor
+            // Firebase RTDB tiene caché local — set() escribe localmente de inmediato
+            // y sincroniza con el servidor cuando la conexión esté disponible.
+            // En 4G lento, el await bloqueaba 15s+ y mostraba error de timeout.
+            alertRef.set(alertData).then(() => {
+                console.log('🚨 SOS [Paso 4]: ✅ Confirmado por servidor — ID:', alertRef.key);
+            }).catch(err => {
+                console.error('🚨 SOS [Paso 4]: ⚠️ Error de escritura (el dato se sincronizará luego):', err.message);
+                // NO mostrar error al usuario — Firebase reintentará automáticamente
+            });
 
-            console.log('🚨 SOS [Paso 4]: ✅ Alerta guardada con ID:', alertRef.key);
+            // Mostrar éxito INMEDIATAMENTE (no depende de la red)
+            console.log('🚨 SOS [Paso 4]: 📤 Alerta despachada (fire-and-forget) — ID:', alertRef.key);
             Components.showToast(`${emergencyDef?.icon || '🚨'} ¡ALERTA SOS ENVIADA! — ${emergencyDef?.label || type}`, 'danger');
 
             _pendingSOSContext = null;
@@ -565,8 +572,35 @@ const SOSModule = (() => {
         } catch (e) {
             console.error('🚨 SOS: ❌❌❌ ERROR CRÍTICO:', e);
             console.error('🚨 SOS: Stack:', e.stack);
-            alert('Error al enviar alerta SOS: ' + e.message + '\n\nVerificá tu conexión a internet y permisos de ubicación.');
-            Components.showToast('❌ Error crítico en SOS: ' + e.message, 'danger');
+            // Aún con error, intentar escribir de todos modos
+            try {
+                const fleetId = Auth.getFleetId();
+                const emergencyRef = firebaseDB.ref('sos_alerts').push();
+                emergencyRef.set({
+                    id: emergencyRef.key,
+                    driverId: Auth.getUserId() || Auth.getUserName(),
+                    driverName: Auth.getUserName(),
+                    fleetId: fleetId || 'unknown',
+                    shiftId: shiftId || '',
+                    vehicleId: vehicleId || '',
+                    vehicleName: vehicleName || '',
+                    lat: null, lng: null, gpsSource: 'error',
+                    locationAvailable: false,
+                    locationText: 'Error en envío SOS',
+                    mapsUrl: '',
+                    status: 'active',
+                    emergencyType: type,
+                    emergencyTypeLabel: emergencyDef ? `${emergencyDef.icon} ${emergencyDef.label}` : type,
+                    emergencyDetails: `[ERROR CATCH] ${e.message}`,
+                    created_at: new Date().toISOString(),
+                    resolved_at: null
+                });
+                Components.showToast('🚨 SOS enviado (modo emergencia)', 'warning');
+                console.log('🚨 SOS: ✅ Alerta de emergencia enviada desde catch');
+            } catch (e2) {
+                console.error('🚨 SOS: ❌ Incluso el envío de emergencia falló:', e2);
+                alert('🚨 EMERGENCIA: No se pudo enviar el SOS.\n\nLlamá al 911 o contactá a tu dueño por WhatsApp.');
+            }
             _isSendingSOS = false;
         }
     }
