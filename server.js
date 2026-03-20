@@ -1,6 +1,6 @@
 /* ============================================
    FleetAdmin Pro — Servidor Backend
-   Node.js puro (sin dependencias externas)
+   Node.js + Firebase Admin SDK para FCM Push
    Almacenamiento en JSON compartido
    ============================================ */
 
@@ -11,6 +11,35 @@ const path = require('path');
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
+const SERVICE_ACCOUNT_FILE = path.join(DATA_DIR, 'firebase-service-account.json');
+
+// --- Firebase Admin SDK para FCM Push Notifications ---
+let firebaseAdmin = null;
+let fcmEnabled = false;
+try {
+    const admin = require('firebase-admin');
+    if (fs.existsSync(SERVICE_ACCOUNT_FILE)) {
+        const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_FILE, 'utf8'));
+        // Verificar que sea una clave real (no el placeholder)
+        if (serviceAccount.private_key && serviceAccount.client_email) {
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                databaseURL: 'https://fleetadmin-pro-default-rtdb.firebaseio.com'
+            });
+            firebaseAdmin = admin;
+            fcmEnabled = true;
+            console.log('🔔 Firebase Admin SDK inicializado — FCM Push habilitado');
+        } else {
+            console.warn('🔔 firebase-service-account.json es placeholder — FCM Push DESHABILITADO');
+            console.warn('   Descargá la clave real de: https://console.firebase.google.com/project/fleetadmin-pro/settings/serviceaccounts/adminsdk');
+        }
+    } else {
+        console.warn('🔔 No existe data/firebase-service-account.json — FCM Push DESHABILITADO');
+    }
+} catch (e) {
+    console.warn('🔔 Error inicializando Firebase Admin SDK:', e.message);
+    console.warn('   FCM Push DESHABILITADO — la app funciona normal sin push en background.');
+}
 
 // --- Tipos MIME para archivos estáticos ---
 const MIME_TYPES = {
@@ -238,6 +267,140 @@ async function handleAPI(req, res, urlPath) {
         }
 
         return sendError(res, 'Operación de settings no soportada', 405);
+    }
+
+    // --- SOS Push Notification (FCM) ---
+    if (parts[0] === 'sos' && parts[1] === 'notify' && method === 'POST') {
+        const data = await parseBody(req);
+        console.log('🔔 SOS NOTIFY: Solicitud recibida para alerta:', data.alertId || 'N/A');
+
+        if (!fcmEnabled || !firebaseAdmin) {
+            console.warn('🔔 SOS NOTIFY: FCM no configurado — omitiendo push');
+            return sendJSON(res, {
+                success: false,
+                reason: 'FCM not configured',
+                message: 'Push deshabilitado: falta firebase-service-account.json'
+            });
+        }
+
+        try {
+            // Leer todos los FCM tokens desde Firebase RTDB
+            const tokensSnapshot = await firebaseAdmin.database().ref('fcm_tokens').once('value');
+            const tokensData = tokensSnapshot.val();
+
+            if (!tokensData) {
+                console.log('🔔 SOS NOTIFY: No hay tokens FCM registrados');
+                return sendJSON(res, { success: true, sent: 0, reason: 'no_tokens' });
+            }
+
+            // Filtrar tokens: misma flota, excluir al que envió el SOS
+            const targetTokens = [];
+            const tokenEntries = Object.entries(tokensData);
+
+            for (const [userId, entry] of tokenEntries) {
+                // Excluir al conductor que envió el SOS
+                if (userId === data.driverId) continue;
+                // Filtrar por flota (si ambos tienen fleetId)
+                if (data.fleetId && entry.fleetId && 
+                    entry.fleetId !== data.fleetId && 
+                    entry.fleetId !== 'unknown' && 
+                    data.fleetId !== 'unknown') continue;
+                // Token válido
+                if (entry.token) {
+                    targetTokens.push(entry.token);
+                }
+            }
+
+            console.log(`🔔 SOS NOTIFY: ${targetTokens.length} tokens destino (de ${tokenEntries.length} total)`);
+
+            if (targetTokens.length === 0) {
+                return sendJSON(res, { success: true, sent: 0, reason: 'no_matching_tokens' });
+            }
+
+            // Construir payload del push
+            const typeLabel = data.emergencyTypeLabel || data.emergencyType || 'Emergencia';
+            const message = {
+                notification: {
+                    title: '🚨 ¡ALERTA SOS!',
+                    body: `${data.driverName || 'Un conductor'} necesita ayuda inmediata. ${typeLabel}`
+                },
+                data: {
+                    alertId: String(data.alertId || ''),
+                    driverName: String(data.driverName || ''),
+                    vehicleName: String(data.vehicleName || ''),
+                    emergencyType: String(data.emergencyType || ''),
+                    emergencyTypeLabel: String(typeLabel),
+                    mapsUrl: String(data.mapsUrl || ''),
+                    lat: String(data.lat || ''),
+                    lng: String(data.lng || ''),
+                    created_at: String(data.created_at || ''),
+                    title: '🚨 ¡ALERTA SOS!',
+                    body: `${data.driverName || 'Un conductor'} necesita ayuda inmediata.`
+                },
+                android: {
+                    priority: 'high',
+                    notification: {
+                        sound: 'default',
+                        priority: 'max',
+                        channelId: 'sos_alerts'
+                    }
+                },
+                webpush: {
+                    headers: {
+                        Urgency: 'high',
+                        TTL: '86400'
+                    },
+                    notification: {
+                        title: '🚨 ¡ALERTA SOS!',
+                        body: `${data.driverName || 'Un conductor'} necesita ayuda inmediata. ${typeLabel}`,
+                        icon: '/assets/icon-192.png',
+                        badge: '/assets/icon-192.png',
+                        requireInteraction: true,
+                        vibrate: [500, 250, 500, 250, 500, 250, 500]
+                    }
+                },
+                tokens: targetTokens
+            };
+
+            // Enviar multicast
+            const response = await firebaseAdmin.messaging().sendEachForMulticast(message);
+            console.log(`🔔 SOS NOTIFY: ✅ Enviadas: ${response.successCount} exitosas, ${response.failureCount} fallidas`);
+
+            // Limpiar tokens inválidos
+            if (response.failureCount > 0) {
+                const invalidTokens = [];
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success) {
+                        const errorCode = resp.error?.code || '';
+                        if (errorCode === 'messaging/invalid-registration-token' ||
+                            errorCode === 'messaging/registration-token-not-registered') {
+                            invalidTokens.push(targetTokens[idx]);
+                        }
+                    }
+                });
+
+                // Eliminar tokens inválidos de RTDB
+                if (invalidTokens.length > 0) {
+                    console.log(`🔔 SOS NOTIFY: 🗑️ Limpiando ${invalidTokens.length} tokens inválidos`);
+                    for (const [userId, entry] of tokenEntries) {
+                        if (invalidTokens.includes(entry.token)) {
+                            await firebaseAdmin.database().ref(`fcm_tokens/${userId}`).remove();
+                        }
+                    }
+                }
+            }
+
+            return sendJSON(res, {
+                success: true,
+                sent: response.successCount,
+                failed: response.failureCount,
+                total: targetTokens.length
+            });
+
+        } catch (e) {
+            console.error('🔔 SOS NOTIFY: ❌ Error enviando push:', e.message);
+            return sendJSON(res, { success: false, error: e.message }, 500);
+        }
     }
 
     // --- GPS Webhook ---

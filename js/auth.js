@@ -14,9 +14,18 @@ const Auth = (() => {
         if (user.fleetId) {
             DB.setFleet(user.fleetId);
         }
+        // 🔔 Registrar FCM token para push notifications (background SOS)
+        // Fire-and-forget: no bloqueamos el login por esto
+        if (typeof FCM !== 'undefined') {
+            try { FCM.init().catch(e => console.warn('🔔 FCM init error:', e)); } catch(e) { /* ignorar */ }
+        }
     }
 
     function logout() {
+        // 🔔 Limpiar FCM token antes de borrar datos del usuario
+        if (typeof FCM !== 'undefined') {
+            try { FCM.removeToken().catch(e => console.warn('🔔 FCM removeToken error:', e)); } catch(e) { /* ignorar */ }
+        }
         currentUser = null;
         localStorage.removeItem('fleetadmin_user');
         localStorage.removeItem('fleetadmin_fleetId');

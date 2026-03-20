@@ -1,32 +1,33 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v60';
+const CACHE_NAME = 'fleetadmin-v61';
 const ASSETS = [
     './',
-    './index.html?v=59',
-    './css/index.css?v=59',
-    './css/components.css?v=59',
-    './css/modules.css?v=59',
-    './js/i18n.js?v=59',
-    './js/firebase-config.js?v=59',
-    './js/db.js?v=59',
-    './js/units.js?v=59',
-    './js/auth.js?v=59',
-    './js/alerts.js?v=59',
-    './js/components.js?v=59',
-    './js/router.js?v=59',
-    './js/modules/login.js?v=59',
-    './js/modules/dashboard.js?v=59',
-    './js/modules/shifts.js?v=59',
-    './js/modules/maintenance.js?v=59',
-    './js/modules/vehicles.js?v=59',
-    './js/modules/settings.js?v=59',
-    './js/modules/community.js?v=59',
-    './js/modules/sos.js?v=59',
-    './js/whatsapp.js?v=59',
-    './js/storage.js?v=59',
-    './js/modules/gps.js?v=59',
-    './js/notifications.js?v=59',
-    './js/app.js?v=59',
+    './index.html?v=60',
+    './css/index.css?v=60',
+    './css/components.css?v=60',
+    './css/modules.css?v=60',
+    './js/i18n.js?v=60',
+    './js/firebase-config.js?v=60',
+    './js/db.js?v=60',
+    './js/units.js?v=60',
+    './js/auth.js?v=60',
+    './js/alerts.js?v=60',
+    './js/components.js?v=60',
+    './js/router.js?v=60',
+    './js/modules/login.js?v=60',
+    './js/modules/dashboard.js?v=60',
+    './js/modules/shifts.js?v=60',
+    './js/modules/maintenance.js?v=60',
+    './js/modules/vehicles.js?v=60',
+    './js/modules/settings.js?v=60',
+    './js/modules/community.js?v=60',
+    './js/modules/sos.js?v=60',
+    './js/whatsapp.js?v=60',
+    './js/storage.js?v=60',
+    './js/modules/gps.js?v=60',
+    './js/fcm.js?v=60',
+    './js/notifications.js?v=60',
+    './js/app.js?v=60',
     './manifest.json?v=59',
     './assets/icon.svg',
     './assets/icon-192.png',
@@ -187,11 +188,74 @@ self.addEventListener('message', event => {
 });
 
 // =============================================
-// 🔔 Push Event (preparado para FCM futuro)
-// Si se integra Firebase Cloud Messaging, este
-// handler disparará la notificación push real
+// 🔔 Firebase Cloud Messaging (FCM) — Service Worker
+// Importar Firebase SDKs para manejar push en background
+// =============================================
+try {
+    importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+    importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+    firebase.initializeApp({
+        apiKey: "AIzaSyCc9FJIqwDUglnOvd9VXZndDBRsxJGDfuI",
+        authDomain: "fleetadmin-pro.firebaseapp.com",
+        databaseURL: "https://fleetadmin-pro-default-rtdb.firebaseio.com",
+        projectId: "fleetadmin-pro",
+        storageBucket: "fleetadmin-pro.firebasestorage.app",
+        messagingSenderId: "289124272326",
+        appId: "1:289124272326:web:b3d31d7d72c929e54e2fc7"
+    });
+
+    const messaging = firebase.messaging();
+
+    // Handler para mensajes en background (cuando la app NO está en foreground)
+    // FCM invoca esto automáticamente para data-only messages
+    messaging.onBackgroundMessage((payload) => {
+        console.log('🔔 FCM SW: 📩 Background message recibido:', payload);
+
+        const data = payload.data || {};
+        const notification = payload.notification || {};
+
+        const title = notification.title || data.title || '🚨 ¡ALERTA SOS!';
+        const body = notification.body || data.body || 'Un conductor necesita ayuda inmediata.';
+
+        const options = {
+            body: body,
+            icon: './assets/icon-192.png',
+            badge: './assets/icon-192.png',
+            tag: 'sos-fcm-' + (data.alertId || Date.now()),
+            requireInteraction: true,
+            vibrate: [500, 250, 500, 250, 500, 250, 500],
+            data: {
+                url: data.url || self.location.origin || '/',
+                alertId: data.alertId || null,
+                mapsUrl: data.mapsUrl || null
+            },
+            actions: data.mapsUrl ? [
+                { action: 'open-map', title: '📍 Ver Mapa' },
+                { action: 'open-app', title: '🚨 Abrir App' }
+            ] : [
+                { action: 'open-app', title: '🚨 Abrir App' }
+            ]
+        };
+
+        return self.registration.showNotification(title, options);
+    });
+
+    console.log('🔔 FCM SW: ✅ Firebase Messaging inicializado en Service Worker');
+
+} catch (e) {
+    console.warn('🔔 FCM SW: ⚠️ Error inicializando Firebase en SW (push manual sigue funcionando):', e.message);
+}
+
+// =============================================
+// 🔔 Push Event FALLBACK (para push genéricos sin FCM SDK)
+// Si Firebase Messaging SDK maneja el push, este handler
+// NO se ejecuta (FCM lo intercepta primero).
 // =============================================
 self.addEventListener('push', event => {
+    // Si Firebase messaging ya manejó el evento, no hacer nada
+    if (event.__handled) return;
+
     let data = {};
     try {
         data = event.data ? event.data.json() : {};
@@ -199,20 +263,32 @@ self.addEventListener('push', event => {
         data = { title: '🚨 ¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
     }
 
-    const title = data.title || '🚨 ¡ALERTA SOS!';
+    console.log('🔔 PUSH FALLBACK: Evento push recibido:', data);
+
+    const title = data.title || data.notification?.title || '🚨 ¡ALERTA SOS!';
+    const body = data.body || data.notification?.body || 'Un conductor necesita ayuda inmediata.';
+    const pushData = data.data || data;
+
     const options = {
-        body: data.body || 'Un conductor necesita ayuda',
+        body: body,
         icon: './assets/icon-192.png',
         badge: './assets/icon-192.png',
-        tag: 'sos-push-' + Date.now(),
+        tag: 'sos-push-' + (pushData.alertId || Date.now()),
         requireInteraction: true,
         vibrate: [500, 250, 500, 250, 500, 250, 500],
         data: {
-            url: data.url || self.location.origin || '/',
-            alertId: data.alertId || null,
-            mapsUrl: data.mapsUrl || null
-        }
+            url: pushData.url || self.location.origin || '/',
+            alertId: pushData.alertId || null,
+            mapsUrl: pushData.mapsUrl || null
+        },
+        actions: pushData.mapsUrl ? [
+            { action: 'open-map', title: '📍 Ver Mapa' },
+            { action: 'open-app', title: '🚨 Abrir App' }
+        ] : [
+            { action: 'open-app', title: '🚨 Abrir App' }
+        ]
     };
 
     event.waitUntil(self.registration.showNotification(title, options));
 });
+

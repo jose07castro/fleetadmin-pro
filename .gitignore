@@ -1,3 +1,4 @@
 node_modules/
 data/database.json
+data/firebase-service-account.json
 .env

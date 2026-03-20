@@ -561,6 +561,15 @@ const SOSModule = (() => {
                 // NO mostrar error al usuario — Firebase reintentará automáticamente
             });
 
+            // 🔔 PASO 5: Disparar FCM Push Notifications via backend
+            // FIRE-AND-FORGET: El backend envía pushes a conductores en background
+            // Esto NO bloquea ni afecta el flujo de foreground existente
+            try {
+                _triggerFCMNotification(alertData);
+            } catch (fcmErr) {
+                console.warn('🚨 SOS [Paso 5]: ⚠️ FCM trigger falló (no crítico):', fcmErr.message);
+            }
+
             // Mostrar éxito INMEDIATAMENTE (no depende de la red)
             console.log('🚨 SOS [Paso 4]: 📤 Alerta despachada (fire-and-forget) — ID:', alertRef.key);
             Components.showToast(`${emergencyDef?.icon || '🚨'} ¡ALERTA SOS ENVIADA! — ${emergencyDef?.label || type}`, 'danger');
@@ -603,6 +612,47 @@ const SOSModule = (() => {
             }
             _isSendingSOS = false;
         }
+    }
+
+    // =============================================
+    // 🔔 FCM: Disparar push notification via backend
+    // FIRE-AND-FORGET — nunca bloquea el flujo SOS
+    // =============================================
+    function _triggerFCMNotification(alertData) {
+        // Auto-detectar URL del backend (mismo origen que la app)
+        const baseUrl = window.location.origin;
+        const url = `${baseUrl}/api/sos/notify`;
+
+        console.log('🔔 SOS FCM: 📤 Enviando a backend:', url);
+
+        // Fire-and-forget fetch — NO usar await, NO bloquear
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                alertId: alertData.id,
+                driverName: alertData.driverName,
+                driverId: alertData.driverId,
+                vehicleName: alertData.vehicleName,
+                fleetId: alertData.fleetId,
+                lat: alertData.lat,
+                lng: alertData.lng,
+                mapsUrl: alertData.mapsUrl,
+                emergencyType: alertData.emergencyType,
+                emergencyTypeLabel: alertData.emergencyTypeLabel,
+                emergencyDetails: alertData.emergencyDetails,
+                created_at: alertData.created_at
+            })
+        }).then(res => {
+            if (res.ok) {
+                console.log('🔔 SOS FCM: ✅ Backend procesó la notificación push');
+            } else {
+                console.warn('🔔 SOS FCM: ⚠️ Backend respondió con status:', res.status);
+            }
+        }).catch(err => {
+            // No es crítico — el SOS ya se guardó en Firebase RTDB
+            console.warn('🔔 SOS FCM: ⚠️ Error contactando backend (SOS ya enviado):', err.message);
+        });
     }
 
     // =============================================
