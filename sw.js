@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v61';
+const CACHE_NAME = 'fleetadmin-v62';
 const ASSETS = [
     './',
     './index.html?v=60',
@@ -27,6 +27,7 @@ const ASSETS = [
     './js/modules/gps.js?v=60',
     './js/fcm.js?v=60',
     './js/notifications.js?v=60',
+    './js/pwa-install.js?v=61',
     './js/app.js?v=60',
     './manifest.json?v=59',
     './assets/icon.svg',
@@ -105,7 +106,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=57')
+                return caches.match('./index.html?v=60')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

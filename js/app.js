@@ -53,6 +53,10 @@ const App = (() => {
                     if (typeof SOSModule !== 'undefined') {
                         SOSModule.startListening();
                     }
+                    // 9. Mostrar banner PWA de instalación (solo drivers móviles)
+                    if (typeof PWAInstall !== 'undefined') {
+                        setTimeout(() => PWAInstall.showBanner(), 2000);
+                    }
                 } else {
                     Router.navigate('login');
                 }
@@ -305,6 +309,11 @@ const App = (() => {
             if (currentRoute && currentRoute !== 'login') {
                 console.log(`📱 Restaurando vista: ${currentRoute}`);
                 Router.navigate(currentRoute);
+            }
+
+            // Mostrar banner PWA si aplica (driver que vuelve del background)
+            if (typeof PWAInstall !== 'undefined') {
+                setTimeout(() => PWAInstall.showBanner(), 1500);
             }
         } catch (e) {
             console.warn('📱 Error al restaurar sesión:', e);
