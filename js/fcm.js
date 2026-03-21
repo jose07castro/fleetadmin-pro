@@ -7,9 +7,33 @@ const FCM = (() => {
     let _messaging = null;
     let _currentToken = null;
 
-    // ⚠️ REEMPLAZAR con tu VAPID key de Firebase Console:
-    // Project Settings → Cloud Messaging → Web Push certificates → Generate key pair
-    const VAPID_KEY = 'PASTE_YOUR_VAPID_PUBLIC_KEY_HERE';
+    /**
+     * Obtiene la VAPID key desde:
+     * 1. localStorage (configurada por el admin en Settings)
+     * 2. Firebase RTDB setting 'fcm_vapid_key'
+     * Retorna null si no está configurada.
+     */
+    async function _getVapidKey() {
+        // 1. Primero probar localStorage (más rápido)
+        const localKey = localStorage.getItem('fleetadmin_vapid_key');
+        if (localKey && localKey.length > 20) {
+            return localKey;
+        }
+
+        // 2. Fallback: leer de Firebase RTDB (configurada por el admin)
+        try {
+            const dbKey = await DB.getSetting('fcm_vapid_key');
+            if (dbKey && dbKey.length > 20) {
+                // Cachear en localStorage para la próxima vez
+                localStorage.setItem('fleetadmin_vapid_key', dbKey);
+                return dbKey;
+            }
+        } catch (e) {
+            console.warn('🔔 FCM: Error leyendo VAPID key de RTDB:', e.message);
+        }
+
+        return null;
+    }
 
     /**
      * Inicializa FCM: pide permisos, obtiene token y lo guarda en Firebase RTDB.
@@ -37,30 +61,36 @@ const FCM = (() => {
                 return null;
             }
 
+            // Obtener VAPID key
+            const vapidKey = await _getVapidKey();
+            if (!vapidKey) {
+                console.warn('🔔 FCM: ⚠️ VAPID key NO configurada — FCM Push DESHABILITADO');
+                console.warn('🔔 FCM: 📋 El admin debe configurarla en:');
+                console.warn('🔔 FCM:    Settings → 🔔 Push Notifications → VAPID Key');
+                console.warn('🔔 FCM:    Obtenerla de: https://console.firebase.google.com/project/fleetadmin-pro/settings/cloudmessaging');
+                return null;
+            }
+
             // Inicializar Firebase Messaging
             _messaging = firebase.messaging();
 
-            // Obtener token FCM
+            // Obtener token FCM con VAPID key
             const swRegistration = await navigator.serviceWorker?.getRegistration();
             const tokenOptions = {
+                vapidKey: vapidKey,
                 serviceWorkerRegistration: swRegistration
             };
-
-            // Solo agregar VAPID key si está configurada
-            if (VAPID_KEY && VAPID_KEY !== 'PASTE_YOUR_VAPID_PUBLIC_KEY_HERE') {
-                tokenOptions.vapidKey = VAPID_KEY;
-            }
 
             _currentToken = await _messaging.getToken(tokenOptions);
 
             if (_currentToken) {
                 console.log('🔔 FCM: ✅ Token obtenido:', _currentToken.substring(0, 20) + '...');
                 await _saveToken(_currentToken);
-                _setupTokenRefresh();
+                _setupTokenRefresh(vapidKey);
                 _setupForegroundHandler();
                 return _currentToken;
             } else {
-                console.warn('🔔 FCM: No se pudo obtener token (sin VAPID key o SW no registrado)');
+                console.warn('🔔 FCM: No se pudo obtener token (VAPID key inválida o SW no registrado)');
                 return null;
             }
 
@@ -116,21 +146,18 @@ const FCM = (() => {
     /**
      * Configura listener para refresh de token
      */
-    function _setupTokenRefresh() {
+    function _setupTokenRefresh(vapidKey) {
         if (!_messaging) return;
         try {
-            // En Firebase v9+ compat, onTokenRefresh puede no existir.
-            // Usamos onMessage como indicador de que messaging está activo.
-            // El token se re-obtiene en cada login igualmente.
             if (typeof _messaging.onTokenRefresh === 'function') {
                 _messaging.onTokenRefresh(async () => {
                     console.log('🔔 FCM: 🔄 Token refreshed');
                     try {
                         const swRegistration = await navigator.serviceWorker?.getRegistration();
-                        const tokenOptions = { serviceWorkerRegistration: swRegistration };
-                        if (VAPID_KEY && VAPID_KEY !== 'PASTE_YOUR_VAPID_PUBLIC_KEY_HERE') {
-                            tokenOptions.vapidKey = VAPID_KEY;
-                        }
+                        const tokenOptions = {
+                            vapidKey: vapidKey,
+                            serviceWorkerRegistration: swRegistration
+                        };
                         const newToken = await _messaging.getToken(tokenOptions);
                         if (newToken) {
                             _currentToken = newToken;
@@ -142,7 +169,6 @@ const FCM = (() => {
                 });
             }
         } catch (e) {
-            // Ignorar — token refresh no es crítico
             console.warn('🔔 FCM: onTokenRefresh no disponible:', e.message);
         }
     }
@@ -158,8 +184,6 @@ const FCM = (() => {
         try {
             _messaging.onMessage((payload) => {
                 console.log('🔔 FCM: 📩 Mensaje recibido en FOREGROUND (ignorado — onSnapshot lo maneja):', payload);
-                // NO hacer nada aquí — el listener de Firebase RTDB ya muestra la pantalla roja
-                // Esto evita duplicar alertas cuando la app está abierta
             });
         } catch (e) {
             console.warn('🔔 FCM: Error configurando foreground handler:', e);
@@ -201,5 +225,32 @@ const FCM = (() => {
         return _currentToken;
     }
 
-    return { init, removeToken, getToken };
+    /**
+     * Guardar VAPID key (llamado desde Settings)
+     */
+    async function setVapidKey(key) {
+        if (!key || key.length < 20) {
+            console.warn('🔔 FCM: VAPID key inválida (demasiado corta)');
+            return false;
+        }
+        localStorage.setItem('fleetadmin_vapid_key', key);
+        try {
+            await DB.setSetting('fcm_vapid_key', key);
+            console.log('🔔 FCM: ✅ VAPID key guardada');
+        } catch (e) {
+            console.warn('🔔 FCM: Error guardando VAPID key en RTDB:', e.message);
+        }
+        // Reinicializar FCM con la nueva key
+        return await init();
+    }
+
+    /**
+     * Verifica si FCM está completamente configurado
+     */
+    async function isConfigured() {
+        const key = await _getVapidKey();
+        return !!(key && key.length > 20);
+    }
+
+    return { init, removeToken, getToken, setVapidKey, isConfigured };
 })();

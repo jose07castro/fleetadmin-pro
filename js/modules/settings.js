@@ -151,6 +151,33 @@ const SettingsModule = (() => {
                     </div>
                 </div>
 
+                <!-- Push Notifications (FCM) -->
+                <div class="settings-section">
+                    <div class="settings-section-title">🔔 Push Notifications (SOS en segundo plano)</div>
+                    <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-3);">
+                        <div>
+                            <div class="settings-item-label">VAPID Key (Web Push Certificate)</div>
+                            <div class="settings-item-desc">
+                                Necesaria para enviar pushes a dispositivos móviles.
+                                <a href="https://console.firebase.google.com/project/fleetadmin-pro/settings/cloudmessaging" 
+                                   target="_blank" style="color:var(--color-primary-light); text-decoration:underline;">
+                                    Obtener de Firebase Console →
+                                </a>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:var(--space-2); align-items:center;">
+                            <input type="text" class="form-input" id="vapidKeyInput" 
+                                placeholder="Pegar VAPID key aquí (ej: BIx3R0_...)"
+                                value="${localStorage.getItem('fleetadmin_vapid_key') || ''}"
+                                style="flex:1; font-size:14px !important; font-weight:500 !important;">
+                            <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveVapidKey()" style="white-space:nowrap;">
+                                💾 Guardar
+                            </button>
+                        </div>
+                        <div id="fcmStatus" style="font-size:var(--font-size-xs);"></div>
+                    </div>
+                </div>
+
                 <!-- Gestión de Usuarios -->
                 <div class="settings-section">
                     <div class="settings-section-title">👥 Usuarios</div>
@@ -1223,12 +1250,44 @@ const SettingsModule = (() => {
     }
 
 
+    async function saveVapidKey() {
+        const input = document.getElementById('vapidKeyInput');
+        const statusEl = document.getElementById('fcmStatus');
+        const key = input?.value?.trim();
+
+        if (!key) {
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--color-danger);">❌ Pegá la VAPID key primero</span>';
+            return;
+        }
+
+        if (key.length < 20) {
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--color-danger);">❌ VAPID key demasiado corta — verificá que sea correcta</span>';
+            return;
+        }
+
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--color-warning);">⏳ Guardando y activando FCM...</span>';
+
+        try {
+            const result = await FCM.setVapidKey(key);
+            if (result) {
+                if (statusEl) statusEl.innerHTML = '<span style="color:var(--color-success);">✅ VAPID key guardada — FCM Push ACTIVO — Token obtenido</span>';
+                Components.showToast('🔔 Push Notifications activadas ✅', 'success');
+            } else {
+                if (statusEl) statusEl.innerHTML = '<span style="color:var(--color-warning);">⚠️ VAPID key guardada pero no se pudo obtener token FCM. Verificá que la key sea correcta y que los permisos de notificación estén activados.</span>';
+            }
+        } catch (e) {
+            console.error('Error guardando VAPID key:', e);
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--color-danger);">❌ Error: ${e.message || 'desconocido'}</span>`;
+        }
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         afterRender, exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
-        showReportModal, submitReport, toggleReportDriverType
+        showReportModal, submitReport, toggleReportDriverType,
+        saveVapidKey
     };
 })();
