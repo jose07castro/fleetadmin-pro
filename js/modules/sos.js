@@ -881,15 +881,212 @@ const SOSModule = (() => {
         }
     }
 
-    function startListening() {
+    // =============================================
+    // NETWORK RESILIENCE — Auto-reconexión WiFi↔4G
+    // =============================================
+    let _keepaliveInterval = null;
+    let _networkListenersAttached = false;
+    let _lastReconnectTime = 0;
+    const RECONNECT_DEBOUNCE_MS = 3000; // No reconectar más de 1 vez cada 3s
+
+    /**
+     * Reinicia el SOS listener con debounce.
+     * Fuerza ciclo goOffline→goOnline de Firebase y re-subscribe.
+     */
+    function _reconnectSOS(reason) {
+        const now = Date.now();
+        if (now - _lastReconnectTime < RECONNECT_DEBOUNCE_MS) {
+            console.log('🚨 SOS RECONNECT: ⏩ Debounce activo, ignorando (' + reason + ')');
+            return;
+        }
+        _lastReconnectTime = now;
+
+        console.log('🚨 SOS RECONNECT: 🔄 Reconectando por:', reason);
+
+        // Forzar ciclo de reconexión de Firebase RTDB
+        try { firebase.database().goOffline(); } catch(e) {}
+        setTimeout(() => {
+            try { firebase.database().goOnline(); } catch(e) {}
+            // Re-subscribe al SOS listener
+            setTimeout(() => {
+                if (Auth.isLoggedIn()) {
+                    console.log('🚨 SOS RECONNECT: Re-subscribiendo SOS listener...');
+                    try { _detachSOSListener(); } catch(e) {}
+                    _attachSOSListener();
+                }
+            }, 500);
+        }, 500);
+    }
+
+    /**
+     * Instala listeners de cambio de red (online/offline + NetworkInformation API).
+     * Solo se instalan una vez.
+     */
+    function _installNetworkListeners() {
+        if (_networkListenersAttached) return;
+        _networkListenersAttached = true;
+
+        // 1. Navigator online/offline — detecta pérdida/recuperación total de red
+        window.addEventListener('online', () => {
+            console.log('🚨 SOS NETWORK: 🌐 Conexión recuperada (online event)');
+            _reconnectSOS('online event');
+        });
+
+        window.addEventListener('offline', () => {
+            console.warn('🚨 SOS NETWORK: 📵 Conexión perdida (offline event)');
+        });
+
+        // 2. NetworkInformation API — detecta WiFi↔4G sin perder "online"
+        //    Esto es CRÍTICO: en Android, cambiar de WiFi a 4G
+        //    NO dispara offline/online, pero SÍ dispara 'change'
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (conn) {
+            conn.addEventListener('change', () => {
+                console.log('🚨 SOS NETWORK: 📶 Red cambiada — tipo:', conn.effectiveType, '| downlink:', conn.downlink, 'Mbps');
+                // Solo reconectar si estamos online
+                if (navigator.onLine) {
+                    _reconnectSOS('network change: ' + conn.effectiveType);
+                }
+            });
+            console.log('🚨 SOS NETWORK: ✅ NetworkInformation listener instalado (tipo actual:', conn.effectiveType + ')');
+        } else {
+            console.log('🚨 SOS NETWORK: NetworkInformation API no soportada — usando solo online/offline');
+        }
+
+        console.log('🚨 SOS NETWORK: ✅ Listeners de red instalados');
+    }
+
+    /**
+     * Detach solo el listener .on('child_added') sin limpiar todo
+     */
+    function _detachSOSListener() {
+        if (_sosListenerRef) {
+            try { _sosListenerRef.off('child_added'); } catch(e) {}
+            _sosListenerRef = null;
+        }
+    }
+
+    /**
+     * Attach el listener .on('child_added') de Firebase RTDB.
+     * Separado de startListening() para poder re-attach sin perder estado.
+     */
+    function _attachSOSListener() {
         const fleetId = Auth.getFleetId();
         const isOwner = Auth.isOwner();
+        const myUserId = Auth.getUserId() || Auth.getUserName();
+
+        // Limpiar listener anterior si existe
+        _detachSOSListener();
+
+        _sosListenerRef = firebaseDB.ref('sos_alerts');
+        // Usar timestamp con 30s de tolerancia para reconexiones
+        const _listenerStartTime = Date.now() - 30000;
+        console.log('🚨 SOS LISTENER: Attach — start time:', new Date(_listenerStartTime).toISOString());
+
+        _sosListenerRef.on('child_added', (snap) => {
+            try {
+                const alertData = snap.val();
+                if (!alertData) return;
+
+                // Guard: si estoy enviando un SOS, no mostrar notificaciones que sobreescriban el modal
+                if (_isSendingSOS) {
+                    console.log('🚨 SOS LISTENER: ⏩ Ignorando (estoy en flujo de envío SOS)');
+                    return;
+                }
+
+                console.log('🚨 SOS LISTENER: child_added:', snap.key, '| status:', alertData.status);
+
+                // Filtrar: solo alertas activas
+                if (alertData.status !== 'active') return;
+
+                // Filtrar: solo alertas recientes (con tolerancia de 30s)
+                const alertTime = new Date(alertData.created_at).getTime();
+                if (alertTime < _listenerStartTime) {
+                    console.log('🚨 SOS LISTENER: ⏩ Alerta vieja, ignorando. AlertTime:', new Date(alertTime).toISOString());
+                    return;
+                }
+
+                // ====================================
+                // 👑 DUEÑO: SIEMPRE recibe alertas de su flota
+                // ====================================
+                if (isOwner) {
+                    if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
+                        console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide (owner)');
+                        return;
+                    }
+                    console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando alarma + modal...');
+                    _startAlarm();
+                    _showOwnerSOSNotification(alertData);
+                    try { _sendNativeNotification(alertData, null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
+                    if (document.visibilityState !== 'visible') {
+                        try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
+                    }
+                    return;
+                }
+
+                // ====================================
+                // 🚗 CONDUCTOR: Solo si está dentro del RADAR
+                // ====================================
+                console.log('🚨 SOS LISTENER (DRIVER): 🔍 Evaluando alerta. myUserId:', myUserId, '| alertData.driverId:', alertData.driverId);
+
+                // No mostrar mi propia alerta SOS
+                if (alertData.driverId === myUserId || alertData.driverName === Auth.getUserName()) {
+                    console.log('🚨 SOS LISTENER (DRIVER): ⏩ Es mi propia alerta, ignorando');
+                    return;
+                }
+
+                // Filtrar por flota
+                if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
+                    console.log('🚨 SOS LISTENER (DRIVER): ⏩ FleetId no coincide, ignorando');
+                    return;
+                }
+
+                let distKm = null;
+                let canCalculateDistance = false;
+
+                if (alertData.lat && alertData.lng && _myLastPosition && _myLastPosition.lat && _myLastPosition.lng) {
+                    canCalculateDistance = true;
+                    distKm = _haversineKm(
+                        _myLastPosition.lat, _myLastPosition.lng,
+                        alertData.lat, alertData.lng
+                    );
+                    console.log(`🚨 SOS LISTENER (DRIVER): Distancia: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
+                    if (distKm > SOS_RADIUS_KM) {
+                        console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
+                        return;
+                    }
+                    console.log('🚨 SOS LISTENER (DRIVER): ✅ ¡DENTRO DEL RADAR!');
+                } else {
+                    const reason = !_myLastPosition ? 'sin posición propia' : 'alerta sin coordenadas';
+                    console.log(`🚨 SOS LISTENER (DRIVER): ⚠️ ${reason} — mostrando por seguridad`);
+                }
+
+                console.log('🚨 SOS LISTENER (DRIVER): 🚀 DISPARANDO ALARMA + MODAL');
+                _startAlarm();
+                _showDriverSOSAlert(alertData, canCalculateDistance ? distKm : null);
+                try { _sendNativeNotification(alertData, canCalculateDistance ? distKm : null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
+                if (document.visibilityState !== 'visible') {
+                    try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
+                }
+            } catch (listenerError) {
+                console.error('🚨 SOS LISTENER: ❌ Error en callback child_added:', listenerError);
+            }
+        }, (error) => {
+            // ⚡ Error callback de Firebase .on() — se dispara cuando la conexión muere
+            console.error('🚨 SOS LISTENER: ❌ Firebase listener error:', error.message || error);
+            console.log('🚨 SOS LISTENER: Intentando re-attach en 3s...');
+            setTimeout(() => _reconnectSOS('firebase listener error'), 3000);
+        });
+    }
+
+    function startListening() {
+        const isOwner = Auth.isOwner();
         const role = Auth.getRole();
+        const fleetId = Auth.getFleetId();
         const myUserId = Auth.getUserId() || Auth.getUserName();
         console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId, '| myUserId:', myUserId);
 
         // Pedir permisos de notificación nativa
-        // OBLIGATORIO para conductores — persistente hasta que acepten
         try {
             if (!isOwner) {
                 _requestMandatoryNotificationPermission();
@@ -898,7 +1095,7 @@ const SOSModule = (() => {
             }
         } catch(e) { /* ignorar */ }
 
-        // Limpiar listener anterior si existe
+        // Limpiar listener anterior completo
         stopListening();
 
         // Si es conductor, iniciar tracking de posición
@@ -906,114 +1103,14 @@ const SOSModule = (() => {
             _startPositionTracking();
         }
 
-        _sosListenerRef = firebaseDB.ref('sos_alerts');
-        // Usar timestamp con 30s de tolerancia para reconexiones
-        const _listenerStartTime = Date.now() - 30000;
-        console.log('🚨 SOS LISTENER: Start time (con 30s tolerancia):', new Date(_listenerStartTime).toISOString());
+        // Attach el listener de Firebase
+        _attachSOSListener();
 
-        _sosListenerRef.on('child_added', (snap) => {
-            const alertData = snap.val();
-            console.log('🚨 SOS LISTENER: 📩 child_added disparado — key:', snap.key, '| data:', alertData ? 'OK' : 'NULL');
-            if (!alertData) return;
-
-            // Guard: si estoy enviando un SOS, no mostrar notificaciones que sobreescriban el modal
-            if (_isSendingSOS) {
-                console.log('🚨 SOS LISTENER: ⏩ Ignorando (estoy en flujo de envío SOS)');
-                return;
-            }
-
-            console.log('🚨 SOS LISTENER: child_added:', snap.key, '| status:', alertData.status);
-
-            // Filtrar: solo alertas activas
-            if (alertData.status !== 'active') return;
-
-            // Filtrar: solo alertas recientes (con tolerancia de 30s)
-            const alertTime = new Date(alertData.created_at).getTime();
-            if (alertTime < _listenerStartTime) {
-                console.log('🚨 SOS LISTENER: ⏩ Alerta vieja, ignorando. AlertTime:', new Date(alertTime).toISOString());
-                return;
-            }
-
-            // ====================================
-            // 👑 DUEÑO: SIEMPRE recibe alertas de su flota
-            // ====================================
-            if (isOwner) {
-                // Filtrar por flota
-                if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
-                    console.log('🚨 SOS LISTENER: ⏩ FleetId no coincide (owner)');
-                    return;
-                }
-                console.log('🚨 SOS LISTENER (OWNER): ✅ ¡ALERTA RECIBIDA! Mostrando alarma + modal...');
-                _startAlarm();
-                _showOwnerSOSNotification(alertData);
-                // Push notification AISLADA — no puede bloquear alarma/modal
-                try { _sendNativeNotification(alertData, null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
-                // 📨 Si la pestaña no es visible, notificar via SW también
-                if (document.visibilityState !== 'visible') {
-                    try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
-                }
-                return;
-            }
-
-            // ====================================
-            // 🚗 CONDUCTOR: Solo si está dentro del RADAR
-            // ====================================
-            console.log('🚨 SOS LISTENER (DRIVER): 🔍 Evaluando alerta para conductor. myUserId:', myUserId, '| alertData.driverId:', alertData.driverId, '| alertData.driverName:', alertData.driverName);
-
-            // CRÍTICO: No mostrar mi propia alerta SOS (evitar bucle infinito)
-            if (alertData.driverId === myUserId || alertData.driverName === Auth.getUserName()) {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ Es mi propia alerta, ignorando (driverId o driverName coinciden)');
-                return;
-            }
-
-            // Filtrar por flota (si tenemos fleetId)
-            if (fleetId && alertData.fleetId && alertData.fleetId !== fleetId && alertData.fleetId !== 'unknown') {
-                console.log('🚨 SOS LISTENER (DRIVER): ⏩ FleetId no coincide, ignorando');
-                return;
-            }
-
-            // Intentar filtro por distancia — BEST EFFORT
-            // ⚠️ BYPASS TEMPORAL: radio = 1000km para diagnóstico
-            let distKm = null;
-            let canCalculateDistance = false;
-
-            console.log('🚨 SOS LISTENER (DRIVER): 📍 Mi posición:', _myLastPosition ? `${_myLastPosition.lat}, ${_myLastPosition.lng}` : 'NULL');
-            console.log('🚨 SOS LISTENER (DRIVER): 📍 Posición SOS:', alertData.lat, alertData.lng);
-
-            if (alertData.lat && alertData.lng && _myLastPosition && _myLastPosition.lat && _myLastPosition.lng) {
-                canCalculateDistance = true;
-                distKm = _haversineKm(
-                    _myLastPosition.lat, _myLastPosition.lng,
-                    alertData.lat, alertData.lng
-                );
-                console.log(`🚨 SOS LISTENER (DRIVER): Distancia al SOS: ${distKm.toFixed(1)} km (radio: ${SOS_RADIUS_KM} km)`);
-
-                // bypass distance check — temporalmente radio = 1000km
-                if (distKm > SOS_RADIUS_KM) {
-                    console.log('🚨 SOS LISTENER (DRIVER): ⏩ Fuera de radio, ignorando');
-                    return;
-                }
-                console.log('🚨 SOS LISTENER (DRIVER): ✅ ¡DENTRO DEL RADAR! Mostrando alerta + alarma...');
-            } else {
-                // NO podemos calcular distancia — mostrar alerta de todos modos por seguridad
-                const reason = !_myLastPosition ? 'sin posición propia' : 'alerta sin coordenadas';
-                console.log(`🚨 SOS LISTENER (DRIVER): ⚠️ ${reason} — mostrando alerta por seguridad (sin filtro radar)`);
-            }
-
-            console.log('🚨 SOS LISTENER (DRIVER): 🚀🚀🚀 DISPARANDO ALARMA + MODAL INVASIVO');
-            _startAlarm();
-            _showDriverSOSAlert(alertData, canCalculateDistance ? distKm : null);
-            // Push notification AISLADA — no puede bloquear alarma/modal
-            try { _sendNativeNotification(alertData, canCalculateDistance ? distKm : null).catch(e => console.warn('🚨 SOS PUSH Error:', e)); } catch(e) { /* ignorar */ }
-            // 📨 Si la pestaña no es visible, notificar via SW también
-            if (document.visibilityState !== 'visible') {
-                try { _postMessageToSW(alertData); } catch(e) { /* ignorar */ }
-            }
-        });
+        // Instalar listeners de red (solo una vez)
+        _installNetworkListeners();
 
         // =============================================
-        // 🔄 KEEPALIVE: Ping Firebase cada 45s para mantener conexión en móvil
-        // Los browsers en 4G/LTE matan conexiones WebSocket idle
+        // 🔄 KEEPALIVE MEJORADO: Ping cada 30s + re-attach si desconectado
         // =============================================
         if (_keepaliveInterval) clearInterval(_keepaliveInterval);
         _keepaliveInterval = setInterval(() => {
@@ -1021,28 +1118,24 @@ const SOSModule = (() => {
                 firebaseDB.ref('.info/connected').once('value').then(snap => {
                     const connected = snap.val();
                     if (!connected) {
-                        console.warn('🚨 SOS KEEPALIVE: ❌ Firebase desconectado — forzando reconexión');
-                        try { firebase.database().goOffline(); } catch(e) {}
-                        setTimeout(() => { try { firebase.database().goOnline(); } catch(e) {} }, 500);
+                        console.warn('🚨 SOS KEEPALIVE: ❌ Firebase desconectado — reconectando...');
+                        _reconnectSOS('keepalive detected disconnect');
                     }
-                }).catch(() => {
-                    console.warn('🚨 SOS KEEPALIVE: Error en ping');
+                }).catch((err) => {
+                    console.warn('🚨 SOS KEEPALIVE: Error en ping:', err.message || err);
+                    // Si el ping falla, forzar reconexión
+                    _reconnectSOS('keepalive ping failed');
                 });
-            } catch(e) { /* ignorar */ }
-        }, 45000);
+            } catch(e) {
+                console.warn('🚨 SOS KEEPALIVE: Exception en ping');
+            }
+        }, 30000); // Reducido de 45s a 30s para mayor responsividad
 
-        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'} + keepalive 45s`);
+        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'} + keepalive 30s + network listeners`);
     }
 
-    // Variable para keepalive interval
-    let _keepaliveInterval = null;
-
     function stopListening() {
-        if (_sosListenerRef) {
-            _sosListenerRef.off('child_added');
-            _sosListenerRef = null;
-            console.log('🚨 SOS LISTENER: Desactivado');
-        }
+        _detachSOSListener();
         if (_keepaliveInterval) {
             clearInterval(_keepaliveInterval);
             _keepaliveInterval = null;
@@ -1052,6 +1145,7 @@ const SOSModule = (() => {
             _permissionRetryTimer = null;
         }
         _stopPositionTracking();
+        console.log('🚨 SOS LISTENER: Desactivado completamente');
     }
 
     // =============================================

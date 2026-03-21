@@ -232,6 +232,15 @@ const App = (() => {
             // Forzar reconexión de Firebase
             try { firebase.database().goOnline(); } catch(e) {}
             if (Auth.isLoggedIn()) {
+                // Reiniciar SOS listener (se muere en cambios WiFi↔4G)
+                if (typeof SOSModule !== 'undefined') {
+                    console.log('🌐 Reiniciando SOS listener después de reconexión...');
+                    try { SOSModule.stopListening(); } catch(e) {}
+                    try { SOSModule.startListening(); } catch(e) {
+                        console.error('🌐 Error reiniciando SOS listener:', e);
+                    }
+                }
+                // Refrescar vista actual
                 const currentRoute = Router.getCurrentRoute();
                 if (currentRoute && currentRoute !== 'login') {
                     Router.navigate(currentRoute);
