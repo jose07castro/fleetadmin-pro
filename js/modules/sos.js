@@ -312,9 +312,9 @@ const SOSModule = (() => {
             clearInterval(_vibrationInterval);
             _vibrationInterval = null;
         }
-        if (navigator.vibrate) {
-            try { navigator.vibrate(0); } catch(e) { /* ignorar */ }
-        }
+        // SIEMPRE intentar detener vibración — sin condiciones
+        try { navigator.vibrate(0); } catch(e) { /* ignorar */ }
+        try { navigator.vibrate([]); } catch(e) { /* ignorar — fallback para WebKit */ }
         console.log('🚨 SOS VIBRATE: 📳 Vibración detenida');
     }
 
@@ -1318,6 +1318,13 @@ const SOSModule = (() => {
     // Cerrar alerta invasiva del conductor
     function _dismissDriverAlert() {
         _stopAlarm();
+        // Safety redundante: forzar parada de vibración DIRECTAMENTE
+        // (por si _stopAlarm no logra limpiar el interval)
+        try { navigator.vibrate(0); } catch(e) {}
+        if (_vibrationInterval) {
+            clearInterval(_vibrationInterval);
+            _vibrationInterval = null;
+        }
         const overlay = document.getElementById('sos-driver-fullscreen-overlay');
         if (overlay) overlay.remove();
         console.log('🚨 SOS DRIVER ALERT: Modal invasivo cerrado por el conductor');
@@ -1328,6 +1335,9 @@ const SOSModule = (() => {
     // =============================================
     async function resolveAlert(alertId) {
         _stopAlarm();
+        // Safety: forzar parada de vibración
+        try { navigator.vibrate(0); } catch(e) {}
+        if (_vibrationInterval) { clearInterval(_vibrationInterval); _vibrationInterval = null; }
         try {
             await firebaseDB.ref(`sos_alerts/${alertId}`).update({
                 status: 'resolved',
