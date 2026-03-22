@@ -1322,13 +1322,33 @@ const SOSModule = (() => {
                 .sos-fullscreen-dismiss:hover {
                     background: rgba(255,255,255,0.3);
                 }
+                /* Marquesina para mensaje opcional del conductor */
+                @keyframes sosMarquee {
+                    0%   { transform: translateX(100%); }
+                    100% { transform: translateX(-100%); }
+                }
+                .sos-fullscreen-marquee {
+                    width: 100%;
+                    max-width: 90vw;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    margin-bottom: 4px;
+                }
+                .sos-fullscreen-marquee-text {
+                    display: inline-block;
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    color: #fef08a;
+                    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+                    animation: sosMarquee 10s linear infinite;
+                }
             </style>
             <div class="sos-fullscreen-icon">🚨</div>
             <div class="sos-fullscreen-title">¡ALERTA SOS!</div>
             <div class="sos-fullscreen-driver">${alertData.driverName || 'Un conductor'} pide AUXILIO</div>
             <div class="sos-fullscreen-type">${typeLabel}</div>
             <div class="sos-fullscreen-details">🚗 ${alertData.vehicleName || 'Vehículo'}</div>
-            ${alertData.emergencyDetails ? `<div class="sos-fullscreen-details">📝 ${alertData.emergencyDetails}</div>` : ''}
+            ${alertData.emergencyDetails ? `<div class="sos-fullscreen-marquee"><span class="sos-fullscreen-marquee-text">📝 ${alertData.emergencyDetails}</span></div>` : ''}
             ${distText ? `<div class="sos-fullscreen-details">${distText}</div>` : ''}
             <div class="sos-fullscreen-details">🕐 ${new Date(alertData.created_at).toLocaleString()}</div>
             ${mapsBtn}
