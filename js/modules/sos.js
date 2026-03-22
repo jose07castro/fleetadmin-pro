@@ -1336,13 +1336,44 @@ const SOSModule = (() => {
                 }
                 .sos-fullscreen-marquee-text {
                     display: inline-block;
-                    font-size: 1.1rem;
-                    font-weight: 700;
-                    color: #fef08a;
-                    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
-                    animation: sosMarquee 10s linear infinite;
+                    font-size: 1.3rem;
+                    font-weight: 900;
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                    /* Efecto aerosol celeste/blanco */
+                    background-image: linear-gradient(
+                        45deg,
+                        #87CEEB 0%,
+                        #ffffff 15%,
+                        #87CEEB 30%,
+                        #b0e0f0 45%,
+                        #ffffff 55%,
+                        #87CEEB 70%,
+                        #ffffff 85%,
+                        #87CEEB 100%
+                    );
+                    background-size: 200% 100%;
+                    -webkit-background-clip: text;
+                    background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    filter: url(#sprayPaintFilter);
+                    text-shadow: none;
+                    animation: sosMarquee 5s linear infinite;
                 }
             </style>
+            <!-- SVG Filter: Textura granulada de aerosol -->
+            <svg width="0" height="0" style="position:absolute;">
+                <defs>
+                    <filter id="sprayPaintFilter" x="0%" y="0%" width="100%" height="100%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" seed="5" stitchTiles="stitch" result="noise"/>
+                        <feColorMatrix type="saturate" values="0" in="noise" result="grayNoise"/>
+                        <feComponentTransfer in="grayNoise" result="thresholdNoise">
+                            <feFuncA type="discrete" tableValues="0 0 0.3 0.6 0.8 1 1"/>
+                        </feComponentTransfer>
+                        <feComposite operator="in" in="SourceGraphic" in2="thresholdNoise"/>
+                    </filter>
+                </defs>
+            </svg>
             <div class="sos-fullscreen-icon">🚨</div>
             <div class="sos-fullscreen-title">¡ALERTA SOS!</div>
             <div class="sos-fullscreen-driver">${alertData.driverName || 'Un conductor'} pide AUXILIO</div>
