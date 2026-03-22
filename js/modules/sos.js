@@ -1189,12 +1189,35 @@ const SOSModule = (() => {
         `;
 
         const footerHTML = `
-            <button class="btn btn-secondary" onclick="SOSModule.silenceAlarm(); Components.closeModal()">Cerrar</button>
+            <button class="btn btn-secondary" onclick="SOSModule.dismissOwnerAlert()">Cerrar</button>
             ${alert.mapsUrl ? `<a href="${alert.mapsUrl}" target="_blank" class="btn btn-danger" onclick="SOSModule.silenceAlarm()">📍 Abrir Mapa</a>` : ''}
             <button class="btn btn-primary" onclick="SOSModule.resolveAlert('${alert.id}')">✅ Marcar Resuelta</button>
         `;
 
-        Components.showModal('🚨 ¡ALERTA SOS RECIBIDA!', bodyHTML, footerHTML);
+        // 🔒 BACKDROP ESTÁTICO: No se cierra al hacer clic fuera
+        // 🔒 onClose: La ✕ ejecuta la misma limpieza que "Cerrar"
+        Components.showModal('🚨 ¡ALERTA SOS RECIBIDA!', bodyHTML, footerHTML, {
+            staticBackdrop: true,
+            onClose: function() {
+                SOSModule.silenceAlarm();
+                Components.closeModal();
+            }
+        });
+    }
+
+    // =============================================
+    // Cerrar alerta SOS del dueño (limpieza total)
+    // =============================================
+    function _dismissOwnerAlert() {
+        _stopAlarm();
+        // Safety: forzar parada de vibración
+        try { navigator.vibrate(0); } catch(e) {}
+        if (_vibrationInterval) {
+            clearInterval(_vibrationInterval);
+            _vibrationInterval = null;
+        }
+        Components.closeModal();
+        console.log('🚨 SOS OWNER ALERT: Modal cerrado con limpieza completa');
     }
 
     // =============================================
@@ -1373,6 +1396,7 @@ const SOSModule = (() => {
         resolveAlert, renderSOSButton, silenceAlarm: _stopAlarm,
         unlockAudio: _manualUnlockAudio, renderAudioActivationBanner,
         isAudioUnlocked: () => _audioUnlocked,
-        dismissDriverAlert: _dismissDriverAlert
+        dismissDriverAlert: _dismissDriverAlert,
+        dismissOwnerAlert: _dismissOwnerAlert
     };
 })();

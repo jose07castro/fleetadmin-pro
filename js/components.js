@@ -232,24 +232,48 @@ const Components = (() => {
     }
 
     // --- Modal genérico ---
-    function showModal(title, bodyHTML, footerHTML = '') {
+    // options: { staticBackdrop: boolean, onClose: function }
+    //   staticBackdrop = true → clic fuera NO cierra el modal
+    //   onClose = fn → el botón ✕ ejecuta fn() en vez de closeModal()
+    function showModal(title, bodyHTML, footerHTML = '', options = {}) {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.id = 'activeModal';
+
+        // Determinar la acción del botón ✕
+        const closeButtonId = 'modalCloseBtn_' + Date.now();
+
         modal.innerHTML = `
             <div class="modal">
                 <div class="modal-header">
                     <h3 class="modal-title">${title}</h3>
-                    <button class="modal-close" onclick="Components.closeModal()">✕</button>
+                    <button class="modal-close" id="${closeButtonId}">✕</button>
                 </div>
                 <div class="modal-body">${bodyHTML}</div>
                 ${footerHTML ? `<div class="modal-footer">${footerHTML}</div>` : ''}
             </div>
         `;
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) Components.closeModal();
-        });
+
+        // Backdrop click: solo si NO es static
+        if (!options.staticBackdrop) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) Components.closeModal();
+            });
+        }
+
         document.body.appendChild(modal);
+
+        // Wiring del botón ✕
+        const closeBtn = document.getElementById(closeButtonId);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                if (typeof options.onClose === 'function') {
+                    options.onClose();
+                } else {
+                    Components.closeModal();
+                }
+            });
+        }
     }
 
     function closeModal() {
