@@ -1,35 +1,35 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-v64';
+const CACHE_NAME = 'fleetadmin-v65';
 const ASSETS = [
     './',
-    './index.html?v=60',
-    './css/index.css?v=60',
-    './css/components.css?v=60',
-    './css/modules.css?v=60',
-    './js/i18n.js?v=60',
-    './js/firebase-config.js?v=60',
-    './js/db.js?v=60',
-    './js/units.js?v=60',
-    './js/auth.js?v=60',
-    './js/alerts.js?v=60',
-    './js/components.js?v=60',
-    './js/router.js?v=60',
-    './js/modules/login.js?v=60',
-    './js/modules/dashboard.js?v=60',
-    './js/modules/shifts.js?v=60',
-    './js/modules/maintenance.js?v=60',
-    './js/modules/vehicles.js?v=60',
-    './js/modules/settings.js?v=60',
-    './js/modules/community.js?v=60',
-    './js/modules/sos.js?v=60',
-    './js/whatsapp.js?v=60',
-    './js/storage.js?v=60',
-    './js/modules/gps.js?v=60',
-    './js/fcm.js?v=60',
-    './js/notifications.js?v=60',
-    './js/pwa-install.js?v=61',
-    './js/app.js?v=60',
-    './manifest.json?v=59',
+    './index.html?v=65',
+    './css/index.css?v=65',
+    './css/components.css?v=65',
+    './css/modules.css?v=65',
+    './js/i18n.js?v=65',
+    './js/firebase-config.js?v=65',
+    './js/db.js?v=65',
+    './js/units.js?v=65',
+    './js/auth.js?v=65',
+    './js/alerts.js?v=65',
+    './js/components.js?v=65',
+    './js/router.js?v=65',
+    './js/modules/login.js?v=65',
+    './js/modules/dashboard.js?v=65',
+    './js/modules/shifts.js?v=65',
+    './js/modules/maintenance.js?v=65',
+    './js/modules/vehicles.js?v=65',
+    './js/modules/settings.js?v=65',
+    './js/modules/community.js?v=65',
+    './js/modules/sos.js?v=65',
+    './js/whatsapp.js?v=65',
+    './js/storage.js?v=65',
+    './js/modules/gps.js?v=65',
+    './js/fcm.js?v=65',
+    './js/notifications.js?v=65',
+    './js/pwa-install.js?v=65',
+    './js/app.js?v=65',
+    './manifest.json?v=65',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -106,7 +106,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=60')
+                return caches.match('./index.html?v=65')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }
@@ -152,7 +152,16 @@ self.addEventListener('notificationclick', event => {
 // =============================================
 self.addEventListener('message', event => {
     const msg = event.data;
-    if (!msg || msg.type !== 'SOS_ALERT') return;
+    if (!msg) return;
+
+    // Mensaje del frontend para forzar activación del SW nuevo
+    if (msg.type === 'SKIP_WAITING') {
+        console.log('🔄 SW: SKIP_WAITING recibido — activando nueva versión');
+        self.skipWaiting();
+        return;
+    }
+
+    if (msg.type !== 'SOS_ALERT') return;
 
     console.log('🚨 SW: Mensaje SOS_ALERT recibido del main thread');
 
