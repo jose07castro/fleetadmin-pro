@@ -22,6 +22,7 @@ const Components = (() => {
                 <div class="sidebar-overlay" id="sidebarOverlay"></div>
                 <div class="app-main">
                     ${renderHeader(activeRoute)}
+                    <div id="announcement-banner"></div>
                     <div class="app-content" id="pageContent">
                         ${content}
                     </div>

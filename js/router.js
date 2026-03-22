@@ -86,6 +86,10 @@ const Router = (() => {
             if (mod && typeof mod.afterRender === 'function') {
                 setTimeout(() => mod.afterRender(), 50);
             }
+            // Iniciar listener de anuncios (para todos los roles)
+            if (typeof AnnouncementModule !== 'undefined') {
+                setTimeout(() => AnnouncementModule.startListening(), 100);
+            }
         }
     }
 

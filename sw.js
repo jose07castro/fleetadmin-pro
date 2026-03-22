@@ -22,6 +22,7 @@ const ASSETS = [
     './js/modules/settings.js?v=65',
     './js/modules/community.js?v=65',
     './js/modules/sos.js?v=65',
+    './js/modules/announcements.js?v=65',
     './js/whatsapp.js?v=65',
     './js/storage.js?v=65',
     './js/modules/gps.js?v=65',

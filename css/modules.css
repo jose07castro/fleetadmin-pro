@@ -1630,3 +1630,54 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================
+   📢 Announcement Banner (Marquesina Global)
+   ============================================ */
+@keyframes announcementMarquee {
+    0%   { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}
+
+.announcement-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f2744 50%, #1a365d 100%);
+    border-bottom: 2px solid rgba(234, 179, 8, 0.4);
+    padding: 8px 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.announcement-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    animation: badgePulse 2s ease-in-out infinite;
+}
+
+.announcement-marquee {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.announcement-marquee-text {
+    display: inline-block;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fbbf24;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    animation: announcementMarquee 12s linear infinite;
+}
+
+@media (max-width: 768px) {
+    .announcement-bar {
+        padding: 6px 12px;
+    }
+    .announcement-marquee-text {
+        font-size: 0.85rem;
+        animation-duration: 8s;
+    }
+}

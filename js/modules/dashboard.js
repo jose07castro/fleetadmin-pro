@@ -123,6 +123,26 @@ const DashboardModule = (() => {
                 </div>
             </div>
 
+            <!-- 📢 Banner de Anuncios (solo owner) -->
+            <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
+                <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
+                <div class="card" style="padding:var(--space-5);">
+                    <div class="form-group" style="margin-bottom:var(--space-3);">
+                        <label class="form-label">Texto del anuncio</label>
+                        <input type="text" class="form-input" id="announcementText" 
+                            placeholder="Ej: Mañana no hay servicio por feriado..."
+                            maxlength="200">
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
+                            <input type="checkbox" id="announcementActive" style="width:20px; height:20px; cursor:pointer;">
+                            <span id="announcementStatusLabel">⚫ Apagado</span>
+                        </label>
+                        <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Vista de flota -->
             <div class="dashboard-section">
                 <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
@@ -685,7 +705,7 @@ const DashboardModule = (() => {
         }
     }
 
-    // afterRender: cargar badge de comunidad sin bloquear el render
+    // afterRender: cargar badge de comunidad + datos de anuncio
     async function afterRender() {
         const badge = document.getElementById('communityBadge');
         if (badge) {
@@ -698,7 +718,63 @@ const DashboardModule = (() => {
                 badge.textContent = '0';
             }
         }
+        // Cargar datos actuales del anuncio
+        await _loadAnnouncementData();
     }
 
-    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser };
+    // --- Banner de Anuncios: Cargar datos actuales ---
+    async function _loadAnnouncementData() {
+        try {
+            const data = await DB.getSetting('announcement');
+            const textInput = document.getElementById('announcementText');
+            const activeCheck = document.getElementById('announcementActive');
+            const statusLabel = document.getElementById('announcementStatusLabel');
+            if (textInput && data) {
+                textInput.value = data.bannerText || '';
+            }
+            if (activeCheck && data) {
+                activeCheck.checked = !!data.bannerActive;
+            }
+            if (statusLabel) {
+                const isOn = activeCheck?.checked;
+                statusLabel.textContent = isOn ? '🟢 Encendido' : '⚫ Apagado';
+                statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
+            }
+            // Toggle label en cambio
+            if (activeCheck && statusLabel) {
+                activeCheck.onchange = () => {
+                    const on = activeCheck.checked;
+                    statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
+                    statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                };
+            }
+        } catch (e) {
+            console.warn('📢 Error cargando anuncio:', e);
+        }
+    }
+
+    // --- Banner de Anuncios: Guardar ---
+    async function saveAnnouncement() {
+        const text = document.getElementById('announcementText')?.value?.trim() || '';
+        const active = document.getElementById('announcementActive')?.checked || false;
+
+        if (active && !text) {
+            Components.showToast('⚠️ Escribí un texto para el anuncio antes de activarlo', 'warning');
+            return;
+        }
+
+        try {
+            await DB.setSetting('announcement', {
+                bannerText: text,
+                bannerActive: active,
+                updatedAt: new Date().toISOString(),
+                updatedBy: Auth.getUserName()
+            });
+            Components.showToast(active ? '📢 Anuncio activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
+        } catch (e) {
+            Components.showToast('❌ Error guardando anuncio: ' + e.message, 'danger');
+        }
+    }
+
+    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement };
 })();
