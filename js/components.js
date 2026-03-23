@@ -29,10 +29,6 @@ const Components = (() => {
                 </div>
                 ${renderMobileBottomNav(activeRoute, role)}
                 ${role === 'driver' ? renderSOSFab() : ''}
-                <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer" class="whatsapp-fab" title="Chat Flota WhatsApp">
-                    <span class="whatsapp-fab-icon">💬</span>
-                    <span class="whatsapp-fab-label">Chat</span>
-                </a>
             </div>
         `;
     }
@@ -194,6 +190,17 @@ const Components = (() => {
                     <h1 class="header-title">${I18n.t(titles[activeRoute] || 'app_name')}</h1>
                 </div>
                 <div class="header-right">
+                    <a href="${Auth.getRole() === 'owner' 
+                        ? 'https://chat.whatsapp.com/HxnVSmJSKBwGTcDLPZAzfc' 
+                        : 'https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW'}" 
+                       target="_blank" rel="noopener noreferrer" class="header-wa-btn" title="Grupo de WhatsApp">
+                        <span class="header-wa-icon">💬</span>
+                        <span class="header-wa-text">Grupo WA</span>
+                    </a>
+                    <button class="btn btn-ghost btn-sm" onclick="Router.navigate('community')" style="display:flex; align-items:center; gap:var(--space-2);">
+                        🤝 ${Auth.getRole() === 'owner' ? 'Comunidad Dueños' : 'Comunidad'}
+                        <span class="badge badge-info" id="communityBadgeHeader" style="font-size:0.65rem; padding:2px 6px;">0</span>
+                    </button>
                     ${renderUnitToggles()}
                 </div>
             </header>
