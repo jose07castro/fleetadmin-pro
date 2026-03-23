@@ -269,16 +269,17 @@ const DashboardModule = (() => {
             <div class="card" style="padding:0;">
                 ${activities.slice(0, 8).map(a => `
                     <div style="display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border-color);">
-                        <span style="font-size:1.2rem;">${a.icon}</span>
-                        <div style="flex:1;">
+                        <span style="font-size:1.2rem; flex-shrink:0;">${a.icon}</span>
+                        <div style="flex:1; min-width:0;">
                             <div style="font-size:var(--font-size-sm);">${a.text}</div>
+                            ${a.subtext ? `<div style="font-size:var(--font-size-xs); color:var(--text-secondary); margin-top:2px;">${a.subtext}</div>` : ''}
                             <div style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
-                                ${new Date(a.date).toLocaleDateString()}
+                                ${new Date(a.date).toLocaleDateString()} ${new Date(a.date).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })}
                             </div>
                         </div>
-                        <span class="badge ${a.badge}">${a.badgeText}</span>
+                        <span class="badge ${a.badge}" style="flex-shrink:0;">${a.badgeText}</span>
                         ${Auth.isOwner() && a.type === 'shift' ? `
-                        <div style="display:flex; gap:var(--space-2); margin-left:var(--space-3); z-index: 10; position:relative;">
+                        <div style="display:flex; gap:var(--space-2); flex-shrink:0;">
                             <button class="btn btn-icon btn-primary" onclick="ShiftsModule.editShift('${a.id}')" title="Editar" style="padding:6px; font-size:14px; min-width:32px;">✏️</button>
                             <button class="btn btn-icon btn-danger" onclick="ShiftsModule.deleteShift('${a.id}')" title="Eliminar" style="padding:6px; font-size:14px; min-width:32px;">🗑️</button>
                         </div>
