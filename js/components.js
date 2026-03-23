@@ -29,6 +29,10 @@ const Components = (() => {
                 </div>
                 ${renderMobileBottomNav(activeRoute, role)}
                 ${role === 'driver' ? renderSOSFab() : ''}
+                <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer" class="whatsapp-fab" title="Chat Flota WhatsApp">
+                    <span class="whatsapp-fab-icon">💬</span>
+                    <span class="whatsapp-fab-label">Chat</span>
+                </a>
             </div>
         `;
     }
