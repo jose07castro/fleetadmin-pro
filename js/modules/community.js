@@ -196,6 +196,23 @@ const CommunityModule = (() => {
                         `).join('')}
                     </div>
                 </div>
+
+                <!-- WhatsApp Group Invite -->
+                <div class="community-sponsor-card" style="margin-top:var(--space-4); padding:var(--space-5); text-align:center;">
+                    <h4 style="margin-bottom:var(--space-3);">💬 Grupo de WhatsApp</h4>
+                    <p style="font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-4); line-height:1.5;">
+                        ${isDriver
+                            ? 'Unite al grupo de <strong>Conductores</strong> para compartir alertas, estado de calles y más.'
+                            : 'Unite al grupo de <strong>Dueños</strong> para compartir experiencias y novedades del rubro.'}
+                    </p>
+                    <a href="${isDriver
+                            ? 'https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW'
+                            : 'https://chat.whatsapp.com/HxnVSmJSKBwGTcDLPZAzfc'}"
+                       target="_blank" rel="noopener noreferrer"
+                       class="sponsor-ad-cta" style="border-radius:var(--radius-lg); display:inline-block; padding:var(--space-3) var(--space-6);">
+                        💬 Unirse al Grupo
+                    </a>
+                </div>
             </div>
         </div>
         `;
