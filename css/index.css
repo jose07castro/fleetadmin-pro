@@ -681,38 +681,17 @@ button {
     }
 }
 
-/* --- WhatsApp Header Button --- */
-.header-wa-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    background: #25D366;
-    color: #fff;
-    font-weight: 600;
-    font-size: var(--font-size-xs);
-    padding: 6px 14px;
-    border-radius: var(--radius-full);
-    text-decoration: none;
-    transition: background 0.2s ease, transform 0.15s ease;
-    white-space: nowrap;
-}
-
-.header-wa-btn:hover {
-    background: #1da851;
-    transform: scale(1.04);
-    color: #fff;
-}
-
-.header-wa-icon {
-    font-size: 1rem;
-    line-height: 1;
+/* --- Dashboard Community Grid (2 columnas) --- */
+.dashboard-community-grid {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: var(--space-6);
+    margin-bottom: var(--space-6);
+    align-items: start;
 }
 
 @media (max-width: 768px) {
-    .header-wa-text {
-        display: none;
-    }
-    .header-wa-btn {
-        padding: 6px 10px;
+    .dashboard-community-grid {
+        grid-template-columns: 1fr;
     }
 }

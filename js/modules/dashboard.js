@@ -123,42 +123,81 @@ const DashboardModule = (() => {
                 </div>
             </div>
 
-            <!-- 📢 Banner de Anuncios para Conductores -->
-            <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
-                <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
-                <div class="card" style="padding:var(--space-5);">
-                    <div class="form-group" style="margin-bottom:var(--space-3);">
-                        <label class="form-label">Texto del anuncio</label>
-                        <input type="text" class="form-input" id="announcementText" 
-                            placeholder="Ej: Mañana no hay servicio por feriado..."
-                            maxlength="200">
+            <!-- Grid: Anuncios (izq) + Centro de Comunidad (der) -->
+            <div class="dashboard-community-grid">
+                <!-- COLUMNA IZQUIERDA: Banners de Anuncios -->
+                <div>
+                    <!-- 📢 Banner de Anuncios para Conductores -->
+                    <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
+                        <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
+                        <div class="card" style="padding:var(--space-5);">
+                            <div class="form-group" style="margin-bottom:var(--space-3);">
+                                <label class="form-label">Texto del anuncio</label>
+                                <input type="text" class="form-input" id="announcementText" 
+                                    placeholder="Ej: Mañana no hay servicio por feriado..."
+                                    maxlength="200">
+                            </div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
+                                <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
+                                    <input type="checkbox" id="announcementActive" style="width:20px; height:20px; cursor:pointer;">
+                                    <span id="announcementStatusLabel">⚫ Apagado</span>
+                                </label>
+                                <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
+                            </div>
+                        </div>
                     </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
-                        <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
-                            <input type="checkbox" id="announcementActive" style="width:20px; height:20px; cursor:pointer;">
-                            <span id="announcementStatusLabel">⚫ Apagado</span>
-                        </label>
-                        <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
+
+                    <!-- 📢 Banner de Anuncios para Titulares -->
+                    <div class="dashboard-section" id="announcementOwnerSection" style="margin-bottom:var(--space-6);">
+                        <div class="dashboard-section-title">📢 Banner de Anuncios para Titulares</div>
+                        <div class="card" style="padding:var(--space-5); border-left:3px solid var(--color-accent);">
+                            <div class="form-group" style="margin-bottom:var(--space-3);">
+                                <label class="form-label">Texto del anuncio para Titulares</label>
+                                <input type="text" class="form-input" id="announcementOwnerText" 
+                                    placeholder="Ej: Reunión de titulares el viernes a las 19hs..."
+                                    maxlength="200">
+                            </div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
+                                <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
+                                    <input type="checkbox" id="announcementOwnerActive" style="width:20px; height:20px; cursor:pointer;">
+                                    <span id="announcementOwnerStatusLabel">⚫ Apagado</span>
+                                </label>
+                                <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncementOwner()">💾 Guardar Anuncio</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 📢 Banner de Anuncios para Titulares -->
-            <div class="dashboard-section" id="announcementOwnerSection" style="margin-bottom:var(--space-6);">
-                <div class="dashboard-section-title">📢 Banner de Anuncios para Titulares</div>
-                <div class="card" style="padding:var(--space-5); border-left:3px solid var(--color-accent);">
-                    <div class="form-group" style="margin-bottom:var(--space-3);">
-                        <label class="form-label">Texto del anuncio para Titulares</label>
-                        <input type="text" class="form-input" id="announcementOwnerText" 
-                            placeholder="Ej: Reunión de titulares el viernes a las 19hs..."
-                            maxlength="200">
-                    </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
-                        <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
-                            <input type="checkbox" id="announcementOwnerActive" style="width:20px; height:20px; cursor:pointer;">
-                            <span id="announcementOwnerStatusLabel">⚫ Apagado</span>
-                        </label>
-                        <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncementOwner()">💾 Guardar Anuncio</button>
+                <!-- COLUMNA DERECHA: Centro de Comunidad -->
+                <div class="dashboard-section">
+                    <div class="dashboard-section-title">📢 Centro de Comunidad Fleet</div>
+                    <div class="card" style="padding:var(--space-6);">
+                        <!-- Chat Comunidad -->
+                        <button class="btn btn-block" onclick="Router.navigate('community')" 
+                            style="background:var(--bg-tertiary); color:var(--text-primary); font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); margin-bottom:var(--space-5); border:1px solid var(--border-color);">
+                            💬 Abrir Chat Comunidad Dueños
+                            <span class="badge badge-info" id="communityBadge" style="margin-left:var(--space-2); font-size:0.7rem;">0</span>
+                        </button>
+
+                        <!-- Separador -->
+                        <div style="border-top:1px solid var(--border-color); margin-bottom:var(--space-5);"></div>
+
+                        <!-- WhatsApp Groups -->
+                        <div style="display:flex; flex-direction:column; gap:var(--space-3);">
+                            <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer"
+                               class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
+                                🚕 Unirse a Conductores
+                            </a>
+                            <a href="https://chat.whatsapp.com/HxnVSmJSKBwGTcDLPZAzfc" target="_blank" rel="noopener noreferrer"
+                               class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
+                                💼 Unirse a Dueños
+                            </a>
+                        </div>
+
+                        <!-- Footer note -->
+                        <p style="text-align:center; font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-4); line-height:1.4;">
+                            Para unirse al grupo exclusivo de Fleet
+                        </p>
                     </div>
                 </div>
             </div>
