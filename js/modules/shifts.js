@@ -234,14 +234,17 @@ const ShiftsModule = (() => {
         for (const s of shifts) {
             const driver = await DB.get('users', s.driverId);
             const vehicle = await DB.get('vehicles', s.vehicleId);
+            const driverDisplayName = driver?.name || s.driverName || 'Conductor desconocido';
             html += `
                 <div class="card">
                     <div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3);">
                         <div class="stat-icon success">⏱️</div>
                         <div style="flex:1;">
-                            <div style="font-weight:600;">${driver?.name || ''}</div>
+                            <div style="font-weight:700; font-size:var(--font-size-base); color:var(--color-primary-light);">
+                                👤 ${driverDisplayName}
+                            </div>
                             <div style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
-                                ${vehicle?.name || ''} — ${vehicle?.plate || ''}
+                                🚗 ${vehicle?.name || ''} — ${vehicle?.plate || ''}
                             </div>
                         </div>
                         <span class="badge ${s.shiftType === 'night' ? 'badge-warning' : 'badge-success'}">
