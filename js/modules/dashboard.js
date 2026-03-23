@@ -172,29 +172,33 @@ const DashboardModule = (() => {
                 <div class="dashboard-section">
                     <div class="dashboard-section-title">📢 Centro de Comunidad Fleet</div>
                     <div class="card" style="padding:var(--space-6);">
-                        <!-- Chat Comunidad -->
+                        ${Auth.getRole() === 'owner' ? `
+                        <!-- Chat Comunidad (solo Owner) -->
                         <button class="btn btn-block" onclick="Router.navigate('community')" 
                             style="background:var(--bg-tertiary); color:var(--text-primary); font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); margin-bottom:var(--space-5); border:1px solid var(--border-color);">
                             💬 Abrir Chat Comunidad Dueños
                             <span class="badge badge-info" id="communityBadge" style="margin-left:var(--space-2); font-size:0.7rem;">0</span>
                         </button>
-
-                        <!-- Separador -->
                         <div style="border-top:1px solid var(--border-color); margin-bottom:var(--space-5);"></div>
+                        ` : ''}
 
-                        <!-- WhatsApp Groups -->
+                        <!-- WhatsApp Group (filtrado por rol) -->
                         <div style="display:flex; flex-direction:column; gap:var(--space-3);">
+                            ${Auth.getRole() !== 'owner' ? `
                             <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer"
                                class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
                                 🚕 Unirse a Conductores
                             </a>
+                            ` : ''}
+                            ${Auth.getRole() === 'owner' ? `
                             <a href="https://chat.whatsapp.com/HxnVSmJSKBwGTcDLPZAzfc" target="_blank" rel="noopener noreferrer"
                                class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
                                 💼 Unirse a Dueños
                             </a>
+                            ` : ''}
                         </div>
 
-                        <!-- Footer note -->
+                        <!-- Footer note (ambos roles) -->
                         <p style="text-align:center; font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-4); line-height:1.4;">
                             Para unirse al grupo exclusivo de Fleet
                         </p>
