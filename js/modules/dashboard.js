@@ -767,12 +767,23 @@ const DashboardModule = (() => {
                 statusLabel.textContent = isOn ? '🟢 Encendido' : '⚫ Apagado';
                 statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
             }
-            // Toggle label en cambio
+            // Toggle => auto-guardar inmediatamente al cambiar el switch
             if (activeCheck && statusLabel) {
-                activeCheck.onchange = () => {
+                activeCheck.onchange = async () => {
                     const on = activeCheck.checked;
                     statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
                     statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                    try {
+                        await DB.setSetting('announcement', {
+                            bannerText: textInput.value?.trim() || '',
+                            bannerActive: on,
+                            updatedAt: new Date().toISOString(),
+                            updatedBy: Auth.getUserName()
+                        });
+                        console.log('📢 Anuncio conductores auto-guardado:', on);
+                    } catch (err) {
+                        console.error('📢 Error auto-guardando:', err);
+                    }
                 };
             }
         } catch (e) {
@@ -822,10 +833,21 @@ const DashboardModule = (() => {
                 statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
             }
             if (activeCheck && statusLabel) {
-                activeCheck.onchange = () => {
+                activeCheck.onchange = async () => {
                     const on = activeCheck.checked;
                     statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
                     statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                    try {
+                        await DB.setSetting('announcement_owner', {
+                            bannerText: textInput.value?.trim() || '',
+                            bannerActive: on,
+                            updatedAt: new Date().toISOString(),
+                            updatedBy: Auth.getUserName()
+                        });
+                        console.log('📢 Anuncio titulares auto-guardado:', on);
+                    } catch (err) {
+                        console.error('📢 Error auto-guardando titulares:', err);
+                    }
                 };
             }
         } catch (e) {
