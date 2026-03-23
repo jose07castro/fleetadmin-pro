@@ -284,7 +284,12 @@ const ShiftsModule = (() => {
                 <tr>
                     <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()} ${new Date(s.startTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })}</td>
                     <td data-label="${I18n.t('mech_vehicle')}">${vehicleName}</td>
-                    <td data-label="${I18n.t('shift_type')}">${s.shiftType === 'night' ? '🌙' : '🌅'}</td>
+                    <td data-label="${I18n.t('shift_type')}">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            ${s.shiftType === 'night' ? '🌙' : '🌅'}
+                            <span>${new Date(s.startTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })} - ${s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false }) : '--:--'}</span>
+                        </div>
+                    </td>
                     <td data-label="${I18n.t('shift_driver')}">${driverName}</td>
                     <td data-label="${I18n.t('shift_odometer_start')}">${Units.formatDistance(s.startOdometer)}</td>
                     <td data-label="${I18n.t('shift_odometer_end')}">${s.endOdometer ? Units.formatDistance(s.endOdometer) : '-'}</td>
