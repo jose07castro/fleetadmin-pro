@@ -33,15 +33,26 @@ const ShiftsModule = (() => {
     // --- Vista del Chofer ---
     async function renderDriverView(driverId) {
         const vehicles = await DB.getAll('vehicles');
-        const allShifts = await DB.getAllByIndex('shifts', 'driverId', driverId);
-        const activeShift = allShifts.find(s => s.status === 'active');
+        const allShifts = await DB.getAll('shifts');
+        const myShifts = allShifts.filter(s => String(s.driverId) === String(driverId));
+        const activeShift = myShifts.find(s => s.status === 'active');
 
         if (activeShift) {
             return renderActiveShift(activeShift, vehicles);
         }
 
+        // Detectar vehículos ocupados por CUALQUIER turno activo
+        const allActiveShifts = allShifts.filter(s => s.status === 'active');
+        const occupiedVehicleIds = new Set(allActiveShifts.map(s => String(s.vehicleId)));
+
+        // Mapa de vehicleId -> nombre del conductor que lo usa
+        const vehicleDriverMap = {};
+        for (const s of allActiveShifts) {
+            vehicleDriverMap[String(s.vehicleId)] = s.driverName || 'Otro chofer';
+        }
+
         // Historial del chofer (solo sus turnos)
-        const completed = allShifts.filter(s => s.status === 'completed')
+        const completed = myShifts.filter(s => s.status === 'completed')
             .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
         return `
@@ -71,7 +82,14 @@ const ShiftsModule = (() => {
                 <div class="form-group">
                     <label class="form-label">${I18n.t('shift_select_vehicle')}</label>
                     <select class="form-select" id="shiftVehicle">
-                        ${vehicles.map(v => `<option value="${v.id}">${v.name} — ${v.plate}</option>`).join('')}
+                        ${vehicles.map(v => {
+                            const isOccupied = occupiedVehicleIds.has(String(v.id));
+                            const usedBy = vehicleDriverMap[String(v.id)] || '';
+                            if (isOccupied) {
+                                return `<option value="${v.id}" disabled style="color:#888;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
+                            }
+                            return `<option value="${v.id}">✅ ${v.name} — ${v.plate}</option>`;
+                        }).join('')}
                     </select>
                 </div>
 
@@ -334,7 +352,7 @@ const ShiftsModule = (() => {
         const driverId = Auth.getUserId();
         const driverHasActiveShift = allShifts.some(s => s.status === 'active' && s.driverId === driverId);
         if (driverHasActiveShift) {
-            Components.showToast('Ya tienes un turno activo. Finalízalo antes de empezar otro.', 'danger');
+            Components.showToast('🚨 Ya tenés un turno activo. Finalizalo antes de empezar otro.', 'danger');
             return;
         }
 
@@ -350,7 +368,7 @@ const ShiftsModule = (() => {
             // Extraer la hora exacta en la que inició el turno
             const shiftStartTime = new Date(activeShiftOnVehicle.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-            Components.showToast(`Vehículo en uso por: ${driverName} (Empezó a las ${shiftStartTime})`, 'danger');
+            Components.showToast(`🚨 Auto en uso por ${driverName} (desde las ${shiftStartTime}). Asegurate de que el turno anterior haya finalizado.`, 'danger');
             return;
         }
 
