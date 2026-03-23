@@ -1,7 +1,9 @@
 /* ============================================
    FleetAdmin Pro — Announcement Banner
    Banner de anuncios global con marquesina
-   Controlable por el Owner, visible para Drivers
+   Controlable por el Owner.
+   - Drivers ven 'announcement'
+   - Owners ven 'announcement_owner'
    ============================================ */
 
 const AnnouncementModule = (() => {
@@ -10,12 +12,17 @@ const AnnouncementModule = (() => {
 
     // =============================================
     // Iniciar suscripción en tiempo real
+    // Selecciona el path según el rol del usuario
     // =============================================
     function startListening() {
         const fleetId = DB.getFleet();
         if (!fleetId || _listening) return;
 
-        const path = `fleets/${fleetId}/settings/announcement`;
+        // Determinar qué banner escuchar según el rol
+        const role = Auth.getRole();
+        const settingKey = role === 'owner' ? 'announcement_owner' : 'announcement';
+
+        const path = `fleets/${fleetId}/settings/${settingKey}`;
         _listenerRef = firebaseDB.ref(path);
 
         _listenerRef.on('value', (snap) => {
@@ -24,7 +31,7 @@ const AnnouncementModule = (() => {
         });
 
         _listening = true;
-        console.log('📢 Announcement: Listener iniciado');
+        console.log(`📢 Announcement: Listener iniciado (rol: ${role}, key: ${settingKey})`);
     }
 
     // =============================================

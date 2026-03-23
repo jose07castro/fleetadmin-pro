@@ -123,7 +123,7 @@ const DashboardModule = (() => {
                 </div>
             </div>
 
-            <!-- 📢 Banner de Anuncios (solo owner) -->
+            <!-- 📢 Banner de Anuncios para Conductores -->
             <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
                 <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
                 <div class="card" style="padding:var(--space-5);">
@@ -139,6 +139,26 @@ const DashboardModule = (() => {
                             <span id="announcementStatusLabel">⚫ Apagado</span>
                         </label>
                         <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📢 Banner de Anuncios para Titulares -->
+            <div class="dashboard-section" id="announcementOwnerSection" style="margin-bottom:var(--space-6);">
+                <div class="dashboard-section-title">📢 Banner de Anuncios para Titulares</div>
+                <div class="card" style="padding:var(--space-5); border-left:3px solid var(--color-accent);">
+                    <div class="form-group" style="margin-bottom:var(--space-3);">
+                        <label class="form-label">Texto del anuncio para Titulares</label>
+                        <input type="text" class="form-input" id="announcementOwnerText" 
+                            placeholder="Ej: Reunión de titulares el viernes a las 19hs..."
+                            maxlength="200">
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
+                            <input type="checkbox" id="announcementOwnerActive" style="width:20px; height:20px; cursor:pointer;">
+                            <span id="announcementOwnerStatusLabel">⚫ Apagado</span>
+                        </label>
+                        <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncementOwner()">💾 Guardar Anuncio</button>
                     </div>
                 </div>
             </div>
@@ -720,6 +740,7 @@ const DashboardModule = (() => {
         }
         // Cargar datos actuales del anuncio
         await _loadAnnouncementData();
+        await _loadAnnouncementOwnerData();
     }
 
     // --- Banner de Anuncios: Cargar datos actuales ---
@@ -770,11 +791,64 @@ const DashboardModule = (() => {
                 updatedAt: new Date().toISOString(),
                 updatedBy: Auth.getUserName()
             });
-            Components.showToast(active ? '📢 Anuncio activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
+            Components.showToast(active ? '📢 Anuncio para conductores activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
         } catch (e) {
             Components.showToast('❌ Error guardando anuncio: ' + e.message, 'danger');
         }
     }
 
-    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement };
+    // --- Banner de Anuncios TITULARES: Cargar datos ---
+    async function _loadAnnouncementOwnerData() {
+        try {
+            const data = await DB.getSetting('announcement_owner');
+            const textInput = document.getElementById('announcementOwnerText');
+            const activeCheck = document.getElementById('announcementOwnerActive');
+            const statusLabel = document.getElementById('announcementOwnerStatusLabel');
+            if (textInput && data) {
+                textInput.value = data.bannerText || '';
+            }
+            if (activeCheck && data) {
+                activeCheck.checked = !!data.bannerActive;
+            }
+            if (statusLabel) {
+                const isOn = activeCheck?.checked;
+                statusLabel.textContent = isOn ? '🟢 Encendido' : '⚫ Apagado';
+                statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
+            }
+            if (activeCheck && statusLabel) {
+                activeCheck.onchange = () => {
+                    const on = activeCheck.checked;
+                    statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
+                    statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                };
+            }
+        } catch (e) {
+            console.warn('📢 Error cargando anuncio titulares:', e);
+        }
+    }
+
+    // --- Banner de Anuncios TITULARES: Guardar ---
+    async function saveAnnouncementOwner() {
+        const text = document.getElementById('announcementOwnerText')?.value?.trim() || '';
+        const active = document.getElementById('announcementOwnerActive')?.checked || false;
+
+        if (active && !text) {
+            Components.showToast('⚠️ Escribí un texto para el anuncio antes de activarlo', 'warning');
+            return;
+        }
+
+        try {
+            await DB.setSetting('announcement_owner', {
+                bannerText: text,
+                bannerActive: active,
+                updatedAt: new Date().toISOString(),
+                updatedBy: Auth.getUserName()
+            });
+            Components.showToast(active ? '📢 Anuncio para titulares activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
+        } catch (e) {
+            Components.showToast('❌ Error guardando anuncio: ' + e.message, 'danger');
+        }
+    }
+
+    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner };
 })();
