@@ -138,9 +138,10 @@ const DashboardModule = (() => {
                                     maxlength="200">
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
-                                <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
-                                    <input type="checkbox" id="announcementActive" style="width:20px; height:20px; cursor:pointer;">
-                                    <span id="announcementStatusLabel">⚫ Apagado</span>
+                                <label class="toggle-label" for="announcementActive">
+                                    <input type="checkbox" id="announcementActive" class="toggle-input">
+                                    <div class="toggle-switch"><div class="toggle-knob"></div></div>
+                                    <span id="announcementStatusLabel" class="toggle-status">⚫ Apagado</span>
                                 </label>
                                 <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
                             </div>
@@ -158,9 +159,10 @@ const DashboardModule = (() => {
                                     maxlength="200">
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
-                                <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer; font-size:var(--font-size-sm); font-weight:600;">
-                                    <input type="checkbox" id="announcementOwnerActive" style="width:20px; height:20px; cursor:pointer;">
-                                    <span id="announcementOwnerStatusLabel">⚫ Apagado</span>
+                                <label class="toggle-label" for="announcementOwnerActive">
+                                    <input type="checkbox" id="announcementOwnerActive" class="toggle-input">
+                                    <div class="toggle-switch"><div class="toggle-knob"></div></div>
+                                    <span id="announcementOwnerStatusLabel" class="toggle-status">⚫ Apagado</span>
                                 </label>
                                 <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncementOwner()">💾 Guardar Anuncio</button>
                             </div>
