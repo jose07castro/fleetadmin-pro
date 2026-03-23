@@ -231,12 +231,17 @@ const DashboardModule = (() => {
         shifts.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
         for (const s of shifts.slice(0, 5)) {
             const driver = await DB.get('users', s.driverId);
+            const vehicle = await DB.get('vehicles', s.vehicleId);
+            const driverName = driver?.name || s.driverName || 'Conductor';
+            const vehicleName = s.vehicleName || (vehicle ? `${vehicle.name} (${vehicle.plate})` : '');
+            const startTime24 = new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             activities.push({
                 type: 'shift',
                 id: s.id,
                 date: s.startTime,
                 icon: '⏱️',
-                text: `${I18n.t('nav_shifts')}: ${driver?.name || ''}`,
+                text: `Turno de <strong>${driverName}</strong>`,
+                subtext: vehicleName ? `🚗 ${vehicleName} | Inicio: ${startTime24} hs` : `Inicio: ${startTime24} hs`,
                 badge: s.status === 'active' ? 'badge-success' : 'badge-info',
                 badgeText: s.status === 'active' ? I18n.t('shift_active') : I18n.t('shift_end')
             });
