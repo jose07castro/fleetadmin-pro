@@ -254,7 +254,7 @@ const ShiftsModule = (() => {
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
                             ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
-                            ${new Date(s.startTime).toLocaleString()}
+                            ${new Date(s.startTime).toLocaleString([], { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12: false })}
                         </div>
                         ${Auth.isOwner() ? `
                         <div style="display:flex; gap:var(--space-2);">
@@ -282,7 +282,7 @@ const ShiftsModule = (() => {
             const vehicleName = s.vehicleName || (vehicle ? `${vehicle.name} — ${vehicle.plate}` : `#${s.vehicleId}`);
             rows += `
                 <tr>
-                    <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()}</td>
+                    <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()} ${new Date(s.startTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })}</td>
                     <td data-label="${I18n.t('mech_vehicle')}">${vehicleName}</td>
                     <td data-label="${I18n.t('shift_type')}">${s.shiftType === 'night' ? '🌙' : '🌅'}</td>
                     <td data-label="${I18n.t('shift_driver')}">${driverName}</td>
@@ -369,7 +369,7 @@ const ShiftsModule = (() => {
             const driverName = driverInUse ? driverInUse.name : 'Otro chofer';
 
             // Extraer la hora exacta en la que inició el turno
-            const shiftStartTime = new Date(activeShiftOnVehicle.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const shiftStartTime = new Date(activeShiftOnVehicle.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
             Components.showToast(`🚨 Auto en uso por ${driverName} (desde las ${shiftStartTime}). Asegurate de que el turno anterior haya finalizado.`, 'danger');
             return;
