@@ -31,15 +31,23 @@ const App = (() => {
             }, 800);
 
             // 5. Navegar a la ruta correcta
+            // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
-                if (Auth.isLoggedIn()) {
+                const loggedIn = await Auth.isLoggedInAsync();
+                if (loggedIn) {
+                    console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
                     // Bloqueo de perfil incompleto al restaurar sesión
                     if (Auth.isDriver()) {
-                        const profileOk = await Auth.isProfileComplete();
-                        if (!profileOk) {
-                            Router.navigate('complete-profile');
-                            startRealtimeSync();
-                            return;
+                        try {
+                            const profileOk = await Auth.isProfileComplete();
+                            if (!profileOk) {
+                                Router.navigate('complete-profile');
+                                startRealtimeSync();
+                                return;
+                            }
+                        } catch (profileErr) {
+                            // Error de red verificando perfil — NO bloquear, dejar pasar
+                            console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                         }
                     }
                     Router.navigate(Router.getDefaultRoute());
@@ -255,6 +263,7 @@ const App = (() => {
     }
 
     // Restaurar sesión y refrescar vista si estamos logueados
+    // REGLA DE ORO: NUNCA redirigir a login por un error de red.
     async function _restoreSessionOnResume() {
         // Debounce: no restaurar más de 1 vez cada 3 segundos 
         const now = Date.now();
@@ -262,10 +271,11 @@ const App = (() => {
         _lastResumeTime = now;
 
         try {
-            // 1. Forzar re-lectura de localStorage
-            const user = Auth.getUser();
+            // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB)
+            const user = await Auth.recoverSession();
             if (!user) {
-                console.warn('📱 No hay sesión guardada — redirigir a login');
+                // Las 3 capas de almacenamiento están vacías — esto SÍ es un logout real
+                console.warn('📱 No hay sesión en ninguna capa de almacenamiento — redirigir a login');
                 Router.navigate('login');
                 return;
             }
@@ -277,16 +287,24 @@ const App = (() => {
                 DB.setFleet(user.fleetId);
             }
 
-            // 3. Reconectar Firebase Realtime Database
+            // 3. Reconectar Firebase Realtime Database (no bloqueante)
             try {
                 firebase.database().goOnline();
                 console.log('📱 Firebase DB reconectada');
             } catch (e) {
-                console.warn('📱 No se pudo reconectar Firebase:', e);
+                console.warn('📱 No se pudo reconectar Firebase (no crítico):', e);
             }
 
-            // 4. Re-verificar conectividad con Firebase
-            await DB.open();
+            // 4. Re-verificar conectividad con Firebase — timeout corto, NO bloquear
+            try {
+                await Promise.race([
+                    DB.open(),
+                    new Promise(resolve => setTimeout(resolve, 3000)) // 3s max
+                ]);
+            } catch (dbErr) {
+                // Error de red — NO hacer logout, continuar con datos en caché
+                console.warn('📱 Firebase no responde (continuando offline):', dbErr);
+            }
 
             // 5. Reiniciar realtime sync si no está activa
             if (!realtimeListenersActive) {
@@ -305,12 +323,17 @@ const App = (() => {
             // 6. SHIFT HYDRATION: Si es conductor, verificar turno activo ANTES de refrescar
             if (Auth.isDriver() && typeof ShiftsModule !== 'undefined') {
                 console.log('📱 Conductor detectado — verificando turno activo (hydration)...');
-                const hadActiveShift = await ShiftsModule.hydrateActiveShift();
-                if (hadActiveShift) {
-                    console.log('📱 ✅ Turno activo restaurado correctamente');
-                    return; // hydrateActiveShift ya navegó a 'shifts'
+                try {
+                    const hadActiveShift = await ShiftsModule.hydrateActiveShift();
+                    if (hadActiveShift) {
+                        console.log('📱 ✅ Turno activo restaurado correctamente');
+                        return; // hydrateActiveShift ya navegó a 'shifts'
+                    }
+                    console.log('📱 No hay turno activo — continuando navegación normal');
+                } catch (shiftErr) {
+                    // Error de red consultando turnos — NO bloquear, continuar
+                    console.warn('📱 Error en shift hydration (no crítico):', shiftErr);
                 }
-                console.log('📱 No hay turno activo — continuando navegación normal');
             }
 
             // 7. Refrescar la vista actual (esto re-obtiene datos del DB)
@@ -326,7 +349,12 @@ const App = (() => {
             }
         } catch (e) {
             console.warn('📱 Error al restaurar sesión:', e);
-            // No forzar logout, el usuario puede seguir offline
+            // REGLA DE ORO: NUNCA hacer logout por un error acá.
+            // El usuario puede seguir trabajando con datos cacheados.
+            // Solo mostrar un aviso si hay UI disponible.
+            if (typeof Components !== 'undefined' && Components.showToast) {
+                Components.showToast('📡 Reconectando al servidor...', 'warning');
+            }
         }
     }
 

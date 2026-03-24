@@ -1,6 +1,7 @@
 /* ============================================
    FleetAdmin Pro — Firebase Configuration
    Realtime Database for cross-device sync
+   Auth with LOCAL persistence for PWA resilience
    ============================================ */
 
 const firebaseConfig = {
@@ -18,4 +19,15 @@ firebase.initializeApp(firebaseConfig);
 const firebaseDB = firebase.database();
 const firebaseStorage = firebase.storage();
 
-console.log('🔥 Firebase inicializado correctamente (DB + Storage)');
+// Forzar persistencia LOCAL en Firebase Auth (sobrevive background kill en PWA/Android)
+// Esto asegura que firebase.auth().currentUser se restaure desde IndexedDB del navegador
+try {
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .then(() => console.log('🔐 Firebase Auth: persistencia LOCAL activada'))
+        .catch(e => console.warn('🔐 Firebase Auth: error seteando persistencia:', e));
+} catch (e) {
+    console.warn('🔐 Firebase Auth: setPersistence no disponible:', e);
+}
+
+console.log('🔥 Firebase inicializado correctamente (DB + Storage + Auth)');
+

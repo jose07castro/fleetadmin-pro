@@ -5,33 +5,14 @@
 
 const DashboardModule = (() => {
 
-    async function render() {
-        const vehicles = await DB.getAll('vehicles');
-        const shifts = await DB.getAll('shifts');
-        const repairs = await DB.getAll('repairs');
-        const alerts = await Alerts.getAllAlerts();
-        const users = await DB.getAll('users');
-        const location = await DB.getSetting('location');
-
-        // Calcular estadísticas
-        const activeShifts = shifts.filter(s => s.status === 'active');
-        const completedShifts = shifts.filter(s => s.status === 'completed');
-        const totalEarnings = completedShifts.reduce((sum, s) => sum + (s.earnings || 0), 0);
-        const totalRepairCost = repairs.reduce((sum, r) => sum + (r.cost || 0), 0);
-        const netProfit = totalEarnings - totalRepairCost;
-
+    // --- RENDER INSTANTÁNEO: skeleton HTML sin queries ---
+    function render() {
         return `
             <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
                 <div>
                     <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
                     <p>${I18n.t('dash_summary')}</p>
-                    ${location && location.city ? `
-                        <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
-                            <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
-                                📍 ${location.city}, ${location.province}, ${location.country}
-                            </span>
-                        </p>
-                    ` : ''}
+                    <div id="dashLocationBadge"></div>
                 </div>
                 ${Auth.isOwner() ? `
                     <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
@@ -45,95 +26,180 @@ const DashboardModule = (() => {
                 ` : ''}
             </div>
 
-            ${!location || !location.country ? `
-            <!-- Banner de configuración de ubicación -->
-            <div class="card" style="background:linear-gradient(135deg, var(--color-primary), var(--color-info)); color:white; padding:var(--space-5); margin-bottom:var(--space-6); border:none;">
-                <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
-                    <div style="font-size:2.5rem;">🗺️</div>
-                    <div style="flex:1; min-width:200px;">
-                        <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">
-                            ${I18n.t('location_setup_title')}
+            <div id="dashLocationBanner"></div>
+
+            <!-- Alertas (se llenan async) -->
+            <div id="dashAlerts"></div>
+
+            <!-- Estadísticas — skeleton -->
+            <div class="stats-grid" id="dashStatsGrid">
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+            </div>
+
+            <!-- Gastos + Usuarios — skeleton -->
+            <div class="stats-grid" id="dashStatsGrid2" style="margin-bottom:var(--space-6);">
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
+            </div>
+
+            <!-- Grid: Anuncios + Centro de Comunidad -->
+            <div class="dashboard-community-grid" id="dashCommunityGrid">
+                <div><div class="skeleton skeleton-card" style="min-height:150px;"></div></div>
+                <div><div class="skeleton skeleton-card" style="min-height:150px;"></div></div>
+            </div>
+
+            <!-- Vista de flota — skeleton -->
+            <div class="dashboard-section">
+                <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
+                <div id="dashFleetGrid">
+                    <div class="vehicle-cards">
+                        <div class="skeleton skeleton-card"></div>
+                        <div class="skeleton skeleton-card"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actividad reciente — skeleton -->
+            <div class="dashboard-section">
+                <div class="dashboard-section-title">📋 ${I18n.t('dash_recent_activity')}</div>
+                <div id="dashActivity">
+                    <div class="skeleton skeleton-card" style="min-height:120px;"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- CARGA DIFERIDA: rellenar el skeleton con datos reales ---
+    async function _fillDashboardData() {
+        try {
+            const [vehicles, shifts, repairs, alerts, users, location] = await Promise.all([
+                DB.getAll('vehicles'),
+                DB.getAll('shifts'),
+                DB.getAll('repairs'),
+                Alerts.getAllAlerts(),
+                DB.getAll('users'),
+                DB.getSetting('location')
+            ]);
+
+            // Calcular estadísticas
+            const activeShifts = shifts.filter(s => s.status === 'active');
+            const completedShifts = shifts.filter(s => s.status === 'completed');
+            const totalEarnings = completedShifts.reduce((sum, s) => sum + (s.earnings || 0), 0);
+            const totalRepairCost = repairs.reduce((sum, r) => sum + (r.cost || 0), 0);
+            const netProfit = totalEarnings - totalRepairCost;
+
+            // --- Rellenar location badge ---
+            const locBadge = document.getElementById('dashLocationBadge');
+            if (locBadge && location && location.city) {
+                locBadge.innerHTML = `
+                    <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
+                        <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
+                            📍 ${location.city}, ${location.province}, ${location.country}
+                        </span>
+                    </p>`;
+            }
+
+            // --- Location setup banner ---
+            const locBanner = document.getElementById('dashLocationBanner');
+            if (locBanner && (!location || !location.country)) {
+                locBanner.innerHTML = `
+                    <div class="card" style="background:linear-gradient(135deg, var(--color-primary), var(--color-info)); color:white; padding:var(--space-5); margin-bottom:var(--space-6); border:none;">
+                        <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
+                            <div style="font-size:2.5rem;">🗺️</div>
+                            <div style="flex:1; min-width:200px;">
+                                <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">
+                                    ${I18n.t('location_setup_title')}
+                                </div>
+                                <div style="opacity:0.9; font-size:var(--font-size-sm);">
+                                    ${I18n.t('location_setup_subtitle')}
+                                </div>
+                            </div>
+                            <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:600;" onclick="SettingsModule.showLocationSetup()">
+                                📍 ${I18n.t('location_edit')}
+                            </button>
                         </div>
-                        <div style="opacity:0.9; font-size:var(--font-size-sm);">
-                            ${I18n.t('location_setup_subtitle')}
+                    </div>`;
+            }
+
+            // --- Alertas ---
+            const alertsEl = document.getElementById('dashAlerts');
+            if (alertsEl && alerts.length > 0) {
+                alertsEl.innerHTML = `
+                    <div class="dashboard-section">
+                        <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
+                        ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
+                    </div>`;
+            }
+
+            // --- Stats grid 1 ---
+            const statsGrid = document.getElementById('dashStatsGrid');
+            if (statsGrid) {
+                statsGrid.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-icon primary">🚗</div>
+                        <div>
+                            <div class="stat-value">${vehicles.length}</div>
+                            <div class="stat-label">${I18n.t('dash_vehicles')}</div>
                         </div>
                     </div>
-                    <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:600;" onclick="SettingsModule.showLocationSetup()">
-                        📍 ${I18n.t('location_edit')}
-                    </button>
-                </div>
-            </div>
-            ` : ''}
+                    <div class="stat-card">
+                        <div class="stat-icon info">⏱️</div>
+                        <div>
+                            <div class="stat-value">${activeShifts.length}</div>
+                            <div class="stat-label">${I18n.t('dash_active_shifts')}</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon success">💰</div>
+                        <div>
+                            <div class="stat-value">${I18n.t('unit_currency')}${totalEarnings.toLocaleString()}</div>
+                            <div class="stat-label">${I18n.t('dash_total_earnings')}</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon ${netProfit >= 0 ? 'success' : 'danger'}">📈</div>
+                        <div>
+                            <div class="stat-value">${I18n.t('unit_currency')}${netProfit.toLocaleString()}</div>
+                            <div class="stat-label">${I18n.t('dash_net_profit')}</div>
+                        </div>
+                    </div>`;
+            }
 
-            <!-- Alertas de mantenimiento -->
-            ${alerts.length > 0 ? `
-                <div class="dashboard-section">
-                    <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
-                    ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
-                </div>
-            ` : ''}
+            // --- Stats grid 2 (gastos + usuarios) ---
+            const statsGrid2 = document.getElementById('dashStatsGrid2');
+            if (statsGrid2) {
+                statsGrid2.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-icon warning">💸</div>
+                        <div>
+                            <div class="stat-value">${I18n.t('unit_currency')}${totalRepairCost.toLocaleString()}</div>
+                            <div class="stat-label">${I18n.t('dash_expenses')} (${I18n.t('maint_repairs')})</div>
+                        </div>
+                    </div>
+                    <div class="stat-card" style="cursor:pointer;" onclick="DashboardModule.showUsers()">
+                        <div class="stat-icon primary">👥</div>
+                        <div>
+                            <div class="stat-value">${users.length}</div>
+                            <div class="stat-label">${I18n.t('nav_users')} — ${I18n.t('user_manage')} →</div>
+                        </div>
+                    </div>`;
+            }
 
-            <!-- Estadísticas rápidas -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon primary">🚗</div>
-                    <div>
-                        <div class="stat-value">${vehicles.length}</div>
-                        <div class="stat-label">${I18n.t('dash_vehicles')}</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon info">⏱️</div>
-                    <div>
-                        <div class="stat-value">${activeShifts.length}</div>
-                        <div class="stat-label">${I18n.t('dash_active_shifts')}</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon success">💰</div>
-                    <div>
-                        <div class="stat-value">${I18n.t('unit_currency')}${totalEarnings.toLocaleString()}</div>
-                        <div class="stat-label">${I18n.t('dash_total_earnings')}</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon ${netProfit >= 0 ? 'success' : 'danger'}">📈</div>
-                    <div>
-                        <div class="stat-value">${I18n.t('unit_currency')}${netProfit.toLocaleString()}</div>
-                        <div class="stat-label">${I18n.t('dash_net_profit')}</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Gastos + Usuarios -->
-            <div class="stats-grid" style="margin-bottom:var(--space-6);">
-                <div class="stat-card">
-                    <div class="stat-icon warning">💸</div>
-                    <div>
-                        <div class="stat-value">${I18n.t('unit_currency')}${totalRepairCost.toLocaleString()}</div>
-                        <div class="stat-label">${I18n.t('dash_expenses')} (${I18n.t('maint_repairs')})</div>
-                    </div>
-                </div>
-                <div class="stat-card" style="cursor:pointer;" onclick="DashboardModule.showUsers()">
-                    <div class="stat-icon primary">👥</div>
-                    <div>
-                        <div class="stat-value">${users.length}</div>
-                        <div class="stat-label">${I18n.t('nav_users')} — ${I18n.t('user_manage')} →</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Grid: Anuncios (izq) + Centro de Comunidad (der) -->
-            <div class="dashboard-community-grid">
+            // --- Community grid ---
+            const commGrid = document.getElementById('dashCommunityGrid');
+            if (commGrid) {
+                commGrid.innerHTML = `
                 <!-- COLUMNA IZQUIERDA: Banners de Anuncios -->
                 <div>
-                    <!-- 📢 Banner de Anuncios para Conductores -->
                     <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
                         <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
                         <div class="card" style="padding:var(--space-5);">
                             <div class="form-group" style="margin-bottom:var(--space-3);">
                                 <label class="form-label">Texto del anuncio</label>
-                                <input type="text" class="form-input" id="announcementText" 
+                                <input type="text" class="form-input" id="announcementText"
                                     placeholder="Ej: Mañana no hay servicio por feriado..."
                                     maxlength="200">
                             </div>
@@ -147,14 +213,12 @@ const DashboardModule = (() => {
                             </div>
                         </div>
                     </div>
-
-                    <!-- 📢 Banner de Anuncios para Titulares -->
                     <div class="dashboard-section" id="announcementOwnerSection" style="margin-bottom:var(--space-6);">
                         <div class="dashboard-section-title">📢 Banner de Anuncios para Titulares</div>
                         <div class="card" style="padding:var(--space-5); border-left:3px solid var(--color-accent);">
                             <div class="form-group" style="margin-bottom:var(--space-3);">
                                 <label class="form-label">Texto del anuncio para Titulares</label>
-                                <input type="text" class="form-input" id="announcementOwnerText" 
+                                <input type="text" class="form-input" id="announcementOwnerText"
                                     placeholder="Ej: Reunión de titulares el viernes a las 19hs..."
                                     maxlength="200">
                             </div>
@@ -175,16 +239,13 @@ const DashboardModule = (() => {
                     <div class="dashboard-section-title">📢 Centro de Comunidad Fleet</div>
                     <div class="card" style="padding:var(--space-6);">
                         ${Auth.getRole() === 'owner' ? `
-                        <!-- Chat Comunidad (solo Owner) -->
-                        <button class="btn btn-block" onclick="Router.navigate('community')" 
+                        <button class="btn btn-block" onclick="Router.navigate('community')"
                             style="background:var(--bg-tertiary); color:var(--text-primary); font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); margin-bottom:var(--space-5); border:1px solid var(--border-color);">
                             💬 Abrir Chat Comunidad Dueños
                             <span class="badge badge-info" id="communityBadge" style="margin-left:var(--space-2); font-size:0.7rem;">0</span>
                         </button>
                         <div style="border-top:1px solid var(--border-color); margin-bottom:var(--space-5);"></div>
                         ` : ''}
-
-                        <!-- WhatsApp Group (filtrado por rol) -->
                         <div style="display:flex; flex-direction:column; gap:var(--space-3);">
                             ${Auth.getRole() !== 'owner' ? `
                             <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer"
@@ -199,38 +260,37 @@ const DashboardModule = (() => {
                             </a>
                             ` : ''}
                         </div>
-
-                        <!-- Footer note (ambos roles) -->
                         <p style="text-align:center; font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-4); line-height:1.4;">
                             Para unirse al grupo exclusivo de Fleet
                         </p>
                     </div>
-                </div>
-            </div>
+                </div>`;
+            }
 
-            <!-- Vista de flota -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
-                ${vehicles.length > 0 ? `
-                    <div class="vehicle-cards">
-                        ${await renderVehicleCards(vehicles)}
-                    </div>
-                ` : Components.renderEmptyState(
-            '🚗',
-            I18n.t('veh_no_vehicles'),
-            I18n.t('veh_add_first'),
-            `<button class="btn btn-primary" onclick="Router.navigate('vehicles')">
-                        ${I18n.t('veh_add')}
-                    </button>`
-        )}
-            </div>
+            // --- Fleet overview ---
+            const fleetGrid = document.getElementById('dashFleetGrid');
+            if (fleetGrid) {
+                if (vehicles.length > 0) {
+                    fleetGrid.innerHTML = `<div class="vehicle-cards">${await renderVehicleCards(vehicles)}</div>`;
+                } else {
+                    fleetGrid.innerHTML = Components.renderEmptyState(
+                        '🚗', I18n.t('veh_no_vehicles'), I18n.t('veh_add_first'),
+                        `<button class="btn btn-primary" onclick="Router.navigate('vehicles')">${I18n.t('veh_add')}</button>`
+                    );
+                }
+            }
 
-            <!-- Actividad reciente -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">📋 ${I18n.t('dash_recent_activity')}</div>
-                ${await renderRecentActivity(shifts, repairs)}
-            </div>
-        `;
+            // --- Recent activity ---
+            const activityEl = document.getElementById('dashActivity');
+            if (activityEl) {
+                activityEl.innerHTML = await renderRecentActivity(shifts, repairs);
+            }
+
+            console.log('📊 Dashboard: datos cargados (lazy load completado)');
+        } catch (e) {
+            console.error('📊 Dashboard: error cargando datos:', e);
+            // Los skeletons se quedan visibles — no crashear
+        }
     }
 
     async function renderVehicleCards(vehicles) {
@@ -776,8 +836,12 @@ const DashboardModule = (() => {
         }
     }
 
-    // afterRender: cargar badge de comunidad + datos de anuncio
+    // afterRender: PRIMERO rellenar skeletons con datos reales, luego extras
     async function afterRender() {
+        // 1. CRÍTICO: Rellenar el skeleton del dashboard con datos de Firebase
+        await _fillDashboardData();
+
+        // 2. Badge de comunidad
         const badge = document.getElementById('communityBadge');
         if (badge) {
             try {
@@ -789,7 +853,7 @@ const DashboardModule = (() => {
                 badge.textContent = '0';
             }
         }
-        // Cargar datos actuales del anuncio
+        // 3. Cargar datos actuales del anuncio
         await _loadAnnouncementData();
         await _loadAnnouncementOwnerData();
     }

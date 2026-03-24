@@ -170,25 +170,29 @@ const LoginModule = (() => {
                     SOSModule.startListening();
                 }
 
-                if (Auth.isDriver()) {
-                    const profileOk = await Auth.isProfileComplete();
-                    if (!profileOk) {
-                        console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
-                        Router.navigate('complete-profile');
-                        return;
-                    }
-                }
-
-                if (Auth.isOwner()) {
-                    const location = await DB.getSetting('location');
-                    if (!location || !location.country) {
-                        Router.navigate(Router.getDefaultRoute());
-                        setTimeout(() => SettingsModule.showLocationSetup(), 500);
-                        return;
-                    }
-                }
-
+                // NAVEGACIÓN INMEDIATA — no bloqueamos con queries post-login
                 Router.navigate(Router.getDefaultRoute());
+
+                // Verificaciones diferidas (fire-and-forget, no bloquean la UI):
+
+                // 1. Perfil incompleto (conductores) — se redirige después si falta
+                if (Auth.isDriver()) {
+                    Auth.isProfileComplete().then(profileOk => {
+                        if (!profileOk) {
+                            console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
+                            Router.navigate('complete-profile');
+                        }
+                    }).catch(e => console.warn('⚠️ Error verificando perfil (no bloquea):', e));
+                }
+
+                // 2. Configuración de ubicación (dueños) — se muestra wizard después
+                if (Auth.isOwner()) {
+                    DB.getSetting('location').then(location => {
+                        if (!location || !location.country) {
+                            setTimeout(() => SettingsModule.showLocationSetup(), 800);
+                        }
+                    }).catch(e => console.warn('⚠️ Error verificando ubicación (no bloquea):', e));
+                }
             } else if (wasConnectionError) {
                 // All retries failed due to connection
                 errorEl.style.display = 'block';

@@ -190,9 +190,9 @@ const DB = (() => {
         try {
             await new Promise((resolve, reject) => {
                 const connTimeout = setTimeout(() => {
-                    console.warn('🔐 LOGIN: Timeout esperando conexión Firebase (10s)');
+                    console.warn('🔐 LOGIN: Timeout esperando conexión Firebase (3s)');
                     resolve(); // continuar igualmente, puede funcionar
-                }, 10000);
+                }, 3000);
                 const connRef = firebase.database().ref('.info/connected');
                 connRef.once('value', (snap) => {
                     clearTimeout(connTimeout);
