@@ -4,76 +4,8 @@
    ============================================ */
 
 const DashboardModule = (() => {
-
-    // --- RENDER INSTANTÁNEO: skeleton HTML sin queries ---
-    function render() {
-        return `
-            <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
-                <div>
-                    <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
-                    <p>${I18n.t('dash_summary')}</p>
-                    <div id="dashLocationBadge"></div>
-                </div>
-                ${Auth.isOwner() ? `
-                    <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
-                        <button class="community-header-btn community-header-btn-xl" onclick="Router.navigate('community')">
-                            <span class="community-btn-icon">💬</span>
-                            <span class="community-btn-label">Comunidad de Dueños</span>
-                            <span class="community-badge" id="communityBadge">…</span>
-                        </button>
-                        ${typeof SOSModule !== 'undefined' ? SOSModule.renderAudioActivationBanner() : ''}
-                    </div>
-                ` : ''}
-            </div>
-
-            <div id="dashLocationBanner"></div>
-
-            <!-- Alertas (se llenan async) -->
-            <div id="dashAlerts"></div>
-
-            <!-- Estadísticas — skeleton -->
-            <div class="stats-grid" id="dashStatsGrid">
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-            </div>
-
-            <!-- Gastos + Usuarios — skeleton -->
-            <div class="stats-grid" id="dashStatsGrid2" style="margin-bottom:var(--space-6);">
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-                <div class="stat-card"><div class="skeleton skeleton-stat"></div></div>
-            </div>
-
-            <!-- Grid: Anuncios + Centro de Comunidad -->
-            <div class="dashboard-community-grid" id="dashCommunityGrid">
-                <div><div class="skeleton skeleton-card" style="min-height:150px;"></div></div>
-                <div><div class="skeleton skeleton-card" style="min-height:150px;"></div></div>
-            </div>
-
-            <!-- Vista de flota — skeleton -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
-                <div id="dashFleetGrid">
-                    <div class="vehicle-cards">
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Actividad reciente — skeleton -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">📋 ${I18n.t('dash_recent_activity')}</div>
-                <div id="dashActivity">
-                    <div class="skeleton skeleton-card" style="min-height:120px;"></div>
-                </div>
-            </div>
-        `;
-    }
-
-    // --- CARGA DIFERIDA: rellenar el skeleton con datos reales ---
-    async function _fillDashboardData() {
+    // --- RENDER TRADICIONAL: fetch datos, devolver HTML completo ---
+    async function render() {
         try {
             const [vehicles, shifts, repairs, alerts, users, location] = await Promise.all([
                 DB.getAll('vehicles'),
@@ -84,130 +16,131 @@ const DashboardModule = (() => {
                 DB.getSetting('location')
             ]);
 
-            // Calcular estadísticas
             const activeShifts = shifts.filter(s => s.status === 'active');
             const completedShifts = shifts.filter(s => s.status === 'completed');
             const totalEarnings = completedShifts.reduce((sum, s) => sum + (s.earnings || 0), 0);
             const totalRepairCost = repairs.reduce((sum, r) => sum + (r.cost || 0), 0);
             const netProfit = totalEarnings - totalRepairCost;
 
-            // --- Rellenar location badge ---
-            const locBadge = document.getElementById('dashLocationBadge');
-            if (locBadge && location && location.city) {
-                locBadge.innerHTML = `
-                    <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
-                        <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
-                            📍 ${location.city}, ${location.province}, ${location.country}
-                        </span>
-                    </p>`;
-            }
+            const locationBadge = (location && location.city) ? `
+                <p style="margin-top:var(--space-2); font-size:var(--font-size-sm);">
+                    <span style="display:inline-flex; align-items:center; gap:var(--space-1); background:var(--bg-tertiary); padding:var(--space-1) var(--space-3); border-radius:var(--radius-full); color:var(--text-secondary);">
+                        📍 ${location.city}, ${location.province}, ${location.country}
+                    </span>
+                </p>` : '';
 
-            // --- Location setup banner ---
-            const locBanner = document.getElementById('dashLocationBanner');
-            if (locBanner && (!location || !location.country)) {
-                locBanner.innerHTML = `
-                    <div class="card" style="background:linear-gradient(135deg, var(--color-primary), var(--color-info)); color:white; padding:var(--space-5); margin-bottom:var(--space-6); border:none;">
-                        <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
-                            <div style="font-size:2.5rem;">🗺️</div>
-                            <div style="flex:1; min-width:200px;">
-                                <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">
-                                    ${I18n.t('location_setup_title')}
-                                </div>
-                                <div style="opacity:0.9; font-size:var(--font-size-sm);">
-                                    ${I18n.t('location_setup_subtitle')}
-                                </div>
-                            </div>
-                            <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:600;" onclick="SettingsModule.showLocationSetup()">
-                                📍 ${I18n.t('location_edit')}
-                            </button>
+            const locationBanner = (!location || !location.country) ? `
+                <div class="card" style="background:linear-gradient(135deg, var(--color-primary), var(--color-info)); color:white; padding:var(--space-5); margin-bottom:var(--space-6); border:none;">
+                    <div style="display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;">
+                        <div style="font-size:2.5rem;">🗺️</div>
+                        <div style="flex:1; min-width:200px;">
+                            <div style="font-size:var(--font-size-lg); font-weight:700; margin-bottom:var(--space-1);">${I18n.t('location_setup_title')}</div>
+                            <div style="opacity:0.9; font-size:var(--font-size-sm);">${I18n.t('location_setup_subtitle')}</div>
                         </div>
-                    </div>`;
-            }
-
-            // --- Alertas ---
-            const alertsEl = document.getElementById('dashAlerts');
-            if (alertsEl && alerts.length > 0) {
-                alertsEl.innerHTML = `
-                    <div class="dashboard-section">
-                        <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
-                        ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
-                    </div>`;
-            }
-
-            // --- Stats grid 1 ---
-            const statsGrid = document.getElementById('dashStatsGrid');
-            if (statsGrid) {
-                statsGrid.innerHTML = `
-                    <div class="stat-card">
-                        <div class="stat-icon primary">🚗</div>
-                        <div>
-                            <div class="stat-value">${vehicles.length}</div>
-                            <div class="stat-label">${I18n.t('dash_vehicles')}</div>
-                        </div>
+                        <button class="btn" style="background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.4); font-weight:600;" onclick="SettingsModule.showLocationSetup()">📍 ${I18n.t('location_edit')}</button>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon info">⏱️</div>
-                        <div>
-                            <div class="stat-value">${activeShifts.length}</div>
-                            <div class="stat-label">${I18n.t('dash_active_shifts')}</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon success">💰</div>
-                        <div>
-                            <div class="stat-value">${I18n.t('unit_currency')}${totalEarnings.toLocaleString()}</div>
-                            <div class="stat-label">${I18n.t('dash_total_earnings')}</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon ${netProfit >= 0 ? 'success' : 'danger'}">📈</div>
-                        <div>
-                            <div class="stat-value">${I18n.t('unit_currency')}${netProfit.toLocaleString()}</div>
-                            <div class="stat-label">${I18n.t('dash_net_profit')}</div>
-                        </div>
-                    </div>`;
+                </div>` : '';
+
+            const alertsHTML = alerts.length > 0 ? `
+                <div class="dashboard-section">
+                    <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
+                    ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
+                </div>` : '';
+
+            let fleetHTML = '';
+            if (vehicles.length > 0) {
+                fleetHTML = `<div class="vehicle-cards">${await renderVehicleCards(vehicles)}</div>`;
+            } else {
+                fleetHTML = Components.renderEmptyState('🚗', I18n.t('veh_no_vehicles'), I18n.t('veh_add_first'),
+                    `<button class="btn btn-primary" onclick="Router.navigate('vehicles')">${I18n.t('veh_add')}</button>`);
             }
 
-            // --- Stats grid 2 (gastos + usuarios) ---
-            const statsGrid2 = document.getElementById('dashStatsGrid2');
-            if (statsGrid2) {
-                statsGrid2.innerHTML = `
-                    <div class="stat-card">
-                        <div class="stat-icon warning">💸</div>
-                        <div>
-                            <div class="stat-value">${I18n.t('unit_currency')}${totalRepairCost.toLocaleString()}</div>
-                            <div class="stat-label">${I18n.t('dash_expenses')} (${I18n.t('maint_repairs')})</div>
-                        </div>
-                    </div>
-                    <div class="stat-card" style="cursor:pointer;" onclick="DashboardModule.showUsers()">
-                        <div class="stat-icon primary">👥</div>
-                        <div>
-                            <div class="stat-value">${users.length}</div>
-                            <div class="stat-label">${I18n.t('nav_users')} — ${I18n.t('user_manage')} →</div>
-                        </div>
-                    </div>`;
-            }
+            const activityHTML = await renderRecentActivity(shifts, repairs);
 
-            // --- Community grid ---
-            const commGrid = document.getElementById('dashCommunityGrid');
-            if (commGrid) {
-                commGrid.innerHTML = `
-                <!-- COLUMNA IZQUIERDA: Banners de Anuncios -->
+            let communityBadgeCount = '0';
+            try {
+                const snap = await firebaseDB.ref('community_posts').once('value');
+                const c = snap.numChildren();
+                communityBadgeCount = c > 99 ? '99+' : String(c);
+            } catch (e) { communityBadgeCount = '0'; }
+
+            let annData = null, annOwnerData = null;
+            try { annData = await DB.getSetting('announcement'); } catch(e) {}
+            try { annOwnerData = await DB.getSetting('announcement_owner'); } catch(e) {}
+            const annText = annData?.bannerText || '';
+            const annActive = !!annData?.bannerActive;
+            const annOwnerText = annOwnerData?.bannerText || '';
+            const annOwnerActive = !!annOwnerData?.bannerActive;
+
+            // Wiring de toggles después del mount
+            setTimeout(() => _wireAnnouncementToggles(), 100);
+
+            return `
+            <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
+                <div>
+                    <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
+                    <p>${I18n.t('dash_summary')}</p>
+                    ${locationBadge}
+                </div>
+                ${Auth.isOwner() ? `
+                    <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;">
+                        <button class="community-header-btn community-header-btn-xl" onclick="Router.navigate('community')">
+                            <span class="community-btn-icon">💬</span>
+                            <span class="community-btn-label">Comunidad de Dueños</span>
+                            <span class="community-badge" id="communityBadge">${communityBadgeCount}</span>
+                        </button>
+                        ${typeof SOSModule !== 'undefined' ? SOSModule.renderAudioActivationBanner() : ''}
+                    </div>
+                ` : ''}
+            </div>
+
+            ${locationBanner}
+            ${alertsHTML}
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon primary">🚗</div>
+                    <div><div class="stat-value">${vehicles.length}</div><div class="stat-label">${I18n.t('dash_vehicles')}</div></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon info">⏱️</div>
+                    <div><div class="stat-value">${activeShifts.length}</div><div class="stat-label">${I18n.t('dash_active_shifts')}</div></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon success">💰</div>
+                    <div><div class="stat-value">${I18n.t('unit_currency')}${totalEarnings.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_total_earnings')}</div></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon ${netProfit >= 0 ? 'success' : 'danger'}">📈</div>
+                    <div><div class="stat-value">${I18n.t('unit_currency')}${netProfit.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_net_profit')}</div></div>
+                </div>
+            </div>
+
+            <div class="stats-grid" style="margin-bottom:var(--space-6);">
+                <div class="stat-card">
+                    <div class="stat-icon warning">💸</div>
+                    <div><div class="stat-value">${I18n.t('unit_currency')}${totalRepairCost.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_expenses')} (${I18n.t('maint_repairs')})</div></div>
+                </div>
+                <div class="stat-card" style="cursor:pointer;" onclick="DashboardModule.showUsers()">
+                    <div class="stat-icon primary">👥</div>
+                    <div><div class="stat-value">${users.length}</div><div class="stat-label">${I18n.t('nav_users')} — ${I18n.t('user_manage')} →</div></div>
+                </div>
+            </div>
+
+            <div class="dashboard-community-grid">
                 <div>
                     <div class="dashboard-section" id="announcementSection" style="margin-bottom:var(--space-6);">
                         <div class="dashboard-section-title">📢 Banner de Anuncios para Conductores</div>
                         <div class="card" style="padding:var(--space-5);">
                             <div class="form-group" style="margin-bottom:var(--space-3);">
                                 <label class="form-label">Texto del anuncio</label>
-                                <input type="text" class="form-input" id="announcementText"
-                                    placeholder="Ej: Mañana no hay servicio por feriado..."
-                                    maxlength="200">
+                                <input type="text" class="form-input" id="announcementText" placeholder="Ej: Mañana no hay servicio por feriado..." maxlength="200" value="${annText.replace(/"/g, '&quot;')}">
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
                                 <label class="toggle-label" for="announcementActive">
-                                    <input type="checkbox" id="announcementActive" class="toggle-input">
+                                    <input type="checkbox" id="announcementActive" class="toggle-input" ${annActive ? 'checked' : ''}>
                                     <div class="toggle-switch"><div class="toggle-knob"></div></div>
-                                    <span id="announcementStatusLabel" class="toggle-status">⚫ Apagado</span>
+                                    <span id="announcementStatusLabel" class="toggle-status">${annActive ? '🟢 Encendido' : '⚫ Apagado'}</span>
                                 </label>
                                 <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncement()">💾 Guardar Anuncio</button>
                             </div>
@@ -218,31 +151,26 @@ const DashboardModule = (() => {
                         <div class="card" style="padding:var(--space-5); border-left:3px solid var(--color-accent);">
                             <div class="form-group" style="margin-bottom:var(--space-3);">
                                 <label class="form-label">Texto del anuncio para Titulares</label>
-                                <input type="text" class="form-input" id="announcementOwnerText"
-                                    placeholder="Ej: Reunión de titulares el viernes a las 19hs..."
-                                    maxlength="200">
+                                <input type="text" class="form-input" id="announcementOwnerText" placeholder="Ej: Reunión de titulares el viernes a las 19hs..." maxlength="200" value="${annOwnerText.replace(/"/g, '&quot;')}">
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap;">
                                 <label class="toggle-label" for="announcementOwnerActive">
-                                    <input type="checkbox" id="announcementOwnerActive" class="toggle-input">
+                                    <input type="checkbox" id="announcementOwnerActive" class="toggle-input" ${annOwnerActive ? 'checked' : ''}>
                                     <div class="toggle-switch"><div class="toggle-knob"></div></div>
-                                    <span id="announcementOwnerStatusLabel" class="toggle-status">⚫ Apagado</span>
+                                    <span id="announcementOwnerStatusLabel" class="toggle-status">${annOwnerActive ? '🟢 Encendido' : '⚫ Apagado'}</span>
                                 </label>
                                 <button class="btn btn-primary btn-sm" onclick="DashboardModule.saveAnnouncementOwner()">💾 Guardar Anuncio</button>
                             </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- COLUMNA DERECHA: Centro de Comunidad -->
                 <div class="dashboard-section">
                     <div class="dashboard-section-title">📢 Centro de Comunidad Fleet</div>
                     <div class="card" style="padding:var(--space-6);">
                         ${Auth.getRole() === 'owner' ? `
-                        <button class="btn btn-block" onclick="Router.navigate('community')"
-                            style="background:var(--bg-tertiary); color:var(--text-primary); font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); margin-bottom:var(--space-5); border:1px solid var(--border-color);">
+                        <button class="btn btn-block" onclick="Router.navigate('community')" style="background:var(--bg-tertiary); color:var(--text-primary); font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); margin-bottom:var(--space-5); border:1px solid var(--border-color);">
                             💬 Abrir Chat Comunidad Dueños
-                            <span class="badge badge-info" id="communityBadge" style="margin-left:var(--space-2); font-size:0.7rem;">0</span>
+                            <span class="badge badge-info" style="margin-left:var(--space-2); font-size:0.7rem;">${communityBadgeCount}</span>
                         </button>
                         <div style="border-top:1px solid var(--border-color); margin-bottom:var(--space-5);"></div>
                         ` : ''}
@@ -251,47 +179,73 @@ const DashboardModule = (() => {
                             <a href="https://chat.whatsapp.com/D3CGMxKDqSx1vHjILi6LtW" target="_blank" rel="noopener noreferrer"
                                class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
                                 🚕 Unirse a Conductores
-                            </a>
-                            ` : ''}
+                            </a>` : ''}
                             ${Auth.getRole() === 'owner' ? `
                             <a href="https://chat.whatsapp.com/HxnVSmJSKBwGTcDLPZAzfc" target="_blank" rel="noopener noreferrer"
                                class="btn btn-block" style="background:#25D366; color:#fff; font-weight:600; font-size:var(--font-size-base); padding:var(--space-4); text-decoration:none; display:flex; align-items:center; justify-content:center; gap:var(--space-2); border-radius:var(--radius-lg);">
                                 💼 Unirse a Dueños
-                            </a>
-                            ` : ''}
+                            </a>` : ''}
                         </div>
                         <p style="text-align:center; font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-4); line-height:1.4;">
                             Para unirse al grupo exclusivo de Fleet
                         </p>
                     </div>
-                </div>`;
-            }
+                </div>
+            </div>
 
-            // --- Fleet overview ---
-            const fleetGrid = document.getElementById('dashFleetGrid');
-            if (fleetGrid) {
-                if (vehicles.length > 0) {
-                    fleetGrid.innerHTML = `<div class="vehicle-cards">${await renderVehicleCards(vehicles)}</div>`;
-                } else {
-                    fleetGrid.innerHTML = Components.renderEmptyState(
-                        '🚗', I18n.t('veh_no_vehicles'), I18n.t('veh_add_first'),
-                        `<button class="btn btn-primary" onclick="Router.navigate('vehicles')">${I18n.t('veh_add')}</button>`
-                    );
-                }
-            }
+            <div class="dashboard-section">
+                <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
+                ${fleetHTML}
+            </div>
 
-            // --- Recent activity ---
-            const activityEl = document.getElementById('dashActivity');
-            if (activityEl) {
-                activityEl.innerHTML = await renderRecentActivity(shifts, repairs);
-            }
+            <div class="dashboard-section">
+                <div class="dashboard-section-title">📋 ${I18n.t('dash_recent_activity')}</div>
+                ${activityHTML}
+            </div>`;
 
-            console.log('📊 Dashboard: datos cargados (lazy load completado)');
         } catch (e) {
-            console.error('📊 Dashboard: error cargando datos:', e);
-            // Los skeletons se quedan visibles — no crashear
+            console.error('📊 Dashboard render error:', e);
+            return `
+                <div style="text-align:center; padding:var(--space-8);">
+                    <div style="font-size:3rem; margin-bottom:var(--space-4);">⚠️</div>
+                    <h3>Error cargando el panel</h3>
+                    <p style="color:var(--text-secondary); margin-top:var(--space-2);">${e.message || 'Error de conexión'}</p>
+                    <button class="btn btn-primary" onclick="Router.navigate('dashboard')" style="margin-top:var(--space-4);">🔄 Reintentar</button>
+                </div>`;
         }
     }
+
+    // Wiring de toggles de anuncio (llamado vía setTimeout después del mount)
+    function _wireAnnouncementToggles() {
+        const activeCheck = document.getElementById('announcementActive');
+        const statusLabel = document.getElementById('announcementStatusLabel');
+        const textInput = document.getElementById('announcementText');
+        if (activeCheck && statusLabel) {
+            activeCheck.onchange = async () => {
+                const on = activeCheck.checked;
+                statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
+                statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                try {
+                    await DB.setSetting('announcement', { bannerText: textInput?.value?.trim() || '', bannerActive: on, updatedAt: new Date().toISOString(), updatedBy: Auth.getUserName() });
+                } catch (err) { console.error('📢 Error auto-guardando:', err); }
+            };
+        }
+        const ownerCheck = document.getElementById('announcementOwnerActive');
+        const ownerLabel = document.getElementById('announcementOwnerStatusLabel');
+        const ownerText = document.getElementById('announcementOwnerText');
+        if (ownerCheck && ownerLabel) {
+            ownerCheck.onchange = async () => {
+                const on = ownerCheck.checked;
+                ownerLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
+                ownerLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
+                try {
+                    await DB.setSetting('announcement_owner', { bannerText: ownerText?.value?.trim() || '', bannerActive: on, updatedAt: new Date().toISOString(), updatedBy: Auth.getUserName() });
+                } catch (err) { console.error('📢 Error auto-guardando titulares:', err); }
+            };
+        }
+    }
+
+
 
     async function renderVehicleCards(vehicles) {
         let html = '';
@@ -836,133 +790,6 @@ const DashboardModule = (() => {
         }
     }
 
-    // afterRender: PRIMERO rellenar skeletons con datos reales, luego extras
-    async function afterRender() {
-        // 1. CRÍTICO: Rellenar el skeleton del dashboard con datos de Firebase
-        await _fillDashboardData();
-
-        // 2. Badge de comunidad
-        const badge = document.getElementById('communityBadge');
-        if (badge) {
-            try {
-                const snap = await firebaseDB.ref('community_posts').once('value');
-                const count = snap.numChildren();
-                badge.textContent = count > 99 ? '99+' : String(count);
-                if (count === 0) badge.style.display = 'none';
-            } catch (e) {
-                badge.textContent = '0';
-            }
-        }
-        // 3. Cargar datos actuales del anuncio
-        await _loadAnnouncementData();
-        await _loadAnnouncementOwnerData();
-    }
-
-    // --- Banner de Anuncios: Cargar datos actuales ---
-    async function _loadAnnouncementData() {
-        try {
-            const data = await DB.getSetting('announcement');
-            const textInput = document.getElementById('announcementText');
-            const activeCheck = document.getElementById('announcementActive');
-            const statusLabel = document.getElementById('announcementStatusLabel');
-            if (textInput && data) {
-                textInput.value = data.bannerText || '';
-            }
-            if (activeCheck && data) {
-                activeCheck.checked = !!data.bannerActive;
-            }
-            if (statusLabel) {
-                const isOn = activeCheck?.checked;
-                statusLabel.textContent = isOn ? '🟢 Encendido' : '⚫ Apagado';
-                statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
-            }
-            // Toggle => auto-guardar inmediatamente al cambiar el switch
-            if (activeCheck && statusLabel) {
-                activeCheck.onchange = async () => {
-                    const on = activeCheck.checked;
-                    statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
-                    statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
-                    try {
-                        await DB.setSetting('announcement', {
-                            bannerText: textInput.value?.trim() || '',
-                            bannerActive: on,
-                            updatedAt: new Date().toISOString(),
-                            updatedBy: Auth.getUserName()
-                        });
-                        console.log('📢 Anuncio conductores auto-guardado:', on);
-                    } catch (err) {
-                        console.error('📢 Error auto-guardando:', err);
-                    }
-                };
-            }
-        } catch (e) {
-            console.warn('📢 Error cargando anuncio:', e);
-        }
-    }
-
-    // --- Banner de Anuncios: Guardar ---
-    async function saveAnnouncement() {
-        const text = document.getElementById('announcementText')?.value?.trim() || '';
-        const active = document.getElementById('announcementActive')?.checked || false;
-
-        if (active && !text) {
-            Components.showToast('⚠️ Escribí un texto para el anuncio antes de activarlo', 'warning');
-            return;
-        }
-
-        try {
-            await DB.setSetting('announcement', {
-                bannerText: text,
-                bannerActive: active,
-                updatedAt: new Date().toISOString(),
-                updatedBy: Auth.getUserName()
-            });
-            Components.showToast(active ? '📢 Anuncio para conductores activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
-        } catch (e) {
-            Components.showToast('❌ Error guardando anuncio: ' + e.message, 'danger');
-        }
-    }
-
-    // --- Banner de Anuncios TITULARES: Cargar datos ---
-    async function _loadAnnouncementOwnerData() {
-        try {
-            const data = await DB.getSetting('announcement_owner');
-            const textInput = document.getElementById('announcementOwnerText');
-            const activeCheck = document.getElementById('announcementOwnerActive');
-            const statusLabel = document.getElementById('announcementOwnerStatusLabel');
-            if (textInput && data) {
-                textInput.value = data.bannerText || '';
-            }
-            if (activeCheck && data) {
-                activeCheck.checked = !!data.bannerActive;
-            }
-            if (statusLabel) {
-                const isOn = activeCheck?.checked;
-                statusLabel.textContent = isOn ? '🟢 Encendido' : '⚫ Apagado';
-                statusLabel.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
-            }
-            if (activeCheck && statusLabel) {
-                activeCheck.onchange = async () => {
-                    const on = activeCheck.checked;
-                    statusLabel.textContent = on ? '🟢 Encendido' : '⚫ Apagado';
-                    statusLabel.style.color = on ? 'var(--color-success)' : 'var(--text-secondary)';
-                    try {
-                        await DB.setSetting('announcement_owner', {
-                            bannerText: textInput.value?.trim() || '',
-                            bannerActive: on,
-                            updatedAt: new Date().toISOString(),
-                            updatedBy: Auth.getUserName()
-                        });
-                        console.log('📢 Anuncio titulares auto-guardado:', on);
-                    } catch (err) {
-                        console.error('📢 Error auto-guardando titulares:', err);
-                    }
-                };
-            }
-        } catch (e) {
-            console.warn('📢 Error cargando anuncio titulares:', e);
-        }
-    }
 
     // --- Banner de Anuncios TITULARES: Guardar ---
     async function saveAnnouncementOwner() {
@@ -987,5 +814,5 @@ const DashboardModule = (() => {
         }
     }
 
-    return { render, afterRender, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner };
+    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner };
 })();

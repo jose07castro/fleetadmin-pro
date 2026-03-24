@@ -19,48 +19,26 @@ const ShiftsModule = (() => {
         });
     }
 
-    // --- RENDER INSTANTÁNEO para conductores (skeleton) ---
-    function render() {
-        const role = Auth.getRole();
-
-        if (role === 'driver') {
-            // Skeleton instantáneo — afterRender llena los datos
-            return `
-                <div id="shiftsDriverContainer">
-                    <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
-                        <div style="font-size:2.5rem; margin-bottom:var(--space-3);">⏳</div>
-                        <div style="font-size:var(--font-size-lg); font-weight:600; color:var(--text-secondary);">Cargando turno...</div>
-                    </div>
-                    <div class="skeleton skeleton-card" style="min-height:200px; margin-top:var(--space-4);"></div>
-                    <div class="skeleton skeleton-card" style="min-height:100px; margin-top:var(--space-4);"></div>
-                </div>
-            `;
-        } else {
-            // Owner view — no skeleton, cargar datos directamente
-            // (los dueños navegan a turnos a propósito, no en login)
-            return `<div id="shiftsOwnerContainer"><div class="skeleton skeleton-card" style="min-height:300px;"></div></div>`;
-        }
-    }
-
-    // --- afterRender: rellenar contenedor con datos reales ---
-    async function afterRender() {
+    // --- RENDER TRADICIONAL: fetch datos async, devolver HTML completo ---
+    async function render() {
         const role = Auth.getRole();
         const userId = Auth.getUserId();
 
         try {
             if (role === 'driver') {
-                const container = document.getElementById('shiftsDriverContainer');
-                if (!container) return;
-                const html = await renderDriverView(userId);
-                container.innerHTML = html;
+                return await renderDriverView(userId);
             } else {
-                const container = document.getElementById('shiftsOwnerContainer');
-                if (!container) return;
-                const html = await renderOwnerView();
-                container.innerHTML = html;
+                return await renderOwnerView();
             }
         } catch (e) {
-            console.error('⏱️ Shifts afterRender error:', e);
+            console.error('⏱️ Shifts: render error:', e);
+            return `
+                <div style="text-align:center; padding:var(--space-8);">
+                    <div style="font-size:3rem; margin-bottom:var(--space-4);">⚠️</div>
+                    <h3>Error cargando turnos</h3>
+                    <p style="color:var(--text-secondary); margin-top:var(--space-2);">${e.message || 'Error de conexión'}</p>
+                    <button class="btn btn-primary" onclick="Router.navigate('shifts')" style="margin-top:var(--space-4);">🔄 Reintentar</button>
+                </div>`;
         }
     }
 
@@ -840,7 +818,7 @@ const ShiftsModule = (() => {
         return false;
     }
 
-    return { render, afterRender, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
+    return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
         getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName }),
         checkActiveShift, hydrateActiveShift
     };

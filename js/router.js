@@ -19,17 +19,6 @@ const Router = (() => {
         'complete-profile': () => SettingsModule.renderCompleteProfile(),
     };
 
-    // Mapeo de rutas a nombres de módulos (para afterRender)
-    const moduleNames = {
-        settings: 'SettingsModule',
-        dashboard: 'DashboardModule',
-        vehicles: 'VehiclesModule',
-        shifts: 'ShiftsModule',
-        maintenance: 'MaintenanceModule',
-        gps: 'GPSModule',
-        community: 'CommunityModule',
-    };
-
     async function navigate(route) {
         // Si no está logueado, forzar login
         if (!Auth.isLoggedIn() && route !== 'login') {
@@ -72,7 +61,7 @@ const Router = (() => {
         const overlay = document.getElementById('sidebarOverlay');
         if (overlay) overlay.classList.remove('active');
 
-        // Renderizar la ruta
+        // Renderizar la ruta — cada módulo hace su propio fetch y devuelve HTML completo
         const app = document.getElementById('app');
         if (routes[route]) {
             const content = await routes[route]();
@@ -82,27 +71,6 @@ const Router = (() => {
                 app.innerHTML = Components.renderLayout(content, route);
                 // Reactivar el sidebar overlay para móvil
                 setupMobileMenu();
-            }
-            // Llamar afterRender si el módulo lo tiene
-            const modName = moduleNames[route];
-            const mod = modName ? window[modName] : null;
-            if (mod && typeof mod.afterRender === 'function') {
-                console.log(`🔄 Router: calling ${modName}.afterRender() for route "${route}"`);
-                setTimeout(() => {
-                    try {
-                        const result = mod.afterRender();
-                        // Si afterRender es async, atrapar errores de la promesa
-                        if (result && typeof result.catch === 'function') {
-                            result.catch(err => {
-                                console.error(`❌ Router: ${modName}.afterRender() PROMISE REJECTED:`, err);
-                            });
-                        }
-                    } catch (syncErr) {
-                        console.error(`❌ Router: ${modName}.afterRender() THREW SYNC ERROR:`, syncErr);
-                    }
-                }, 50);
-            } else {
-                console.warn(`⚠️ Router: No afterRender found for route "${route}" (module: ${modName})`);
             }
             // Iniciar listener de anuncios (para todos los roles)
             if (typeof AnnouncementModule !== 'undefined') {

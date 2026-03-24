@@ -10,6 +10,9 @@ const SettingsModule = (() => {
         const volUnit = Units.getVolumeUnit();
         const location = await DB.getSetting('location');
 
+        // Wiring post-mount: load user list for owners
+        setTimeout(() => { if (Auth.isOwner()) loadUserList(); }, 100);
+
         return `
             <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
                 ⚙️ ${I18n.t('settings_title')}
@@ -1283,7 +1286,7 @@ const SettingsModule = (() => {
 
     return {
         render, renderCompleteProfile, saveCompleteProfile,
-        afterRender, exportData, importData, resetData, showUserManager, saveUser,
+        exportData, importData, resetData, showUserManager, saveUser,
         showLocationEditor, showLocationSetup, saveLocation,
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,

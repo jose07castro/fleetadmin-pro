@@ -99,6 +99,9 @@ const CommunityModule = (() => {
         const backRoute = isDriver ? 'shifts' : 'dashboard';
         const backLabel = isDriver ? '\u2190 Volver a Turnos' : '\u2190 Volver al Panel';
 
+        // Wire DOM events post-mount (char counter, carousel, realtime)
+        setTimeout(() => afterRender(), 100);
+
         return `
         <div class="community-wall">
             <!-- Columna principal del feed (70%) -->
@@ -985,5 +988,5 @@ const CommunityModule = (() => {
         }
     }
 
-    return { render, afterRender, cleanup, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage, toggleReactionPicker };
+    return { render, cleanup, submitPost, reactToPost, pauseCarousel, resumeCarousel, goToSponsor, selectCategory, toggleComment, submitComment, togglePostMenu, deletePost, editPost, saveEditPost, cancelEditPost, onImageSelected, removeImage, toggleReactionPicker };
 })();
