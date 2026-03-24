@@ -15,78 +15,103 @@ const App = (() => {
             // 1. Inicializar sistema de idiomas
             I18n.init();
 
-            // 2. Conectar a Firebase
-            await DB.open();
+            // 2. Conectar a Firebase (con timeout defensivo)
+            try {
+                await DB.open();
+            } catch (dbErr) {
+                console.warn('⚠️ Firebase open() falló, continuando:', dbErr);
+            }
 
             // 3. Seed (no-op en multi-tenencia, migración en login)
-            await DB.seed();
+            try {
+                await DB.seed();
+            } catch (seedErr) {
+                console.warn('⚠️ DB seed() falló, continuando:', seedErr);
+            }
 
             // 3.5. Activar manejo de reconexión (móvil)
             setupReconnectionHandler();
 
-            // 4. Ocultar pantalla de carga
-            setTimeout(() => {
-                const splash = document.getElementById('splash-screen');
-                if (splash) splash.classList.add('hidden');
-            }, 800);
-
-            // 5. Navegar a la ruta correcta
+            // 4. Navegar a la ruta correcta
             // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
-                const loggedIn = await Auth.isLoggedInAsync();
-                if (loggedIn) {
-                    console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
-                    // Bloqueo de perfil incompleto al restaurar sesión
-                    if (Auth.isDriver()) {
-                        try {
-                            const profileOk = await Auth.isProfileComplete();
-                            if (!profileOk) {
-                                Router.navigate('complete-profile');
-                                startRealtimeSync();
-                                return;
+                try {
+                    const loggedIn = await Auth.isLoggedInAsync();
+                    if (loggedIn) {
+                        console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
+                        // Bloqueo de perfil incompleto al restaurar sesión
+                        if (Auth.isDriver()) {
+                            try {
+                                const profileOk = await Auth.isProfileComplete();
+                                if (!profileOk) {
+                                    _hideSplash();
+                                    Router.navigate('complete-profile');
+                                    startRealtimeSync();
+                                    return;
+                                }
+                            } catch (profileErr) {
+                                // Error de red verificando perfil — NO bloquear, dejar pasar
+                                console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                             }
-                        } catch (profileErr) {
-                            // Error de red verificando perfil — NO bloquear, dejar pasar
-                            console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                         }
+                        _hideSplash();
+                        Router.navigate(Router.getDefaultRoute());
+                        // 6. Activar sincronización en tiempo real
+                        startRealtimeSync();
+                        // 7. Iniciar checker de notificaciones locales
+                        if (typeof Notifications !== 'undefined') {
+                            Notifications.init();
+                        }
+                        // 8. Activar listener SOS para TODOS (dueños y conductores)
+                        if (typeof SOSModule !== 'undefined') {
+                            SOSModule.startListening();
+                        }
+                        // 9. Mostrar banner PWA de instalación (solo drivers móviles)
+                        if (typeof PWAInstall !== 'undefined') {
+                            setTimeout(() => PWAInstall.showBanner(), 2000);
+                        }
+                    } else {
+                        _hideSplash();
+                        Router.navigate('login');
                     }
-                    Router.navigate(Router.getDefaultRoute());
-                    // 6. Activar sincronización en tiempo real
-                    startRealtimeSync();
-                    // 7. Iniciar checker de notificaciones locales
-                    if (typeof Notifications !== 'undefined') {
-                        Notifications.init();
-                    }
-                    // 8. Activar listener SOS para TODOS (dueños y conductores)
-                    if (typeof SOSModule !== 'undefined') {
-                        SOSModule.startListening();
-                    }
-                    // 9. Mostrar banner PWA de instalación (solo drivers móviles)
-                    if (typeof PWAInstall !== 'undefined') {
-                        setTimeout(() => PWAInstall.showBanner(), 2000);
-                    }
-                } else {
-                    Router.navigate('login');
+                } catch (navError) {
+                    console.error('🔴 Error en navegación post-init:', navError);
+                    _hideSplash();
+                    _showConnectionError(navError);
                 }
-            }, 1000);
+            }, 800);
 
         } catch (error) {
             console.error('Error al inicializar la aplicación:', error);
-            document.getElementById('app').innerHTML = `
-                <div class="login-screen">
-                    <div class="login-container" style="text-align:center;">
-                        <div style="font-size:3rem; margin-bottom:var(--space-4);">❌</div>
-                        <h2>${I18n.t('error')}</h2>
-                        <p style="color:var(--text-secondary); margin-top:var(--space-2);">
-                            Error al inicializar. Verifica tu conexión a internet.
-                        </p>
-                        <button class="btn btn-primary" onclick="location.reload()" style="margin-top:var(--space-4);">
-                            🔄 Refrescar
-                        </button>
-                    </div>
-                </div>
-            `;
+            _hideSplash();
+            _showConnectionError(error);
         }
+    }
+
+    // --- Helper: ocultar splash screen ---
+    function _hideSplash() {
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('hidden');
+    }
+
+    // --- Helper: mostrar pantalla de error de conexión (NUNCA dejar blanco) ---
+    function _showConnectionError(error) {
+        document.getElementById('app').innerHTML = `
+            <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:rgba(15,23,42,0.95);">
+                <div style="text-align:center; padding:2rem; max-width:400px;">
+                    <div style="font-size:3rem; margin-bottom:1rem;">📡</div>
+                    <h2 style="color:#f1f5f9; margin-bottom:0.5rem;">Conectando...</h2>
+                    <p style="color:#94a3b8; margin-bottom:0.5rem; font-size:0.9rem;">
+                        Error al conectar con el servidor. Verificá tu conexión a internet.
+                    </p>
+                    <p style="color:#64748b; margin-bottom:1.5rem; font-size:0.75rem;">
+                        ${error?.message || 'Error desconocido'}
+                    </p>
+                    <button onclick="location.reload()" style="background:linear-gradient(135deg,#6366f1,#06b6d4); color:white; border:none; padding:12px 32px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer;">
+                        🔄 Reintentar
+                    </button>
+                </div>
+            </div>`;
     }
 
     // --- Sincronización en tiempo real ---

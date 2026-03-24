@@ -64,17 +64,36 @@ const Router = (() => {
         // Renderizar la ruta — cada módulo hace su propio fetch y devuelve HTML completo
         const app = document.getElementById('app');
         if (routes[route]) {
-            const content = await routes[route]();
-            if (route === 'login' || route === 'complete-profile') {
-                app.innerHTML = content;
-            } else {
-                app.innerHTML = Components.renderLayout(content, route);
-                // Reactivar el sidebar overlay para móvil
-                setupMobileMenu();
-            }
-            // Iniciar listener de anuncios (para todos los roles)
-            if (typeof AnnouncementModule !== 'undefined') {
-                setTimeout(() => AnnouncementModule.startListening(), 100);
+            try {
+                const content = await routes[route]();
+                // Guard: si el módulo devuelve undefined/null/empty, mostrar error
+                if (!content && route !== 'login') {
+                    throw new Error('El módulo no devolvió contenido');
+                }
+                if (route === 'login' || route === 'complete-profile') {
+                    app.innerHTML = content;
+                } else {
+                    app.innerHTML = Components.renderLayout(content, route);
+                    // Reactivar el sidebar overlay para móvil
+                    setupMobileMenu();
+                }
+                // Iniciar listener de anuncios (para todos los roles)
+                if (typeof AnnouncementModule !== 'undefined') {
+                    setTimeout(() => AnnouncementModule.startListening(), 100);
+                }
+            } catch (renderError) {
+                console.error('🔴 Router: Error renderizando ruta "' + route + '":', renderError);
+                // NUNCA dejar pantalla en blanco — mostrar error con retry
+                app.innerHTML = `
+                    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:rgba(15,23,42,0.95);">
+                        <div style="text-align:center; padding:2rem; max-width:400px;">
+                            <div style="font-size:3rem; margin-bottom:1rem;">⚠️</div>
+                            <h2 style="color:#f1f5f9; margin-bottom:0.5rem;">Error de Carga</h2>
+                            <p style="color:#94a3b8; margin-bottom:1rem; font-size:0.9rem;">${renderError.message || 'Error de conexión al servidor'}</p>
+                            <button onclick="Router.navigate('${route}')" style="background:linear-gradient(135deg,#6366f1,#06b6d4); color:white; border:none; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer; margin-right:8px;">🔄 Reintentar</button>
+                            <button onclick="Router.navigate('login')" style="background:#334155; color:#f1f5f9; border:1px solid #475569; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer;">🚪 Ir a Login</button>
+                        </div>
+                    </div>`;
             }
         }
     }
