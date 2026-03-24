@@ -396,39 +396,63 @@ const ShiftsModule = (() => {
         const vehicleData = await DB.get('vehicles', vehicleId);
         const vehicleName = vehicleData ? `${vehicleData.name} — ${vehicleData.plate}` : '';
 
-        await DB.add('shifts', {
-            vehicleId,
-            vehicleName,
-            driverId,
-            driverName: Auth.getUserName(),
-            shiftType: selectedShiftType,
-            startTime: new Date().toISOString(),
-            startOdometer: odometerKm,
-            startOdometerPhoto: photo,
-            status: 'active',
-            earnings: 0
-        });
+        // --- "Luz de Check Engine": envolver la escritura en try/catch ---
+        try {
+            await DB.add('shifts', {
+                vehicleId,
+                vehicleName,
+                driverId,
+                driverName: Auth.getUserName(),
+                shiftType: selectedShiftType,
+                startTime: new Date().toISOString(),
+                startOdometer: odometerKm,
+                startOdometerPhoto: photo,
+                status: 'active',
+                earnings: 0
+            });
 
-        // Reset selector
-        selectedShiftType = 'day';
+            // Reset selector
+            selectedShiftType = 'day';
 
-        // Actualizar odómetro del vehículo
-        if (vehicleData) {
-            vehicleData.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicleData);
-        }
-
-        Components.showToast(I18n.t('shift_start') + ' ✅', 'success');
-
-        // Geofencing: vincular domicilio del conductor como zona_base del vehículo
-        if (vehicleData && currentDriver && currentDriver.address) {
-            if (!vehicleData.zonaBaseLabel) {
-                vehicleData.zonaBaseLabel = 'Domicilio ' + (currentDriver.name || 'Chofer');
+            // Actualizar odómetro del vehículo
+            if (vehicleData) {
+                vehicleData.currentOdometer = odometerKm;
                 await DB.put('vehicles', vehicleData);
             }
-        }
 
-        Router.navigate('shifts');
+            Components.showToast(I18n.t('shift_start') + ' ✅', 'success');
+
+            // Geofencing: vincular domicilio del conductor como zona_base del vehículo
+            if (vehicleData && currentDriver && currentDriver.address) {
+                if (!vehicleData.zonaBaseLabel) {
+                    vehicleData.zonaBaseLabel = 'Domicilio ' + (currentDriver.name || 'Chofer');
+                    await DB.put('vehicles', vehicleData);
+                }
+            }
+
+            Router.navigate('shifts');
+
+        } catch (shiftError) {
+            console.error('🔴 Fallo en Iniciar Turno: ', shiftError);
+
+            // Traducir error a mensaje legible
+            const code = shiftError.code || shiftError.message || '';
+            let reason = '';
+
+            if (code.includes('permission-denied') || code.includes('PERMISSION_DENIED')) {
+                reason = '🔒 Permiso denegado en Firestore. Tu cuenta no tiene permisos para crear turnos.';
+            } else if (code.includes('unavailable') || code.includes('network') || code.includes('failed-precondition')) {
+                reason = '📡 Sin conexión al servidor. Revisá tu internet e intentá de nuevo.';
+            } else if (code.includes('not-found')) {
+                reason = '🗂️ La colección de turnos no existe. Contactá al administrador.';
+            } else if (code.includes('resource-exhausted') || code.includes('quota')) {
+                reason = '⚠️ Se superó la cuota de la base de datos. Contactá al administrador.';
+            } else {
+                reason = `❌ No se pudo iniciar el turno: ${shiftError.message || code || 'error desconocido'}. Revisá la consola (F12).`;
+            }
+
+            Components.showToast(reason, 'danger');
+        }
     }
 
     // --- Finalizar turno ---
@@ -467,27 +491,46 @@ const ShiftsModule = (() => {
             return;
         }
 
-        shift.endTime = new Date().toISOString();
-        shift.endOdometer = odometerKm;
-        shift.endOdometerPhoto = odoPhoto;
-        shift.earnings = earnings;
-        shift.earningsPhoto = earningsPhoto;
-        shift.driverName = Auth.getUserName();
-        // Persistir nombre del vehículo si no existe aún
-        if (!shift.vehicleName && vehicle) {
-            shift.vehicleName = `${vehicle.name} — ${vehicle.plate}`;
-        }
-        shift.status = 'completed';
-        await DB.put('shifts', shift);
+        // --- "Luz de Check Engine": envolver finalizazión en try/catch ---
+        try {
+            shift.endTime = new Date().toISOString();
+            shift.endOdometer = odometerKm;
+            shift.endOdometerPhoto = odoPhoto;
+            shift.earnings = earnings;
+            shift.earningsPhoto = earningsPhoto;
+            shift.driverName = Auth.getUserName();
+            // Persistir nombre del vehículo si no existe aún
+            if (!shift.vehicleName && vehicle) {
+                shift.vehicleName = `${vehicle.name} — ${vehicle.plate}`;
+            }
+            shift.status = 'completed';
+            await DB.put('shifts', shift);
 
-        // Actualizar odómetro del vehículo
-        if (vehicle) {
-            vehicle.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicle);
-        }
+            // Actualizar odómetro del vehículo
+            if (vehicle) {
+                vehicle.currentOdometer = odometerKm;
+                await DB.put('vehicles', vehicle);
+            }
 
-        Components.showToast(I18n.t('shift_end') + ' ✅', 'success');
-        Router.navigate('shifts');
+            Components.showToast(I18n.t('shift_end') + ' ✅', 'success');
+            Router.navigate('shifts');
+
+        } catch (endError) {
+            console.error('🔴 Fallo en Finalizar Turno: ', endError);
+
+            const code = endError.code || endError.message || '';
+            let reason = '';
+
+            if (code.includes('permission-denied') || code.includes('PERMISSION_DENIED')) {
+                reason = '🔒 Permiso denegado. No se pudo guardar el turno.';
+            } else if (code.includes('unavailable') || code.includes('network') || code.includes('failed-precondition')) {
+                reason = '📡 Sin conexión. El turno no se pudo finalizar. Intentá de nuevo.';
+            } else {
+                reason = `❌ No se pudo finalizar el turno: ${endError.message || code || 'error desconocido'}. Revisá la consola (F12).`;
+            }
+
+            Components.showToast(reason, 'danger');
+        }
     }
 
     // Timer de actualización en tiempo real

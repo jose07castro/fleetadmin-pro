@@ -207,9 +207,48 @@ const LoginModule = (() => {
                 setTimeout(() => errorEl.parentElement.style.animation = '', 400);
             }
         } catch (e) {
-            console.error('🔐 LOGIN: Error inesperado:', e);
+            console.error('🔐 Fallo en Login: ', e);
+
+            // --- "Luz de Check Engine": traducir código de error a mensaje claro ---
+            const errorCode = e.code || e.message || '';
+            let userMessage = '';
+
+            switch (errorCode) {
+                case 'auth/network-request-failed':
+                    userMessage = '📡 Sin conexión a internet. Revisá tu WiFi o datos móviles.';
+                    break;
+                case 'auth/wrong-password':
+                case 'auth/invalid-credential':
+                    userMessage = '🔑 PIN incorrecto. Verificá los datos e intentá de nuevo.';
+                    break;
+                case 'auth/user-not-found':
+                    userMessage = '👤 Usuario no encontrado. Verificá el nombre y el rol.';
+                    break;
+                case 'auth/too-many-requests':
+                    userMessage = '⏳ Demasiados intentos fallidos. Esperá unos minutos antes de reintentar.';
+                    break;
+                case 'auth/user-disabled':
+                    userMessage = '🚫 Esta cuenta fue deshabilitada. Contactá al administrador de la flota.';
+                    break;
+                case 'CONNECTION_FAILED':
+                    userMessage = '📡 No se pudo conectar al servidor. Intentá de nuevo en unos segundos.';
+                    break;
+                case 'permission-denied':
+                case 'PERMISSION_DENIED':
+                    userMessage = '🔒 Permiso denegado. Tu cuenta no tiene acceso a esta flota.';
+                    break;
+                default:
+                    userMessage = `❌ Error inesperado: ${e.message || errorCode || 'desconocido'}. Revisá la consola (F12) para más detalles.`;
+            }
+
+            // Toast rojo visible
+            if (typeof Components !== 'undefined' && Components.showToast) {
+                Components.showToast(userMessage, 'danger');
+            }
+
+            // También mostrarlo en el div de error inline
             errorEl.style.display = 'block';
-            errorEl.textContent = '❌ Error inesperado. Verificá la consola (F12).';
+            errorEl.textContent = userMessage;
         } finally {
             if (loginBtn) {
                 loginBtn.disabled = false;
