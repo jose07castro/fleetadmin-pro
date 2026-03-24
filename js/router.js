@@ -87,7 +87,22 @@ const Router = (() => {
             const modName = moduleNames[route];
             const mod = modName ? window[modName] : null;
             if (mod && typeof mod.afterRender === 'function') {
-                setTimeout(() => mod.afterRender(), 50);
+                console.log(`🔄 Router: calling ${modName}.afterRender() for route "${route}"`);
+                setTimeout(() => {
+                    try {
+                        const result = mod.afterRender();
+                        // Si afterRender es async, atrapar errores de la promesa
+                        if (result && typeof result.catch === 'function') {
+                            result.catch(err => {
+                                console.error(`❌ Router: ${modName}.afterRender() PROMISE REJECTED:`, err);
+                            });
+                        }
+                    } catch (syncErr) {
+                        console.error(`❌ Router: ${modName}.afterRender() THREW SYNC ERROR:`, syncErr);
+                    }
+                }, 50);
+            } else {
+                console.warn(`⚠️ Router: No afterRender found for route "${route}" (module: ${modName})`);
             }
             // Iniciar listener de anuncios (para todos los roles)
             if (typeof AnnouncementModule !== 'undefined') {
