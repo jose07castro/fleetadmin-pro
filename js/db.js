@@ -173,6 +173,9 @@ const DB = (() => {
             createdAt: new Date().toISOString()
         };
         await ref.set(newItem);
+        
+        notifyAdmins('¡Nueva Postulación!', `${data.name} se ha postulado para conductor.`, data.fleetId || null);
+        
         return ref.key;
     }
 
@@ -196,6 +199,11 @@ const DB = (() => {
             createdAt: new Date().toISOString()
         };
         await ref.set(newItem);
+
+        // --- Notificar a dueños sobre el registro ---
+        const roleLabel = data.role === 'driver' ? 'Conductor' : (data.role === 'mechanic' ? 'Mecánico' : 'Dueño');
+        notifyAdmins('¡Nuevo registro!', `${data.name} se ha sumado como ${roleLabel}.`, data.fleetId || null);
+
         return ref.key;
     }
 
@@ -524,10 +532,23 @@ const DB = (() => {
         }
     }
 
+    // --- Notificaciones a Administradores (vía Backend/FCM) ---
+    async function notifyAdmins(title, body, fleetId = null) {
+        try {
+            await fetch('/api/notify/admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, body, fleetId })
+            });
+        } catch (e) {
+            console.warn('No se pudo notificar a los admins', e);
+        }
+    }
+
     return {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, seed, exportAll, importAll, resetAll,
-        onChanges, offChanges,
+        onChanges, offChanges, notifyAdmins,
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,

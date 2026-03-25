@@ -922,6 +922,9 @@ const SettingsModule = (() => {
                 return;
             }
 
+            // Identificar si antes de guardar le faltaba algo
+            const wasIncomplete = !(user.licenseFrontPhoto && user.licenseBackPhoto && user.address && user.whatsapp && user.licenseNumber && user.licenseIssueDate && user.licenseExpiryDate);
+
             // Actualizar campos de texto
             user.address = address;
             user.whatsapp = whatsapp;
@@ -940,6 +943,12 @@ const SettingsModule = (() => {
             console.log('💾 Guardando en DB:', user.id);
             await DB.put('users', user);
             console.log('✅ Guardado OK');
+
+            // Verificar si el perfil quedó completo por primera vez y notificar
+            const isComplete = !!(user.licenseFrontPhoto && user.licenseBackPhoto && user.address && user.whatsapp && user.licenseNumber && user.licenseIssueDate && user.licenseExpiryDate);
+            if (wasIncomplete && isComplete) {
+                DB.notifyAdmins('¡Documentación Lista!', `${user.name} ya completó su perfil para revisión.`, Auth.getFleetId());
+            }
 
             Components.showToast('✅ Legajo actualizado correctamente', 'success');
 

@@ -403,6 +403,46 @@ async function handleAPI(req, res, urlPath) {
         }
     }
 
+    // --- Admin Notification Push (FCM) ---
+    if (parts[0] === 'notify' && parts[1] === 'admin' && method === 'POST') {
+        const data = await parseBody(req);
+        console.log('🔔 ADMIN NOTIFY:', data.title);
+
+        if (!fcmEnabled || !firebaseAdmin) {
+            return sendJSON(res, { success: false, reason: 'FCM disabled' });
+        }
+
+        try {
+            const tokensSnapshot = await firebaseAdmin.database().ref('fcm_tokens').once('value');
+            const tokensData = tokensSnapshot.val();
+            if (!tokensData) return sendJSON(res, { success: true, sent: 0, reason: 'no_tokens' });
+
+            const targetTokens = [];
+            for (const [userId, entry] of Object.entries(tokensData)) {
+                if (entry.role === 'owner') {
+                    if (!data.fleetId || entry.fleetId === data.fleetId || entry.fleetId === 'unknown') {
+                        if (entry.token) targetTokens.push(entry.token);
+                    }
+                }
+            }
+
+            if (targetTokens.length === 0) return sendJSON(res, { success: true, sent: 0 });
+
+            const message = {
+                notification: { title: data.title, body: data.body },
+                android: { priority: 'high', notification: { sound: 'default', priority: 'max' } },
+                tokens: targetTokens
+            };
+
+            const response = await firebaseAdmin.messaging().sendEachForMulticast(message);
+            console.log(`🔔 ADMIN NOTIFY: ✅ Enviadas: ${response.successCount}`);
+            return sendJSON(res, { success: true, sent: response.successCount });
+        } catch(e) {
+            console.error('🔔 ADMIN NOTIFY Error:', e.message);
+            return sendError(res, e.message, 500);
+        }
+    }
+
     // --- GPS Webhook ---
     if (parts[0] === 'gps' && parts[1] === 'webhook' && method === 'POST') {
         const data = await parseBody(req);
