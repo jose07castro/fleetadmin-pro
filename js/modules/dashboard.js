@@ -791,6 +791,29 @@ const DashboardModule = (() => {
     }
 
 
+    // --- Banner de Anuncios CONDUCTORES: Guardar ---
+    async function saveAnnouncement() {
+        const text = document.getElementById('announcementText')?.value?.trim() || '';
+        const active = document.getElementById('announcementActive')?.checked || false;
+
+        if (active && !text) {
+            Components.showToast('⚠️ Escribí un texto para el anuncio antes de activarlo', 'warning');
+            return;
+        }
+
+        try {
+            await DB.setSetting('announcement', {
+                bannerText: text,
+                bannerActive: active,
+                updatedAt: new Date().toISOString(),
+                updatedBy: Auth.getUserName()
+            });
+            Components.showToast(active ? '📢 Anuncio activado ✅' : '📢 Anuncio guardado (apagado)', active ? 'success' : 'info');
+        } catch (e) {
+            Components.showToast('❌ Error guardando anuncio: ' + e.message, 'danger');
+        }
+    }
+
     // --- Banner de Anuncios TITULARES: Guardar ---
     async function saveAnnouncementOwner() {
         const text = document.getElementById('announcementOwnerText')?.value?.trim() || '';
