@@ -723,6 +723,7 @@
 .sponsor-ad-image {
     width: 100%;
     height: auto;
+    aspect-ratio: 16/9;
     display: block;
     object-fit: cover;
     border-radius: 0;
@@ -1465,12 +1466,14 @@
 /* --- Post Image in Feed --- */
 .community-post-image {
     margin: var(--space-2) 0 var(--space-3);
+    width: 100%;
 }
 
 .community-post-image img {
     width: 100%;
-    max-height: 360px;
-    object-fit: cover;
+    height: auto;
+    max-height: 400px;
+    object-fit: cover; /* o contain dependiendo del ratio real, cover evita bordes vacíos pero contain no corta */
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     cursor: pointer;
@@ -1491,11 +1494,13 @@
 @media (max-width: 768px) {
     .community-wall {
         flex-direction: column;
+        padding: 0 16px; /* Equivalente a px-4 */
     }
 
     .community-sponsors-col {
         max-width: 100%;
         position: static;
+        margin-top: var(--space-4);
     }
 
     .community-header {
