@@ -1496,16 +1496,36 @@
     .community-wall {
         flex-direction: column;
         padding: 0 16px; /* Equivalente a px-4 */
+        max-width: 100vw;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+
+    .community-main-col, .community-feed {
+        max-width: 100%;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+
+    .community-post, .community-sponsor-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+        overflow-x: hidden;
     }
 
     .community-sponsors-col {
+        min-width: 0 !important;
         max-width: 100%;
         position: static;
         margin-top: var(--space-4);
+        box-sizing: border-box;
     }
 
     .community-header {
         flex-direction: column;
+        max-width: 100%;
     }
 
     .community-header-btn,
