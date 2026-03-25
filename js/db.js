@@ -228,7 +228,7 @@ const DB = (() => {
         } catch(e) { console.warn('getRecentCompletedShifts error:', e); return []; }
     }
 
-    // --- Configuraciones de flota ---l por nombre, pin y rol
+    // Buscar usuario global por nombre, pin y rol
     // Con retry + cache para evitar fallos en cold start
     // THROWS on connection failure — caller must handle
     async function findGlobalUser(name, pin, role) {

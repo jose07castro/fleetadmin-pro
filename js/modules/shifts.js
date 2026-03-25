@@ -44,16 +44,16 @@ const ShiftsModule = (() => {
 
     // --- Limpieza de Clones (Race Condition) ---
     async function cleanupDuplicateShifts(driverId) {
-        const allShifts = await DB.getAll('shifts');
-        const activeShifts = allShifts.filter(s => s.status === 'active' && String(s.driverId) === String(driverId));
+        const activeShifts = await DB.getActiveShifts();
+        const driverActiveShifts = activeShifts.filter(s => String(s.driverId) === String(driverId));
         
-        if (activeShifts.length > 1) {
+        if (driverActiveShifts.length > 1) {
             console.warn(`🚨 MULTIPLES TURNOS ACTIVOS DETECTADOS para chofer ${driverId}. Limpiando clones...`);
             // Ordenar por fecha (el más reciente primero)
-            activeShifts.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+            driverActiveShifts.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
             
-            const keepShift = activeShifts[0]; // Mantener el más actual
-            const duplicates = activeShifts.slice(1);
+            const keepShift = driverActiveShifts[0]; // Mantener el más actual
+            const duplicates = driverActiveShifts.slice(1);
             
             for (const dup of duplicates) {
                 console.log(`🧹 Eliminando turno clon: ${dup.id}`);
@@ -61,7 +61,7 @@ const ShiftsModule = (() => {
             }
             return keepShift;
         }
-        return activeShifts[0]; // Retorna el único activo, o undefined
+        return driverActiveShifts[0]; // Retorna el único activo, o undefined
     }
 
     // --- Vista del Chofer ---
@@ -82,12 +82,9 @@ const ShiftsModule = (() => {
     async function _hydratedDriverView(driverId) {
         try {
             const vehicles = await DB.getAll('vehicles');
-            const allShifts = await DB.getAll('shifts');
             
-            // 1. Limpiar duplicados automáticamente
+            // 1. Limpiar duplicados automáticamente (ahora rápido, sin cargar todo)
             const activeShift = await cleanupDuplicateShifts(driverId);
-            
-            const myShifts = allShifts.filter(s => String(s.driverId) === String(driverId));
 
             const container = document.getElementById('shiftsContent');
             if (!container) return; // El usuario cambió de pantalla
@@ -98,20 +95,20 @@ const ShiftsModule = (() => {
             }
 
             // Detectar vehículos ocupados por CUALQUIER turno activo
-            const allActiveShifts = allShifts.filter(s => s.status === 'active');
+            const allActiveShifts = await DB.getActiveShifts();
             const occupiedVehicleIds = new Set(allActiveShifts.map(s => String(s.vehicleId)));
         const vehicleDriverMap = {};
         for (const s of allActiveShifts) {
             vehicleDriverMap[String(s.vehicleId)] = s.driverName || 'Otro chofer';
         }
 
-        // Solo procesamos el historial de los primeros 20 completados para ser rápidos
-        const completed = myShifts.filter(s => s.status === 'completed')
-            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
-            .slice(0, 20);
+        // Solo traemos los últimos 20 completados, sin congelar la pestaña
+        const completed = await DB.getRecentCompletedShifts(20);
+        const myCompleted = completed.filter(s => String(s.driverId) === String(driverId))
+            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
         // Renderizar tabla asíncronamente para no bloquear el hilo
-        const tableHtml = completed.length > 0 ? await renderShiftTable(completed) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
+        const tableHtml = myCompleted.length > 0 ? await renderShiftTable(myCompleted) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
 
         container.innerHTML = `
             <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
@@ -287,41 +284,37 @@ const ShiftsModule = (() => {
 
     async function _hydratedOwnerView() {
         try {
-            const shifts = await DB.getAll('shifts');
+            const activeShifts = await DB.getActiveShifts();
             
             // Detectar si hay conductores con múltiples turnos activos y corregirlos silenciosamente
             const activeDrivers = new Set();
-            for (const s of shifts) {
-                if (s.status === 'active') {
+            for (const s of activeShifts) {
                     if (activeDrivers.has(s.driverId)) {
                         // Duplicado encontrado globalmente: aplicar limpieza
                         await cleanupDuplicateShifts(s.driverId);
                     } else {
                         activeDrivers.add(s.driverId);
                     }
-                }
             }
 
             // Refetch after possible cleanup
-            const cleanShifts = await DB.getAll('shifts');
-            const activeShifts = cleanShifts.filter(s => s.status === 'active');
+            const cleanActiveShifts = await DB.getActiveShifts();
             
-            // Cargar solo los últimos 20 completados al inicio
-            const completed = cleanShifts.filter(s => s.status === 'completed')
-                .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
-                .slice(0, 20);
+            // Cargar solo los últimos 20 completados usando la nueva función optimizada
+            const completed = await DB.getRecentCompletedShifts(20);
+            completed.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
             const container = document.getElementById('ownerShiftsContent');
             if (!container) return;
 
             const tableHtml = completed.length > 0 ? await renderShiftTable(completed) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
-            const cardsHtml = await renderActiveShiftsCards(activeShifts);
+            const cardsHtml = await renderActiveShiftsCards(cleanActiveShifts);
 
             container.innerHTML = `
                 <!-- Turnos activos -->
-                ${activeShifts.length > 0 ? `
+                ${cleanActiveShifts.length > 0 ? `
                     <div class="dashboard-section">
-                        <div class="dashboard-section-title">🟢 ${I18n.t('dash_active_shifts')} (${activeShifts.length})</div>
+                        <div class="dashboard-section-title">🟢 ${I18n.t('dash_active_shifts')} (${cleanActiveShifts.length})</div>
                         ${cardsHtml}
                     </div>
                 ` : `
@@ -489,19 +482,21 @@ const ShiftsModule = (() => {
         }
 
         // Obtener todos los turnos para validaciones de seguridad
-        const allShifts = await DB.getAll('shifts');
+        const allActiveShifts = await DB.getActiveShifts();
 
         // Validación 1: El chofer no puede tener más de un turno activo
         const driverId = Auth.getUserId();
-        const driverHasActiveShift = allShifts.some(s => s.status === 'active' && s.driverId === driverId);
+        const driverHasActiveShift = allActiveShifts.find(s => s.driverId === driverId);
         if (driverHasActiveShift) {
-            Components.showToast('🚨 Ya tenés un turno activo. Finalizalo antes de empezar otro.', 'danger');
+            Components.showToast('ℹ️ Tienes un turno en curso. Redirigiendo...', 'info');
+            restoreBtn();
+            Router.navigate('shifts'); 
             return;
         }
 
         // Validación 2: El vehículo no puede estar en uso por otro turno activo
         // Usar String() para evitar problemas de tipos (ej: 1 === "1" es falso)
-        const activeShiftOnVehicle = allShifts.find(s => s.status === 'active' && String(s.vehicleId) === String(vehicleId));
+        const activeShiftOnVehicle = allActiveShifts.find(s => String(s.vehicleId) === String(vehicleId));
 
         if (activeShiftOnVehicle) {
             // Obtener el nombre de quien lo está usando
@@ -934,8 +929,8 @@ const ShiftsModule = (() => {
             const driverId = Auth.getUserId();
             if (!driverId) return null;
 
-            const allShifts = await DB.getAllByIndex('shifts', 'driverId', driverId);
-            const activeShift = allShifts.find(s => s.status === 'active');
+            const activeShifts = await DB.getActiveShifts();
+            const activeShift = activeShifts.find(s => String(s.driverId) === String(driverId));
 
             if (activeShift) {
                 // Hidratar datos internos del módulo
