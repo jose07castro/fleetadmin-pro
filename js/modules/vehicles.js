@@ -77,7 +77,7 @@ const VehiclesModule = (() => {
                 
                 let restantes = (v.cuotasTotales || 0) - (v.cuotasPagas || 0);
                 if (restantes === 3) {
-                    alertsBadge += `<span class="badge badge-success" style="font-size:0.75rem;">🎉 ¡Solo faltan 3 cuotas!</span>`;
+                    alertsBadge += `<span class="badge badge-success" style="font-size:0.75rem;">${I18n.t('veh_installments_almost_done')}</span>`;
                 }
                 
                 if (v.diaVencimiento) {
@@ -97,13 +97,14 @@ const VehiclesModule = (() => {
                     }
                     
                     if (daysLeft <= 5 && daysLeft >= 0) {
-                        alertsBadge += `<span class="badge badge-danger" style="font-size:0.75rem;">🚨 Vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}</span>`;
+                        const alertText = daysLeft === 1 ? I18n.t('veh_due_in_1_day') : I18n.t('veh_due_in_days', { days: daysLeft });
+                        alertsBadge += `<span class="badge badge-danger" style="font-size:0.75rem;">${alertText}</span>`;
                     }
                 }
             }
 
             if (v.telefonoAuxilio) {
-                btnGrua = `<a href="tel:${v.telefonoAuxilio}" style="width:100%; margin-top:var(--space-3); display:flex; justify-content:center; padding: 0.6rem; text-decoration:none; color:white; background:var(--color-danger); border-radius:var(--radius-md); font-weight:bold; align-items:center; gap:0.5rem; text-transform:uppercase; letter-spacing:0.5px; box-shadow:0 4px 6px rgba(239,68,68,0.2);"><span style="font-size:1.2rem;">🚨</span> LLAMAR GRÚA</a>`;
+                btnGrua = `<a href="tel:${v.telefonoAuxilio}" style="width:100%; margin-top:var(--space-3); display:flex; justify-content:center; padding: 0.6rem; text-decoration:none; color:white; background:var(--color-danger); border-radius:var(--radius-md); font-weight:bold; align-items:center; gap:0.5rem; text-transform:uppercase; letter-spacing:0.5px; box-shadow:0 4px 6px rgba(239,68,68,0.2);"><span style="font-size:1.2rem;">🚨</span> ${I18n.t('veh_call_tow')}</a>`;
             }
 
             html += `
@@ -212,14 +213,14 @@ const VehiclesModule = (() => {
                 <!-- Finanzas y Protección -->
                 <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
                     <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
-                        💰 Finanzas y Protección
+                        ${I18n.t('veh_finance_title')}
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Método de Pago</label>
+                        <label class="form-label">${I18n.t('veh_payment_method')}</label>
                         <select class="form-select" id="vehMetodoPago" onchange="VehiclesModule.toggleFinanceFields()">
-                            <option value="Contado" ${vehicle?.metodoPago === 'Contado' || !vehicle?.metodoPago ? 'selected' : ''}>Contado</option>
-                            <option value="Crédito" ${vehicle?.metodoPago === 'Crédito' ? 'selected' : ''}>Crédito (Prendario/Personal)</option>
+                            <option value="Contado" ${vehicle?.metodoPago === 'Contado' || !vehicle?.metodoPago ? 'selected' : ''}>${I18n.t('veh_method_cash')}</option>
+                            <option value="Crédito" ${vehicle?.metodoPago === 'Crédito' ? 'selected' : ''}>${I18n.t('veh_method_credit')}</option>
                         </select>
                     </div>
 
@@ -227,61 +228,61 @@ const VehiclesModule = (() => {
                         <div class="form-group">
                             <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
                                 <input type="checkbox" id="vehEsPrendario" ${vehicle?.esPrendario ? 'checked' : ''} onchange="VehiclesModule.togglePrendario()">
-                                Es Crédito Prendario
+                                ${I18n.t('veh_is_secured')}
                             </label>
                             <div id="prendarioWarning" style="display: ${vehicle?.esPrendario ? 'block' : 'none'}; color: var(--color-warning); font-size: 0.8rem; margin-top: 0.2rem;">
-                                ⚠️ Seguro gestionado por la entidad prendaria
+                                ${I18n.t('veh_secured_warning')}
                             </div>
                         </div>
 
                         <div class="repair-form-grid">
                             <div class="form-group">
-                                <label class="form-label">Fecha Otorgamiento</label>
+                                <label class="form-label">${I18n.t('veh_grant_date')}</label>
                                 <input type="date" class="form-input" id="vehFechaOtorgamiento" value="${vehicle?.fechaOtorgamiento || ''}">
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Día Vencimiento (1-31)</label>
+                                <label class="form-label">${I18n.t('veh_due_day')}</label>
                                 <input type="number" class="form-input" id="vehDiaVencimiento" value="${vehicle?.diaVencimiento || ''}" min="1" max="31">
                             </div>
                         </div>
 
                         <div class="repair-form-grid">
                             <div class="form-group">
-                                <label class="form-label">Cuotas Totales</label>
+                                <label class="form-label">${I18n.t('veh_total_installments')}</label>
                                 <input type="number" class="form-input" id="vehCuotasTotales" value="${vehicle?.cuotasTotales || ''}" placeholder="36" oninput="VehiclesModule.calcRemaining()">
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Cuotas Pagas</label>
+                                <label class="form-label">${I18n.t('veh_paid_installments')}</label>
                                 <input type="number" class="form-input" id="vehCuotasPagas" value="${vehicle?.cuotasPagas || ''}" placeholder="10" oninput="VehiclesModule.calcRemaining()">
                             </div>
                         </div>
                         
                         <div class="repair-form-grid">
                             <div class="form-group">
-                                <label class="form-label">Valor Cuota ($)</label>
+                                <label class="form-label">${I18n.t('veh_installment_value')} (${I18n.t('unit_currency')})</label>
                                 <input type="number" class="form-input" id="vehValorCuota" value="${vehicle?.valorCuota || ''}" placeholder="50000">
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Cuotas Restantes</label>
+                                <label class="form-label">${I18n.t('veh_remaining_installments')}</label>
                                 <input type="text" class="form-input" id="vehCuotasRestantes" readonly style="background:var(--bg-tertiary);" value="${(vehicle?.cuotasTotales || 0) - (vehicle?.cuotasPagas || 0) || ''}">
                             </div>
                         </div>
                     </div>
 
                     <div style="font-weight:600; margin-top:var(--space-4); margin-bottom:var(--space-3); color:var(--color-primary);">
-                        🛡️ Seguro del Vehículo
+                        ${I18n.t('veh_insurance_title')}
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Compañía de Seguro</label>
+                        <label class="form-label">${I18n.t('veh_insurance_company')}</label>
                         <input type="text" class="form-input" id="vehCompaniaSeguro" value="${vehicle?.companiaSeguro || ''}" placeholder="La Caja, Sancor, etc.">
                     </div>
                     <div class="repair-form-grid">
                         <div class="form-group">
-                            <label class="form-label">Tipo Cobertura</label>
+                            <label class="form-label">${I18n.t('veh_coverage_type')}</label>
                             <input type="text" class="form-input" id="vehTipoCobertura" value="${vehicle?.tipoCobertura || ''}" placeholder="Terceros Completo">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Teléfono Auxilio</label>
+                            <label class="form-label">${I18n.t('veh_emergency_phone')}</label>
                             <input type="tel" class="form-input" id="vehTelefonoAuxilio" value="${vehicle?.telefonoAuxilio || ''}" placeholder="0800...">
                         </div>
                     </div>
@@ -309,10 +310,10 @@ const VehiclesModule = (() => {
                 <!-- Zona Base (GPS Geofencing) -->
                 <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
                     <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
-                        📍 Zona Base (Geofencing)
+                        ${I18n.t('veh_base_zone')}
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Etiqueta de la zona</label>
+                        <label class="form-label">${I18n.t('veh_zone_label')}</label>
                         <input type="text" class="form-input" id="vehZonaBaseLabel"
                             value="${vehicle?.zonaBaseLabel || ''}" placeholder="Domicilio Chofer - V.G. Gálvez"
                             style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">

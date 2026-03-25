@@ -44,47 +44,47 @@ const ApplicantsModule = (() => {
                 <div style="width:100%; max-width:500px; background:var(--bg-secondary); border-radius:var(--radius-xl); padding:var(--space-6); box-shadow:var(--shadow-lg); text-align:center;">
                     
                     <div style="font-size:3rem; margin-bottom:var(--space-2);">🚗</div>
-                    <h2 style="font-size:1.5rem; margin-bottom:var(--space-4);">Postularme para Conductor</h2>
+                    <h2 style="font-size:1.5rem; margin-bottom:var(--space-4);">${I18n.t('app_apply')}</h2>
                     
                     <div id="geoBlocker" style="display:block;">
                         <p style="color:var(--text-secondary); margin-bottom:var(--space-4);">
-                            Estamos comprobando si te encontrás dentro de nuestra área de cobertura...
+                            ${I18n.t('app_checking_location')}
                         </p>
                         <button class="btn btn-primary" onclick="ApplicantsModule.checkLocation()">
-                            📍 Verificar Ubicación
+                            ${I18n.t('app_verify_location')}
                         </button>
                     </div>
 
                     <div id="errorBlocker" style="display:none; color:var(--color-danger); padding:var(--space-4); background:rgba(239, 68, 68, 0.1); border-radius:var(--radius-lg); margin-top:var(--space-4);">
-                        <h3 style="margin-bottom:10px;">Fuera de Cobertura</h3>
-                        <p>Por el momento solo operamos en un radio de 25km de la ciudad principal.</p>
-                        <button class="btn btn-secondary" style="margin-top:var(--space-4);" onclick="Router.navigate('login')">Volver al Inicio</button>
+                        <h3 style="margin-bottom:10px;">${I18n.t('app_out_of_coverage')}</h3>
+                        <p>${I18n.t('app_coverage_msg')}</p>
+                        <button class="btn btn-secondary" style="margin-top:var(--space-4);" onclick="Router.navigate('login')">${I18n.t('app_back_home')}</button>
                     </div>
 
                     <div id="applyForm" style="display:none; text-align:left;">
                         <div class="form-group">
-                            <label class="form-label">Nombre y Apellido *</label>
+                            <label class="form-label">${I18n.t('app_name_lastname')}</label>
                             <input type="text" class="form-input" id="appNombre" placeholder="Ej: Juan Pérez">
                         </div>
                         
                         <div class="form-group">
-                            <label class="form-label">Fecha de Nacimiento *</label>
+                            <label class="form-label">${I18n.t('app_birthdate')}</label>
                             <input type="date" class="form-input" id="appFechaNac">
-                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px;">Debes ser mayor de 18 años.</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:5px;">${I18n.t('app_underage_warning')}</div>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">DNI *</label>
+                            <label class="form-label">${I18n.t('app_dni')}</label>
                             <input type="number" class="form-input" id="appDni" placeholder="Ej: 35000000">
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Dirección y Ciudad *</label>
+                            <label class="form-label">${I18n.t('app_address_city')}</label>
                             <input type="text" class="form-input" id="appDireccion" placeholder="Ej: San Martín 123, Rosario">
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Tipo de Licencia *</label>
+                            <label class="form-label">${I18n.t('app_license_type')}</label>
                             <select class="form-select" id="appTipoLicencia">
                                 <option value="">Seleccione una opción</option>
                                 <option value="B1">B1 (Auto particular)</option>
@@ -93,14 +93,14 @@ const ApplicantsModule = (() => {
                             </select>
                         </div>
 
-                        ${Components.renderPhotoCapture('appLicencia', 'Foto de Licencia de Conducir *')}
+                        ${Components.renderPhotoCapture('appLicencia', I18n.t('app_license_photo_req'))}
 
                         <button class="btn btn-primary w-full" id="btnSubmitApply" style="margin-top:var(--space-6); width:100%; padding:0.8rem; font-size:1.1rem;" onclick="ApplicantsModule.submitApply()">
-                            🚀 Enviar Postulación
+                            ${I18n.t('app_submit')}
                         </button>
                         
                         <div style="text-align:center; margin-top:var(--space-4);">
-                            <a href="#" style="color:var(--color-primary);" onclick="Router.navigate('login')">Cancelar y Volver</a>
+                            <a href="#" style="color:var(--color-primary);" onclick="Router.navigate('login')">${I18n.t('app_cancel_back')}</a>
                         </div>
                     </div>
                     
@@ -122,7 +122,7 @@ const ApplicantsModule = (() => {
             const lng = position.coords.longitude;
             
             const dist = calculateDistance(lat, lng);
-            console.log(\`📍 Distancia a Base: \${dist.toFixed(2)} km\`);
+            console.log(`📍 Distancia a Base: ${dist.toFixed(2)} km`);
             
             document.getElementById('geoBlocker').style.display = 'none';
 
@@ -180,7 +180,7 @@ const ApplicantsModule = (() => {
             let photoUrl = '';
             // Subir usando un hash temporal para el nombre en Storage
             const tempId = Date.now() + Math.random().toString(36).substr(2, 5);
-            const path = \`licencias_postulantes/\${tempId}.jpg\`;
+            const path = `licencias_postulantes/${tempId}.jpg`;
             
             photoUrl = await StorageUtil.uploadImage(photoData, path);
 
@@ -199,9 +199,9 @@ const ApplicantsModule = (() => {
 
             await DB.addApplicant(applicantData);
 
-            Components.showModal('✅ ¡Postulación Enviada!', 
-                '<p>Hemos recibido tus datos correctamente. Nuestro equipo los revisará y se pondrá en contacto pronto.</p>',
-                \`<button class="btn btn-primary" onclick="Components.closeModal(); Router.navigate('login')">Aceptar</button>\`,
+            Components.showModal(I18n.t('app_success_title'), 
+                `<p>${I18n.t('app_success_msg')}</p>`,
+                `<button class="btn btn-primary" onclick="Components.closeModal(); Router.navigate('login')">${I18n.t('confirm')}</button>`,
                 { staticBackdrop: true, onClose: () => Router.navigate('login') }
             );
 
@@ -211,7 +211,7 @@ const ApplicantsModule = (() => {
         } finally {
             if(btn) {
                 btn.disabled = false;
-                btn.innerHTML = '🚀 Enviar Postulación';
+                btn.innerHTML = I18n.t('app_submit');
             }
         }
     }
@@ -222,62 +222,62 @@ const ApplicantsModule = (() => {
     async function renderAdmin() {
         const applicants = await DB.getApplicants();
 
-        return \`
+        return `
             <div class="mechanic-header">
                 <div>
-                    <h2 style="font-size:var(--font-size-2xl); font-weight:700;">📝 Candidatos a Conductor</h2>
-                    <p style="color:var(--text-secondary); margin-top:5px;">Postulaciones recibidas en el radio operativo global.</p>
+                    <h2 style="font-size:var(--font-size-2xl); font-weight:700;">${I18n.t('app_candidates_title')}</h2>
+                    <p style="color:var(--text-secondary); margin-top:5px;">${I18n.t('app_candidates_subtitle')}</p>
                 </div>
             </div>
 
-            \${applicants.length > 0 ? \`
+            ${applicants.length > 0 ? `
                 <div class="vehicle-cards" style="margin-top:var(--space-6);">
-                    \${applicants.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(a => renderApplicantCard(a)).join('')}
+                    ${applicants.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(a => renderApplicantCard(a)).join('')}
                 </div>
-            \` : Components.renderEmptyState(
+            ` : Components.renderEmptyState(
                 '📝',
-                'No hay candidatos aún',
-                'Las postulaciones aparecerán aquí automáticamente.'
+                I18n.t('app_no_candidates'),
+                I18n.t('app_candidates_empty')
             )}
-        \`;
+        `;
     }
 
     function renderApplicantCard(app) {
         const dateStr = new Date(app.createdAt).toLocaleDateString();
         
-        return \`
+        return `
             <div class="vehicle-card">
                 <div class="vehicle-card-header">
-                    <span class="vehicle-name">👤 \${Components.escapeHTML(app.nombre)}</span>
-                    <span class="badge" style="background:var(--bg-tertiary);">\${dateStr}</span>
+                    <span class="vehicle-name">👤 ${Components.escapeHTML(app.nombre)}</span>
+                    <span class="badge" style="background:var(--bg-tertiary);">${dateStr}</span>
                 </div>
                 
                 <div class="vehicle-stats" style="margin-top:var(--space-3); margin-bottom:var(--space-4);">
                     <div class="vehicle-stat">
-                        <div class="vehicle-stat-value">\${app.edad} años</div>
-                        <div class="vehicle-stat-label">Edad</div>
+                        <div class="vehicle-stat-value">${app.edad}</div>
+                        <div class="vehicle-stat-label">${I18n.t('app_age')}</div>
                     </div>
                     <div class="vehicle-stat">
-                        <div class="vehicle-stat-value">\${Components.escapeHTML(app.tipoLicencia)}</div>
-                        <div class="vehicle-stat-label">Licencia</div>
+                        <div class="vehicle-stat-value">${Components.escapeHTML(app.tipoLicencia)}</div>
+                        <div class="vehicle-stat-label">${I18n.t('app_license')}</div>
                     </div>
                 </div>
 
                 <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:var(--space-4);">
-                    <p style="margin-bottom:4px;"><strong>DNI:</strong> \${Components.escapeHTML(app.dni)}</p>
-                    <p><strong>Ubicación:</strong> \${Components.escapeHTML(app.direccion)}</p>
+                    <p style="margin-bottom:4px;"><strong>${I18n.t('app_dni')}:</strong> ${Components.escapeHTML(app.dni)}</p>
+                    <p><strong>Ubicación:</strong> ${Components.escapeHTML(app.direccion)}</p>
                 </div>
 
                 <div style="display:flex; gap:var(--space-2);">
-                    <button class="btn" style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary);" onclick="ApplicantsModule.viewLicense('\${app.photoUrl}')">
-                        🖼️ Ver Licencia
+                    <button class="btn" style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary);" onclick="ApplicantsModule.viewLicense('${app.photoUrl}')">
+                        ${I18n.t('app_view_license')}
                     </button>
-                    <a href="https://wa.me/?text=Hola%20\${encodeURIComponent(app.nombre)}" target="_blank" class="btn" style="flex:1; background:#10b981; color:white; border:none; text-decoration:none; display:flex; justify-content:center; align-items:center;">
+                    <a href="https://wa.me/?text=Hola%20${encodeURIComponent(app.nombre)}" target="_blank" class="btn" style="flex:1; background:#10b981; color:white; border:none; text-decoration:none; display:flex; justify-content:center; align-items:center;">
                         WhatsApp
                     </a>
                 </div>
             </div>
-        \`;
+        `;
     }
 
     function viewLicense(photoUrl) {
@@ -285,13 +285,13 @@ const ApplicantsModule = (() => {
             Components.showToast('El conductor no adjuntó o la imagen es corrupta.', 'danger');
             return;
         }
-        Components.showModal('🖼️ Licencia de Conducir', \`
+        Components.showModal(I18n.t('app_view_license'), `
             <div style="text-align:center;">
-                <img src="\${photoUrl}" style="max-width:100%; height:auto; border-radius:10px; margin-top:10px;">
+                <img src="${photoUrl}" style="max-width:100%; height:auto; border-radius:10px; margin-top:10px;">
             </div>
-        \`, \`
-            <button class="btn btn-secondary w-full" style="width:100%" onclick="Components.closeModal()">Cerrar Imagen</button>
-        \`);
+        `, `
+            <button class="btn btn-secondary w-full" style="width:100%" onclick="Components.closeModal()">${I18n.t('app_close_image')}</button>
+        `);
     }
 
     return { renderApply, renderAdmin, checkLocation, submitApply, viewLicense };

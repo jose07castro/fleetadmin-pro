@@ -74,7 +74,7 @@ const LoginModule = (() => {
                             </button>
                             <button class="btn btn-block" onclick="Router.navigate('apply')"
                                 style="background:transparent; border:2px solid #10b981; color:#10b981; font-weight:600;">
-                                🚗 Postularme para Conductor
+                                ${I18n.t('app_apply_btn')}
                             </button>
                         </div>
                     </div>
