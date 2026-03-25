@@ -67,14 +67,56 @@ const VehiclesModule = (() => {
                 vtvBadge = `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">⚪ ${I18n.t('vtv_title')}: ${I18n.t('vtv_not_loaded')}</span>`;
             }
 
+            // Financial & Alert Badges
+            let financialBadge = '';
+            let alertsBadge = '';
+            let btnGrua = '';
+
+            if (v.metodoPago === 'Crédito' && v.cuotasTotales > 0) {
+                financialBadge = `<span class="badge" style="background:#e8f5e9; color:#2e7d32; font-size:0.75rem;">💰 ${v.cuotasPagas || 0} / ${v.cuotasTotales}</span>`;
+                
+                let restantes = (v.cuotasTotales || 0) - (v.cuotasPagas || 0);
+                if (restantes === 3) {
+                    alertsBadge += `<span class="badge badge-success" style="font-size:0.75rem;">🎉 ¡Solo faltan 3 cuotas!</span>`;
+                }
+                
+                if (v.diaVencimiento) {
+                    const today = new Date();
+                    const currentDay = today.getDate();
+                    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                    
+                    let targetDay = v.diaVencimiento;
+                    if (targetDay > daysInMonth) targetDay = daysInMonth;
+                    
+                    let daysLeft;
+                    if (currentDay > targetDay) {
+                        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, targetDay);
+                        daysLeft = Math.ceil((nextMonth - today) / (1000 * 60 * 60 * 24));
+                    } else {
+                        daysLeft = targetDay - currentDay;
+                    }
+                    
+                    if (daysLeft <= 5 && daysLeft >= 0) {
+                        alertsBadge += `<span class="badge badge-danger" style="font-size:0.75rem;">🚨 Vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}</span>`;
+                    }
+                }
+            }
+
+            if (v.telefonoAuxilio) {
+                btnGrua = `<a href="tel:${v.telefonoAuxilio}" style="width:100%; margin-top:var(--space-3); display:flex; justify-content:center; padding: 0.6rem; text-decoration:none; color:white; background:var(--color-danger); border-radius:var(--radius-md); font-weight:bold; align-items:center; gap:0.5rem; text-transform:uppercase; letter-spacing:0.5px; box-shadow:0 4px 6px rgba(239,68,68,0.2);"><span style="font-size:1.2rem;">🚨</span> LLAMAR GRÚA</a>`;
+            }
+
             html += `
-                <div class="vehicle-card">
-                    <div class="vehicle-card-header">
+                <div class="vehicle-card" style="position:relative;">
+                    ${v.companiaSeguro ? `<div style="position:absolute; top:12px; right:12px; font-size:0.65rem; color:var(--text-secondary); background:var(--bg-tertiary); padding:3px 8px; border-radius:12px; font-weight:600; border:1px solid var(--border-color);">🛡️ ${v.companiaSeguro}</div>` : ''}
+                    <div class="vehicle-card-header" style="padding-right: 80px;">
                         <span class="vehicle-name">🚗 ${v.name}</span>
                         <span class="vehicle-plate">${v.plate || '-'}</span>
                     </div>
 
                     <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3);">
+                        ${financialBadge}
+                        ${alertsBadge}
                         ${belt.level !== 'ok' ? `
                             <span class="badge badge-${belt.level === 'danger' ? 'danger' : 'warning'}">
                                 ${belt.level === 'danger' ? '🔴' : '🟡'} ${I18n.t('maint_timing_belt')}
@@ -120,6 +162,7 @@ const VehiclesModule = (() => {
                             </button>
                         </div>
                     ` : ''}
+                    ${btnGrua}
                 </div>
             `;
         }
@@ -164,6 +207,84 @@ const VehiclesModule = (() => {
                         <option value="active" ${vehicle?.status === 'active' ? 'selected' : ''}>${I18n.t('veh_active')}</option>
                         <option value="inactive" ${vehicle?.status === 'inactive' ? 'selected' : ''}>${I18n.t('veh_inactive')}</option>
                     </select>
+                </div>
+
+                <!-- Finanzas y Protección -->
+                <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
+                        💰 Finanzas y Protección
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Método de Pago</label>
+                        <select class="form-select" id="vehMetodoPago" onchange="VehiclesModule.toggleFinanceFields()">
+                            <option value="Contado" ${vehicle?.metodoPago === 'Contado' || !vehicle?.metodoPago ? 'selected' : ''}>Contado</option>
+                            <option value="Crédito" ${vehicle?.metodoPago === 'Crédito' ? 'selected' : ''}>Crédito (Prendario/Personal)</option>
+                        </select>
+                    </div>
+
+                    <div id="financeFields" style="display: ${vehicle?.metodoPago === 'Crédito' ? 'block' : 'none'}; padding-left:0.5rem; border-left:3px solid var(--color-primary);">
+                        <div class="form-group">
+                            <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                                <input type="checkbox" id="vehEsPrendario" ${vehicle?.esPrendario ? 'checked' : ''} onchange="VehiclesModule.togglePrendario()">
+                                Es Crédito Prendario
+                            </label>
+                            <div id="prendarioWarning" style="display: ${vehicle?.esPrendario ? 'block' : 'none'}; color: var(--color-warning); font-size: 0.8rem; margin-top: 0.2rem;">
+                                ⚠️ Seguro gestionado por la entidad prendaria
+                            </div>
+                        </div>
+
+                        <div class="repair-form-grid">
+                            <div class="form-group">
+                                <label class="form-label">Fecha Otorgamiento</label>
+                                <input type="date" class="form-input" id="vehFechaOtorgamiento" value="${vehicle?.fechaOtorgamiento || ''}">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Día Vencimiento (1-31)</label>
+                                <input type="number" class="form-input" id="vehDiaVencimiento" value="${vehicle?.diaVencimiento || ''}" min="1" max="31">
+                            </div>
+                        </div>
+
+                        <div class="repair-form-grid">
+                            <div class="form-group">
+                                <label class="form-label">Cuotas Totales</label>
+                                <input type="number" class="form-input" id="vehCuotasTotales" value="${vehicle?.cuotasTotales || ''}" placeholder="36" oninput="VehiclesModule.calcRemaining()">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Cuotas Pagas</label>
+                                <input type="number" class="form-input" id="vehCuotasPagas" value="${vehicle?.cuotasPagas || ''}" placeholder="10" oninput="VehiclesModule.calcRemaining()">
+                            </div>
+                        </div>
+                        
+                        <div class="repair-form-grid">
+                            <div class="form-group">
+                                <label class="form-label">Valor Cuota ($)</label>
+                                <input type="number" class="form-input" id="vehValorCuota" value="${vehicle?.valorCuota || ''}" placeholder="50000">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Cuotas Restantes</label>
+                                <input type="text" class="form-input" id="vehCuotasRestantes" readonly style="background:var(--bg-tertiary);" value="${(vehicle?.cuotasTotales || 0) - (vehicle?.cuotasPagas || 0) || ''}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="font-weight:600; margin-top:var(--space-4); margin-bottom:var(--space-3); color:var(--color-primary);">
+                        🛡️ Seguro del Vehículo
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Compañía de Seguro</label>
+                        <input type="text" class="form-input" id="vehCompaniaSeguro" value="${vehicle?.companiaSeguro || ''}" placeholder="La Caja, Sancor, etc.">
+                    </div>
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Tipo Cobertura</label>
+                            <input type="text" class="form-input" id="vehTipoCobertura" value="${vehicle?.tipoCobertura || ''}" placeholder="Terceros Completo">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Teléfono Auxilio</label>
+                            <input type="tel" class="form-input" id="vehTelefonoAuxilio" value="${vehicle?.telefonoAuxilio || ''}" placeholder="0800...">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- RTO/VTV -->
@@ -241,11 +362,35 @@ const VehiclesModule = (() => {
 
         const odometerKm = Units.toKm(odometer);
 
+        // Finanzas y Seguros
+        const metodoPago = document.getElementById('vehMetodoPago')?.value || 'Contado';
+        const esPrendario = document.getElementById('vehEsPrendario')?.checked || false;
+        const fechaOtorgamiento = document.getElementById('vehFechaOtorgamiento')?.value || null;
+        const diaVencimientoStr = document.getElementById('vehDiaVencimiento')?.value;
+        const diaVencimiento = diaVencimientoStr ? parseInt(diaVencimientoStr) : null;
+        const cuotasTotales = parseInt(document.getElementById('vehCuotasTotales')?.value) || 0;
+        const cuotasPagas = parseInt(document.getElementById('vehCuotasPagas')?.value) || 0;
+        const valorCuota = parseFloat(document.getElementById('vehValorCuota')?.value) || 0;
+        const companiaSeguro = document.getElementById('vehCompaniaSeguro')?.value.trim() || '';
+        const tipoCobertura = document.getElementById('vehTipoCobertura')?.value.trim() || '';
+        const telefonoAuxilio = document.getElementById('vehTelefonoAuxilio')?.value.trim() || '';
+
         const data = {
             name, plate, year,
             currentOdometer: odometerKm,
-            status
+            status,
+            metodoPago,
+            esPrendario,
+            cuotasTotales,
+            cuotasPagas,
+            valorCuota,
+            companiaSeguro,
+            tipoCobertura,
+            telefonoAuxilio
         };
+        
+        if (fechaOtorgamiento) data.fechaOtorgamiento = fechaOtorgamiento;
+        if (diaVencimiento !== null) data.diaVencimiento = diaVencimiento;
 
         // Zona Base (GPS Geofencing)
         const zonaBaseLabel = document.getElementById('vehZonaBaseLabel')?.value.trim();
@@ -342,5 +487,35 @@ const VehiclesModule = (() => {
         );
     }
 
-    return { render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv, getVtvStatus };
+    // Funciones dinámicas del formulario de finanzas
+    function calcRemaining() {
+        const total = parseInt(document.getElementById('vehCuotasTotales')?.value) || 0;
+        const pagas = parseInt(document.getElementById('vehCuotasPagas')?.value) || 0;
+        const rest = document.getElementById('vehCuotasRestantes');
+        if (rest) {
+            let val = total - pagas;
+            rest.value = val < 0 ? 0 : val;
+        }
+    }
+
+    function toggleFinanceFields() {
+        const method = document.getElementById('vehMetodoPago')?.value;
+        const fields = document.getElementById('financeFields');
+        if (fields) {
+            fields.style.display = method === 'Crédito' ? 'block' : 'none';
+        }
+    }
+
+    function togglePrendario() {
+        const isChecked = document.getElementById('vehEsPrendario')?.checked;
+        const warning = document.getElementById('prendarioWarning');
+        if (warning) {
+            warning.style.display = isChecked ? 'block' : 'none';
+        }
+    }
+
+    return { 
+        render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv, getVtvStatus,
+        calcRemaining, toggleFinanceFields, togglePrendario
+    };
 })();
