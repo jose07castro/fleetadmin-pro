@@ -90,6 +90,7 @@ const Components = (() => {
             owner: [
                 { icon: '📊', label: 'nav_dashboard', route: 'dashboard', section: 'ops' },
                 { icon: '🚗', label: 'nav_vehicles', route: 'vehicles', section: 'ops' },
+                { icon: '📝', label: 'Candidatos', route: 'applicants', section: 'ops' },
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
                 { icon: '🔧', label: 'nav_maintenance', route: 'maintenance', section: 'mgmt' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'mgmt' },

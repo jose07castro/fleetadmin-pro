@@ -69,8 +69,12 @@ const LoginModule = (() => {
 
                         <div style="text-align:center; margin-top:var(--space-4);">
                             <button class="btn btn-block" onclick="LoginModule.showRegister()"
-                                style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600;">
+                                style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3);">
                                 👑 ${I18n.t('register_admin')}
+                            </button>
+                            <button class="btn btn-block" onclick="Router.navigate('apply')"
+                                style="background:transparent; border:2px solid #10b981; color:#10b981; font-weight:600;">
+                                🚗 Postularme para Conductor
                             </button>
                         </div>
                     </div>

@@ -17,16 +17,18 @@ const Router = (() => {
         settings: () => SettingsModule.render(),
         community: () => CommunityModule.render(),
         'complete-profile': () => SettingsModule.renderCompleteProfile(),
+        apply: () => ApplicantsModule.renderApply(),
+        applicants: () => ApplicantsModule.renderAdmin(),
     };
 
     async function navigate(route) {
         // Si no está logueado, forzar login
-        if (!Auth.isLoggedIn() && route !== 'login') {
+        if (!Auth.isLoggedIn() && route !== 'login' && route !== 'apply') {
             route = 'login';
         }
 
         // Verificar permisos
-        if (route !== 'login' && route !== 'complete-profile' && !Auth.canAccess(route)) {
+        if (route !== 'login' && route !== 'apply' && route !== 'complete-profile' && !Auth.canAccess(route)) {
             const defaultRoutes = {
                 owner: 'dashboard',
                 driver: 'shifts',
@@ -38,7 +40,7 @@ const Router = (() => {
         // Bloqueo de perfil incompleto para conductores
         // NOTA: No await — verificación diferida para no bloquear la navegación.
         // El check principal ocurre en doLogin() y App.init().
-        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'complete-profile') {
+        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'apply' && route !== 'complete-profile') {
             Auth.isProfileComplete().then(profileOk => {
                 if (!profileOk && Router.getCurrentRoute() !== 'complete-profile') {
                     Router.navigate('complete-profile');
@@ -67,10 +69,10 @@ const Router = (() => {
             try {
                 const content = await routes[route]();
                 // Guard: si el módulo devuelve undefined/null/empty, mostrar error
-                if (!content && route !== 'login') {
+                if (!content && route !== 'login' && route !== 'apply') {
                     throw new Error('El módulo no devolvió contenido');
                 }
-                if (route === 'login' || route === 'complete-profile') {
+                if (route === 'login' || route === 'apply' || route === 'complete-profile') {
                     app.innerHTML = content;
                 } else {
                     app.innerHTML = Components.renderLayout(content, route);

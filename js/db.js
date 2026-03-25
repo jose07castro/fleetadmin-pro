@@ -164,6 +164,29 @@ const DB = (() => {
         return db.ref('fleets').push().key;
     }
 
+    // --- Reclutamiento de Conductores Global ---
+    async function addApplicant(data) {
+        const ref = db.ref('applicants').push();
+        const newItem = {
+            ...data,
+            id: ref.key,
+            createdAt: new Date().toISOString()
+        };
+        await ref.set(newItem);
+        return ref.key;
+    }
+
+    async function getApplicants() {
+        try {
+            const snap = await fetchWithTimeout(db.ref('applicants'), 7000);
+            const val = snap.val();
+            return val ? Object.values(val) : [];
+        } catch (e) {
+            console.warn('Error fetching applicants:', e);
+            return [];
+        }
+    }
+
     // Registro global de usuario (para login cross-fleet)
     async function addGlobalUser(data) {
         const ref = db.ref('globalUsers').push();
@@ -496,7 +519,7 @@ const DB = (() => {
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers,
-        migrateOldData,
+        migrateOldData, addApplicant, getApplicants,
         // Veraz
         addVerazReport, getVerazReportsByDNI
     };
