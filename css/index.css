@@ -714,8 +714,8 @@ button {
     }
 
     .app-content {
-        padding: var(--space-3);
-        padding-bottom: calc(var(--space-3) + 72px); /* Space for bottom nav */
+        padding: var(--space-4);
+        padding-bottom: calc(var(--space-4) + 72px); /* Space for bottom nav */
     }
 }
 
