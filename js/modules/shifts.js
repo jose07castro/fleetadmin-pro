@@ -156,8 +156,19 @@ const ShiftsModule = (() => {
                     <div style="color:var(--text-secondary); font-size:var(--font-size-sm);">
                         ${vehicle?.name || ''} — ${vehicle?.plate || ''}
                     </div>
+                    ${(vehicle && vehicle.companiaSeguro) ? `
+                    <div style="margin-top:var(--space-2); padding-top:var(--space-2); border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2);">
+                        <div style="font-size:var(--font-size-xs); line-height:1.2;">
+                            <strong style="color:var(--text-primary);">${I18n.t('shift_insurance') || 'Seguro'}: ${vehicle.companiaSeguro}</strong><br>
+                            <span style="color:var(--text-tertiary);">${vehicle.tipoCobertura || ''}</span>
+                        </div>
+                        ${vehicle.telefonoAuxilio ? `
+                        <a href="tel:${vehicle.telefonoAuxilio}" onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">
+                            🚜 ${I18n.t('shift_call_tow') || 'Auxilio'}
+                        </a>` : ''}
+                    </div>` : ''}
                 </div>
-                <span class="badge ${shift.shiftType === 'night' ? 'badge-warning' : 'badge-success'}">
+                <span class="badge ${shift.shiftType === 'night' ? 'badge-warning' : 'badge-success'}" style="align-self:flex-start;">
                     ${shift.shiftType === 'night' ? '🌙 18-06' : '🌅 06-18'}
                 </span>
             </div>
