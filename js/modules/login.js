@@ -67,13 +67,13 @@ const LoginModule = (() => {
                             ${I18n.t('login_enter')}
                         </button>
 
-                        <div style="text-align:center; margin-top:var(--space-4);">
+                        <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
                             <button class="btn btn-block" onclick="LoginModule.showRegister()"
                                 style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3);">
                                 👑 ${I18n.t('register_admin')}
                             </button>
                             <button class="btn btn-secondary block w-full" onclick="Router.navigate('apply')"
-                                style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(16, 185, 129, 0.1); border:2px solid #10b981; color:#059669; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display:flex; justify-content:center; align-items:center; gap:8px; z-index:99; position:relative; overflow:visible;">
+                                style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(16, 185, 129, 0.1); border:2px solid #10b981; color:#059669; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display:flex !important; justify-content:center; align-items:center; gap:8px; z-index:99999 !important; position:relative; overflow:visible !important; width:100% !important;">
                                 🪪 ${I18n.t('app_apply_btn')}
                             </button>
                         </div>

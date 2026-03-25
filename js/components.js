@@ -46,7 +46,7 @@ const Components = (() => {
                 <nav class="sidebar-nav">
                     <div class="nav-section-title">${I18n.t('nav_operations')}</div>
                     ${navItems.filter(n => n.section === 'ops').map(item =>
-            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
+            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')" ${item.route === 'apply' ? 'style="display:flex !important; visibility:visible !important; opacity:1 !important;"' : ''}>
                             <span class="nav-icon">${item.icon}</span>
                             <span>${I18n.t(item.label)}</span>
                         </div>`
@@ -54,7 +54,7 @@ const Components = (() => {
 
                     <div class="nav-section-title">${I18n.t('nav_management')}</div>
                     ${navItems.filter(n => n.section === 'mgmt').map(item =>
-            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
+            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')" ${item.route === 'apply' ? 'style="display:flex !important; visibility:visible !important; opacity:1 !important;"' : ''}>
                             <span class="nav-icon">${item.icon}</span>
                             <span>${I18n.t(item.label)}</span>
                         </div>`
@@ -158,7 +158,8 @@ const Components = (() => {
                     }
                     return `
                     <div class="mobile-nav-item ${activeRoute === item.route ? 'active' : ''}" 
-                         onclick="Router.navigate('${item.route}')">
+                         onclick="Router.navigate('${item.route}')"
+                         ${item.route === 'apply' ? 'style="display:flex !important; visibility:visible !important; opacity:1 !important;"' : ''}>
                         <span class="mobile-nav-icon">${item.icon}</span>
                         <span class="mobile-nav-label">${item.label}</span>
                     </div>`;
