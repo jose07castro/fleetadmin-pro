@@ -42,32 +42,78 @@ const ShiftsModule = (() => {
         }
     }
 
+    // --- Limpieza de Clones (Race Condition) ---
+    async function cleanupDuplicateShifts(driverId) {
+        const allShifts = await DB.getAll('shifts');
+        const activeShifts = allShifts.filter(s => s.status === 'active' && String(s.driverId) === String(driverId));
+        
+        if (activeShifts.length > 1) {
+            console.warn(`🚨 MULTIPLES TURNOS ACTIVOS DETECTADOS para chofer ${driverId}. Limpiando clones...`);
+            // Ordenar por fecha (el más reciente primero)
+            activeShifts.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+            
+            const keepShift = activeShifts[0]; // Mantener el más actual
+            const duplicates = activeShifts.slice(1);
+            
+            for (const dup of duplicates) {
+                console.log(`🧹 Eliminando turno clon: ${dup.id}`);
+                await DB.remove('shifts', dup.id);
+            }
+            return keepShift;
+        }
+        return activeShifts[0]; // Retorna el único activo, o undefined
+    }
+
     // --- Vista del Chofer ---
     async function renderDriverView(driverId) {
-        const vehicles = await DB.getAll('vehicles');
-        const allShifts = await DB.getAll('shifts');
-        const myShifts = allShifts.filter(s => String(s.driverId) === String(driverId));
-        const activeShift = myShifts.find(s => s.status === 'active');
+        // LAZY LOADING: Devolver esqueleto inmediatamente
+        setTimeout(() => _hydratedDriverView(driverId), 50);
 
-        if (activeShift) {
-            return renderActiveShift(activeShift, vehicles);
-        }
+        return `
+            <div id="shiftsContent">
+                <div style="text-align:center; padding:var(--space-8);">
+                    <div class="splash-loader-bar" style="max-width:200px; margin:0 auto;"></div>
+                    <p style="margin-top:var(--space-4); font-weight:600; color:var(--text-secondary);">Cargando tu turno...</p>
+                </div>
+            </div>
+        `;
+    }
 
-        // Detectar vehículos ocupados por CUALQUIER turno activo
-        const allActiveShifts = allShifts.filter(s => s.status === 'active');
-        const occupiedVehicleIds = new Set(allActiveShifts.map(s => String(s.vehicleId)));
+    async function _hydratedDriverView(driverId) {
+        try {
+            const vehicles = await DB.getAll('vehicles');
+            const allShifts = await DB.getAll('shifts');
+            
+            // 1. Limpiar duplicados automáticamente
+            const activeShift = await cleanupDuplicateShifts(driverId);
+            
+            const myShifts = allShifts.filter(s => String(s.driverId) === String(driverId));
 
-        // Mapa de vehicleId -> nombre del conductor que lo usa
+            const container = document.getElementById('shiftsContent');
+            if (!container) return; // El usuario cambió de pantalla
+
+            if (activeShift) {
+                container.innerHTML = renderActiveShift(activeShift, vehicles);
+                return;
+            }
+
+            // Detectar vehículos ocupados por CUALQUIER turno activo
+            const allActiveShifts = allShifts.filter(s => s.status === 'active');
+            const occupiedVehicleIds = new Set(allActiveShifts.map(s => String(s.vehicleId)));
         const vehicleDriverMap = {};
         for (const s of allActiveShifts) {
             vehicleDriverMap[String(s.vehicleId)] = s.driverName || 'Otro chofer';
         }
 
-        // Historial del chofer (solo sus turnos)
+        // Solo procesamos el historial de los primeros 20 completados para ser rápidos
         const completed = myShifts.filter(s => s.status === 'completed')
-            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+            .slice(0, 20);
 
-        return `
+        // Renderizar tabla asíncronamente para no bloquear el hilo
+        const tableHtml = completed.length > 0 ? await renderShiftTable(completed) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
+
+        container.innerHTML = `
             <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
                 <div style="font-size:2.5rem; margin-bottom:var(--space-3);">🕐</div>
                 <div style="font-size:var(--font-size-lg); font-weight:600;">${I18n.t('shift_inactive')}</div>
@@ -98,7 +144,7 @@ const ShiftsModule = (() => {
                             const isOccupied = occupiedVehicleIds.has(String(v.id));
                             const usedBy = vehicleDriverMap[String(v.id)] || '';
                             if (isOccupied) {
-                                return `<option value="${v.id}" disabled style="color:#888;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
+                                return `<option value="${v.id}" disabled style="color:#ef4444; font-weight:600;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
                             }
                             return `<option value="${v.id}">✅ ${v.name} — ${v.plate}</option>`;
                         }).join('')}
@@ -113,18 +159,21 @@ const ShiftsModule = (() => {
 
                 ${Components.renderPhotoCapture('shiftOdoStart', I18n.t('shift_odometer_photo'))}
 
-                <button class="btn btn-success btn-block btn-lg" onclick="ShiftsModule.startShift()">
+                <button class="btn btn-success btn-block btn-lg" onclick="ShiftsModule.startShift(event)">
                     ▶️ ${I18n.t('shift_start')}
                 </button>
             </div>
 
             <!-- Historial -->
             <div class="dashboard-section">
-                <div class="dashboard-section-title">📋 ${I18n.t('shift_history')}</div>
-                ${completed.length > 0 ? await renderShiftTable(completed) :
-                `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`}
+                <div class="dashboard-section-title">📋 Últimos Turnos</div>
+                ${tableHtml}
             </div>
         `;
+        } catch (e) {
+            console.error('Error in _hydratedDriverView', e);
+            document.getElementById('shiftsContent').innerHTML = `<p style="color:red; text-align:center;">Error cargando turnos: ${e.message}</p>`;
+        }
     }
 
     // --- Turno activo ---
@@ -209,7 +258,7 @@ const ShiftsModule = (() => {
 
                 ${Components.renderPhotoCapture('shiftEarningsPhoto', I18n.t('shift_earnings_photo'))}
 
-                <button class="btn btn-danger btn-block btn-lg" onclick="ShiftsModule.endShift('${shift.id}')">
+                <button class="btn btn-danger btn-block btn-lg btn-end-shift" onclick="ShiftsModule.endShift('${shift.id}', event)">
                     ⏹️ ${I18n.t('shift_end')}
                 </button>
             </div>
@@ -223,32 +272,75 @@ const ShiftsModule = (() => {
 
     // --- Vista del Dueño (todos los turnos) ---
     async function renderOwnerView() {
-        const shifts = await DB.getAll('shifts');
-        const activeShifts = shifts.filter(s => s.status === 'active');
-        const completed = shifts.filter(s => s.status === 'completed')
-            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+        // LAZY LOADING
+        setTimeout(() => _hydratedOwnerView(), 50);
 
         return `
-            <!-- Turnos activos -->
-            ${activeShifts.length > 0 ? `
-                <div class="dashboard-section">
-                    <div class="dashboard-section-title">🟢 ${I18n.t('dash_active_shifts')} (${activeShifts.length})</div>
-                    ${await renderActiveShiftsCards(activeShifts)}
+            <div id="ownerShiftsContent">
+                <div style="text-align:center; padding:var(--space-8);">
+                    <div class="splash-loader-bar" style="max-width:200px; margin:0 auto;"></div>
+                    <p style="margin-top:var(--space-4); font-weight:600; color:var(--text-secondary);">Cargando panel de turnos...</p>
                 </div>
-            ` : `
-                <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
-                    <div style="font-size:2rem; margin-bottom:var(--space-2);">😴</div>
-                    <div style="color:var(--text-secondary);">${I18n.t('shift_inactive')}</div>
-                </div>
-            `}
-
-            <!-- Historial completo -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">📋 ${I18n.t('shift_history')}</div>
-                ${completed.length > 0 ? await renderShiftTable(completed) :
-                `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`}
             </div>
         `;
+    }
+
+    async function _hydratedOwnerView() {
+        try {
+            const shifts = await DB.getAll('shifts');
+            
+            // Detectar si hay conductores con múltiples turnos activos y corregirlos silenciosamente
+            const activeDrivers = new Set();
+            for (const s of shifts) {
+                if (s.status === 'active') {
+                    if (activeDrivers.has(s.driverId)) {
+                        // Duplicado encontrado globalmente: aplicar limpieza
+                        await cleanupDuplicateShifts(s.driverId);
+                    } else {
+                        activeDrivers.add(s.driverId);
+                    }
+                }
+            }
+
+            // Refetch after possible cleanup
+            const cleanShifts = await DB.getAll('shifts');
+            const activeShifts = cleanShifts.filter(s => s.status === 'active');
+            
+            // Cargar solo los últimos 20 completados al inicio
+            const completed = cleanShifts.filter(s => s.status === 'completed')
+                .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+                .slice(0, 20);
+
+            const container = document.getElementById('ownerShiftsContent');
+            if (!container) return;
+
+            const tableHtml = completed.length > 0 ? await renderShiftTable(completed) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
+            const cardsHtml = await renderActiveShiftsCards(activeShifts);
+
+            container.innerHTML = `
+                <!-- Turnos activos -->
+                ${activeShifts.length > 0 ? `
+                    <div class="dashboard-section">
+                        <div class="dashboard-section-title">🟢 ${I18n.t('dash_active_shifts')} (${activeShifts.length})</div>
+                        ${cardsHtml}
+                    </div>
+                ` : `
+                    <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
+                        <div style="font-size:2rem; margin-bottom:var(--space-2);">😴</div>
+                        <div style="color:var(--text-secondary);">${I18n.t('shift_inactive')}</div>
+                    </div>
+                `}
+
+                <!-- Historial completo -->
+                <div class="dashboard-section">
+                    <div class="dashboard-section-title">📋 Últimos Turnos (Historial Rápido)</div>
+                    ${tableHtml}
+                </div>
+            `;
+        } catch (e) {
+            console.error('Error in _hydratedOwnerView', e);
+            document.getElementById('ownerShiftsContent').innerHTML = `<p style="color:red; text-align:center;">Error: ${e.message}</p>`;
+        }
     }
 
     async function renderActiveShiftsCards(shifts) {
@@ -358,11 +450,31 @@ const ShiftsModule = (() => {
     }
 
     // --- Iniciar turno ---
-    async function startShift() {
+    async function startShift(event) {
+        // Bloquear botón instantáneamente (Frontend Race Condition Prevention)
+        const btn = event ? event.currentTarget : document.querySelector('.btn-success');
+        let originalText = '▶️ Iniciar Turno';
+        if (btn) {
+            if (btn.disabled) return; // Drop si ya se le hizo clic
+            originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ INICIANDO... (No cierres la app)';
+            btn.style.opacity = '0.7';
+        }
+
+        const restoreBtn = () => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+            }
+        };
+
         // Guard: verificar sesión activa
         if (!Auth.isLoggedIn()) {
             alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
             Router.navigate('login');
+            restoreBtn();
             return;
         }
 
@@ -372,6 +484,7 @@ const ShiftsModule = (() => {
 
         if (!vehicleId || vehicleId === '' || !odoStart) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+            restoreBtn();
             return;
         }
 
@@ -474,15 +587,36 @@ const ShiftsModule = (() => {
             }
 
             Components.showToast(reason, 'danger');
+            restoreBtn();
         }
     }
 
     // --- Finalizar turno ---
-    async function endShift(shiftId) {
+    async function endShift(shiftId, event) {
+        // Bloquear botón
+        const btn = event ? event.currentTarget : document.querySelector('.btn-end-shift');
+        let originalText = '⏹️ Finalizar Turno';
+        if (btn) {
+            if (btn.disabled) return;
+            originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ FINALIZANDO...';
+            btn.style.opacity = '0.7';
+        }
+
+        const restoreBtn = () => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+            }
+        };
+
         // Guard: verificar sesión activa
         if (!Auth.isLoggedIn()) {
             alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
             Router.navigate('login');
+            restoreBtn();
             return;
         }
 
@@ -493,16 +627,21 @@ const ShiftsModule = (() => {
 
         if (!odoEnd) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+            restoreBtn();
             return;
         }
 
         const shift = await DB.get('shifts', shiftId);
-        if (!shift) return;
+        if (!shift) {
+            restoreBtn();
+            return;
+        }
 
         // Validar que KM final >= KM inicial
         const odometerKm = Units.toKm(odoEnd);
         if (odometerKm < shift.startOdometer) {
             Components.showToast(I18n.t('km_error_lower'), 'danger');
+            restoreBtn();
             return;
         }
 
@@ -510,6 +649,7 @@ const ShiftsModule = (() => {
         const vehicle = await DB.get('vehicles', shift.vehicleId);
         if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
             Components.showToast(I18n.t('km_error_lower'), 'danger');
+            restoreBtn();
             return;
         }
 
@@ -552,6 +692,7 @@ const ShiftsModule = (() => {
             }
 
             Components.showToast(reason, 'danger');
+            restoreBtn();
         }
     }
 
