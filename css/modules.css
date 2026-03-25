@@ -722,10 +722,12 @@
 
 .sponsor-ad-image {
     width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     aspect-ratio: 16 / 9 !important;
     display: block;
-    object-fit: cover !important;
+    object-fit: contain !important;
+    box-sizing: border-box !important;
     border-radius: 0;
     transition: transform 0.4s ease;
 }
@@ -1471,10 +1473,12 @@
 
 .community-post-image img {
     width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     max-height: none;
     aspect-ratio: 1 / 1;
     object-fit: cover !important;
+    box-sizing: border-box !important;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     cursor: pointer;
