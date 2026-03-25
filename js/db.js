@@ -207,7 +207,28 @@ const DB = (() => {
         return ref.key;
     }
 
-    // Buscar usuario global por nombre, pin y rol
+    // --- Consultas Optimizadas para evitar descargas masivas (Anti-Lag de Base64) ---
+    async function getActiveShifts() {
+        try {
+            const ref = db.ref(fleetPath('shifts')).orderByChild('status').equalTo('active');
+            const snap = await fetchWithTimeout(ref, 7000);
+            const val = snap.val();
+            return val ? Object.values(val) : [];
+        } catch(e) { console.warn('getActiveShifts error:', e); return []; }
+    }
+
+    async function getRecentCompletedShifts(limit = 20) {
+        try {
+            // Como no podemos ordenar por 2 campos, traemos los últimos N registros y filtramos
+            const ref = db.ref(fleetPath('shifts')).limitToLast(limit * 3); 
+            const snap = await fetchWithTimeout(ref, 7000);
+            const val = snap.val();
+            if (!val) return [];
+            return Object.values(val).filter(s => s.status === 'completed');
+        } catch(e) { console.warn('getRecentCompletedShifts error:', e); return []; }
+    }
+
+    // --- Configuraciones de flota ---l por nombre, pin y rol
     // Con retry + cache para evitar fallos en cold start
     // THROWS on connection failure — caller must handle
     async function findGlobalUser(name, pin, role) {
@@ -549,6 +570,7 @@ const DB = (() => {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, seed, exportAll, importAll, resetAll,
         onChanges, offChanges, notifyAdmins,
+        getActiveShifts, getRecentCompletedShifts,
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,
