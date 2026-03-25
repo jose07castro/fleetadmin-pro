@@ -3,7 +3,7 @@
    Vista general de la flota con gestión de usuarios
    ============================================ */
 
-const DashboardModule = (() => {
+window.DashboardModule = (() => {
     // --- RENDER TRADICIONAL: fetch datos, devolver HTML completo ---
     async function render() {
         try {
