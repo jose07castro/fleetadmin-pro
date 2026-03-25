@@ -347,6 +347,18 @@ const DB = (() => {
         }
     }
 
+    // Buscar TODOS los usuarios globales (Admin Global Stats)
+    async function getAllGlobalUsers() {
+        try {
+            const snap = await fetchWithTimeout(db.ref('globalUsers'), 7000);
+            const val = snap.val();
+            return val ? Object.values(val) : [];
+        } catch (e) {
+            console.warn('Error fetching all global users:', e);
+            return [];
+        }
+    }
+
     // Verificar si existen usuarios globales registrados
     async function hasGlobalUsers() {
         try {
@@ -518,7 +530,7 @@ const DB = (() => {
         onChanges, offChanges,
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
-        addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers,
+        addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,
         migrateOldData, addApplicant, getApplicants,
         // Veraz
         addVerazReport, getVerazReportsByDNI

@@ -75,7 +75,36 @@ window.DashboardModule = (() => {
             // Wiring de toggles después del mount
             setTimeout(() => _wireAnnouncementToggles(), 100);
 
+            let globalStatsHTML = '';
+            if (Auth.getRole() === 'owner') {
+                try {
+                    const allGlobal = await DB.getAllGlobalUsers();
+                    const globalOwners = allGlobal.filter(u => u.role === 'owner').length;
+                    const globalDrivers = allGlobal.filter(u => u.role === 'driver').length;
+                    
+                    globalStatsHTML = `
+                    <div class="dashboard-section" style="margin-bottom: var(--space-6);">
+                        <div class="dashboard-section-title" style="color: var(--color-primary); display:flex; align-items:center; gap:8px;">
+                            <span style="font-size: 1.5rem;">🛡️</span> <span style="font-weight:900; letter-spacing: -0.5px;">ESTADÍSTICA GLOBAL ADMIN</span>
+                        </div>
+                        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                            <div class="stat-card" style="border: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                                <div class="stat-icon" style="background: #3b82f6; color: white;">👤</div>
+                                <div><div class="stat-value" style="color: #3b82f6; font-size: 2.2rem; font-weight: 900;">${globalOwners}</div><div class="stat-label" style="font-weight: 700; color:var(--text-secondary);">Total Dueños Registrados</div></div>
+                            </div>
+                            <div class="stat-card" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                                <div class="stat-icon" style="background: #10b981; color: white;">👤</div>
+                                <div><div class="stat-value" style="color: #10b981; font-size: 2.2rem; font-weight: 900;">${globalDrivers}</div><div class="stat-label" style="font-weight: 700; color:var(--text-secondary);">Total Choferes Registrados</div></div>
+                            </div>
+                        </div>
+                    </div>`;
+                } catch(e) {
+                    console.warn('⚠️ Error Load Global Stats:', e);
+                }
+            }
+
             return `
+            ${globalStatsHTML}
             <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
                 <div>
                     <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
