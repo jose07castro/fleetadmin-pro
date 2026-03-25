@@ -123,6 +123,7 @@ const Components = (() => {
                 { icon: '📊', label: 'Panel', route: 'dashboard' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '🪪', label: 'Postular', route: 'apply' },
                 { icon: '⚙️', label: 'Config', route: 'settings' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
@@ -130,11 +131,14 @@ const Components = (() => {
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🛢️', label: 'Aceite', route: 'oil' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '🪪', label: 'Postular', route: 'apply' },
                 { icon: '⚙️', label: 'Config', route: 'settings' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             mechanic: [
                 { icon: '🔧', label: 'Taller', route: 'maintenance' },
+                { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '🪪', label: 'Postular', route: 'apply' },
                 { icon: '⚙️', label: 'Config', route: 'settings' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ]
