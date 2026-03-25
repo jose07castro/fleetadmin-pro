@@ -108,6 +108,8 @@ const I18n = (() => {
             // Turnos
             shift_start: 'Iniciar Turno',
             shift_end: 'Finalizar Turno',
+            label_turno_finalizado: 'Turno Finalizado',
+            shift_error: 'Error iniciando el turno',
             shift_active: 'Turno Activo',
             shift_inactive: 'Sin turno activo',
             shift_duration: 'Duración',
@@ -411,6 +413,8 @@ const I18n = (() => {
 
             shift_start: 'Start Shift',
             shift_end: 'End Shift',
+            label_turno_finalizado: 'Shift Ended',
+            shift_error: 'Error starting shift',
             shift_active: 'Active Shift',
             shift_inactive: 'No active shift',
             shift_duration: 'Duration',
@@ -708,6 +712,7 @@ const I18n = (() => {
 
             shift_start: 'Iniciar Turno',
             shift_end: 'Finalizar Turno',
+            label_turno_finalizado: 'Turno Finalizado',
             shift_active: 'Turno Ativo',
             shift_inactive: 'Sem turno ativo',
             shift_duration: 'Duração',

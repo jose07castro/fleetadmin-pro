@@ -302,7 +302,7 @@ window.DashboardModule = (() => {
                 text: `Turno de <strong>${driverName}</strong>`,
                 subtext: vehicleName ? `🚗 ${vehicleName} | Inicio: ${startTime24} hs` : `Inicio: ${startTime24} hs`,
                 badge: s.status === 'active' ? 'badge-success' : 'badge-info',
-                badgeText: s.status === 'active' ? I18n.t('shift_active') : I18n.t('shift_end')
+                badgeText: s.status === 'active' ? I18n.t('shift_active') : I18n.t('label_turno_finalizado')
             });
         }
 
