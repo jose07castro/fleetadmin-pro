@@ -88,11 +88,11 @@ window.DashboardModule = (() => {
                             <span style="font-size: 1.5rem;">🛡️</span> <span style="font-weight:900; letter-spacing: -0.5px;">ESTADÍSTICA GLOBAL ADMIN</span>
                         </div>
                         <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                            <div class="stat-card" style="border: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                            <div class="stat-card" style="border: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); cursor:pointer;" onclick="DashboardModule.showGlobalUsers('owner')">
                                 <div class="stat-icon" style="background: #3b82f6; color: white;">👤</div>
                                 <div><div class="stat-value" style="color: #3b82f6; font-size: 2.2rem; font-weight: 900;">${globalOwners}</div><div class="stat-label" style="font-weight: 700; color:var(--text-secondary);">Total Dueños Registrados</div></div>
                             </div>
-                            <div class="stat-card" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                            <div class="stat-card" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.05); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); cursor:pointer;" onclick="DashboardModule.showGlobalUsers('driver')">
                                 <div class="stat-icon" style="background: #10b981; color: white;">👤</div>
                                 <div><div class="stat-value" style="color: #10b981; font-size: 2.2rem; font-weight: 900;">${globalDrivers}</div><div class="stat-label" style="font-weight: 700; color:var(--text-secondary);">Total Choferes Registrados</div></div>
                             </div>
@@ -866,5 +866,110 @@ window.DashboardModule = (() => {
         }
     }
 
-    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner };
+    async function showGlobalUsers(roleFilter) {
+        if (Auth.getRole() !== 'owner') {
+            Components.showToast('Acceso denegado. Solo administradores.', 'danger');
+            Router.navigate('dashboard');
+            return;
+        }
+
+        try {
+            const allGlobal = await DB.getAllGlobalUsers();
+            window._currentGlobalUsers = allGlobal.filter(u => u.role === roleFilter);
+            
+            const titleIcon = roleFilter === 'owner' ? '🛡️' : '🚗';
+            const titleText = roleFilter === 'owner' ? 'Lista de Dueños' : 'Lista Choferes';
+            
+            Components.showModal(
+                `${titleIcon} ${titleText}`,
+                `
+                <div style="margin-bottom:var(--space-4);">
+                    <input type="text" id="globalUsersSearch" class="form-input" placeholder="🔍 Buscar por Nombre, DNI/CUIT o Email..." onkeyup="DashboardModule.filterGlobalUsers()" style="width:100%; font-size:16px;">
+                </div>
+                <div id="globalUsersListContainer" style="max-height: 65vh; overflow-y: auto; background:var(--bg-primary); border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                    ${DashboardModule.renderGlobalUsersList(window._currentGlobalUsers)}
+                </div>
+                `
+            );
+        } catch(e) {
+            console.error('Error load global users', e);
+            Components.showToast('Error al cargar la lista.', 'danger');
+        }
+    }
+
+    function filterGlobalUsers() {
+        const query = (document.getElementById('globalUsersSearch')?.value || '').toLowerCase();
+        const users = window._currentGlobalUsers || [];
+        const filtered = users.filter(u => {
+            const name = (u.name || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            const dni = (u.dni || u.cuit || u.licenseNumber || '').toLowerCase();
+            return name.includes(query) || dni.includes(query) || email.includes(query);
+        });
+        const container = document.getElementById('globalUsersListContainer');
+        if (container) {
+            container.innerHTML = DashboardModule.renderGlobalUsersList(filtered);
+        }
+    }
+
+    function renderGlobalUsersList(users) {
+        if (!users || users.length === 0) {
+            return '<div style="padding:var(--space-4); text-align:center; color:var(--text-secondary);">No se encontraron usuarios en la búsqueda.</div>';
+        }
+        
+        let html = '<div style="width:100%; overflow-x:auto;"><table style="width:100%; min-width:600px; border-collapse:collapse; background:var(--bg-secondary);">';
+        html += '<thead style="background:var(--bg-tertiary); border-bottom:2px solid var(--border-color);">';
+        html += '<tr><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">USUARIO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">DATOS CONTACTO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">REGISTRO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">ESTADO</th></tr>';
+        html += '</thead><tbody>';
+        
+        for (const u of users) {
+             const safeName = Components.escapeHTML(u.name || 'Sin Nombre');
+             const safePhone = Components.escapeHTML(u.whatsapp || u.phone || '');
+             const safeEmail = Components.escapeHTML(u.email || '');
+             const wpLink = safePhone ? `https://wa.me/${safePhone.replace(/\\D/g,'')}` : '#';
+             
+             const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Desconocida';
+             const status = u.status === 'inactive' ? '<span class="badge badge-warning" style="font-size:11px;">Inactivo</span>' : '<span class="badge badge-success" style="font-size:11px;">Activo</span>';
+
+             let contactHtml = '';
+             if (safePhone) {
+                 contactHtml += `<a href="${wpLink}" target="_blank" class="btn btn-sm" style="background:#25D366; color:white; padding:4px 8px; border-radius:4px; display:inline-flex; align-items:center; gap:4px; text-decoration:none; font-size:11px; margin-bottom:4px;">💬 ${safePhone}</a><br>`;
+             }
+             if (safeEmail) {
+                 contactHtml += `<div style="font-size:11px; color:var(--text-secondary);">📧 ${safeEmail}</div>`;
+             }
+             if (!safePhone && !safeEmail) {
+                 contactHtml = '<span style="color:var(--text-tertiary); font-size:11px;">Sin datos</span>';
+             }
+
+             html += `
+             <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding:12px;">
+                    <div style="font-weight:700; color:var(--text-primary); font-size:14px;">${safeName}</div>
+                    ${(u.dni || u.cuit) ? `<div style="font-size:11px; color:var(--text-secondary);">DNI/CUIT: ${Components.escapeHTML(u.dni || u.cuit)}</div>` : ''}
+                </td>
+                <td style="padding:12px;">${contactHtml}</td>
+                <td style="padding:12px; font-size:12px; color:var(--text-secondary);">${dateStr}</td>
+                <td style="padding:12px;">${status}</td>
+             </tr>`;
+        }
+        html += '</tbody></table></div>';
+
+        // Add CSS to make table responsive falling back to card layout on small screens
+        html = `
+        <style>
+            @media (max-width: 640px) {
+                #globalUsersListContainer table, #globalUsersListContainer thead, #globalUsersListContainer tbody, #globalUsersListContainer th, #globalUsersListContainer td, #globalUsersListContainer tr { display: block; width: 100% !important; min-width: 0 !important; }
+                #globalUsersListContainer thead tr { position: absolute; top: -9999px; left: -9999px; }
+                #globalUsersListContainer tr { border: 1px solid var(--border-color); margin-bottom: 12px; border-radius: 8px; background: var(--bg-secondary); padding: 8px; }
+                #globalUsersListContainer td { border: none !important; position: relative; padding-left: 0 !important; padding-right: 0 !important; padding-top: 8px !important; text-align: left; }
+                #globalUsersListContainer td:not(:last-child) { border-bottom: 1px dashed var(--border-color) !important; padding-bottom: 8px !important; }
+            }
+        </style>
+        ` + html;
+
+        return html;
+    }
+
+    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList };
 })();
