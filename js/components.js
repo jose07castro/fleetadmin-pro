@@ -92,6 +92,8 @@ const Components = (() => {
                 { icon: '🚗', label: 'nav_vehicles', route: 'vehicles', section: 'ops' },
                 { icon: '📝', label: 'Candidatos', route: 'applicants', section: 'ops' },
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
+                { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
+                { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' },
                 { icon: '🔧', label: 'nav_maintenance', route: 'maintenance', section: 'mgmt' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'mgmt' },
                 { icon: '📡', label: 'nav_gps', route: 'gps', section: 'mgmt' },
@@ -105,6 +107,8 @@ const Components = (() => {
             ],
             mechanic: [
                 { icon: '🔧', label: 'nav_maintenance', route: 'maintenance', section: 'ops' },
+                { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
+                { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' },
                 { icon: '⚙️', label: 'nav_settings', route: 'settings', section: 'mgmt' },
             ]
         };
