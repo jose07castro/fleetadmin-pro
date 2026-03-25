@@ -45,20 +45,32 @@ const Components = (() => {
                 </div>
                 <nav class="sidebar-nav">
                     <div class="nav-section-title">${I18n.t('nav_operations')}</div>
-                    ${navItems.filter(n => n.section === 'ops').map(item =>
-            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')" ${item.route === 'apply' ? 'style="display:flex !important; visibility:visible !important; opacity:1 !important;"' : ''}>
+                    ${navItems.filter(n => n.section === 'ops').map(item => {
+                        if (item.route === 'apply') {
+                            return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
+                                <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                                <span>${I18n.t(item.label)}</span>
+                            </div>`;
+                        }
+                        return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
                             <span class="nav-icon">${item.icon}</span>
                             <span>${I18n.t(item.label)}</span>
-                        </div>`
-        ).join('')}
+                        </div>`;
+                    }).join('')}
 
                     <div class="nav-section-title">${I18n.t('nav_management')}</div>
-                    ${navItems.filter(n => n.section === 'mgmt').map(item =>
-            `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')" ${item.route === 'apply' ? 'style="display:flex !important; visibility:visible !important; opacity:1 !important;"' : ''}>
+                    ${navItems.filter(n => n.section === 'mgmt').map(item => {
+                        if (item.route === 'apply') {
+                            return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
+                                <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                                <span>${I18n.t(item.label)}</span>
+                            </div>`;
+                        }
+                        return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
                             <span class="nav-icon">${item.icon}</span>
                             <span>${I18n.t(item.label)}</span>
-                        </div>`
-        ).join('')}
+                        </div>`;
+                    }).join('')}
                     ${role === 'owner' ? `<div class="nav-item" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); SettingsModule.showReportModal()">
                             <span class="nav-icon">🚩</span>
                             <span>Veraz de Conductores</span>
