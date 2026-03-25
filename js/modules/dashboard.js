@@ -875,7 +875,36 @@ window.DashboardModule = (() => {
 
         try {
             const allGlobal = await DB.getAllGlobalUsers();
-            window._currentGlobalUsers = allGlobal.filter(u => u.role === roleFilter);
+            const localUsers = await DB.getAll('users');
+            const currentFleetId = Auth.getFleetId();
+            
+            // Map local users para tener acceso al ID real (legajo) y fotos de licencia
+            const localMap = {};
+            localUsers.forEach(lu => {
+                if (lu.globalId) localMap[lu.globalId] = lu;
+            });
+
+            const enrichedUsers = allGlobal.filter(u => u.role === roleFilter).map(gu => {
+                let enriched = { ...gu };
+                if (localMap[gu.id]) {
+                    enriched = { ...gu, ...localMap[gu.id], localId: localMap[gu.id].id, isLocal: true };
+                } else {
+                    enriched.isLocal = gu.fleetId === currentFleetId;
+                }
+                
+                // Semáforo Logic (Estado Perfil)
+                const hasDni = !!(enriched.dni || enriched.cuit || enriched.licenseNumber);
+                const hasPhone = !!(enriched.whatsapp || enriched.phone);
+                const hasLicense = !!(enriched.licenseFrontPhoto || enriched.licenseBackPhoto);
+                
+                enriched.isProfileComplete = hasDni && hasPhone && hasLicense;
+                return enriched;
+            });
+
+            // Ordenar por fecha de más reciente a más antiguo
+            enrichedUsers.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+            window._currentGlobalUsers = enrichedUsers;
             
             const titleIcon = roleFilter === 'owner' ? '🛡️' : '🚗';
             const titleText = roleFilter === 'owner' ? 'Lista de Dueños' : 'Lista Choferes';
@@ -884,9 +913,10 @@ window.DashboardModule = (() => {
                 `${titleIcon} ${titleText}`,
                 `
                 <div style="margin-bottom:var(--space-4);">
-                    <input type="text" id="globalUsersSearch" class="form-input" placeholder="🔍 Buscar por Nombre, DNI/CUIT o Email..." onkeyup="DashboardModule.filterGlobalUsers()" style="width:100%; font-size:16px;">
+                    <input type="text" id="globalUsersSearch" class="form-input" placeholder="🔍 Buscar por Nombre, DNI/CUIT o Email..." onkeyup="DashboardModule.filterGlobalUsers()" style="width:100%; font-size:16px; border:2px solid var(--border-color); border-radius:8px;">
                 </div>
-                <div id="globalUsersListContainer" style="max-height: 65vh; overflow-y: auto; background:var(--bg-primary); border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                <!-- Contenedor con scroll interno para la tabla sticky -->
+                <div id="globalUsersListContainer" style="max-height: 65vh; overflow-y: auto; background:var(--bg-primary); border-radius:var(--radius-lg); border: 1px solid var(--border-color); box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); -webkit-overflow-scrolling: touch;">
                     ${DashboardModule.renderGlobalUsersList(window._currentGlobalUsers)}
                 </div>
                 `
@@ -914,56 +944,95 @@ window.DashboardModule = (() => {
 
     function renderGlobalUsersList(users) {
         if (!users || users.length === 0) {
-            return '<div style="padding:var(--space-4); text-align:center; color:var(--text-secondary);">No se encontraron usuarios en la búsqueda.</div>';
+            return '<div style="padding:var(--space-6); text-align:center; color:var(--text-secondary); font-size:16px; font-weight:600;">No se encontraron usuarios en la búsqueda.</div>';
         }
         
-        let html = '<div style="width:100%; overflow-x:auto;"><table style="width:100%; min-width:600px; border-collapse:collapse; background:var(--bg-secondary);">';
-        html += '<thead style="background:var(--bg-tertiary); border-bottom:2px solid var(--border-color);">';
-        html += '<tr><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">USUARIO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">DATOS CONTACTO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">REGISTRO</th><th style="padding:12px; text-align:left; font-size:12px; color:var(--text-secondary);">ESTADO</th></tr>';
-        html += '</thead><tbody>';
+        // El contenedor es el div scrolleable anterior, acá dibujamos la tabla que abarca el 100%
+        let html = '<table class="dashboard-table" style="width:100%; min-width:850px; border-collapse:collapse; background:var(--bg-secondary); text-align:left;">';
+        
+        // THEAD: Sticky
+        html += '<thead style="background:var(--bg-tertiary); position:sticky; top:0; z-index:10; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">';
+        html += '<tr>';
+        html += '<th style="padding:16px 12px; font-size:12px; font-weight:800; color:var(--text-secondary);">USUARIO</th>';
+        html += '<th style="padding:16px 12px; font-size:12px; font-weight:800; color:var(--text-secondary); text-align:center;">ESTADO PERFIL</th>';
+        html += '<th style="padding:16px 12px; font-size:12px; font-weight:800; color:var(--text-secondary);">CONTACTO</th>';
+        html += '<th style="padding:16px 12px; font-size:12px; font-weight:800; color:var(--text-secondary);">FECHA REGISTRO</th>';
+        html += '<th style="padding:16px 12px; font-size:12px; font-weight:800; color:var(--text-secondary); text-align:right;">ACCIONES (LEG. COMPLETO)</th>';
+        html += '</tr></thead><tbody style="divide-y: 1px solid var(--border-color);">';
         
         for (const u of users) {
              const safeName = Components.escapeHTML(u.name || 'Sin Nombre');
              const safePhone = Components.escapeHTML(u.whatsapp || u.phone || '');
              const safeEmail = Components.escapeHTML(u.email || '');
-             const wpLink = safePhone ? `https://wa.me/${safePhone.replace(/\\D/g,'')}` : '#';
+             const wpLink = safePhone ? `https://wa.me/${safePhone.replace(/\D/g,'')}` : '#';
              
-             const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Desconocida';
-             const status = u.status === 'inactive' ? '<span class="badge badge-warning" style="font-size:11px;">Inactivo</span>' : '<span class="badge badge-success" style="font-size:11px;">Activo</span>';
+             const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+             
+             // Semáforo
+             let profileStatusHtml = '';
+             if (u.isProfileComplete) {
+                 profileStatusHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:6px;"><div style="width:18px; height:18px; border-radius:50%; background:#10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.6); border:2px solid white;"></div><span style="font-size:11px; color:#10b981; font-weight:800;">COMPLETADO</span></div>`;
+             } else {
+                 profileStatusHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:6px;"><div style="width:18px; height:18px; border-radius:50%; background:#ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); border:2px solid white;"></div><span style="font-size:11px; color:#ef4444; font-weight:800;">PENDIENTE</span></div>`;
+             }
 
+             // Datos de contacto
              let contactHtml = '';
              if (safePhone) {
-                 contactHtml += `<a href="${wpLink}" target="_blank" class="btn btn-sm" style="background:#25D366; color:white; padding:4px 8px; border-radius:4px; display:inline-flex; align-items:center; gap:4px; text-decoration:none; font-size:11px; margin-bottom:4px;">💬 ${safePhone}</a><br>`;
+                 contactHtml += `<div style="font-size:13px; color:var(--text-primary); font-weight:700;">📞 ${safePhone}</div>`;
+             } else {
+                 contactHtml += `<div style="font-size:13px; color:var(--text-tertiary); font-style:italic;">Sin número celular</div>`;
              }
              if (safeEmail) {
-                 contactHtml += `<div style="font-size:11px; color:var(--text-secondary);">📧 ${safeEmail}</div>`;
+                 contactHtml += `<div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">📧 ${safeEmail}</div>`;
              }
-             if (!safePhone && !safeEmail) {
-                 contactHtml = '<span style="color:var(--text-tertiary); font-size:11px;">Sin datos</span>';
+
+             // Acciones directas
+             let actionsHtml = '';
+             if (safePhone) {
+                 actionsHtml += `<a href="${wpLink}" target="_blank" class="btn btn-sm" style="background:#25D366; color:white; padding:8px 12px; border-radius:8px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-size:13px; font-weight:800; box-shadow:0 2px 4px rgba(37,211,102,0.3);"><span style="font-size:16px;">💬</span> WhatsApp</a>`;
+             }
+             if (u.localId) {
+                 actionsHtml += `<button onclick="Components.closeModal(); DashboardModule.editUser('${u.localId}')" class="btn btn-sm btn-primary" style="padding:8px 12px; border-radius:8px; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:800; margin-left:8px; box-shadow:0 2px 4px rgba(59,130,246,0.3);">📄 Ver Detalle</button>`;
+             } else {
+                 actionsHtml += `<span class="badge badge-warning" style="margin-left:8px; font-size:11px;">Externo</span>`;
              }
 
              html += `
-             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding:12px;">
-                    <div style="font-weight:700; color:var(--text-primary); font-size:14px;">${safeName}</div>
-                    ${(u.dni || u.cuit) ? `<div style="font-size:11px; color:var(--text-secondary);">DNI/CUIT: ${Components.escapeHTML(u.dni || u.cuit)}</div>` : ''}
+             <tr style="border-bottom: 1px solid var(--border-color); transition: background 0.2s;">
+                <td style="padding:16px 12px;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        ${u.profilePhoto 
+                            ? `<img src="${u.profilePhoto}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--border-color);">` 
+                            : `<div style="width:40px; height:40px; border-radius:50%; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--text-secondary); border:2px solid var(--border-color);">${u.name[0]?.toUpperCase()||'?'}</div>`}
+                        <div>
+                            <div style="font-weight:900; color:var(--text-primary); font-size:15px;">${safeName}</div>
+                            ${(u.dni || u.cuit || u.licenseNumber) ? `<div style="font-size:12px; color:var(--text-secondary); margin-top:2px; font-weight:600;">DNI/Id: ${Components.escapeHTML(u.dni || u.cuit || u.licenseNumber)}</div>` : ''}
+                        </div>
+                    </div>
                 </td>
-                <td style="padding:12px;">${contactHtml}</td>
-                <td style="padding:12px; font-size:12px; color:var(--text-secondary);">${dateStr}</td>
-                <td style="padding:12px;">${status}</td>
+                <td style="padding:16px 12px; text-align:center;">${profileStatusHtml}</td>
+                <td style="padding:16px 12px;">${contactHtml}</td>
+                <td style="padding:16px 12px; font-size:13px; color:var(--text-secondary); font-weight:600;">${dateStr}</td>
+                <td style="padding:16px 12px; text-align:right;">
+                    <div style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap;">${actionsHtml}</div>
+                </td>
              </tr>`;
         }
-        html += '</tbody></table></div>';
+        html += '</tbody></table>';
 
-        // Add CSS to make table responsive falling back to card layout on small screens
+        // CSS Fallback Responsive Celular: Convertir filas en tarjetas
         html = `
         <style>
-            @media (max-width: 640px) {
-                #globalUsersListContainer table, #globalUsersListContainer thead, #globalUsersListContainer tbody, #globalUsersListContainer th, #globalUsersListContainer td, #globalUsersListContainer tr { display: block; width: 100% !important; min-width: 0 !important; }
-                #globalUsersListContainer thead tr { position: absolute; top: -9999px; left: -9999px; }
-                #globalUsersListContainer tr { border: 1px solid var(--border-color); margin-bottom: 12px; border-radius: 8px; background: var(--bg-secondary); padding: 8px; }
-                #globalUsersListContainer td { border: none !important; position: relative; padding-left: 0 !important; padding-right: 0 !important; padding-top: 8px !important; text-align: left; }
-                #globalUsersListContainer td:not(:last-child) { border-bottom: 1px dashed var(--border-color) !important; padding-bottom: 8px !important; }
+            @media (max-width: 850px) {
+                #globalUsersListContainer .dashboard-table, #globalUsersListContainer thead, #globalUsersListContainer tbody, #globalUsersListContainer th, #globalUsersListContainer td, #globalUsersListContainer tr { display: block; width: 100% !important; min-width: 0 !important; }
+                #globalUsersListContainer thead { position: absolute; top: -9999px; left: -9999px; }
+                #globalUsersListContainer tr { border: 2px solid var(--border-color); margin-bottom: 20px; border-radius: 16px; background: var(--bg-primary); padding: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+                #globalUsersListContainer td { border: none !important; position: relative; padding: 10px 0 !important; text-align: left !important; }
+                #globalUsersListContainer td:not(:last-child) { border-bottom: 1px dashed var(--border-color) !important; padding-bottom: 14px !important; margin-bottom: 6px; }
+                #globalUsersListContainer td div { text-align: left; }
+                #globalUsersListContainer td:nth-child(2) div { align-items: flex-start !important; }
+                #globalUsersListContainer td:nth-child(5) div { justify-content: flex-start !important; margin-top:4px; }
             }
         </style>
         ` + html;
