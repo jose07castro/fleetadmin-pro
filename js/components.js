@@ -103,6 +103,7 @@ const Components = (() => {
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'ops' },
                 { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
+                { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' },
                 { icon: '⚙️', label: 'nav_settings', route: 'settings', section: 'mgmt' },
             ],
             mechanic: [
