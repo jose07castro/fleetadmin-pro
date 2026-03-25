@@ -1507,13 +1507,14 @@
 
     .community-main-col, .community-feed {
         max-width: 100%;
+        width: 100%;
         overflow-x: hidden;
         box-sizing: border-box;
     }
 
     .community-post, .community-sponsor-card {
         width: 100% !important;
-        max-width: 100% !important;
+        max-width: calc(100vw - 32px) !important;
         min-width: 0 !important;
         box-sizing: border-box;
         overflow-x: hidden;
@@ -1521,10 +1522,32 @@
 
     .community-sponsors-col {
         min-width: 0 !important;
+        width: 100%;
         max-width: 100%;
         position: static;
         margin-top: var(--space-4);
         box-sizing: border-box;
+    }
+
+    /* Ajuste Tipográfico Responsivo y Truncado de Nombres */
+    .sponsor-ad-name {
+        font-size: var(--font-size-sm) !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+    .sponsor-ad-location, .sponsor-ad-phone {
+        font-size: var(--font-size-xs) !important;
+        word-break: break-all;
+    }
+
+    .community-post-author {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: calc(100vw - 120px);
     }
 
     .community-header {
