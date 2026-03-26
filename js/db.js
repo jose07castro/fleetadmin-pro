@@ -228,6 +228,56 @@ const DB = (() => {
         } catch(e) { console.warn('getRecentCompletedShifts error:', e); return []; }
     }
 
+    // --- Separación de Fotos (Anti-Lag de Base64) ---
+    async function migrateShiftPhotos() {
+        try {
+            const ref = db.ref(fleetPath('shifts'));
+            const snap = await ref.once('value');
+            const shifts = snap.val();
+            if (!shifts) return;
+
+            const updates = {};
+            const photoUpdates = {};
+            let count = 0;
+
+            for (const [id, s] of Object.entries(shifts)) {
+                if (s.startOdometerPhoto && s.startOdometerPhoto.length > 500) {
+                    photoUpdates[`${id}/startOdometerPhoto`] = s.startOdometerPhoto;
+                    updates[`${id}/startOdometerPhoto`] = 'migrated';
+                    count++;
+                }
+                if (s.endOdometerPhoto && s.endOdometerPhoto.length > 500) {
+                    photoUpdates[`${id}/endOdometerPhoto`] = s.endOdometerPhoto;
+                    updates[`${id}/endOdometerPhoto`] = 'migrated';
+                    count++;
+                }
+                if (s.earningsPhoto && s.earningsPhoto.length > 500) {
+                    photoUpdates[`${id}/earningsPhoto`] = s.earningsPhoto;
+                    updates[`${id}/earningsPhoto`] = 'migrated';
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                console.log(`📸 Migrando ${count} fotos de turnos a colección separada para acelerar el Login...`);
+                await db.ref(fleetPath('shift_photos')).update(photoUpdates);
+                await ref.update(updates);
+                console.log('✅ Migración de fotos completada.');
+            }
+        } catch (e) {
+            console.warn('Error en migrateShiftPhotos:', e);
+        }
+    }
+
+    async function getShiftPhoto(shiftId, photoType) {
+        try {
+            const snap = await db.ref(fleetPath(`shift_photos/${shiftId}/${photoType}`)).once('value');
+            return snap.val();
+        } catch (e) {
+            return null;
+        }
+    }
+
     // Buscar usuario global por nombre, pin y rol
     // Con retry + cache para evitar fallos en cold start
     // THROWS on connection failure — caller must handle
@@ -570,7 +620,7 @@ const DB = (() => {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, seed, exportAll, importAll, resetAll,
         onChanges, offChanges, notifyAdmins,
-        getActiveShifts, getRecentCompletedShifts,
+        getActiveShifts, getRecentCompletedShifts, migrateShiftPhotos, getShiftPhoto,
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,

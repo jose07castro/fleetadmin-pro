@@ -141,6 +141,13 @@ const App = (() => {
             });
         });
 
+        // Background Cleanup: Migrar fotos base64 viejas (silencioso, solo admin)
+        if (typeof Auth !== 'undefined' && Auth.isOwner()) {
+            setTimeout(() => {
+                DB.migrateShiftPhotos().catch(e => console.warn('Photo migration error:', e));
+            }, 5000); // 5 segundos después para no entorpecer la carga inicial
+        }
+
         console.log('📡 Sincronización en tiempo real activada');
     }
 

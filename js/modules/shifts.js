@@ -528,7 +528,7 @@ const ShiftsModule = (() => {
 
         // --- "Luz de Check Engine": envolver la escritura en try/catch ---
         try {
-            await DB.add('shifts', {
+            const shiftIdRef = await DB.add('shifts', {
                 vehicleId,
                 vehicleName,
                 driverId,
@@ -536,10 +536,17 @@ const ShiftsModule = (() => {
                 shiftType: selectedShiftType,
                 startTime: new Date().toISOString(),
                 startOdometer: odometerKm,
-                startOdometerPhoto: photo,
+                startOdometerPhoto: photo ? 'migrated' : null,
                 status: 'active',
                 earnings: 0
             });
+
+            // Guardar foto separada
+            if (photo) {
+                try {
+                    firebase.database().ref(DB.getFleet() + '/shift_photos/' + shiftIdRef + '/startOdometerPhoto').set(photo);
+                } catch(e) { console.warn('No se pudo guardar la foto de inicio', e); }
+            }
 
             // Reset selector
             selectedShiftType = 'day';
@@ -652,9 +659,9 @@ const ShiftsModule = (() => {
         try {
             shift.endTime = new Date().toISOString();
             shift.endOdometer = odometerKm;
-            shift.endOdometerPhoto = odoPhoto;
+            shift.endOdometerPhoto = odoPhoto ? 'migrated' : null;
             shift.earnings = earnings;
-            shift.earningsPhoto = earningsPhoto;
+            shift.earningsPhoto = earningsPhoto ? 'migrated' : null;
             shift.driverName = Auth.getUserName();
             // Persistir nombre del vehículo si no existe aún
             if (!shift.vehicleName && vehicle) {
@@ -662,6 +669,15 @@ const ShiftsModule = (() => {
             }
             shift.status = 'completed';
             await DB.put('shifts', shift);
+
+            // Guardar fotos separadas para que no alenten el Login
+            if (odoPhoto || earningsPhoto) {
+                try {
+                    const photosNode = firebase.database().ref(DB.getFleet() + '/shift_photos/' + shift.id);
+                    if (odoPhoto) photosNode.child('endOdometerPhoto').set(odoPhoto);
+                    if (earningsPhoto) photosNode.child('earningsPhoto').set(earningsPhoto);
+                } catch(e) { console.warn('Error guardando fotos en background', e); }
+            }
 
             // Actualizar odómetro del vehículo
             if (vehicle) {
@@ -910,14 +926,27 @@ const ShiftsModule = (() => {
 
     // --- Previsualizar foto de ganancias ---
     async function previewPhoto(shiftId) {
+        Components.showToast('Cargando imagen...', 'info');
         const shift = await DB.get('shifts', shiftId);
-        if (!shift || !shift.earningsPhoto) {
+        
+        if (!shift || (!shift.earningsPhoto && !shift.startOdometerPhoto && !shift.endOdometerPhoto)) {
             Components.showToast('No hay foto disponible', 'warning');
             return;
         }
+
+        let photoB64 = shift.earningsPhoto;
+        
+        if (photoB64 === 'migrated') {
+            photoB64 = await DB.getShiftPhoto(shiftId, 'earningsPhoto');
+            if (!photoB64) {
+                Components.showToast('La foto ya no está disponible o no se guardó correctamente', 'danger');
+                return;
+            }
+        }
+
         Components.showModal(
             '📷 ' + I18n.t('shift_earnings_photo'),
-            `<img src="${shift.earningsPhoto}" style="width:100%; border-radius:8px; max-height:80vh; object-fit:contain;">`
+            `<img src="${photoB64}" style="width:100%; border-radius:8px; max-height:80vh; object-fit:contain;">`
         );
     }
 
