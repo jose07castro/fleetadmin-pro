@@ -132,7 +132,13 @@ const DB = (() => {
     }
 
     async function remove(storeName, id) {
+        // TRABA DE SEGURIDAD: Evita borrar la colección entera si el ID viene vacío
+        if (!id || String(id).trim() === '' || id === 'undefined' || id === 'null') {
+            console.error(`🚨 ERROR CRÍTICO PREVENIDO: Intento de borrar en [${storeName}] con ID vacío/inválido. Múltiple pérdida de datos evitada.`);
+            return false;
+        }
         await db.ref(`${fleetPath(storeName)}/${id}`).remove();
+        return true;
     }
 
     async function clearStore(storeName) {
