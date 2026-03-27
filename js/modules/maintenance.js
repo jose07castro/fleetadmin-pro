@@ -135,10 +135,24 @@ const MaintenanceModule = (() => {
                         <button class="btn-mantenimiento btn-aceite ${oilVencido ? 'alerta-vencido-colores' : ''}" onclick="OilModule.registerOilChange('${vehicle.id}')">
                             ${oilVencido ? '⚠️ SERVICE ACEITE VENCIDO' : '🛢️ Registrar Cambio de Aceite'}
                         </button>
-                        ${oilVencido ? `
-                        <span class="texto-peligro-estatico">
-                            ¡OJO! Te pasaste por ${Units.formatDistance(diffOdo)}
-                        </span>
+                        
+                        ${vehicle.nextOilChangeKm ? `
+                        <div class="info-aceite-detalle">
+                            <div class="alerta-km ${oilVencido ? 'texto-peligro-estatico' : ''}">
+                                ${oilVencido ? '⚠️ VENCIDO POR:' : 'Faltan:'} ${Units.formatDistance(Math.abs(diffOdo))}
+                            </div>
+                            
+                            ${vehicle.ultimoAceiteTipo || vehicle.ultimoAceiteLitros ? `
+                            <div class="datos-tecnicos">
+                                <small>Último: ${vehicle.ultimoAceiteTipo || 'S/D'} (${vehicle.ultimoAceiteLitros}L)</small>
+                                <div class="iconos-filtros">
+                                    ${vehicle.filtroAceite ? '<span>🛢️ Aceite</span>' : ''}
+                                    ${vehicle.filtroAire ? '<span>💨 Aire</span>' : ''}
+                                    ${vehicle.filtroHabitaculo ? '<span>❄️ Habitáculo</span>' : ''}
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
                         ` : ''}
                     </div>
                 ` : ''}
@@ -797,6 +811,11 @@ const OilModule = (() => {
         // Si es cambio completo, guardar nextOilChangeKm en el vehículo
         if (isChange && nextChangeKmInput && vehicle) {
             vehicle.nextOilChangeKm = Units.toKm(nextChangeKmInput);
+            vehicle.ultimoAceiteTipo = logData.oilType || '';
+            vehicle.ultimoAceiteLitros = logData.quantity || 0;
+            vehicle.filtroAceite = logData.filterOil || false;
+            vehicle.filtroAire = logData.filterAir || false;
+            vehicle.filtroHabitaculo = logData.filterCabin || false;
             if (updateOdometer && odometerKm !== null && odometerKm > (vehicle.currentOdometer || 0)) {
                 vehicle.currentOdometer = odometerKm;
             } else if (updateOdometer && odometerKm !== null && odometerKm < (vehicle.currentOdometer || 0)) {
