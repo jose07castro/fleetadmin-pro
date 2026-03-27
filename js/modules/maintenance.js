@@ -132,11 +132,11 @@ const MaintenanceModule = (() => {
                         <button class="btn-mantenimiento btn-correa" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
                             🔄 ${I18n.t('maint_belt_register')}
                         </button>
-                        <button class="btn-mantenimiento btn-aceite ${oilVencido ? 'alerta-vencido' : ''}" onclick="OilModule.registerOilChange('${vehicle.id}')">
-                            ${oilVencido ? '⚠️ SERVICE VENCIDO' : '🛢️ Registrar Cambio de Aceite'}
+                        <button class="btn-mantenimiento btn-aceite ${oilVencido ? 'alerta-vencido-colores' : ''}" onclick="OilModule.registerOilChange('${vehicle.id}')">
+                            ${oilVencido ? '⚠️ SERVICE ACEITE VENCIDO' : '🛢️ Registrar Cambio de Aceite'}
                         </button>
                         ${oilVencido ? `
-                        <span class="texto-peligro">
+                        <span class="texto-peligro-estatico">
                             ¡OJO! Te pasaste por ${Units.formatDistance(diffOdo)}
                         </span>
                         ` : ''}
