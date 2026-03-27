@@ -69,14 +69,35 @@ const ShiftsModule = (() => {
         // LAZY LOADING: Devolver esqueleto inmediatamente
         setTimeout(() => _hydratedDriverView(driverId), 50);
 
-        return `
-            <div id="shiftsContent">
-                <div style="text-align:center; padding:var(--space-8);">
-                    <div class="splash-loader-bar" style="max-width:200px; margin:0 auto;"></div>
-                    <p style="margin-top:var(--space-4); font-weight:600; color:var(--text-secondary);">Cargando tu turno...</p>
+        const cachedShiftId = localStorage.getItem('active_shift_id');
+        
+        if (cachedShiftId) {
+            // Priority 0: Instant Load
+            return `
+                <div id="shiftsContent">
+                    <div class="shift-status">
+                        <div class="stat-icon success" style="width:48px;height:48px;">🟢</div>
+                        <div style="flex:1;">
+                            <div style="font-weight:600; font-size:var(--font-size-lg);">${I18n.t('shift_active') || 'Turno Activo'}</div>
+                            <div style="color:var(--text-secondary); font-size:var(--font-size-sm);">Recuperando conexión...</div>
+                        </div>
+                    </div>
+                    <div class="shift-timer">
+                        <div class="splash-loader-bar" style="max-width:100px; margin:0 auto var(--space-4);"></div>
+                        <p style="text-align:center; color:var(--text-secondary); font-size:14px;">Sincronizando estado...</p>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        } else {
+            return `
+                <div id="shiftsContent">
+                    <div style="text-align:center; padding:var(--space-8);">
+                        <div class="splash-loader-bar" style="max-width:200px; margin:0 auto;"></div>
+                        <p style="margin-top:var(--space-4); font-weight:600; color:var(--text-secondary);">Cargando tu turno...</p>
+                    </div>
+                </div>
+            `;
+        }
     }
 
     async function _hydratedDriverView(driverId) {
@@ -85,13 +106,28 @@ const ShiftsModule = (() => {
             
             // 1. Limpiar duplicados automáticamente (ahora rápido, sin cargar todo)
             const activeShift = await cleanupDuplicateShifts(driverId);
+            const cachedShiftId = localStorage.getItem('active_shift_id');
 
             const container = document.getElementById('shiftsContent');
             if (!container) return; // El usuario cambió de pantalla
 
             if (activeShift) {
+                // Sincronización silenciosa (mantener localStorage actualizado si venía de otro lado)
+                localStorage.setItem('active_shift_id', activeShift.id);
+                localStorage.setItem('active_shift_state', 'true');
+
                 container.innerHTML = renderActiveShift(activeShift, vehicles);
                 return;
+            }
+
+            // Sync silenciosa de limpieza (ej. fue cerrado remotamente por el Admin)
+            if (cachedShiftId && !activeShift) {
+                console.log('🔄 Turno cerrado remotamente. Limpiando localStorage.');
+                localStorage.removeItem('active_shift_id');
+                localStorage.removeItem('active_shift_state');
+                if (typeof Components !== 'undefined') {
+                    Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
+                }
             }
 
             // Detectar vehículos ocupados por CUALQUIER turno activo
@@ -541,6 +577,12 @@ const ShiftsModule = (() => {
                 earnings: 0
             });
 
+            // Persistencia LocalStorage (Priority 0)
+            try {
+                localStorage.setItem('active_shift_id', shiftIdRef);
+                localStorage.setItem('active_shift_state', 'true');
+            } catch(lsErr) { console.warn('No se pudo guardar persistencia local', lsErr); }
+
             // Guardar foto separada
             if (photo) {
                 try {
@@ -669,6 +711,12 @@ const ShiftsModule = (() => {
             }
             shift.status = 'completed';
             await DB.put('shifts', shift);
+
+            // Eliminar de LocalStorage (Finalización)
+            try {
+                localStorage.removeItem('active_shift_id');
+                localStorage.removeItem('active_shift_state');
+            } catch(lsErr) {}
 
             // Guardar fotos separadas para que no alenten el Login
             if (odoPhoto || earningsPhoto) {
