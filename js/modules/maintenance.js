@@ -122,10 +122,14 @@ const MaintenanceModule = (() => {
                 </div>
 
                 ${Auth.isOwner() ? `
-                    <button class="btn btn-primary btn-sm" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')"
-                        style="margin-top:var(--space-3);">
-                        🔄 ${I18n.t('maint_belt_register')}
-                    </button>
+                    <div style="display:flex; gap:var(--space-2); margin-top:var(--space-3); flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
+                            🔄 ${I18n.t('maint_belt_register')}
+                        </button>
+                        <button class="btn btn-warning btn-sm" onclick="OilModule.registerOilChange('${vehicle.id}')">
+                            🛢️ Registrar Cambio de Aceite
+                        </button>
+                    </div>
                 ` : ''}
             </div>
         `;
@@ -827,5 +831,128 @@ const OilModule = (() => {
         }
     }
 
-    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer };
+    async function registerOilChange(vehicleId) {
+        const vehicle = await DB.get('vehicles', vehicleId);
+        if (!vehicle) return;
+
+        Components.showModal(
+            '🛢️ Registrar Cambio de Aceite',
+            `
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('veh_odometer')} (${Units.distanceLabel()})</label>
+                    <input type="number" class="form-input" id="oilModalOdometer" inputmode="numeric"
+                        value="${vehicle.currentOdometer ? Units.displayDistance(vehicle.currentOdometer) : ''}"
+                        oninput="OilModule.calcNextChange()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('oil_next_change_km')} (${Units.distanceLabel()})</label>
+                    <input type="number" class="form-input" id="oilModalNextChange" inputmode="numeric"
+                        value="${vehicle.currentOdometer ? Units.displayDistance(vehicle.currentOdometer) + 10000 : 10000}">
+                </div>
+                <div class="repair-form-grid">
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('oil_quantity')} (${Units.volumeLabel()})</label>
+                        <input type="number" class="form-input" id="oilModalQuantity" step="0.1" inputmode="decimal" placeholder="4.0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tipo de Aceite</label>
+                        <input type="text" class="form-input" id="oilModalType" placeholder="Ej: 10W-40 Sintético">
+                    </div>
+                </div>
+                
+                <div style="font-weight:600; margin-top:var(--space-3); margin-bottom:var(--space-2);">Filtros Cambiados</div>
+                <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-2);">
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilModalFilterOil"> Filtro de Aceite
+                    </label>
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilModalFilterAir"> Filtro de Aire
+                    </label>
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilModalFilterCabin"> Filtro de Habitáculo
+                    </label>
+                </div>
+                
+                <div class="form-group" style="margin-top:var(--space-3);">
+                    <label class="form-label">${I18n.t('date')}</label>
+                    <input type="date" class="form-input" id="oilModalDate" value="${new Date().toISOString().split('T')[0]}">
+                </div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="OilModule.saveOilChangeFromModal('${vehicleId}')">${I18n.t('save')}</button>
+            `
+        );
+    }
+
+    function calcNextChange() {
+        const odo = parseFloat(document.getElementById('oilModalOdometer')?.value) || 0;
+        const next = document.getElementById('oilModalNextChange');
+        if (next) {
+            next.value = odo + 10000;
+        }
+    }
+
+    async function saveOilChangeFromModal(vehicleId) {
+        const odometerInput = parseFloat(document.getElementById('oilModalOdometer')?.value);
+        const nextChangeInput = parseFloat(document.getElementById('oilModalNextChange')?.value);
+        const quantity = parseFloat(document.getElementById('oilModalQuantity')?.value);
+        const oilType = document.getElementById('oilModalType')?.value.trim();
+        const date = document.getElementById('oilModalDate')?.value;
+        
+        const filterOil = document.getElementById('oilModalFilterOil')?.checked;
+        const filterAir = document.getElementById('oilModalFilterAir')?.checked;
+        const filterCabin = document.getElementById('oilModalFilterCabin')?.checked;
+
+        if (!quantity) {
+            Components.showToast(I18n.t('error') + ': Ingrese la cantidad de litros', 'danger');
+            return;
+        }
+
+        const quantityLiters = Units.toLiters(quantity);
+        const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
+
+        const logData = {
+            vehicleId,
+            driverId: Auth.getUserId(),
+            driverName: Auth.getUserName(),
+            quantity: quantityLiters,
+            date: date || new Date().toISOString(),
+            type: 'change',
+            oilType,
+            filterOil,
+            filterAir,
+            filterCabin
+        };
+
+        if (odometerKm !== null) logData.odometer = odometerKm;
+
+        const role = Auth.getRole();
+        let vehicle = await DB.get('vehicles', vehicleId);
+        
+        if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
+            if (role === 'driver') {
+                Components.showToast('El kilometraje no puede ser menor al actual', 'danger');
+                return;
+            } else {
+                Components.confirm(
+                    '¿Deseas que este registro actualice el odómetro actual del auto?',
+                    async () => {
+                        Components.closeModal();
+                        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
+                    },
+                    async () => {
+                        Components.closeModal();
+                        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, false);
+                    }
+                );
+                return;
+            }
+        }
+
+        Components.closeModal();
+        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
+    }
+
+    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer, registerOilChange, calcNextChange, saveOilChangeFromModal };
 })();
