@@ -137,6 +137,33 @@
     transform: scale(1.02);
 }
 
+/* Animación de vibración */
+@keyframes vibrar {
+    0% { transform: translate(0); }
+    25% { transform: translate(-2px, 2px); }
+    50% { transform: translate(2px, -2px); }
+    75% { transform: translate(-2px, -2px); }
+    100% { transform: translate(0); }
+}
+
+/* Clase para el aviso de service vencido */
+.alerta-vencido {
+    background-color: #ff1744 !important; /* Rojo brillante */
+    color: white;
+    animation: vibrar 0.3s linear infinite; /* ¡Tiembla! */
+    border: 2px solid white;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.texto-peligro {
+    color: #ff1744;
+    font-size: 0.8rem;
+    margin-top: 5px;
+    display: block;
+    font-weight: bold;
+}
+
 /* --- Tarjetas --- */
 .card {
     background: var(--bg-card);

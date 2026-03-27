@@ -90,6 +90,12 @@ const MaintenanceModule = (() => {
                 ? I18n.t('maint_belt_warning')
                 : I18n.t('maint_belt_ok');
 
+        // Lógica de Vencimiento de Aceite
+        const currentOdo = vehicle.currentOdometer || 0;
+        const nextOil = vehicle.nextOilChangeKm;
+        const oilVencido = nextOil && currentOdo >= nextOil;
+        const diffOdo = nextOil ? currentOdo - nextOil : 0;
+
         return `
             <div class="maintenance-card" style="border-color:${belt.level === 'danger' ? 'var(--color-danger)' : belt.level === 'warning' ? 'var(--color-warning)' : 'var(--border-color)'};">
                 <div class="maintenance-card-header">
@@ -126,9 +132,14 @@ const MaintenanceModule = (() => {
                         <button class="btn-mantenimiento btn-correa" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
                             🔄 ${I18n.t('maint_belt_register')}
                         </button>
-                        <button class="btn-mantenimiento btn-aceite" onclick="OilModule.registerOilChange('${vehicle.id}')">
-                            🛢️ Registrar Cambio de Aceite
+                        <button class="btn-mantenimiento btn-aceite ${oilVencido ? 'alerta-vencido' : ''}" onclick="OilModule.registerOilChange('${vehicle.id}')">
+                            ${oilVencido ? '⚠️ SERVICE VENCIDO' : '🛢️ Registrar Cambio de Aceite'}
                         </button>
+                        ${oilVencido ? `
+                        <span class="texto-peligro">
+                            ¡OJO! Te pasaste por ${Units.formatDistance(diffOdo)}
+                        </span>
+                        ` : ''}
                     </div>
                 ` : ''}
             </div>
