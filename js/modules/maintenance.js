@@ -945,10 +945,12 @@ const OilModule = (() => {
                     </label>
                 </div>
                 
-                <div class="form-group" style="margin-top:var(--space-3);">
+                <div class="form-group" style="margin-top:var(--space-3); margin-bottom:var(--space-3);">
                     <label class="form-label">${I18n.t('date')}</label>
                     <input type="date" class="form-input" id="oilModalDate" value="${new Date().toISOString().split('T')[0]}">
                 </div>
+
+                ${Components.renderPhotoCapture('oilModalPhoto', 'Subir foto del comprobante/ticket (Requerido)')}
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -971,13 +973,14 @@ const OilModule = (() => {
         const quantity = parseFloat(document.getElementById('oilModalQuantity')?.value);
         const oilType = document.getElementById('oilModalType')?.value.trim();
         const date = document.getElementById('oilModalDate')?.value;
+        const photo = Components.getPhotoData('oilModalPhoto');
         
         const filterOil = document.getElementById('oilModalFilterOil')?.checked;
         const filterAir = document.getElementById('oilModalFilterAir')?.checked;
         const filterCabin = document.getElementById('oilModalFilterCabin')?.checked;
 
-        if (!quantity) {
-            Components.showToast(I18n.t('error') + ': Ingrese la cantidad de litros', 'danger');
+        if (!quantity || !photo) {
+            Components.showToast('⚠️ Falta la cantidad de litros o la fotografía comprobante (Obligatoria).', 'danger');
             return;
         }
 
@@ -991,10 +994,11 @@ const OilModule = (() => {
             quantity: quantityLiters,
             date: date || new Date().toISOString(),
             type: 'change',
-            oilType,
-            filterOil,
-            filterAir,
-            filterCabin
+            oilType: oilType || 'No especificado',
+            filterOil: !!filterOil,
+            filterAir: !!filterAir,
+            filterCabin: !!filterCabin,
+            photo: photo
         };
 
         if (odometerKm !== null) logData.odometer = odometerKm;
