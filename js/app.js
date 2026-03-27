@@ -252,8 +252,8 @@ const App = (() => {
         if (!userId) return;
         try {
             const prefs = await DB.getUserPreferences(userId);
-            const isMobile = window.innerWidth <= 768;
-            const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const layoutKey = isAndroid ? 'config_android' : 'config_web';
             const theme = prefs[layoutKey]?.theme;
             
             if (theme) {

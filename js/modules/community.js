@@ -465,6 +465,20 @@ const CommunityModule = (() => {
             document.querySelectorAll('.reaction-picker.open').forEach(p => p.classList.remove('open'));
         });
 
+        // Activar Manijas (Resize) - Solo para OwnerAdmin
+        if (Auth.getUserName() === 'OwnerAdmin') {
+            const mainCol = document.querySelector('.community-main-col');
+            const sponsorsCol = document.querySelector('.community-sponsors-col');
+            if (mainCol) {
+                mainCol.style.resize = 'both';
+                mainCol.style.overflow = 'auto';
+            }
+            if (sponsorsCol) {
+                sponsorsCol.style.resize = 'both';
+                sponsorsCol.style.overflow = 'auto';
+            }
+        }
+
         // --- Sponsor Carousel ---
         _initSponsorCarousel();
 

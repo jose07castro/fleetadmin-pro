@@ -76,14 +76,16 @@ window.DashboardModule = (() => {
             setTimeout(() => _wireAnnouncementToggles(), 100);
 
             // Wiring de Drag & Drop
-            setTimeout(() => _wireDragAndDrop(), 100);
+            if (Auth.getUserName() === 'OwnerAdmin') {
+                setTimeout(() => _wireDragAndDrop(), 100);
+            }
 
             // Cargar Order del Layout
             let savedOrder = [];
             try {
                 const prefs = await DB.getUserPreferences(Auth.getUserId());
-                const isMobile = window.innerWidth <= 768;
-                const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+                const isAndroid = /Android/i.test(navigator.userAgent);
+                const layoutKey = isAndroid ? 'config_android' : 'config_web';
                 savedOrder = prefs[layoutKey]?.statsOrder || [];
             } catch(e) {}
 
@@ -135,22 +137,25 @@ window.DashboardModule = (() => {
                 ` : ''}
             </div>
 
+            ${Auth.getUserName() === 'OwnerAdmin' ? `
             <div style="display:flex; justify-content:flex-end; margin-top:var(--space-3); margin-bottom:var(--space-3);">
                 <button class="btn btn-sm" style="background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color);" onclick="DashboardModule.showLayoutSettings()">🎨 Configurar Layout</button>
             </div>
+            ` : ''}
 
             ${locationBanner}
             ${alertsHTML}
 
             <div class="stats-grid" id="dashboardStatsGrid" style="margin-bottom:var(--space-6);">
                 ${(() => {
+                    const dragAttr = Auth.getUserName() === 'OwnerAdmin' ? 'draggable="true"' : '';
                     const statCardsDict = {
-                        'card-vehicles': '<div class="stat-card" draggable="true" data-id="card-vehicles"><div class="stat-icon primary" style="pointer-events:none;">🚗</div><div style="pointer-events:none;"><div class="stat-value">' + vehicles.length + '</div><div class="stat-label">' + I18n.t("dash_vehicles") + '</div></div></div>',
-                        'card-shifts': '<div class="stat-card" draggable="true" data-id="card-shifts"><div class="stat-icon info" style="pointer-events:none;">⏱️</div><div style="pointer-events:none;"><div class="stat-value">' + activeShifts.length + '</div><div class="stat-label">' + I18n.t("dash_active_shifts") + '</div></div></div>',
-                        'card-earnings': '<div class="stat-card" draggable="true" data-id="card-earnings"><div class="stat-icon success" style="pointer-events:none;">💰</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalEarnings.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_total_earnings") + '</div></div></div>',
-                        'card-profit': '<div class="stat-card" draggable="true" data-id="card-profit"><div class="stat-icon ' + (netProfit >= 0 ? "success" : "danger") + '" style="pointer-events:none;">📈</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + netProfit.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_net_profit") + '</div></div></div>',
-                        'card-expenses': '<div class="stat-card" draggable="true" data-id="card-expenses"><div class="stat-icon warning" style="pointer-events:none;">💸</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalRepairCost.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_expenses") + ' (' + I18n.t("maint_repairs") + ')</div></div></div>',
-                        'card-users': '<div class="stat-card" draggable="true" data-id="card-users" style="cursor:pointer;" onclick="DashboardModule.showUsers()"><div class="stat-icon primary" style="pointer-events:none;">👥</div><div style="pointer-events:none;"><div class="stat-value">' + users.length + '</div><div class="stat-label">' + I18n.t("nav_users") + ' — ' + I18n.t("user_manage") + ' →</div></div></div>'
+                        'card-vehicles': '<div class="stat-card" ' + dragAttr + ' data-id="card-vehicles"><div class="stat-icon primary" style="pointer-events:none;">🚗</div><div style="pointer-events:none;"><div class="stat-value">' + vehicles.length + '</div><div class="stat-label">' + I18n.t("dash_vehicles") + '</div></div></div>',
+                        'card-shifts': '<div class="stat-card" ' + dragAttr + ' data-id="card-shifts"><div class="stat-icon info" style="pointer-events:none;">⏱️</div><div style="pointer-events:none;"><div class="stat-value">' + activeShifts.length + '</div><div class="stat-label">' + I18n.t("dash_active_shifts") + '</div></div></div>',
+                        'card-earnings': '<div class="stat-card" ' + dragAttr + ' data-id="card-earnings"><div class="stat-icon success" style="pointer-events:none;">💰</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalEarnings.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_total_earnings") + '</div></div></div>',
+                        'card-profit': '<div class="stat-card" ' + dragAttr + ' data-id="card-profit"><div class="stat-icon ' + (netProfit >= 0 ? "success" : "danger") + '" style="pointer-events:none;">📈</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + netProfit.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_net_profit") + '</div></div></div>',
+                        'card-expenses': '<div class="stat-card" ' + dragAttr + ' data-id="card-expenses"><div class="stat-icon warning" style="pointer-events:none;">💸</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalRepairCost.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_expenses") + ' (' + I18n.t("maint_repairs") + ')</div></div></div>',
+                        'card-users': '<div class="stat-card" ' + dragAttr + ' data-id="card-users" style="cursor:pointer;" onclick="DashboardModule.showUsers()"><div class="stat-icon primary" style="pointer-events:none;">👥</div><div style="pointer-events:none;"><div class="stat-value">' + users.length + '</div><div class="stat-label">' + I18n.t("nav_users") + ' — ' + I18n.t("user_manage") + ' →</div></div></div>'
                     };
                     const allKeys = ['card-vehicles', 'card-shifts', 'card-earnings', 'card-profit', 'card-expenses', 'card-users'];
                     const sk = savedOrder && savedOrder.length === 6 ? savedOrder : allKeys;
@@ -321,8 +326,8 @@ window.DashboardModule = (() => {
         const userId = Auth.getUserId();
         if (!userId) return;
 
-        const isMobile = window.innerWidth <= 768;
-        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const layoutKey = isAndroid ? 'config_android' : 'config_web';
 
         try {
             const prefs = await DB.getUserPreferences(userId);
@@ -338,8 +343,8 @@ window.DashboardModule = (() => {
         const userId = Auth.getUserId();
         if(!userId) return;
         const prefs = await DB.getUserPreferences(userId);
-        const isMobile = window.innerWidth <= 768;
-        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const layoutKey = isAndroid ? 'config_android' : 'config_web';
         const theme = prefs[layoutKey]?.theme || {};
         
         const currentPrimary = theme.primary || '#6366f1';
@@ -347,7 +352,7 @@ window.DashboardModule = (() => {
         const currentFont = theme.font || '1rem';
 
         Components.showModal(
-            `🎨 Configurar Layout (${isMobile ? 'Móvil' : 'Escritorio'})`,
+            `🎨 Configurar Layout (${isAndroid ? 'Android' : 'PC/Web'})`,
             `
                 <div class="form-group" style="margin-bottom:var(--space-3);">
                     <label class="form-label">Color Primario</label>
@@ -367,7 +372,7 @@ window.DashboardModule = (() => {
                     </select>
                 </div>
                 <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:var(--space-4);">
-                    ℹ️ Los cambios se guardarán solo para la vista actual (${isMobile ? 'Móvil' : 'Escritorio'}).
+                    ℹ️ Los cambios se guardarán solo para la vista actual (${isAndroid ? 'Android' : 'PC/Web'}).
                 </p>
             `,
             `
@@ -385,8 +390,8 @@ window.DashboardModule = (() => {
         const bg = document.getElementById('themeBg').value;
         const font = document.getElementById('themeFont').value;
 
-        const isMobile = window.innerWidth <= 768;
-        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const layoutKey = isAndroid ? 'config_android' : 'config_web';
 
         try {
             const prefs = await DB.getUserPreferences(userId);
