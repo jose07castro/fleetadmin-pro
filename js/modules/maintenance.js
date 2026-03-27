@@ -952,7 +952,7 @@ const OilModule = (() => {
                     <input type="date" class="form-input" id="oilModalDate" value="${new Date().toISOString().split('T')[0]}">
                 </div>
 
-                ${Components.renderPhotoCapture('oilModalPhoto', 'Subir foto del comprobante/ticket (Requerido)')}
+                ${Components.renderPhotoCapture('oilModalPhoto', 'Subir foto del comprobante/ticket (Opcional)')}
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -981,8 +981,8 @@ const OilModule = (() => {
         const filterAir = document.getElementById('oilModalFilterAir')?.checked || false;
         const filterCabin = document.getElementById('oilModalFilterCabin')?.checked || false;
 
-        if (!quantity || !photo) {
-            Components.showToast('⚠️ Falta la cantidad de litros o la fotografía comprobante (Obligatoria).', 'danger');
+        if (!quantity) {
+            Components.showToast('⚠️ Falta la cantidad de litros.', 'danger');
             return;
         }
 
