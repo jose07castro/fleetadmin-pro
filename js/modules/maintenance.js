@@ -93,8 +93,34 @@ const MaintenanceModule = (() => {
         // Lógica de Vencimiento de Aceite
         const currentOdo = vehicle.currentOdometer || 0;
         const nextOil = vehicle.nextOilChangeKm;
-        const oilVencido = nextOil && currentOdo >= nextOil;
-        const diffOdo = nextOil ? currentOdo - nextOil : 0;
+        
+        let oilEstadoClase = "";
+        let oilBotonTexto = "🛢️ Registrar Cambio de Aceite";
+        let oilTextoEstatico = "";
+        let oilMensajeResumen = "Faltan:";
+        let diffAbs = 0;
+
+        if (nextOil) {
+            const kmRestantes = nextOil - currentOdo;
+            diffAbs = Math.abs(kmRestantes);
+            
+            if (kmRestantes <= 0) {
+                oilEstadoClase = "estado-critico";
+                oilBotonTexto = "⚠️ SERVICE ACEITE VENCIDO";
+                oilTextoEstatico = "texto-peligro-estatico";
+                oilMensajeResumen = "⚠️ VENCIDO POR:";
+            } else if (kmRestantes <= 500) {
+                oilEstadoClase = "estado-alerta";
+                oilBotonTexto = `⚠️ SERVICE EN ${Units.formatDistance(kmRestantes)}`;
+                oilTextoEstatico = "texto-alerta-estatico";
+                oilMensajeResumen = "Faltan:";
+            } else {
+                oilEstadoClase = "estado-ok";
+                oilBotonTexto = "🛢️ Registrar Cambio de Aceite";
+                oilTextoEstatico = "texto-ok-estatico";
+                oilMensajeResumen = "Faltan:";
+            }
+        }
 
         return `
             <div class="maintenance-card" style="border-color:${belt.level === 'danger' ? 'var(--color-danger)' : belt.level === 'warning' ? 'var(--color-warning)' : 'var(--border-color)'};">
@@ -132,14 +158,14 @@ const MaintenanceModule = (() => {
                         <button class="btn-mantenimiento btn-correa" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
                             🔄 ${I18n.t('maint_belt_register')}
                         </button>
-                        <button class="btn-mantenimiento btn-aceite ${oilVencido ? 'alerta-vencido-colores' : ''}" onclick="OilModule.registerOilChange('${vehicle.id}')">
-                            ${oilVencido ? '⚠️ SERVICE ACEITE VENCIDO' : '🛢️ Registrar Cambio de Aceite'}
+                        <button class="btn-mantenimiento btn-aceite ${oilEstadoClase}" onclick="OilModule.registerOilChange('${vehicle.id}')">
+                            ${oilBotonTexto}
                         </button>
                         
                         ${vehicle.nextOilChangeKm ? `
                         <div class="info-aceite-detalle">
-                            <div class="alerta-km ${oilVencido ? 'texto-peligro-estatico' : ''}">
-                                ${oilVencido ? '⚠️ VENCIDO POR:' : 'Faltan:'} ${Units.formatDistance(Math.abs(diffOdo))}
+                            <div class="alerta-km ${oilTextoEstatico}">
+                                ${oilMensajeResumen} ${Units.formatDistance(diffAbs)}
                             </div>
                             
                             ${vehicle.ultimoAceiteTipo || vehicle.ultimoAceiteLitros ? `

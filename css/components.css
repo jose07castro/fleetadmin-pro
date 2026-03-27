@@ -166,6 +166,41 @@
     font-weight: bold;
 }
 
+/* Semáforo Aceite - Colores de Textos Extras */
+.texto-ok-estatico { color: #4caf50; font-size: 0.8rem; margin-top: 5px; display: block; font-weight: bold; }
+.texto-alerta-estatico { color: #ff9800; font-size: 0.8rem; margin-top: 5px; display: block; font-weight: bold; }
+
+/* Estados Semáforo Aceite (Botones) */
+.btn-aceite.estado-ok {
+    background-color: #2e7d32 !important;
+}
+.btn-aceite.estado-ok:hover {
+    background-color: #1b5e20 !important;
+}
+
+.btn-aceite.estado-alerta {
+    background-color: #ff9800 !important;
+    animation: pulsoNaranja 2s infinite;
+}
+@keyframes pulsoNaranja {
+    0% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
+    50% { background-color: #f57c00; box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
+    100% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+}
+
+.btn-aceite.estado-critico {
+    background-color: #d32f2f !important;
+    animation: parpadeoRojo 1.5s infinite;
+    font-weight: bold;
+    text-transform: uppercase;
+    border: 2px solid white;
+}
+@keyframes parpadeoRojo {
+    0% { background-color: #d32f2f; box-shadow: 0 0 5px rgba(211, 47, 47, 0.4); }
+    50% { background-color: #b71c1c; box-shadow: 0 0 15px rgba(211, 47, 47, 0.8); }
+    100% { background-color: #d32f2f; box-shadow: 0 0 5px rgba(211, 47, 47, 0.4); }
+}
+
 /* Detalles del Aceite */
 .info-aceite-detalle {
     background: rgba(255, 255, 255, 0.05);
