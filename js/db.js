@@ -8,7 +8,7 @@ const DB = (() => {
     const db = firebaseDB; // Definido en firebase-config.js
 
     // Stores válidos (dentro de cada flota)
-    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents'];
+    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents', 'preferencias_usuario'];
     const CACHE_PREFIX = 'fleetadmin_cache_';
 
     // --- Fleet ID actual ---
@@ -161,6 +161,28 @@ const DB = (() => {
 
     async function setSetting(key, value) {
         await db.ref(fleetPath(`settings/${key}`)).set(value);
+    }
+
+    // --- Preferencias de Usuario (Layout, Theme, etc) ---
+    async function getUserPreferences(userId) {
+        const path = fleetPath(`preferencias_usuario/${userId}`);
+        try {
+            const snap = await fetchWithTimeout(db.ref(path), 5000);
+            const val = snap.val();
+            localStorage.setItem(`${CACHE_PREFIX}prefs_${userId}`, JSON.stringify(val || {}));
+            return val || {};
+        } catch (e) {
+            const cached = localStorage.getItem(`${CACHE_PREFIX}prefs_${userId}`);
+            return cached ? JSON.parse(cached) : {};
+        }
+    }
+
+    async function saveUserPreferences(userId, prefs) {
+        const current = await getUserPreferences(userId);
+        const updated = { ...current, ...prefs, updatedAt: new Date().toISOString() };
+        await db.ref(fleetPath(`preferencias_usuario/${userId}`)).set(updated);
+        localStorage.setItem(`${CACHE_PREFIX}prefs_${userId}`, JSON.stringify(updated));
+        return updated;
     }
 
     // --- Operaciones GLOBALES (fuera de la flota) ---
@@ -624,7 +646,7 @@ const DB = (() => {
 
     return {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
-        getSetting, setSetting, seed, exportAll, importAll, resetAll,
+        getSetting, setSetting, getUserPreferences, saveUserPreferences, seed, exportAll, importAll, resetAll,
         onChanges, offChanges, notifyAdmins,
         getActiveShifts, getRecentCompletedShifts, migrateShiftPhotos, getShiftPhoto,
         // Multi-tenencia

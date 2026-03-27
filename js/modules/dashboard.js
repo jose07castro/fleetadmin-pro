@@ -75,6 +75,18 @@ window.DashboardModule = (() => {
             // Wiring de toggles después del mount
             setTimeout(() => _wireAnnouncementToggles(), 100);
 
+            // Wiring de Drag & Drop
+            setTimeout(() => _wireDragAndDrop(), 100);
+
+            // Cargar Order del Layout
+            let savedOrder = [];
+            try {
+                const prefs = await DB.getUserPreferences(Auth.getUserId());
+                const isMobile = window.innerWidth <= 768;
+                const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+                savedOrder = prefs[layoutKey]?.statsOrder || [];
+            } catch(e) {}
+
             let globalStatsHTML = '';
             if (Auth.getRole() === 'owner') {
                 try {
@@ -123,37 +135,27 @@ window.DashboardModule = (() => {
                 ` : ''}
             </div>
 
+            <div style="display:flex; justify-content:flex-end; margin-top:var(--space-3); margin-bottom:var(--space-3);">
+                <button class="btn btn-sm" style="background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color);" onclick="DashboardModule.showLayoutSettings()">🎨 Configurar Layout</button>
+            </div>
+
             ${locationBanner}
             ${alertsHTML}
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon primary">🚗</div>
-                    <div><div class="stat-value">${vehicles.length}</div><div class="stat-label">${I18n.t('dash_vehicles')}</div></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon info">⏱️</div>
-                    <div><div class="stat-value">${activeShifts.length}</div><div class="stat-label">${I18n.t('dash_active_shifts')}</div></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon success">💰</div>
-                    <div><div class="stat-value">${I18n.t('unit_currency')}${totalEarnings.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_total_earnings')}</div></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon ${netProfit >= 0 ? 'success' : 'danger'}">📈</div>
-                    <div><div class="stat-value">${I18n.t('unit_currency')}${netProfit.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_net_profit')}</div></div>
-                </div>
-            </div>
-
-            <div class="stats-grid" style="margin-bottom:var(--space-6);">
-                <div class="stat-card">
-                    <div class="stat-icon warning">💸</div>
-                    <div><div class="stat-value">${I18n.t('unit_currency')}${totalRepairCost.toLocaleString()}</div><div class="stat-label">${I18n.t('dash_expenses')} (${I18n.t('maint_repairs')})</div></div>
-                </div>
-                <div class="stat-card" style="cursor:pointer;" onclick="DashboardModule.showUsers()">
-                    <div class="stat-icon primary">👥</div>
-                    <div><div class="stat-value">${users.length}</div><div class="stat-label">${I18n.t('nav_users')} — ${I18n.t('user_manage')} →</div></div>
-                </div>
+            <div class="stats-grid" id="dashboardStatsGrid" style="margin-bottom:var(--space-6);">
+                ${(() => {
+                    const statCardsDict = {
+                        'card-vehicles': '<div class="stat-card" draggable="true" data-id="card-vehicles"><div class="stat-icon primary" style="pointer-events:none;">🚗</div><div style="pointer-events:none;"><div class="stat-value">' + vehicles.length + '</div><div class="stat-label">' + I18n.t("dash_vehicles") + '</div></div></div>',
+                        'card-shifts': '<div class="stat-card" draggable="true" data-id="card-shifts"><div class="stat-icon info" style="pointer-events:none;">⏱️</div><div style="pointer-events:none;"><div class="stat-value">' + activeShifts.length + '</div><div class="stat-label">' + I18n.t("dash_active_shifts") + '</div></div></div>',
+                        'card-earnings': '<div class="stat-card" draggable="true" data-id="card-earnings"><div class="stat-icon success" style="pointer-events:none;">💰</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalEarnings.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_total_earnings") + '</div></div></div>',
+                        'card-profit': '<div class="stat-card" draggable="true" data-id="card-profit"><div class="stat-icon ' + (netProfit >= 0 ? "success" : "danger") + '" style="pointer-events:none;">📈</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + netProfit.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_net_profit") + '</div></div></div>',
+                        'card-expenses': '<div class="stat-card" draggable="true" data-id="card-expenses"><div class="stat-icon warning" style="pointer-events:none;">💸</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalRepairCost.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_expenses") + ' (' + I18n.t("maint_repairs") + ')</div></div></div>',
+                        'card-users': '<div class="stat-card" draggable="true" data-id="card-users" style="cursor:pointer;" onclick="DashboardModule.showUsers()"><div class="stat-icon primary" style="pointer-events:none;">👥</div><div style="pointer-events:none;"><div class="stat-value">' + users.length + '</div><div class="stat-label">' + I18n.t("nav_users") + ' — ' + I18n.t("user_manage") + ' →</div></div></div>'
+                    };
+                    const allKeys = ['card-vehicles', 'card-shifts', 'card-earnings', 'card-profit', 'card-expenses', 'card-users'];
+                    const sk = savedOrder && savedOrder.length === 6 ? savedOrder : allKeys;
+                    return sk.map(k => statCardsDict[k] || '').join('');
+                })()}
             </div>
 
             <div class="dashboard-community-grid">
@@ -271,6 +273,137 @@ window.DashboardModule = (() => {
                     await DB.setSetting('announcement_owner', { bannerText: ownerText?.value?.trim() || '', bannerActive: on, updatedAt: new Date().toISOString(), updatedBy: Auth.getUserName() });
                 } catch (err) { console.error('📢 Error auto-guardando titulares:', err); }
             };
+        }
+    }
+    // ====== EVENTOS DRAG & DROP Y LAYOUT ======
+    let draggedItem = null;
+
+    function _wireDragAndDrop() {
+        const grid = document.getElementById('dashboardStatsGrid');
+        if (!grid) return;
+
+        grid.addEventListener('dragstart', (e) => {
+            const target = e.target.closest('.stat-card');
+            if (target) {
+                draggedItem = target;
+                setTimeout(() => target.style.opacity = '0.5', 0);
+            }
+        });
+
+        grid.addEventListener('dragend', (e) => {
+            if (draggedItem) {
+                draggedItem.style.opacity = '1';
+                draggedItem = null;
+                _saveNewLayoutOrder();
+            }
+        });
+
+        grid.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const target = e.target.closest('.stat-card');
+            if (target && target !== draggedItem && draggedItem) {
+                const rect = target.getBoundingClientRect();
+                const relX = e.clientX - rect.left;
+                if (relX > rect.width / 2) {
+                    target.parentNode.insertBefore(draggedItem, target.nextSibling);
+                } else {
+                    target.parentNode.insertBefore(draggedItem, target);
+                }
+            }
+        });
+    }
+
+    async function _saveNewLayoutOrder() {
+        const grid = document.getElementById('dashboardStatsGrid');
+        if (!grid) return;
+        
+        const order = Array.from(grid.querySelectorAll('.stat-card')).map(card => card.getAttribute('data-id'));
+        const userId = Auth.getUserId();
+        if (!userId) return;
+
+        const isMobile = window.innerWidth <= 768;
+        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+
+        try {
+            const prefs = await DB.getUserPreferences(userId);
+            prefs[layoutKey] = prefs[layoutKey] || {};
+            prefs[layoutKey].statsOrder = order;
+            await DB.saveUserPreferences(userId, prefs);
+        } catch (e) {
+            console.warn('Error saving layout order:', e);
+        }
+    }
+
+    async function showLayoutSettings() {
+        const userId = Auth.getUserId();
+        if(!userId) return;
+        const prefs = await DB.getUserPreferences(userId);
+        const isMobile = window.innerWidth <= 768;
+        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+        const theme = prefs[layoutKey]?.theme || {};
+        
+        const currentPrimary = theme.primary || '#6366f1';
+        const currentBg = theme.bg || '#0f172a';
+        const currentFont = theme.font || '1rem';
+
+        Components.showModal(
+            `🎨 Configurar Layout (${isMobile ? 'Móvil' : 'Escritorio'})`,
+            `
+                <div class="form-group" style="margin-bottom:var(--space-3);">
+                    <label class="form-label">Color Primario</label>
+                    <input type="color" id="themePrimary" class="form-input" value="${currentPrimary}" style="height:50px; padding:0; cursor:pointer;">
+                </div>
+                <div class="form-group" style="margin-bottom:var(--space-3);">
+                    <label class="form-label">Color de Fondo</label>
+                    <input type="color" id="themeBg" class="form-input" value="${currentBg}" style="height:50px; padding:0; cursor:pointer;">
+                </div>
+                <div class="form-group" style="margin-bottom:var(--space-3);">
+                    <label class="form-label">Tamaño de Fuente</label>
+                    <select id="themeFont" class="form-select">
+                        <option value="0.875rem" ${currentFont === '0.875rem' ? 'selected' : ''}>Pequeño</option>
+                        <option value="1rem" ${currentFont === '1rem' ? 'selected' : ''}>Normal</option>
+                        <option value="1.125rem" ${currentFont === '1.125rem' ? 'selected' : ''}>Grande</option>
+                        <option value="1.25rem" ${currentFont === '1.25rem' ? 'selected' : ''}>Extra Grande</option>
+                    </select>
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:var(--space-4);">
+                    ℹ️ Los cambios se guardarán solo para la vista actual (${isMobile ? 'Móvil' : 'Escritorio'}).
+                </p>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="DashboardModule.saveLayoutSettings()">${I18n.t('save')}</button>
+            `
+        );
+    }
+
+    async function saveLayoutSettings() {
+        const userId = Auth.getUserId();
+        if(!userId) return;
+
+        const primary = document.getElementById('themePrimary').value;
+        const bg = document.getElementById('themeBg').value;
+        const font = document.getElementById('themeFont').value;
+
+        const isMobile = window.innerWidth <= 768;
+        const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+
+        try {
+            const prefs = await DB.getUserPreferences(userId);
+            prefs[layoutKey] = prefs[layoutKey] || {};
+            prefs[layoutKey].theme = { primary, bg, font };
+            
+            await DB.saveUserPreferences(userId, prefs);
+            
+            // Apply instantly
+            if (typeof App !== 'undefined' && App.applyUserTheme) {
+                await App.applyUserTheme(userId);
+            }
+            
+            Components.closeModal();
+            Components.showToast('Layout actualizado exitosamente', 'success');
+        } catch (e) {
+            Components.showToast('Error al guardar layout', 'danger');
         }
     }
 

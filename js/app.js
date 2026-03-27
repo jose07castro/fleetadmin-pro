@@ -39,6 +39,13 @@ const App = (() => {
                     const loggedIn = await Auth.isLoggedInAsync();
                     if (loggedIn) {
                         console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
+                        
+                        // 4.5 Cargar tema del usuario
+                        const currentUserId = Auth.getUserId();
+                        if (currentUserId) {
+                            await applyUserTheme(currentUserId);
+                        }
+
                         // Bloqueo de perfil incompleto al restaurar sesión
                         if (Auth.isDriver()) {
                             try {
@@ -240,6 +247,28 @@ const App = (() => {
         }
     }
 
+    // Aplicar tema guardado por el usuario
+    async function applyUserTheme(userId) {
+        if (!userId) return;
+        try {
+            const prefs = await DB.getUserPreferences(userId);
+            const isMobile = window.innerWidth <= 768;
+            const layoutKey = isMobile ? 'layout_mobile' : 'layout_desktop';
+            const theme = prefs[layoutKey]?.theme;
+            
+            if (theme) {
+                if (theme.primary) document.documentElement.style.setProperty('--color-primary', theme.primary);
+                if (theme.bg) {
+                    document.documentElement.style.setProperty('--bg-primary', theme.bg);
+                    document.body.style.backgroundImage = 'none';
+                }
+                if (theme.font) document.documentElement.style.setProperty('--font-size-base', theme.font);
+            }
+        } catch (e) {
+            console.warn('⚠️ Error aplicando tema:', e);
+        }
+    }
+
     // --- Reconexión al volver del segundo plano (móvil) ---
     let _lastResumeTime = 0;
 
@@ -319,6 +348,11 @@ const App = (() => {
                 DB.setFleet(user.fleetId);
             }
 
+            // 2.5. Cargar tema de usuario
+            if (user.id) {
+                await applyUserTheme(user.id);
+            }
+
             // 3. Reconectar Firebase Realtime Database (no bloqueante)
             try {
                 firebase.database().goOnline();
@@ -390,7 +424,7 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync };
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---
