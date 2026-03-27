@@ -443,6 +443,89 @@ async function handleAPI(req, res, urlPath) {
         }
     }
 
+    // --- Maintenance Notification Push (FCM) & Logic ---
+    if (parts[0] === 'notify' && parts[1] === 'maintenance' && method === 'POST') {
+        const data = await parseBody(req);
+        
+        // 1. Lógica centralizada de negocio (10.000 km)
+        const currentKm = data.currentOdometer || 0;
+        const limitKm = data.nextOilChangeKm || 0;
+        const difference = limitKm - currentKm;
+        
+        // Retornamos si no alcanzó ni el Warning (9500 = difference 500)
+        if (difference > 500) {
+            return sendJSON(res, { success: true, status: 'ok', message: 'No se requiere alerta.' });
+        }
+
+        const level = difference <= 0 ? 'danger' : 'warning';
+        console.log(`🛠️ MAINTENANCE ALERT: Vehículo ${data.vehiclePlate || data.vehicleId} está en nivel ${level} (Restantes: ${difference}km)`);
+
+        if (!fcmEnabled || !firebaseAdmin) {
+            return sendJSON(res, { success: false, reason: 'FCM disabled' });
+        }
+
+        try {
+            const tokensSnapshot = await firebaseAdmin.database().ref('fcm_tokens').once('value');
+            const tokensData = tokensSnapshot.val();
+            if (!tokensData) return sendJSON(res, { success: true, sent: 0, reason: 'no_tokens' });
+
+            const targetTokens = [];
+            // Target: Dueños y Admins de la flota
+            for (const [userId, entry] of Object.entries(tokensData)) {
+                if (entry.role === 'owner') {
+                    if (!data.fleetId || entry.fleetId === data.fleetId || entry.fleetId === 'unknown') {
+                        if (entry.token) targetTokens.push(entry.token);
+                    }
+                }
+                // Si el driver tiene token, le enviamos la push también a él para Android
+                if (data.driverId && userId === data.driverId && entry.token) {
+                    targetTokens.push(entry.token);
+                }
+            }
+
+            if (targetTokens.length === 0) return sendJSON(res, { success: true, sent: 0 });
+
+            const title = level === 'danger' ? '⚠️ Aceite Crítico: Mantenimiento Requerido' : '⚠️ Próximo Cambio de Aceite';
+            const bodyStr = level === 'danger' 
+                ? `El vehículo ${data.vehiclePlate || data.vehicleId} superó los 10.000 km pactados. ¡Cambio de aceite necesario!`
+                : `Aviso preventivo: El vehículo ${data.vehiclePlate || data.vehicleId} está a menos de 500 km del service.`;
+
+            const message = {
+                notification: { title, body: bodyStr },
+                data: {
+                    tipo: 'mantenimiento_aceite',
+                    idVehiculo: String(data.vehicleId || ''),
+                    level: level
+                },
+                android: { priority: 'high', notification: { sound: 'default', priority: 'max' } },
+                tokens: targetTokens
+            };
+
+            const response = await firebaseAdmin.messaging().sendEachForMulticast(message);
+            console.log(`🛠️ MAINTENANCE NOTIFY: ✅ Enviadas: ${response.successCount}`);
+            
+            // Actualizar estado en Firebase RTDB para que la Web/Windows Dashboard lo intercepte en vivo si quisiéramos
+            // (Ya se maneja también via alerts.js localmente, pero forzamos el trigger visual)
+            try {
+                if (data.fleetId && data.vehicleId && level === 'danger') {
+                     // El owner dashboard reaccionará instantaneamente
+                     const dbRef = firebaseAdmin.database().ref(`${data.fleetId}/alerts/active`);
+                     await dbRef.push({ 
+                         vehicleId: data.vehicleId, 
+                         type: 'oil_danger', 
+                         message: bodyStr,
+                         timestamp: new Date().toISOString()
+                     });
+                }
+            } catch(e) {}
+
+            return sendJSON(res, { success: true, sent: response.successCount });
+        } catch(e) {
+            console.error('🛠️ MAINTENANCE NOTIFY Error:', e.message);
+            return sendError(res, e.message, 500);
+        }
+    }
+
     // --- GPS Webhook ---
     if (parts[0] === 'gps' && parts[1] === 'webhook' && method === 'POST') {
         const data = await parseBody(req);

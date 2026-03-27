@@ -731,6 +731,24 @@ const ShiftsModule = (() => {
             if (vehicle) {
                 vehicle.currentOdometer = odometerKm;
                 await DB.put('vehicles', vehicle);
+
+                // --- Trigger de Alerta Multiplataforma (Aceite 10,000 km) ---
+                if (vehicle.nextOilChangeKm) {
+                    try {
+                        fetch('/api/notify/maintenance', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                fleetId: DB.getFleet(),
+                                vehicleId: vehicle.id,
+                                vehiclePlate: vehicle.plate,
+                                driverId: Auth.getUserId(),
+                                currentOdometer: odometerKm,
+                                nextOilChangeKm: vehicle.nextOilChangeKm
+                            })
+                        }).catch(e => console.warn('Push maintenance emit fallback', e));
+                    } catch(e) {}
+                }
             }
 
             Components.showToast(I18n.t('shift_end') + ' ✅', 'success');
