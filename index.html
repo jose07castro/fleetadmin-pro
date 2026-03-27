@@ -4,6 +4,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <script>
+        // FORCE CACHE PURGE v85 — Ejecutar ANTES de que el SW intercepte
+        (function() {
+            var REQUIRED_VERSION = 85;
+            var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
+            if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
+                console.log('🔥 PURGE: Forzando limpieza de Service Worker y caché...');
+                localStorage.setItem('fa_cache_ver', String(REQUIRED_VERSION));
+                caches.keys().then(function(names) {
+                    return Promise.all(names.map(function(name) {
+                        console.log('🗑️ Borrando caché:', name);
+                        return caches.delete(name);
+                    }));
+                }).then(function() {
+                    return navigator.serviceWorker.getRegistrations();
+                }).then(function(registrations) {
+                    return Promise.all(registrations.map(function(reg) {
+                        console.log('🗑️ Desregistrando SW:', reg.scope);
+                        return reg.unregister();
+                    }));
+                }).then(function() {
+                    console.log('✅ PURGE completado. Recargando...');
+                    window.location.reload(true);
+                }).catch(function(e) {
+                    console.error('PURGE error:', e);
+                    window.location.reload(true);
+                });
+            }
+        })();
+    </script>
     <meta name="description"
         content="Administrador de Flota - Gestión integral de vehículos, conductores y mantenimiento">
     <meta name="theme-color" content="#0f172a">
