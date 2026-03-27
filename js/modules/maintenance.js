@@ -911,13 +911,13 @@ const OilModule = (() => {
             '🛢️ Registrar Cambio de Aceite',
             `
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('veh_odometer')} (${Units.distanceLabel()})</label>
+                    <label class="form-label">${I18n.t('veh_odometer')}</label>
                     <input type="number" class="form-input" id="oilModalOdometer" inputmode="numeric"
                         value="${vehicle.currentOdometer ? Units.displayDistance(vehicle.currentOdometer) : ''}"
                         oninput="OilModule.calcNextChange()">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('oil_next_change_km')} (${Units.distanceLabel()})</label>
+                    <label class="form-label">${I18n.t('oil_next_change_km')}</label>
                     <input type="number" class="form-input" id="oilModalNextChange" inputmode="numeric"
                         value="${vehicle.currentOdometer ? Units.displayDistance(vehicle.currentOdometer) + 10000 : 10000}">
                 </div>
@@ -971,13 +971,13 @@ const OilModule = (() => {
         const odometerInput = parseFloat(document.getElementById('oilModalOdometer')?.value);
         const nextChangeInput = parseFloat(document.getElementById('oilModalNextChange')?.value);
         const quantity = parseFloat(document.getElementById('oilModalQuantity')?.value);
-        const oilType = document.getElementById('oilModalType')?.value.trim();
+        const oilType = document.getElementById('oilModalType')?.value?.trim() || '';
         const date = document.getElementById('oilModalDate')?.value;
         const photo = Components.getPhotoData('oilModalPhoto');
         
-        const filterOil = document.getElementById('oilModalFilterOil')?.checked;
-        const filterAir = document.getElementById('oilModalFilterAir')?.checked;
-        const filterCabin = document.getElementById('oilModalFilterCabin')?.checked;
+        const filterOil = document.getElementById('oilModalFilterOil')?.checked || false;
+        const filterAir = document.getElementById('oilModalFilterAir')?.checked || false;
+        const filterCabin = document.getElementById('oilModalFilterCabin')?.checked || false;
 
         if (!quantity || !photo) {
             Components.showToast('⚠️ Falta la cantidad de litros o la fotografía comprobante (Obligatoria).', 'danger');
@@ -1023,10 +1023,12 @@ const OilModule = (() => {
                     '¿Deseas que este registro actualice el odómetro actual del auto?',
                     async () => {
                         Components.closeModal();
+                        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND (Actualizar ODO): ', JSON.stringify(logData, null, 2));
                         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
                     },
                     async () => {
                         Components.closeModal();
+                        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND (Historico): ', JSON.stringify(logData, null, 2));
                         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, false);
                     }
                 );
@@ -1035,6 +1037,7 @@ const OilModule = (() => {
         }
 
         Components.closeModal();
+        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND: ', JSON.stringify(logData, null, 2));
         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
     }
 
