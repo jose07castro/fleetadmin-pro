@@ -122,11 +122,11 @@ const MaintenanceModule = (() => {
                 </div>
 
                 ${Auth.isOwner() ? `
-                    <div style="display:flex; gap:var(--space-2); margin-top:var(--space-3); flex-wrap: wrap;">
-                        <button class="btn btn-primary btn-sm" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
+                    <div style="margin-top:var(--space-3);">
+                        <button class="btn-mantenimiento btn-correa" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
                             🔄 ${I18n.t('maint_belt_register')}
                         </button>
-                        <button class="btn btn-warning btn-sm" onclick="OilModule.registerOilChange('${vehicle.id}')">
+                        <button class="btn-mantenimiento btn-aceite" onclick="OilModule.registerOilChange('${vehicle.id}')">
                             🛢️ Registrar Cambio de Aceite
                         </button>
                     </div>

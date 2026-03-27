@@ -100,6 +100,43 @@
     width: 100%;
 }
 
+/* --- Botones Mantenimiento --- */
+.btn-mantenimiento {
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+    border: none;
+    transition: 0.3s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+}
+
+.btn-correa {
+    background-color: #d32f2f;
+    color: white;
+}
+
+.btn-correa:hover {
+    background-color: #b71c1c;
+    transform: scale(1.02);
+}
+
+.btn-aceite {
+    background-color: #f57c00;
+    color: white;
+    margin-top: 5px;
+}
+
+.btn-aceite:hover {
+    background-color: #ef6c00;
+    transform: scale(1.02);
+}
+
 /* --- Tarjetas --- */
 .card {
     background: var(--bg-card);
