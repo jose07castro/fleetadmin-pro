@@ -699,8 +699,17 @@ const OilModule = (() => {
             rows += `
                 <tr>
                     <td data-label="${I18n.t('date')}">${new Date(l.date).toLocaleDateString()}</td>
-                    <td data-label="${I18n.t('mech_vehicle')}">${vehName}</td>
-                    <td data-label="${I18n.t('oil_quantity')}">${Units.formatVolume(l.quantity)}</td>
+                    <td data-label="${I18n.t('mech_vehicle')}">
+                        <div style="font-weight:bold;">${vehName}</div>
+                        ${l.odometer ? `<div style="font-size:0.8em; color:var(--text-secondary);">Odómetro: ${l.odometer.toLocaleString()} KM</div>` : ''}
+                    </td>
+                    <td data-label="Detalles">
+                        <div><span style="font-weight:600;">${Units.formatVolume(l.quantity)}</span> ${l.oilType ? `| Tipo: ${l.oilType}` : ''}</div>
+                        ${(l.filterOil || l.filterAir || l.filterCabin) ? `
+                        <div style="font-size:0.8em; color:var(--text-secondary); margin-top:2px;">
+                            Filtros: ${l.filterOil ? '🛢️Aceite ' : ''}${l.filterAir ? '💨Aire ' : ''}${l.filterCabin ? '❄️Hab. ' : ''}
+                        </div>` : ''}
+                    </td>
                     <td data-label="${I18n.t('oil_added_by')}">${driverName}</td>
                     <td data-label="${I18n.t('photo')}">
                         ${l.photo ? `<img src="${l.photo}" class="table-photo" onclick="Components.showModal('${I18n.t('photo')}', '<img src=\\'${l.photo}\\' style=\\'width:100%;border-radius:8px;\\'>')">` : '-'}
@@ -721,7 +730,7 @@ const OilModule = (() => {
                         <tr>
                             <th>${I18n.t('date')}</th>
                             <th>${I18n.t('mech_vehicle')}</th>
-                            <th>${I18n.t('oil_quantity')}</th>
+                            <th>Detalles y Filtros</th>
                             <th>${I18n.t('oil_added_by')}</th>
                             <th>${I18n.t('photo')}</th>
                             ${Auth.isOwner() ? `<th>${I18n.t('actions')}</th>` : ''}
@@ -834,7 +843,14 @@ const OilModule = (() => {
         }
 
         Components.showToast(I18n.t('success') + ' ✅', 'success');
-        Router.navigate('oil');
+        
+        // Redirigir según desde dónde se haya lanzado
+        const currentHash = window.location.hash;
+        if (currentHash.includes('maintenance')) {
+            Router.navigate('maintenance');
+        } else {
+            Router.navigate('oil');
+        }
     }
 
     function deleteOilLog(id) {
