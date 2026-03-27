@@ -730,10 +730,10 @@ const OilModule = (() => {
                         ${l.odometer ? `<div style="font-size:0.8em; color:var(--text-secondary);">Odómetro: ${l.odometer.toLocaleString()} KM</div>` : ''}
                     </td>
                     <td data-label="Detalles">
-                        <div><span style="font-weight:600;">${Units.formatVolume(l.quantity)}</span> ${l.oilType ? `| Tipo: ${l.oilType}` : ''}</div>
-                        ${(l.filterOil || l.filterAir || l.filterCabin) ? `
+                        <div><span style="font-weight:600;">${Units.formatVolume(l.quantity || l.litros)}</span> ${(l.oilType || l.tipo_aceite) ? `| Tipo: ${l.oilType || l.tipo_aceite}` : ''}</div>
+                        ${(l.filterOil || l.filterAir || l.filterCabin || l.filtros_check) ? `
                         <div style="font-size:0.8em; color:var(--text-secondary); margin-top:2px;">
-                            Filtros: ${l.filterOil ? '🛢️Aceite ' : ''}${l.filterAir ? '💨Aire ' : ''}${l.filterCabin ? '❄️Hab. ' : ''}
+                            Filtros: ${l.filterOil || (l.filtros_check && l.filtros_check.aceite) ? '🛢️Aceite ' : ''}${l.filterAir || (l.filtros_check && l.filtros_check.aire) ? '💨Aire ' : ''}${l.filterCabin || (l.filtros_check && l.filtros_check.habitaculo) ? '❄️Hab. ' : ''}
                         </div>` : ''}
                     </td>
                     <td data-label="${I18n.t('oil_added_by')}">${driverName}</td>
@@ -846,11 +846,11 @@ const OilModule = (() => {
         // Si es cambio completo, guardar nextOilChangeKm en el vehículo
         if (isChange && nextChangeKmInput && vehicle) {
             vehicle.nextOilChangeKm = Units.toKm(nextChangeKmInput);
-            vehicle.ultimoAceiteTipo = logData.oilType || '';
-            vehicle.ultimoAceiteLitros = logData.quantity || 0;
-            vehicle.filtroAceite = logData.filterOil || false;
-            vehicle.filtroAire = logData.filterAir || false;
-            vehicle.filtroHabitaculo = logData.filterCabin || false;
+            vehicle.ultimoAceiteTipo = logData.tipo_aceite || logData.oilType || '';
+            vehicle.ultimoAceiteLitros = logData.litros || logData.quantity || 0;
+            vehicle.filtroAceite = (logData.filtros_check && logData.filtros_check.aceite) || logData.filterOil || false;
+            vehicle.filtroAire = (logData.filtros_check && logData.filtros_check.aire) || logData.filterAir || false;
+            vehicle.filtroHabitaculo = (logData.filtros_check && logData.filtros_check.habitaculo) || logData.filterCabin || false;
             if (updateOdometer && odometerKm !== null && odometerKm > (vehicle.currentOdometer || 0)) {
                 vehicle.currentOdometer = odometerKm;
             } else if (updateOdometer && odometerKm !== null && odometerKm < (vehicle.currentOdometer || 0)) {
@@ -991,10 +991,18 @@ const OilModule = (() => {
             vehicleId,
             driverId: Auth.getUserId(),
             driverName: Auth.getUserName(),
-            quantity: quantityLiters,
-            date: date || new Date().toISOString(),
+            quantity: quantityLiters, // Mantener para compatibilidad en otros sitios
+            litros: quantityLiters,
+            fecha_service: date || new Date().toISOString(),
+            date: date || new Date().toISOString(), // Mantener date heredado por tabla principal
             type: 'change',
+            tipo_aceite: oilType || 'No especificado',
             oilType: oilType || 'No especificado',
+            filtros_check: {
+                aceite: !!filterOil,
+                aire: !!filterAir,
+                habitaculo: !!filterCabin
+            },
             filterOil: !!filterOil,
             filterAir: !!filterAir,
             filterCabin: !!filterCabin,
