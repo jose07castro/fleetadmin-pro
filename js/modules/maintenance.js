@@ -657,9 +657,27 @@ const OilModule = (() => {
                             placeholder="0.5" step="0.1" inputmode="decimal">
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Tipo de Aceite</label>
+                        <input type="text" class="form-input" id="oilType" placeholder="Ej: 10W-40 Sintético">
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">${I18n.t('date')}</label>
                         <input type="date" class="form-input" id="oilDate" value="${new Date().toISOString().split('T')[0]}">
                     </div>
+                </div>
+
+                <!-- Filtros cambiados -->
+                <div style="font-weight:600; margin-top:var(--space-3); margin-bottom:var(--space-2);">Filtros Cambiados</div>
+                <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-2);">
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilFilterOil"> Filtro de Aceite
+                    </label>
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilFilterAir"> Filtro de Aire
+                    </label>
+                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
+                        <input type="checkbox" id="oilFilterCabin"> Filtro de Habitáculo
+                    </label>
                 </div>
 
                 <!-- Checkbox de cambio completo de aceite -->
@@ -782,10 +800,15 @@ const OilModule = (() => {
         const vehicleId = document.getElementById('oilVehicle')?.value;
         const odometerInput = parseFloat(document.getElementById('oilOdometer')?.value);
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
+        const oilType = document.getElementById('oilType')?.value?.trim() || '';
         const date = document.getElementById('oilDate')?.value;
         const photo = Components.getPhotoData('oilPhoto');
         const isChange = document.getElementById('oilIsChange')?.checked;
         const nextChangeKmInput = parseFloat(document.getElementById('oilNextChangeKm')?.value);
+
+        const filterOil = document.getElementById('oilFilterOil')?.checked || false;
+        const filterAir = document.getElementById('oilFilterAir')?.checked || false;
+        const filterCabin = document.getElementById('oilFilterCabin')?.checked || false;
 
         if (!vehicleId || vehicleId === '' || !quantity) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
@@ -795,18 +818,31 @@ const OilModule = (() => {
         const quantityLiters = Units.toLiters(quantity);
         const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
 
-        // Preparamos logData
         const logData = {
             vehicleId,
-            driverId: Auth.getUserId(),
-            driverName: Auth.getUserName(),
-            quantity: quantityLiters,
+            driverId: Auth.getUserId() || 'unknown',
+            driverName: Auth.getUserName() || 'Conductor',
+            quantity: quantityLiters || 0,
+            litros: quantityLiters || 0,
+            fecha_service: date || new Date().toISOString(),
             date: date || new Date().toISOString(),
-            photo
+            tipo_aceite: oilType || 'No especificado',
+            oilType: oilType || 'No especificado',
+            filtros_check: {
+                aceite: !!filterOil,
+                aire: !!filterAir,
+                habitaculo: !!filterCabin
+            },
+            filterOil: !!filterOil,
+            filterAir: !!filterAir,
+            filterCabin: !!filterCabin,
+            photo: photo || null
         };
 
         if (odometerKm !== null) logData.odometer = odometerKm;
         if (isChange) logData.type = 'change';
+
+        console.log('📦 JSON PAYLOAD ACEITE (formulario principal): ', JSON.stringify(logData, null, 2));
 
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
