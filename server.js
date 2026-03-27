@@ -502,8 +502,31 @@ async function handleAPI(req, res, urlPath) {
             };
 
             const response = await firebaseAdmin.messaging().sendEachForMulticast(message);
-            console.log(`🛠️ MAINTENANCE NOTIFY: ✅ Enviadas: ${response.successCount}`);
+            console.log(`🛠️ MAINTENANCE NOTIFY: ✅ Enviadas: ${response.successCount}, Fallidas: ${response.failureCount}`);
             
+            // Limpiar tokens inválidos (fix expiraciones)
+            if (response.failureCount > 0) {
+                const invalidTokens = [];
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success) {
+                        const errorCode = resp.error?.code || '';
+                        if (errorCode === 'messaging/invalid-registration-token' ||
+                            errorCode === 'messaging/registration-token-not-registered') {
+                            invalidTokens.push(targetTokens[idx]);
+                        }
+                    }
+                });
+                
+                if (invalidTokens.length > 0) {
+                    console.log(`🛠️ MAINTENANCE NOTIFY: 🗑️ Limpiando ${invalidTokens.length} tokens inválidos`);
+                    for (const [userId, entry] of Object.entries(tokensData)) {
+                        if (invalidTokens.includes(entry.token)) {
+                            await firebaseAdmin.database().ref(`fcm_tokens/${userId}`).remove();
+                        }
+                    }
+                }
+            }
+
             // Actualizar estado en Firebase RTDB para que la Web/Windows Dashboard lo intercepte en vivo si quisiéramos
             // (Ya se maneja también via alerts.js localmente, pero forzamos el trigger visual)
             try {

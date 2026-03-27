@@ -523,6 +523,8 @@ const MaintenanceModule = (() => {
             photo
         };
 
+        console.log('📦 JSON PAYLOAD REPARACIÓN COMPLETO: ', JSON.stringify(data, null, 2));
+
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
         const vehicle = await DB.get('vehicles', vehicleId);
@@ -989,12 +991,12 @@ const OilModule = (() => {
 
         const logData = {
             vehicleId,
-            driverId: Auth.getUserId(),
-            driverName: Auth.getUserName(),
-            quantity: quantityLiters, // Mantener para compatibilidad en otros sitios
-            litros: quantityLiters,
+            driverId: Auth.getUserId() || 'unknown',
+            driverName: Auth.getUserName() || 'Conductor',
+            quantity: quantityLiters || 0,
+            litros: quantityLiters || 0,
             fecha_service: date || new Date().toISOString(),
-            date: date || new Date().toISOString(), // Mantener date heredado por tabla principal
+            date: date || new Date().toISOString(),
             type: 'change',
             tipo_aceite: oilType || 'No especificado',
             oilType: oilType || 'No especificado',
@@ -1006,7 +1008,7 @@ const OilModule = (() => {
             filterOil: !!filterOil,
             filterAir: !!filterAir,
             filterCabin: !!filterCabin,
-            photo: photo
+            photo: photo || null
         };
 
         if (odometerKm !== null) logData.odometer = odometerKm;
@@ -1023,12 +1025,12 @@ const OilModule = (() => {
                     '¿Deseas que este registro actualice el odómetro actual del auto?',
                     async () => {
                         Components.closeModal();
-                        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND (Actualizar ODO): ', JSON.stringify(logData, null, 2));
+                        console.log('📦 JSON PAYLOAD CAMBIO ACEITE (Actualizar ODO): ', JSON.stringify(logData, null, 2));
                         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
                     },
                     async () => {
                         Components.closeModal();
-                        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND (Historico): ', JSON.stringify(logData, null, 2));
+                        console.log('📦 JSON PAYLOAD CAMBIO ACEITE (Histórico): ', JSON.stringify(logData, null, 2));
                         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, false);
                     }
                 );
@@ -1037,7 +1039,7 @@ const OilModule = (() => {
         }
 
         Components.closeModal();
-        console.log('📦 ENVIANDO PAYLOAD DE MANTENIMIENTO AL BACKEND: ', JSON.stringify(logData, null, 2));
+        console.log('📦 JSON PAYLOAD CAMBIO ACEITE COMPLETO: ', JSON.stringify(logData, null, 2));
         await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
     }
 
