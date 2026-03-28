@@ -685,8 +685,8 @@ const SOSModule = (() => {
         // Guardar posición inmediatamente
         _savePosition(userId);
 
-        // Actualizar cada 60 segundos
-        _positionInterval = setInterval(() => _savePosition(userId), 60000);
+        // Actualizar cada 20 segundos (v96)
+        _positionInterval = setInterval(() => _savePosition(userId), 20000);
 
         // Watch para actualización continua en memoria
         try {
