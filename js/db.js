@@ -75,11 +75,39 @@ const DB = (() => {
         });
     }
 
+    // --- DEFENSA NUCLEAR: Sanitizar objetos antes de escribir a Firebase ---
+    // Elimina cualquier campo que contenga Base64 (ghost photo de caché viejo)
+    function _sanitizeForFirebase(obj) {
+        if (!obj || typeof obj !== 'object') return obj;
+        const clean = Array.isArray(obj) ? [...obj] : { ...obj };
+        for (const key of Object.keys(clean)) {
+            const val = clean[key];
+            if (typeof val === 'string') {
+                // Bloquear cualquier Base64 image data
+                if (val.startsWith('data:image') || val.startsWith('data:application')) {
+                    console.error(`🚫 DB SANITIZER: Campo "${key}" contenía Base64 (${val.length} chars). ELIMINADO.`);
+                    delete clean[key];
+                    continue;
+                }
+                // Bloquear cualquier string sospechosamente grande (>5KB = probablemente foto)
+                if (val.length > 5000) {
+                    console.error(`🚫 DB SANITIZER: Campo "${key}" demasiado grande (${val.length} chars). ELIMINADO.`);
+                    delete clean[key];
+                    continue;
+                }
+            } else if (val && typeof val === 'object') {
+                clean[key] = _sanitizeForFirebase(val);
+            }
+        }
+        return clean;
+    }
+
     // --- Operaciones CRUD genéricas (dentro de la flota activa) ---
     async function add(storeName, data) {
         const ref = db.ref(fleetPath(storeName)).push();
+        const sanitized = _sanitizeForFirebase(data);
         const newItem = {
-            ...data,
+            ...sanitized,
             id: ref.key,
             createdAt: data.createdAt || new Date().toISOString()
         };
@@ -89,8 +117,9 @@ const DB = (() => {
 
     async function put(storeName, data) {
         if (!data.id) throw new Error('put() requiere un ID');
+        const sanitized = _sanitizeForFirebase(data);
         const updated = {
-            ...data,
+            ...sanitized,
             updatedAt: new Date().toISOString()
         };
         await db.ref(`${fleetPath(storeName)}/${data.id}`).update(updated);
