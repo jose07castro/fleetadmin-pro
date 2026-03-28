@@ -1003,108 +1003,62 @@ const OilModule = (() => {
 
     async function saveOilChangeFromModal(vehicleId) {
         // ======================================================
-        // PASO 1: Captura directa de cada input del modal
+        // v97: OBJETO 100% LIMPIO — Solo texto y números
+        // NO HAY rawPhoto, NO HAY comprobante, NO HAY imagen
         // ======================================================
-        const elOdometer = document.getElementById('oilModalOdometer');
-        const elNextChange = document.getElementById('oilModalNextChange');
-        const elQuantity = document.getElementById('oilModalQuantity');
-        const elType = document.getElementById('oilModalType');
-        const elDate = document.getElementById('oilModalDate');
-        const elFilterOil = document.getElementById('oilModalFilterOil');
-        const elFilterAir = document.getElementById('oilModalFilterAir');
-        const elFilterCabin = document.getElementById('oilModalFilterCabin');
+        const rawOdometer = document.getElementById('oilModalOdometer')?.value || '';
+        const rawNextChange = document.getElementById('oilModalNextChange')?.value || '';
+        const rawQuantity = document.getElementById('oilModalQuantity')?.value || '';
+        const rawType = document.getElementById('oilModalType')?.value?.trim() || '';
+        const rawDate = document.getElementById('oilModalDate')?.value || '';
+        const rawFilterOil = document.getElementById('oilModalFilterOil')?.checked || false;
+        const rawFilterAir = document.getElementById('oilModalFilterAir')?.checked || false;
+        const rawFilterCabin = document.getElementById('oilModalFilterCabin')?.checked || false;
 
-        // Debug: verificar que los elementos existen
-        console.log('🔍 INPUTS ENCONTRADOS:', {
-            oilModalOdometer: !!elOdometer,
-            oilModalNextChange: !!elNextChange,
-            oilModalQuantity: !!elQuantity,
-            oilModalType: !!elType,
-            oilModalDate: !!elDate,
-            oilModalFilterOil: !!elFilterOil,
-            oilModalFilterAir: !!elFilterAir,
-            oilModalFilterCabin: !!elFilterCabin
-        });
-
-        // ======================================================
-        // PASO 2: Extraer valores RAW (sin transformar)
-        // ======================================================
-        const rawOdometer = elOdometer ? elOdometer.value : '';
-        const rawNextChange = elNextChange ? elNextChange.value : '';
-        const rawQuantity = elQuantity ? elQuantity.value : '';
-        const rawType = elType ? elType.value.trim() : '';
-        const rawDate = elDate ? elDate.value : '';
-        const rawFilterOil = elFilterOil ? elFilterOil.checked : false;
-        const rawFilterAir = elFilterAir ? elFilterAir.checked : false;
-        const rawFilterCabin = elFilterCabin ? elFilterCabin.checked : false;
-
-        console.log('📋 VALORES RAW CAPTURADOS:', {
-            rawOdometer, rawNextChange, rawQuantity, rawType,
-            rawDate, rawFilterOil, rawFilterAir, rawFilterCabin
-        });
-
-        // ======================================================
-        // PASO 3: Validación
-        // ======================================================
         const quantity = parseFloat(rawQuantity);
         if (!quantity || isNaN(quantity)) {
             Components.showToast('⚠️ Falta la cantidad de litros.', 'danger');
             return;
         }
 
-        // ======================================================
-        // PASO 4: Conversión de unidades
-        // ======================================================
         const quantityLiters = Units.toLiters(quantity);
-        const odometerKm = rawOdometer ? Units.toKm(parseFloat(rawOdometer)) : null;
-        const nextChangeKm = rawNextChange ? Units.toKm(parseFloat(rawNextChange)) : null;
+        const odometerKm = rawOdometer ? Units.toKm(parseFloat(rawOdometer)) : 0;
+        const nextChangeKm = rawNextChange ? Units.toKm(parseFloat(rawNextChange)) : 0;
 
         // ======================================================
-        // PASO 5: Construir objeto LIVIANO para Firebase (SOLO texto y números)
+        // OBJETO FINAL — WHITELIST ESTRICTA — CERO MULTIMEDIA
         // ======================================================
-        const logData = {
-            vehicleId: vehicleId,
-            driverId: Auth.getUserId() || 'unknown',
-            driverName: Auth.getUserName() || 'Conductor',
-            odometer: odometerKm || 0,
-            nextOilChangeKm: nextChangeKm || 0,
-            quantity: quantityLiters,
-            litros: quantityLiters,
-            tipo_aceite: rawType || 'No especificado',
-            oilType: rawType || 'No especificado',
-            filterOil: rawFilterOil,
-            filterAir: rawFilterAir,
-            filterCabin: rawFilterCabin,
+        const finalData = {
+            vehicleId: String(vehicleId),
+            driverId: String(Auth.getUserId() || 'unknown'),
+            driverName: String(Auth.getUserName() || 'Conductor'),
+            odometer: Number(odometerKm) || 0,
+            nextOilChangeKm: Number(nextChangeKm) || 0,
+            litros: Number(quantityLiters) || 0,
+            quantity: Number(quantityLiters) || 0,
+            tipo_aceite: String(rawType || 'No especificado'),
+            oilType: String(rawType || 'No especificado'),
+            filterOil: Boolean(rawFilterOil),
+            filterAir: Boolean(rawFilterAir),
+            filterCabin: Boolean(rawFilterCabin),
             filtros_check: {
-                aceite: rawFilterOil,
-                aire: rawFilterAir,
-                habitaculo: rawFilterCabin
+                aceite: Boolean(rawFilterOil),
+                aire: Boolean(rawFilterAir),
+                habitaculo: Boolean(rawFilterCabin)
             },
-            date: rawDate || new Date().toISOString().split('T')[0],
-            fecha_service: rawDate || new Date().toISOString().split('T')[0],
+            date: String(rawDate || new Date().toISOString().split('T')[0]),
+            fecha_service: String(rawDate || new Date().toISOString().split('T')[0]),
             type: 'change',
             timestamp: new Date().toISOString()
         };
 
-        // ======================================================
-        // PASO 6: EXTIRPAR campos pesados (defensa contra caché viejo)
-        // ======================================================
-        delete logData.rawPhoto;
-        delete logData.rawComprobante;
-        delete logData.photo;
-        delete logData.comprobante;
-        delete logData.imagen;
+        // NADA MÁS. No hay rawPhoto, no hay photo, no hay imagen, no hay comprobante.
 
-        // ======================================================
-        // PASO 7: LOG FINAL — objeto liviano que va a Firebase
-        // ======================================================
-        console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
+        console.log('🚀 v97 FINAL DATA (SOLO TEXTO):', JSON.stringify(finalData, null, 2));
+        console.log('📏 TAMAÑO PAYLOAD:', JSON.stringify(finalData).length, 'bytes');
 
-        // ======================================================
-        // PASO 8: Guardar en Firebase con try/catch
-        // ======================================================
         try {
-            const newId = await DB.add('oilLogs', logData);
+            const newId = await DB.add('oilLogs', finalData);
             console.log('✅ GUARDADO EXITOSO en oilLogs. ID:', newId);
         } catch (err) {
             console.error('❌ ERROR GUARDANDO EN FIREBASE:', err);
