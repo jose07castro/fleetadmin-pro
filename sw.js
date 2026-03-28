@@ -1,36 +1,36 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v93';
+const CACHE_NAME = 'fleetadmin-pro-v96';
 const ASSETS = [
     './',
-    './index.html?v=93',
-    './css/index.css?v=93',
-    './css/components.css?v=93',
-    './css/modules.css?v=93',
-    './js/i18n.js?v=93',
-    './js/firebase-config.js?v=93',
-    './js/db.js?v=93',
-    './js/units.js?v=93',
-    './js/auth.js?v=93',
-    './js/alerts.js?v=93',
-    './js/components.js?v=93',
-    './js/router.js?v=93',
-    './js/storage.js?v=93',
-    './js/modules/login.js?v=93',
-    './js/modules/dashboard.js?v=93',
-    './js/modules/shifts.js?v=93',
-    './js/modules/maintenance.js?v=93',
-    './js/modules/vehicles.js?v=93',
-    './js/modules/settings.js?v=93',
-    './js/modules/community.js?v=93',
-    './js/modules/sos.js?v=93',
-    './js/modules/announcements.js?v=93',
-    './js/whatsapp.js?v=93',
-    './js/modules/gps.js?v=93',
-    './js/fcm.js?v=93',
-    './js/notifications.js?v=93',
-    './js/pwa-install.js?v=93',
-    './js/app.js?v=93',
-    './manifest.json?v=93',
+    './index.html?v=96',
+    './css/index.css?v=96',
+    './css/components.css?v=96',
+    './css/modules.css?v=96',
+    './js/i18n.js?v=96',
+    './js/firebase-config.js?v=96',
+    './js/db.js?v=96',
+    './js/units.js?v=96',
+    './js/auth.js?v=96',
+    './js/alerts.js?v=96',
+    './js/components.js?v=96',
+    './js/router.js?v=96',
+    './js/storage.js?v=96',
+    './js/modules/login.js?v=96',
+    './js/modules/dashboard.js?v=96',
+    './js/modules/shifts.js?v=96',
+    './js/modules/maintenance.js?v=96',
+    './js/modules/vehicles.js?v=96',
+    './js/modules/settings.js?v=96',
+    './js/modules/community.js?v=96',
+    './js/modules/sos.js?v=96',
+    './js/modules/announcements.js?v=96',
+    './js/whatsapp.js?v=96',
+    './js/modules/gps.js?v=96',
+    './js/fcm.js?v=96',
+    './js/notifications.js?v=96',
+    './js/pwa-install.js?v=96',
+    './js/app.js?v=96',
+    './manifest.json?v=96',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -38,13 +38,13 @@ const ASSETS = [
     './assets/screenshot-dashboard.png'
 ];
 
-// Instalar: cachear todos los archivos estáticos
+// Instalar: cachear todos los archivos estáticos + FORZAR activación inmediata
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // NO llamar self.skipWaiting() aquí — el SW nuevo queda en 'waiting'
-    // hasta que el usuario acepte la actualización desde el modal
+    // v96: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
+    self.skipWaiting();
 });
 
 // Activar: limpiar cachés viejas
@@ -108,7 +108,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=93')
+                return caches.match('./index.html?v=96')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

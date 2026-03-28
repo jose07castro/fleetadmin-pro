@@ -870,6 +870,13 @@ const OilModule = (() => {
             Components.showToast('Registrando mantenimiento histórico', 'warning');
         }
 
+        // ── EXTIRPAR campos pesados (defensa contra caché viejo) ──
+        delete logData.rawPhoto;
+        delete logData.rawComprobante;
+        delete logData.photo;
+        delete logData.comprobante;
+        delete logData.imagen;
+
         await DB.add('oilLogs', logData);
 
         // Si es cambio completo, guardar nextOilChangeKm en el vehículo
@@ -1080,7 +1087,16 @@ const OilModule = (() => {
         };
 
         // ======================================================
-        // PASO 6: LOG FINAL — objeto liviano que va a Firebase
+        // PASO 6: EXTIRPAR campos pesados (defensa contra caché viejo)
+        // ======================================================
+        delete logData.rawPhoto;
+        delete logData.rawComprobante;
+        delete logData.photo;
+        delete logData.comprobante;
+        delete logData.imagen;
+
+        // ======================================================
+        // PASO 7: LOG FINAL — objeto liviano que va a Firebase
         // ======================================================
         console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
 
