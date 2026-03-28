@@ -898,8 +898,13 @@ const OilModule = (() => {
         };
         // NADA MÁS. rawPhoto, photo, imagen, comprobante NO EXISTEN en este objeto.
 
-        console.log('🚀 v98 _finishSaveOilLog FINAL:', JSON.stringify(finalData, null, 2));
-        console.log('📏 PAYLOAD SIZE:', JSON.stringify(finalData).length, 'bytes');
+        // ═══ DIAGNÓSTICO v101: STRESS TEST ═══
+        const _json1 = JSON.stringify(finalData);
+        console.trace('🔬 TRACE _finishSaveOilLog — ¿QUIÉN ME LLAMÓ?');
+        console.log('🔬 DATOS A ENVIAR:', _json1.substring(0, 500));
+        console.log('🔬 PESO TOTAL:', _json1.length, 'bytes');
+        if (_json1.length > 1000) console.error('🚨🚨🚨 ALERTA: PAYLOAD > 1KB! Algo anda mal.');
+        // ═══ FIN DIAGNÓSTICO ═══
 
         await DB.add('oilLogs', finalData);
 
@@ -1078,8 +1083,13 @@ const OilModule = (() => {
 
         // NADA MÁS. No hay rawPhoto, no hay photo, no hay imagen, no hay comprobante.
 
-        console.log('🚀 v97 FINAL DATA (SOLO TEXTO):', JSON.stringify(finalData, null, 2));
-        console.log('📏 TAMAÑO PAYLOAD:', JSON.stringify(finalData).length, 'bytes');
+        // ═══ DIAGNÓSTICO v101: STRESS TEST ═══
+        const _json2 = JSON.stringify(finalData);
+        console.trace('🔬 TRACE saveOilChangeFromModal — ¿QUIÉN ME LLAMÓ?');
+        console.log('🔬 DATOS A ENVIAR:', _json2.substring(0, 500));
+        console.log('🔬 PESO TOTAL:', _json2.length, 'bytes');
+        if (_json2.length > 1000) console.error('🚨🚨🚨 ALERTA: PAYLOAD > 1KB! Algo anda mal.');
+        // ═══ FIN DIAGNÓSTICO ═══
 
         try {
             const newId = await DB.add('oilLogs', finalData);

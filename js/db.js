@@ -111,6 +111,17 @@ const DB = (() => {
             id: ref.key,
             createdAt: data.createdAt || new Date().toISOString()
         };
+
+        // ═══ DIAGNÓSTICO v101: RED DE SEGURIDAD CENTRAL ═══
+        const _dbJson = JSON.stringify(newItem);
+        console.log(`🔬 DB.add('${storeName}') — PESO: ${_dbJson.length} bytes`);
+        if (_dbJson.length > 1000) {
+            console.error(`🚨🚨🚨 DB.add('${storeName}') PAYLOAD > 1KB (${_dbJson.length} bytes)!`);
+            console.log('🔬 PRIMEROS 500 CHARS:', _dbJson.substring(0, 500));
+            console.trace('🔬 DB.add TRACE — ¿QUIÉN ENVIÓ ESTO?');
+        }
+        // ═══ FIN DIAGNÓSTICO ═══
+
         await ref.set(newItem);
         return ref.key;
     }
