@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v98';
+const CACHE_NAME = 'fleetadmin-pro-v99';
 const ASSETS = [
     './',
     './index.html?v=96',
@@ -43,7 +43,7 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // v98: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
+    // v99: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
     self.skipWaiting();
 });
 
