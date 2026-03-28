@@ -479,7 +479,7 @@ const MaintenanceModule = (() => {
         const odometer = parseFloat(document.getElementById('repairOdometer')?.value) || 0;
         const laborCost = parseFloat(document.getElementById('repairLaborCost')?.value) || 0;
         const date = document.getElementById('repairDate')?.value;
-        const photo = Components.getPhotoData('repairPhoto');
+        const rawPhoto = Components.getPhotoData('repairPhoto');
         const mechanicId = Auth.isOwner() ? (document.getElementById('repairMechanic')?.value || Auth.getUserId()) : Auth.getUserId();
 
         const partRows = document.querySelectorAll('#repairPartsContainer .part-row');
@@ -511,6 +511,22 @@ const MaintenanceModule = (() => {
         const description = descriptionParts.join(', '); // Retro-compatibilidad de descripción texto string
         const odometerKm = Units.toKm(odometer);
 
+        // ── Subir foto a Firebase Storage (NO guardar Base64 en DB) ──
+        let photoURL = null;
+        if (rawPhoto && rawPhoto.startsWith('data:')) {
+            try {
+                Components.showToast('📤 Subiendo foto de reparación...', 'info');
+                const fleetId = Auth.getFleetId() || 'default';
+                const ts = Date.now();
+                const path = `repairs/${fleetId}/${vehicleId}_${ts}.jpg`;
+                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
+                console.log('✅ Foto de reparación subida a Storage:', photoURL);
+            } catch (uploadErr) {
+                console.error('❌ Error subiendo foto de reparación:', uploadErr);
+                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
+            }
+        }
+
         const data = {
             vehicleId,
             mechanicId: mechanicId,
@@ -519,9 +535,10 @@ const MaintenanceModule = (() => {
             cost: totalCost,
             laborCost,
             parts,
-            date: date || new Date().toISOString(),
-            photo
+            date: date || new Date().toISOString()
         };
+        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
+        if (photoURL) data.photo = photoURL;
 
         console.log('📦 JSON PAYLOAD REPARACIÓN COMPLETO: ', JSON.stringify(data, null, 2));
 
@@ -802,7 +819,7 @@ const OilModule = (() => {
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
         const oilType = document.getElementById('oilType')?.value?.trim() || '';
         const date = document.getElementById('oilDate')?.value;
-        const photo = Components.getPhotoData('oilPhoto');
+        const rawPhoto = Components.getPhotoData('oilPhoto');
         const isChange = document.getElementById('oilIsChange')?.checked;
         const nextChangeKmInput = parseFloat(document.getElementById('oilNextChangeKm')?.value);
 
@@ -817,6 +834,22 @@ const OilModule = (() => {
 
         const quantityLiters = Units.toLiters(quantity);
         const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
+
+        // ── Subir foto a Firebase Storage (NO guardar Base64 en DB) ──
+        let photoURL = null;
+        if (rawPhoto && rawPhoto.startsWith('data:')) {
+            try {
+                Components.showToast('📤 Subiendo foto de aceite...', 'info');
+                const fleetId = Auth.getFleetId() || 'default';
+                const ts = Date.now();
+                const path = `oilLogs/${fleetId}/${vehicleId}_${ts}.jpg`;
+                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
+                console.log('✅ Foto de aceite subida a Storage:', photoURL);
+            } catch (uploadErr) {
+                console.error('❌ Error subiendo foto de aceite:', uploadErr);
+                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
+            }
+        }
 
         const logData = {
             vehicleId,
@@ -835,9 +868,10 @@ const OilModule = (() => {
             },
             filterOil: !!filterOil,
             filterAir: !!filterAir,
-            filterCabin: !!filterCabin,
-            photo: photo || null
+            filterCabin: !!filterCabin
         };
+        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
+        if (photoURL) logData.photo = photoURL;
 
         if (odometerKm !== null) logData.odometer = odometerKm;
         if (isChange) logData.type = 'change';
@@ -1066,7 +1100,25 @@ const OilModule = (() => {
         const nextChangeKm = rawNextChange ? Units.toKm(parseFloat(rawNextChange)) : null;
 
         // ======================================================
-        // PASO 5: Construir objeto COMPLETO para Firebase
+        // PASO 5: Subir foto a Firebase Storage (NO Base64 en DB)
+        // ======================================================
+        let photoURL = null;
+        if (rawPhoto && rawPhoto.startsWith('data:')) {
+            try {
+                Components.showToast('📤 Subiendo foto del cambio de aceite...', 'info');
+                const fleetId = Auth.getFleetId() || 'default';
+                const ts = Date.now();
+                const path = `oilLogs/${fleetId}/${vehicleId}_modal_${ts}.jpg`;
+                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
+                console.log('✅ Foto de cambio aceite (modal) subida a Storage:', photoURL);
+            } catch (uploadErr) {
+                console.error('❌ Error subiendo foto de cambio aceite (modal):', uploadErr);
+                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
+            }
+        }
+
+        // ======================================================
+        // PASO 6: Construir objeto COMPLETO para Firebase (liviano, sin Base64)
         // ======================================================
         const logData = {
             vehicleId: vehicleId,
@@ -1089,17 +1141,18 @@ const OilModule = (() => {
             date: rawDate || new Date().toISOString().split('T')[0],
             fecha_service: rawDate || new Date().toISOString().split('T')[0],
             type: 'change',
-            photo: rawPhoto || null,
             timestamp: new Date().toISOString()
         };
+        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
+        if (photoURL) logData.photo = photoURL;
 
         // ======================================================
-        // PASO 6: LOG FINAL — este es el objeto que va a Firebase
+        // PASO 7: LOG FINAL — este es el objeto que va a Firebase
         // ======================================================
         console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
 
         // ======================================================
-        // PASO 7: Guardar en Firebase con try/catch
+        // PASO 8: Guardar en Firebase con try/catch
         // ======================================================
         try {
             const newId = await DB.add('oilLogs', logData);
@@ -1111,7 +1164,7 @@ const OilModule = (() => {
         }
 
         // ======================================================
-        // PASO 8: Actualizar vehículo (odómetro + datos de aceite)
+        // PASO 9: Actualizar vehículo (odómetro + datos de aceite)
         // ======================================================
         try {
             let vehicle = await DB.get('vehicles', vehicleId);
@@ -1133,7 +1186,7 @@ const OilModule = (() => {
         }
 
         // ======================================================
-        // PASO 9: Cerrar modal y redirigir
+        // PASO 10: Cerrar modal y redirigir
         // ======================================================
         Components.closeModal();
         Components.showToast('✅ Cambio de aceite registrado correctamente', 'success');
