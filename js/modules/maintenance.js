@@ -718,8 +718,6 @@ const OilModule = (() => {
                     </div>
                 </div>
 
-                ${Components.renderPhotoCapture('oilPhoto', I18n.t('photo') + ' (' + I18n.t('optional') + ')')}
-
                 <button class="btn btn-primary btn-lg" onclick="OilModule.saveOilLog()" style="margin-top:var(--space-2);">
                     💾 ${I18n.t('save')}
                 </button>
@@ -780,9 +778,6 @@ const OilModule = (() => {
                         </div>` : ''}
                     </td>
                     <td data-label="${I18n.t('oil_added_by')}">${driverName}</td>
-                    <td data-label="${I18n.t('photo')}">
-                        ${l.photo ? `<img src="${l.photo}" class="table-photo" onclick="Components.showModal('${I18n.t('photo')}', '<img src=\\'${l.photo}\\' style=\\'width:100%;border-radius:8px;\\'>')">` : '-'}
-                    </td>
                     ${Auth.isOwner() ? `
                         <td data-label="${I18n.t('actions')}">
                             <button class="btn btn-ghost btn-sm" onclick="OilModule.deleteOilLog('${l.id}')">🗑️</button>
@@ -801,7 +796,6 @@ const OilModule = (() => {
                             <th>${I18n.t('mech_vehicle')}</th>
                             <th>Detalles y Filtros</th>
                             <th>${I18n.t('oil_added_by')}</th>
-                            <th>${I18n.t('photo')}</th>
                             ${Auth.isOwner() ? `<th>${I18n.t('actions')}</th>` : ''}
                         </tr>
                     </thead>
@@ -825,7 +819,6 @@ const OilModule = (() => {
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
         const oilType = document.getElementById('oilType')?.value?.trim() || '';
         const date = document.getElementById('oilDate')?.value;
-        const rawPhoto = Components.getPhotoData('oilPhoto');
         const isChange = document.getElementById('oilIsChange')?.checked;
         const nextChangeKmInput = parseFloat(document.getElementById('oilNextChangeKm')?.value);
 
@@ -841,22 +834,7 @@ const OilModule = (() => {
         const quantityLiters = Units.toLiters(quantity);
         const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
 
-        // ── Subir foto a Firebase Storage (NO guardar Base64 en DB) ──
-        let photoURL = null;
-        if (rawPhoto && rawPhoto.startsWith('data:')) {
-            try {
-                Components.showToast('📤 Subiendo foto de aceite...', 'info');
-                const fleetId = Auth.getFleetId() || 'default';
-                const ts = Date.now();
-                const path = `oilLogs/${fleetId}/${vehicleId}_${ts}.jpg`;
-                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
-                console.log('✅ Foto de aceite subida a Storage:', photoURL);
-            } catch (uploadErr) {
-                console.error('❌ Error subiendo foto de aceite:', uploadErr);
-                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
-            }
-        }
-
+        // ── Objeto liviano: SOLO texto y números, CERO fotos ──
         const logData = {
             vehicleId,
             driverId: Auth.getUserId() || 'unknown',
@@ -876,19 +854,11 @@ const OilModule = (() => {
             filterAir: !!filterAir,
             filterCabin: !!filterCabin
         };
-        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
-        if (photoURL) logData.photo = photoURL;
 
         if (odometerKm !== null) logData.odometer = odometerKm;
         if (isChange) logData.type = 'change';
 
         console.log('📦 JSON PAYLOAD ACEITE (formulario principal): ', JSON.stringify(logData, null, 2));
-
-        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
-        if (logData.photo && logData.photo.startsWith('data:')) {
-            console.error('🚫 BLOQUEADO: Se detectó Base64 en logData.photo. Eliminando...');
-            delete logData.photo;
-        }
 
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
@@ -1033,8 +1003,6 @@ const OilModule = (() => {
                     <label class="form-label">${I18n.t('date')}</label>
                     <input type="date" class="form-input" id="oilModalDate" value="${new Date().toISOString().split('T')[0]}">
                 </div>
-
-                ${Components.renderPhotoCapture('oilModalPhoto', 'Subir foto del comprobante/ticket (Opcional)')}
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -1087,12 +1055,10 @@ const OilModule = (() => {
         const rawFilterOil = elFilterOil ? elFilterOil.checked : false;
         const rawFilterAir = elFilterAir ? elFilterAir.checked : false;
         const rawFilterCabin = elFilterCabin ? elFilterCabin.checked : false;
-        const rawPhoto = Components.getPhotoData('oilModalPhoto');
 
         console.log('📋 VALORES RAW CAPTURADOS:', {
             rawOdometer, rawNextChange, rawQuantity, rawType,
-            rawDate, rawFilterOil, rawFilterAir, rawFilterCabin,
-            rawPhoto: rawPhoto ? '(foto capturada)' : '(sin foto)'
+            rawDate, rawFilterOil, rawFilterAir, rawFilterCabin
         });
 
         // ======================================================
@@ -1112,25 +1078,7 @@ const OilModule = (() => {
         const nextChangeKm = rawNextChange ? Units.toKm(parseFloat(rawNextChange)) : null;
 
         // ======================================================
-        // PASO 5: Subir foto a Firebase Storage (NO Base64 en DB)
-        // ======================================================
-        let photoURL = null;
-        if (rawPhoto && rawPhoto.startsWith('data:')) {
-            try {
-                Components.showToast('📤 Subiendo foto del cambio de aceite...', 'info');
-                const fleetId = Auth.getFleetId() || 'default';
-                const ts = Date.now();
-                const path = `oilLogs/${fleetId}/${vehicleId}_modal_${ts}.jpg`;
-                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
-                console.log('✅ Foto de cambio aceite (modal) subida a Storage:', photoURL);
-            } catch (uploadErr) {
-                console.error('❌ Error subiendo foto de cambio aceite (modal):', uploadErr);
-                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
-            }
-        }
-
-        // ======================================================
-        // PASO 6: Construir objeto COMPLETO para Firebase (liviano, sin Base64)
+        // PASO 5: Construir objeto LIVIANO para Firebase (SOLO texto y números)
         // ======================================================
         const logData = {
             vehicleId: vehicleId,
@@ -1155,19 +1103,11 @@ const OilModule = (() => {
             type: 'change',
             timestamp: new Date().toISOString()
         };
-        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
-        if (photoURL) logData.photo = photoURL;
 
         // ======================================================
-        // PASO 7: LOG FINAL — este es el objeto que va a Firebase
+        // PASO 6: LOG FINAL — objeto liviano que va a Firebase
         // ======================================================
         console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
-
-        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
-        if (logData.photo && logData.photo.startsWith('data:')) {
-            console.error('🚫 BLOQUEADO: Se detectó Base64 en logData.photo (modal). Eliminando...');
-            delete logData.photo;
-        }
 
         // ======================================================
         // PASO 8: Guardar en Firebase con try/catch
