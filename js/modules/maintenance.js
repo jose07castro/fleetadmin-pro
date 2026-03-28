@@ -331,7 +331,7 @@ const MaintenanceModule = (() => {
                             <th>${I18n.t('mech_repair_desc')}</th>
                             <th>${I18n.t('veh_odometer')}</th>
                             <th>${I18n.t('mech_cost')}</th>
-                            <th>${I18n.t('photo')}</th>
+
                             <th>${I18n.t('actions')}</th>
                         </tr>
                     </thead>
@@ -359,9 +359,6 @@ const MaintenanceModule = (() => {
                                             ${I18n.t('mech_parts')} (${r.parts.length}): ${I18n.t('unit_currency')}${r.parts.reduce((s, p) => s + (p.cost || 0), 0).toLocaleString()}
                                         </div>
                                     ` : ''}
-                                </td>
-                                <td data-label="${I18n.t('photo')}">
-                                    ${r.photo ? `<img src="${r.photo}" class="table-photo" onclick="Components.showModal('${I18n.t('photo')}', '<img src=\\'${r.photo}\\' style=\\'width:100%;border-radius:8px;\\'>')">` : '-'}
                                 </td>
                                 <td data-label="${I18n.t('actions')}">
                                     <button class="btn btn-ghost btn-sm" onclick="MaintenanceModule.editRepair('${r.id}')">✏️</button>
@@ -464,7 +461,7 @@ const MaintenanceModule = (() => {
                 })()}
                         </div>
                     </div>
-                    ${Components.renderPhotoCapture('repairPhoto', I18n.t('mech_photos'))}
+
                 `,
                 `
                     <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
@@ -479,7 +476,7 @@ const MaintenanceModule = (() => {
         const odometer = parseFloat(document.getElementById('repairOdometer')?.value) || 0;
         const laborCost = parseFloat(document.getElementById('repairLaborCost')?.value) || 0;
         const date = document.getElementById('repairDate')?.value;
-        const rawPhoto = Components.getPhotoData('repairPhoto');
+
         const mechanicId = Auth.isOwner() ? (document.getElementById('repairMechanic')?.value || Auth.getUserId()) : Auth.getUserId();
 
         const partRows = document.querySelectorAll('#repairPartsContainer .part-row');
@@ -511,21 +508,7 @@ const MaintenanceModule = (() => {
         const description = descriptionParts.join(', '); // Retro-compatibilidad de descripción texto string
         const odometerKm = Units.toKm(odometer);
 
-        // ── Subir foto a Firebase Storage (NO guardar Base64 en DB) ──
-        let photoURL = null;
-        if (rawPhoto && rawPhoto.startsWith('data:')) {
-            try {
-                Components.showToast('📤 Subiendo foto de reparación...', 'info');
-                const fleetId = Auth.getFleetId() || 'default';
-                const ts = Date.now();
-                const path = `repairs/${fleetId}/${vehicleId}_${ts}.jpg`;
-                photoURL = await StorageUtil.uploadImage(rawPhoto, path);
-                console.log('✅ Foto de reparación subida a Storage:', photoURL);
-            } catch (uploadErr) {
-                console.error('❌ Error subiendo foto de reparación:', uploadErr);
-                Components.showToast('⚠️ No se pudo subir la foto, se guardará sin imagen.', 'warning');
-            }
-        }
+
 
         const data = {
             vehicleId,
@@ -537,16 +520,8 @@ const MaintenanceModule = (() => {
             parts,
             date: date || new Date().toISOString()
         };
-        // Solo incluir photo si se subió exitosamente (mantener payload liviano)
-        if (photoURL) data.photo = photoURL;
 
         console.log('📦 JSON PAYLOAD REPARACIÓN COMPLETO: ', JSON.stringify(data, null, 2));
-
-        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
-        if (data.photo && data.photo.startsWith('data:')) {
-            console.error('🚫 BLOQUEADO: Se detectó Base64 en data.photo (reparación). Eliminando...');
-            delete data.photo;
-        }
 
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
