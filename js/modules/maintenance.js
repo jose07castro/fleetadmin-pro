@@ -870,23 +870,47 @@ const OilModule = (() => {
             Components.showToast('Registrando mantenimiento histórico', 'warning');
         }
 
-        // ── EXTIRPAR campos pesados (defensa contra caché viejo) ──
-        delete logData.rawPhoto;
-        delete logData.rawComprobante;
-        delete logData.photo;
-        delete logData.comprobante;
-        delete logData.imagen;
+        // ══════════════════════════════════════════════════
+        // v98: WHITELIST ESTRICTA — reconstruir objeto desde cero
+        // No importa qué venga en logData, solo se copian campos seguros
+        // ══════════════════════════════════════════════════
+        const finalData = {
+            vehicleId: String(logData.vehicleId || ''),
+            driverId: String(logData.driverId || 'unknown'),
+            driverName: String(logData.driverName || 'Conductor'),
+            odometer: Number(logData.odometer || odometerKm || 0),
+            quantity: Number(logData.quantity || logData.litros || 0),
+            litros: Number(logData.litros || logData.quantity || 0),
+            tipo_aceite: String(logData.tipo_aceite || logData.oilType || 'No especificado'),
+            oilType: String(logData.oilType || logData.tipo_aceite || 'No especificado'),
+            filterOil: Boolean(logData.filterOil),
+            filterAir: Boolean(logData.filterAir),
+            filterCabin: Boolean(logData.filterCabin),
+            filtros_check: {
+                aceite: Boolean(logData.filtros_check?.aceite || logData.filterOil),
+                aire: Boolean(logData.filtros_check?.aire || logData.filterAir),
+                habitaculo: Boolean(logData.filtros_check?.habitaculo || logData.filterCabin)
+            },
+            date: String(logData.date || logData.fecha_service || new Date().toISOString()),
+            fecha_service: String(logData.fecha_service || logData.date || new Date().toISOString()),
+            type: String(logData.type || 'topup'),
+            timestamp: new Date().toISOString()
+        };
+        // NADA MÁS. rawPhoto, photo, imagen, comprobante NO EXISTEN en este objeto.
 
-        await DB.add('oilLogs', logData);
+        console.log('🚀 v98 _finishSaveOilLog FINAL:', JSON.stringify(finalData, null, 2));
+        console.log('📏 PAYLOAD SIZE:', JSON.stringify(finalData).length, 'bytes');
+
+        await DB.add('oilLogs', finalData);
 
         // Si es cambio completo, guardar nextOilChangeKm en el vehículo
         if (isChange && nextChangeKmInput && vehicle) {
-            vehicle.nextOilChangeKm = Units.toKm(nextChangeKmInput);
-            vehicle.ultimoAceiteTipo = logData.tipo_aceite || logData.oilType || '';
-            vehicle.ultimoAceiteLitros = logData.litros || logData.quantity || 0;
-            vehicle.filtroAceite = (logData.filtros_check && logData.filtros_check.aceite) || logData.filterOil || false;
-            vehicle.filtroAire = (logData.filtros_check && logData.filtros_check.aire) || logData.filterAir || false;
-            vehicle.filtroHabitaculo = (logData.filtros_check && logData.filtros_check.habitaculo) || logData.filterCabin || false;
+             vehicle.nextOilChangeKm = Units.toKm(nextChangeKmInput);
+            vehicle.ultimoAceiteTipo = finalData.tipo_aceite;
+            vehicle.ultimoAceiteLitros = finalData.litros;
+            vehicle.filtroAceite = finalData.filtros_check.aceite;
+            vehicle.filtroAire = finalData.filtros_check.aire;
+            vehicle.filtroHabitaculo = finalData.filtros_check.habitaculo;
             if (updateOdometer && odometerKm !== null && odometerKm > (vehicle.currentOdometer || 0)) {
                 vehicle.currentOdometer = odometerKm;
             } else if (updateOdometer && odometerKm !== null && odometerKm < (vehicle.currentOdometer || 0)) {
