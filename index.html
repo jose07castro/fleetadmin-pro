@@ -171,22 +171,9 @@
                     <h2>¡Nueva Versión Disponible!</h2>
                     <p>Hay una actualización con mejoras y correcciones.<br>Presioná el botón para aplicar los cambios.</p>
                     <button class="sw-btn-update" onclick="_applyUpdate()">Actualizar Ahora</button>
-                    <div class="countdown" id="sw-countdown">Se aplicará automáticamente en <strong>15</strong> segundos</div>
                 </div>
             `;
             document.body.appendChild(overlay);
-
-            // Auto-apply countdown
-            let seconds = 15;
-            const countdownEl = document.getElementById('sw-countdown');
-            const timer = setInterval(() => {
-                seconds--;
-                if (countdownEl) countdownEl.innerHTML = `Se aplicará automáticamente en <strong>${seconds}</strong> segundos`;
-                if (seconds <= 0) {
-                    clearInterval(timer);
-                    _applyUpdate();
-                }
-            }, 1000);
         }
 
         function _applyUpdate() {
