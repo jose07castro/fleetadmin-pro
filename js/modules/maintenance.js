@@ -1006,77 +1006,144 @@ const OilModule = (() => {
     }
 
     async function saveOilChangeFromModal(vehicleId) {
-        const odometerInput = parseFloat(document.getElementById('oilModalOdometer')?.value);
-        const nextChangeInput = parseFloat(document.getElementById('oilModalNextChange')?.value);
-        const quantity = parseFloat(document.getElementById('oilModalQuantity')?.value);
-        const oilType = document.getElementById('oilModalType')?.value?.trim() || '';
-        const date = document.getElementById('oilModalDate')?.value;
-        const photo = Components.getPhotoData('oilModalPhoto');
-        
-        const filterOil = document.getElementById('oilModalFilterOil')?.checked || false;
-        const filterAir = document.getElementById('oilModalFilterAir')?.checked || false;
-        const filterCabin = document.getElementById('oilModalFilterCabin')?.checked || false;
+        // ======================================================
+        // PASO 1: Captura directa de cada input del modal
+        // ======================================================
+        const elOdometer = document.getElementById('oilModalOdometer');
+        const elNextChange = document.getElementById('oilModalNextChange');
+        const elQuantity = document.getElementById('oilModalQuantity');
+        const elType = document.getElementById('oilModalType');
+        const elDate = document.getElementById('oilModalDate');
+        const elFilterOil = document.getElementById('oilModalFilterOil');
+        const elFilterAir = document.getElementById('oilModalFilterAir');
+        const elFilterCabin = document.getElementById('oilModalFilterCabin');
 
-        if (!quantity) {
+        // Debug: verificar que los elementos existen
+        console.log('🔍 INPUTS ENCONTRADOS:', {
+            oilModalOdometer: !!elOdometer,
+            oilModalNextChange: !!elNextChange,
+            oilModalQuantity: !!elQuantity,
+            oilModalType: !!elType,
+            oilModalDate: !!elDate,
+            oilModalFilterOil: !!elFilterOil,
+            oilModalFilterAir: !!elFilterAir,
+            oilModalFilterCabin: !!elFilterCabin
+        });
+
+        // ======================================================
+        // PASO 2: Extraer valores RAW (sin transformar)
+        // ======================================================
+        const rawOdometer = elOdometer ? elOdometer.value : '';
+        const rawNextChange = elNextChange ? elNextChange.value : '';
+        const rawQuantity = elQuantity ? elQuantity.value : '';
+        const rawType = elType ? elType.value.trim() : '';
+        const rawDate = elDate ? elDate.value : '';
+        const rawFilterOil = elFilterOil ? elFilterOil.checked : false;
+        const rawFilterAir = elFilterAir ? elFilterAir.checked : false;
+        const rawFilterCabin = elFilterCabin ? elFilterCabin.checked : false;
+        const rawPhoto = Components.getPhotoData('oilModalPhoto');
+
+        console.log('📋 VALORES RAW CAPTURADOS:', {
+            rawOdometer, rawNextChange, rawQuantity, rawType,
+            rawDate, rawFilterOil, rawFilterAir, rawFilterCabin,
+            rawPhoto: rawPhoto ? '(foto capturada)' : '(sin foto)'
+        });
+
+        // ======================================================
+        // PASO 3: Validación
+        // ======================================================
+        const quantity = parseFloat(rawQuantity);
+        if (!quantity || isNaN(quantity)) {
             Components.showToast('⚠️ Falta la cantidad de litros.', 'danger');
             return;
         }
 
+        // ======================================================
+        // PASO 4: Conversión de unidades
+        // ======================================================
         const quantityLiters = Units.toLiters(quantity);
-        const odometerKm = odometerInput ? Units.toKm(odometerInput) : null;
+        const odometerKm = rawOdometer ? Units.toKm(parseFloat(rawOdometer)) : null;
+        const nextChangeKm = rawNextChange ? Units.toKm(parseFloat(rawNextChange)) : null;
 
+        // ======================================================
+        // PASO 5: Construir objeto COMPLETO para Firebase
+        // ======================================================
         const logData = {
-            vehicleId,
+            vehicleId: vehicleId,
             driverId: Auth.getUserId() || 'unknown',
             driverName: Auth.getUserName() || 'Conductor',
-            quantity: quantityLiters || 0,
-            litros: quantityLiters || 0,
-            fecha_service: date || new Date().toISOString(),
-            date: date || new Date().toISOString(),
-            type: 'change',
-            tipo_aceite: oilType || 'No especificado',
-            oilType: oilType || 'No especificado',
+            odometer: odometerKm || 0,
+            nextOilChangeKm: nextChangeKm || 0,
+            quantity: quantityLiters,
+            litros: quantityLiters,
+            tipo_aceite: rawType || 'No especificado',
+            oilType: rawType || 'No especificado',
+            filterOil: rawFilterOil,
+            filterAir: rawFilterAir,
+            filterCabin: rawFilterCabin,
             filtros_check: {
-                aceite: !!filterOil,
-                aire: !!filterAir,
-                habitaculo: !!filterCabin
+                aceite: rawFilterOil,
+                aire: rawFilterAir,
+                habitaculo: rawFilterCabin
             },
-            filterOil: !!filterOil,
-            filterAir: !!filterAir,
-            filterCabin: !!filterCabin,
-            photo: photo || null
+            date: rawDate || new Date().toISOString().split('T')[0],
+            fecha_service: rawDate || new Date().toISOString().split('T')[0],
+            type: 'change',
+            photo: rawPhoto || null,
+            timestamp: new Date().toISOString()
         };
 
-        if (odometerKm !== null) logData.odometer = odometerKm;
+        // ======================================================
+        // PASO 6: LOG FINAL — este es el objeto que va a Firebase
+        // ======================================================
+        console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
 
-        const role = Auth.getRole();
-        let vehicle = await DB.get('vehicles', vehicleId);
-        
-        if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
-            if (role === 'driver') {
-                Components.showToast('El kilometraje no puede ser menor al actual', 'danger');
-                return;
-            } else {
-                Components.confirm(
-                    '¿Deseas que este registro actualice el odómetro actual del auto?',
-                    async () => {
-                        Components.closeModal();
-                        console.log('📦 JSON PAYLOAD CAMBIO ACEITE (Actualizar ODO): ', JSON.stringify(logData, null, 2));
-                        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
-                    },
-                    async () => {
-                        Components.closeModal();
-                        console.log('📦 JSON PAYLOAD CAMBIO ACEITE (Histórico): ', JSON.stringify(logData, null, 2));
-                        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, false);
-                    }
-                );
-                return;
-            }
+        // ======================================================
+        // PASO 7: Guardar en Firebase con try/catch
+        // ======================================================
+        try {
+            const newId = await DB.add('oilLogs', logData);
+            console.log('✅ GUARDADO EXITOSO en oilLogs. ID:', newId);
+        } catch (err) {
+            console.error('❌ ERROR GUARDANDO EN FIREBASE:', err);
+            Components.showToast('❌ Error guardando: ' + err.message, 'danger');
+            return;
         }
 
+        // ======================================================
+        // PASO 8: Actualizar vehículo (odómetro + datos de aceite)
+        // ======================================================
+        try {
+            let vehicle = await DB.get('vehicles', vehicleId);
+            if (vehicle) {
+                if (nextChangeKm) vehicle.nextOilChangeKm = nextChangeKm;
+                if (odometerKm && odometerKm >= (vehicle.currentOdometer || 0)) {
+                    vehicle.currentOdometer = odometerKm;
+                }
+                vehicle.ultimoAceiteTipo = rawType || '';
+                vehicle.ultimoAceiteLitros = quantityLiters;
+                vehicle.filtroAceite = rawFilterOil;
+                vehicle.filtroAire = rawFilterAir;
+                vehicle.filtroHabitaculo = rawFilterCabin;
+                await DB.put('vehicles', vehicle);
+                console.log('✅ VEHÍCULO ACTUALIZADO:', vehicleId);
+            }
+        } catch (err) {
+            console.error('⚠️ Error actualizando vehículo (no crítico):', err);
+        }
+
+        // ======================================================
+        // PASO 9: Cerrar modal y redirigir
+        // ======================================================
         Components.closeModal();
-        console.log('📦 JSON PAYLOAD CAMBIO ACEITE COMPLETO: ', JSON.stringify(logData, null, 2));
-        await _finishSaveOilLog(logData, vehicle, odometerKm, true, nextChangeInput, true);
+        Components.showToast('✅ Cambio de aceite registrado correctamente', 'success');
+
+        const currentHash = window.location.hash;
+        if (currentHash.includes('maintenance')) {
+            Router.navigate('maintenance');
+        } else {
+            Router.navigate('oil');
+        }
     }
 
     return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer, registerOilChange, calcNextChange, saveOilChangeFromModal };
