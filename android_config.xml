@@ -20,6 +20,15 @@
     <!-- Permisos para notificaciones push en Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 🛡️ BLINDAJE ANTI-KILL: Foreground Service + Wake Lock -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application>
         <!-- 2. FILE PROVIDER (Requerido para tomar fotos de Odometer/Tickets sin crashear) -->
         <provider
@@ -40,6 +49,12 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- 🛡️ FOREGROUND SERVICE: Mantiene la conexión SOS viva -->
+        <service
+            android:name=".FleetAdminForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
     </application>
 
 </manifest>
@@ -179,4 +194,159 @@ private fun createImageFile(): File {
     val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
     return File.createTempFile(imageFileName, ".jpg", storageDir)
 }
+-->
+
+<!-- 
+==============================================================
+ snippet_FleetAdminForegroundService.kt
+ 🛡️ BLINDAJE ANTI-KILL: Foreground Service que impide que
+ Android mate el proceso cuando Uber/Didi están en primer plano.
+ Crear este archivo en: app/src/main/java/com/fleetadminpro/app/
+==============================================================
+-->
+<!--
+package com.fleetadminpro.app
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import androidx.core.app.NotificationCompat
+
+class FleetAdminForegroundService : Service() {
+
+    companion object {
+        const val CHANNEL_ID = "fleetadmin_foreground"
+        const val NOTIFICATION_ID = 1001
+        const val ACTION_START = "com.fleetadminpro.START_FOREGROUND"
+        const val ACTION_STOP = "com.fleetadminpro.STOP_FOREGROUND"
+    }
+
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> {
+                releaseWakeLock()
+                stopForeground(true)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        }
+
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🛡️ FleetAdmin Pro — SOS Activo")
+            .setContentText("Conexión de emergencia activa. No cerrar.")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .build()
+
+        startForeground(NOTIFICATION_ID, notification)
+        acquireWakeLock()
+
+        return START_STICKY
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "FleetAdminPro::SOSForegroundWakeLock"
+            )
+            wakeLock?.acquire(24 * 60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+            wakeLock = null
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "FleetAdmin SOS Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Mantiene la conexión SOS activa en segundo plano"
+                setShowBadge(false)
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
+    }
+}
+-->
+
+<!-- 
+==============================================================
+ snippet_MainActivity_ForegroundService.kt
+ Agregar al setup del WebView para que JS pueda
+ iniciar/detener el Foreground Service
+==============================================================
+-->
+<!--
+// En tu onCreate(), después de configurar el WebView:
+webView.addJavascriptInterface(object {
+    @android.webkit.JavascriptInterface
+    fun startForegroundService() {
+        val intent = Intent(this@MainActivity, FleetAdminForegroundService::class.java)
+        intent.action = FleetAdminForegroundService.ACTION_START
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun stopForegroundService() {
+        val intent = Intent(this@MainActivity, FleetAdminForegroundService::class.java)
+        intent.action = FleetAdminForegroundService.ACTION_STOP
+        startService(intent)
+    }
+
+    @android.webkit.JavascriptInterface
+    fun requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                intent.data = android.net.Uri.parse("package:$packageName")
+                startActivity(intent)
+            }
+        }
+    }
+}, "FleetAdminBridge")
 -->

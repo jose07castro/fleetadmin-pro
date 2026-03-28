@@ -22,6 +22,8 @@ const SOSModule = (() => {
     let _positionInterval = null;
     let _myLastPosition = null; // { lat, lng }
     let _isSendingSOS = false; // Guard: previene que el listener sobreescriba el modal de tipo
+    let _wakeLock = null; // Screen Wake Lock API
+    let _webLockController = null; // Web Locks API (anti-tab-discard)
 
     // =============================================
     // ALARMA SONORA (loop hasta que el dueño reaccione)
@@ -1079,12 +1081,174 @@ const SOSModule = (() => {
         });
     }
 
+    // =============================================
+    // 🛡️ BLINDAJE ANTI-KILL: Foreground Service Web
+    // Evita que Android/Uber/Didi maten el proceso
+    // =============================================
+
+    /**
+     * Wake Lock API — Impide que la pantalla/CPU entre en sleep
+     * Esencial para que Firebase RTDB mantenga la conexión websocket
+     */
+    async function _acquireWakeLock() {
+        if (_wakeLock) return; // Ya adquirido
+        try {
+            if ('wakeLock' in navigator) {
+                _wakeLock = await navigator.wakeLock.request('screen');
+                console.log('🛡️ BLINDAJE: ✅ Wake Lock adquirido — pantalla NO se apagará');
+                _wakeLock.addEventListener('release', () => {
+                    console.warn('🛡️ BLINDAJE: ⚠️ Wake Lock liberado por el sistema');
+                    _wakeLock = null;
+                    // Re-adquirir automáticamente si la app vuelve a primer plano
+                    if (document.visibilityState === 'visible') {
+                        setTimeout(() => _acquireWakeLock(), 1000);
+                    }
+                });
+            } else {
+                console.log('🛡️ BLINDAJE: Wake Lock API no soportada en este navegador');
+            }
+        } catch (e) {
+            console.warn('🛡️ BLINDAJE: No se pudo adquirir Wake Lock:', e.message);
+        }
+    }
+
+    function _releaseWakeLock() {
+        if (_wakeLock) {
+            try { _wakeLock.release(); } catch(e) {}
+            _wakeLock = null;
+            console.log('🛡️ BLINDAJE: Wake Lock liberado manualmente');
+        }
+    }
+
+    /**
+     * Web Locks API — Impide que Chrome descarte la pestaña por inactividad
+     * Chrome agresivamente mata pestañas en background; esto lo previene
+     */
+    function _acquireWebLock() {
+        if (_webLockController) return;
+        try {
+            if ('locks' in navigator) {
+                _webLockController = new AbortController();
+                navigator.locks.request('fleetadmin-sos-foreground', { signal: _webLockController.signal }, () => {
+                    console.log('🛡️ BLINDAJE: ✅ Web Lock adquirido — pestaña protegida contra descarte');
+                    // Esta promesa NUNCA se resuelve intencionalmente
+                    // mientras el lock esté activo, Chrome NO descarta la pestaña
+                    return new Promise(() => {}); // infinite hold
+                }).catch(e => {
+                    if (e.name !== 'AbortError') {
+                        console.warn('🛡️ BLINDAJE: Web Lock error:', e.message);
+                    }
+                });
+            }
+        } catch(e) {
+            console.warn('🛡️ BLINDAJE: Web Locks API no disponible:', e.message);
+        }
+    }
+
+    function _releaseWebLock() {
+        if (_webLockController) {
+            try { _webLockController.abort(); } catch(e) {}
+            _webLockController = null;
+            console.log('🛡️ BLINDAJE: Web Lock liberado');
+        }
+    }
+
+    /**
+     * Visibility Change Handler — Reconectar Firebase cuando el usuario
+     * vuelve de Uber/Didi/otra app. Android pausa websockets en background.
+     */
+    let _visibilityHandlerInstalled = false;
+    function _installVisibilityHandler() {
+        if (_visibilityHandlerInstalled) return;
+        _visibilityHandlerInstalled = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log('🛡️ BLINDAJE: 📱 App volvió a primer plano — reconectando...');
+                // Re-adquirir wake lock (se pierde al ir a background)
+                _acquireWakeLock();
+                // Forzar reconexión Firebase (Android mata websockets en background)
+                setTimeout(() => _reconnectSOS('visibility: visible'), 500);
+                // Re-enviar posición inmediatamente
+                const userId = Auth.getUserId() || Auth.getUserName();
+                if (userId && navigator.geolocation) {
+                    _savePosition(userId);
+                }
+            } else {
+                console.log('🛡️ BLINDAJE: 📱 App fue a background — manteniendo conexión...');
+                // En background: intentar mantener vivo con fetch keepalive
+                _backgroundKeepAlive();
+            }
+        });
+
+        console.log('🛡️ BLINDAJE: ✅ Visibility handler instalado');
+    }
+
+    /**
+     * Background Keep-Alive — Usa fetch con keepalive:true para mantener
+     * la conexión de red activa cuando la app está en background.
+     * Android permite fetch keepalive por ~30s después de ir a background.
+     */
+    function _backgroundKeepAlive() {
+        try {
+            // Ping silencioso a Firebase para mantener la conexión
+            fetch('https://fleetadmin-pro-default-rtdb.firebaseio.com/.json?shallow=true&timeout=1s', {
+                keepalive: true,
+                signal: AbortSignal.timeout(5000)
+            }).catch(() => {}); // Ignorar errores — es solo un keep-alive
+        } catch(e) { /* ignorar */ }
+    }
+
+    /**
+     * Activar TODAS las defensas anti-kill
+     */
+    function _activateBlindaje() {
+        console.log('🛡️ BLINDAJE: 🚀 Activando todas las defensas anti-kill...');
+        _acquireWakeLock();
+        _acquireWebLock();
+        _installVisibilityHandler();
+
+        // 🤖 Android Native: Iniciar Foreground Service si estamos en la app nativa
+        try {
+            if (typeof FleetAdminBridge !== 'undefined' && FleetAdminBridge.startForegroundService) {
+                FleetAdminBridge.startForegroundService();
+                FleetAdminBridge.requestIgnoreBatteryOptimizations();
+                console.log('🛡️ BLINDAJE: ✅ Android Foreground Service INICIADO');
+            }
+        } catch(e) {
+            console.log('🛡️ BLINDAJE: No estamos en Android nativo (PWA web)');
+        }
+
+        console.log('🛡️ BLINDAJE: ✅ Todas las defensas activadas');
+    }
+
+    /**
+     * Desactivar todas las defensas (al hacer logout)
+     */
+    function _deactivateBlindaje() {
+        _releaseWakeLock();
+        _releaseWebLock();
+
+        // 🤖 Android Native: Detener Foreground Service
+        try {
+            if (typeof FleetAdminBridge !== 'undefined' && FleetAdminBridge.stopForegroundService) {
+                FleetAdminBridge.stopForegroundService();
+                console.log('🛡️ BLINDAJE: Android Foreground Service DETENIDO');
+            }
+        } catch(e) { /* no estamos en Android nativo */ }
+
+        console.log('🛡️ BLINDAJE: 🔓 Todas las defensas desactivadas');
+    }
+
     function startListening() {
         const isOwner = Auth.isOwner();
         const role = Auth.getRole();
         const fleetId = Auth.getFleetId();
         const myUserId = Auth.getUserId() || Auth.getUserName();
         console.log('🚨 SOS LISTENER: Activando. rol:', role, '| isOwner:', isOwner, '| fleetId:', fleetId, '| myUserId:', myUserId);
+
+        // 🛡️ ACTIVAR BLINDAJE ANTI-KILL (Foreground Service Web)
+        _activateBlindaje();
 
         // Pedir permisos de notificación nativa
         try {
@@ -1131,7 +1295,7 @@ const SOSModule = (() => {
             }
         }, 30000); // Reducido de 45s a 30s para mayor responsividad
 
-        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'} + keepalive 30s + network listeners`);
+        console.log(`🚨 SOS LISTENER: ✅ Activado para ${isOwner ? 'DUEÑO' : 'CONDUCTOR (radar ' + SOS_RADIUS_KM + 'km)'} + keepalive 30s + BLINDAJE ANTI-KILL + network listeners`);
     }
 
     function stopListening() {
@@ -1145,7 +1309,8 @@ const SOSModule = (() => {
             _permissionRetryTimer = null;
         }
         _stopPositionTracking();
-        console.log('🚨 SOS LISTENER: Desactivado completamente');
+        _deactivateBlindaje();
+        console.log('🚨 SOS LISTENER: Desactivado completamente (blindaje desactivado)');
     }
 
     // =============================================
