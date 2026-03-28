@@ -542,6 +542,12 @@ const MaintenanceModule = (() => {
 
         console.log('📦 JSON PAYLOAD REPARACIÓN COMPLETO: ', JSON.stringify(data, null, 2));
 
+        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
+        if (data.photo && data.photo.startsWith('data:')) {
+            console.error('🚫 BLOQUEADO: Se detectó Base64 en data.photo (reparación). Eliminando...');
+            delete data.photo;
+        }
+
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
         const vehicle = await DB.get('vehicles', vehicleId);
@@ -878,6 +884,12 @@ const OilModule = (() => {
 
         console.log('📦 JSON PAYLOAD ACEITE (formulario principal): ', JSON.stringify(logData, null, 2));
 
+        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
+        if (logData.photo && logData.photo.startsWith('data:')) {
+            console.error('🚫 BLOQUEADO: Se detectó Base64 en logData.photo. Eliminando...');
+            delete logData.photo;
+        }
+
         // Validar KM contra odómetro actual del vehículo según ROL
         const role = Auth.getRole();
         let vehicle = null;
@@ -1150,6 +1162,12 @@ const OilModule = (() => {
         // PASO 7: LOG FINAL — este es el objeto que va a Firebase
         // ======================================================
         console.log('🚀 ENVIANDO A FIREBASE (DB.add oilLogs):', JSON.stringify(logData, null, 2));
+
+        // ── DEFENSA FINAL: Nunca permitir Base64 en el objeto que va a Firebase ──
+        if (logData.photo && logData.photo.startsWith('data:')) {
+            console.error('🚫 BLOQUEADO: Se detectó Base64 en logData.photo (modal). Eliminando...');
+            delete logData.photo;
+        }
 
         // ======================================================
         // PASO 8: Guardar en Firebase con try/catch
