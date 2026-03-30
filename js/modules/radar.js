@@ -144,18 +144,25 @@ const RadarModule = (() => {
 
     // ============ CREATE CAR MARKER ============
 
-    function _createCarIcon(heading) {
+    function _createCarIcon(heading, displayName, statusClass) {
         const rotation = heading || 0;
         return L.divIcon({
             className: 'radar-car-marker',
-            html: `<div class="radar-car-icon" style="transform: rotate(${rotation}deg);">🚗</div>`,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20],
-            popupAnchor: [0, -20]
+            html: `
+                <div class="radar-car-container">
+                    <div class="radar-car-label ${statusClass}">${displayName}</div>
+                    <div class="radar-car-icon-wrapper ${statusClass}">
+                        <div class="radar-car-internal" style="transform: rotate(${rotation}deg);">🚗</div>
+                    </div>
+                </div>
+            `,
+            iconSize: [60, 60],
+            iconAnchor: [30, 30],
+            popupAnchor: [0, -30]
         });
     }
 
-    function _updateMarker(driverId, data) {
+    function _updateMarker(driverId, data, shift, vehicle) {
         if (!_map || !data || !data.lat || !data.lng) return;
 
         const lat = parseFloat(data.lat);
@@ -168,24 +175,54 @@ const RadarModule = (() => {
         const updatedAt = data.updated_at ? new Date(data.updated_at) : null;
         const timeAgo = updatedAt ? _timeAgo(updatedAt) : 'desconocido';
 
+        const carMode = (speed > 5) ? 'moving' : 'stopped';
+        const statusClass = 'status-' + carMode;
+        const displayName = name.split(' ')[0]; // short name
+
+        const vehicleName = vehicle ? vehicle.name : 'Vehículo no asignado';
+        const vehiclePlate = vehicle ? vehicle.plate : '---';
+        const shiftStatusText = shift ? (carMode === 'moving' ? 'En viaje' : 'Detenido') : 'Sin turno activo';
+
         const popupContent = `
-            <div style="font-family:Inter,sans-serif; min-width:150px;">
-                <div style="font-weight:700; font-size:14px; margin-bottom:4px;">🚗 ${name}</div>
-                <div style="font-size:12px; color:#666; margin-bottom:2px;">📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
-                <div style="font-size:12px; color:#666; margin-bottom:2px;">🏎️ ${speed.toFixed(0)} km/h</div>
-                <div style="font-size:11px; color:#999;">🕐 ${timeAgo}</div>
+            <div style="font-family:Inter,sans-serif; min-width:200px;">
+                <div class="radar-popup-header">
+                    <div class="radar-popup-avatar">👤</div>
+                    <div>
+                        <div class="radar-popup-title">${name}</div>
+                        <div class="radar-popup-subtitle">${shift ? (shift.shiftType === 'day' ? '🌅 Turno Día' : '🌙 Turno Noche') : 'Off-Duty'}</div>
+                    </div>
+                </div>
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">🚗</span> ${vehicleName}</span>
+                </div>
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">🏷️</span> Patente:</span>
+                    <strong>${vehiclePlate}</strong>
+                </div>
+                <div class="radar-popup-row" style="margin-top:8px;">
+                    <span><span class="radar-popup-icon">🚦</span> Estado:</span>
+                    <strong style="color: ${carMode === 'moving' ? '#22c55e' : '#f59e0b'}">${shiftStatusText}</strong>
+                </div>
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">🏎️</span> Velocidad:</span>
+                    <strong>${speed.toFixed(0)} km/h</strong>
+                </div>
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">🕐</span> Actividad:</span>
+                    <span>${timeAgo}</span>
+                </div>
             </div>
         `;
 
         if (_markers[driverId]) {
             // Update existing marker
             _markers[driverId].setLatLng([lat, lng]);
-            _markers[driverId].setIcon(_createCarIcon(heading));
+            _markers[driverId].setIcon(_createCarIcon(heading, displayName, statusClass));
             _markers[driverId].getPopup().setContent(popupContent);
         } else {
             // Create new marker
             const marker = L.marker([lat, lng], {
-                icon: _createCarIcon(heading)
+                icon: _createCarIcon(heading, displayName, statusClass)
             }).addTo(_map);
             marker.bindPopup(popupContent);
             _markers[driverId] = marker;
@@ -218,13 +255,23 @@ const RadarModule = (() => {
         _firebaseRef = firebaseDB.ref(DRIVER_POSITIONS_NODE);
 
         // Listen for all driver positions
-        _firebaseRef.on('value', (snap) => {
+        _firebaseRef.on('value', async (snap) => {
             const allPositions = snap.val();
             if (!allPositions) {
                 _setStatus('idle', 'Sin choferes activos');
                 _updateActiveCount(0);
                 return;
             }
+
+            // Fetch contextual fleet data
+            const activeShifts = typeof DB !== 'undefined' ? await DB.getActiveShifts() : [];
+            const allVehicles = typeof DB !== 'undefined' ? await DB.getAll('vehicles') : [];
+            
+            const vehiclesMap = {};
+            for (const v of allVehicles) vehiclesMap[v.id] = v;
+
+            const driverShiftMap = {};
+            for (const s of activeShifts) driverShiftMap[s.driverId] = s;
 
             const driverIds = Object.keys(allPositions);
             let activeCount = 0;
@@ -233,7 +280,9 @@ const RadarModule = (() => {
             for (const driverId of driverIds) {
                 const data = allPositions[driverId];
                 if (data && data.lat && data.lng) {
-                    _updateMarker(driverId, data);
+                    const shift = driverShiftMap[driverId];
+                    const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
+                    _updateMarker(driverId, data, shift, vehicle);
                     activeCount++;
                 }
             }
