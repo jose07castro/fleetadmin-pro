@@ -2028,3 +2028,147 @@
         font-size: 1.2rem;
     }
 }
+
+/* ═══════════════════════════════════════════════
+   SPLIT-PANE DIVIDERS + S-PEN OPTIMIZATION (v110)
+   ═══════════════════════════════════════════════ */
+
+/* Grid con split handle = 3 columnas */
+.dashboard-community-grid {
+    transition: grid-template-columns 0.05s ease;
+}
+
+/* Handle arrastrable */
+.split-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    width: 8px;
+    min-height: 100%;
+    position: relative;
+    z-index: 10;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Hitbox extendido para S-Pen y toque */
+.split-handle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -14px;
+    right: -14px;
+    bottom: 0;
+    z-index: -1;
+}
+
+/* Barra visual central */
+.split-handle::after {
+    content: '';
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    border-radius: 4px;
+    background: var(--border-color);
+    transition: all 0.25s ease;
+}
+
+/* Grip dots */
+.split-handle-grip {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    letter-spacing: 2px;
+    writing-mode: vertical-lr;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    z-index: 1;
+}
+
+/* Hover state — glow for S-Pen detection */
+.split-handle.split-hover::after,
+.split-handle:hover::after {
+    width: 6px;
+    background: var(--color-primary);
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.5), 0 0 24px rgba(99, 102, 241, 0.2);
+}
+
+.split-handle.split-hover .split-handle-grip,
+.split-handle:hover .split-handle-grip {
+    opacity: 1;
+    color: var(--color-primary-light);
+}
+
+/* Active drag state */
+.split-handle.split-active::after {
+    width: 6px;
+    background: var(--color-secondary);
+    box-shadow: 0 0 18px rgba(6, 182, 212, 0.6), 0 0 36px rgba(6, 182, 212, 0.3);
+}
+
+.split-handle.split-active .split-handle-grip {
+    opacity: 1;
+    color: var(--color-secondary-light);
+}
+
+/* Sync button */
+.ui-sync-fleet-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: var(--radius-lg);
+    border: 1.5px solid rgba(99, 102, 241, 0.4);
+    background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(6,182,212,0.15));
+    color: var(--color-primary-light);
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    letter-spacing: 0.02em;
+    position: relative;
+    overflow: hidden;
+}
+
+.ui-sync-fleet-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 200%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(99,102,241,0.1), transparent);
+    animation: syncShimmer 3s ease-in-out infinite;
+}
+
+@keyframes syncShimmer {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(50%); }
+}
+
+.ui-sync-fleet-btn:hover {
+    background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(6,182,212,0.3));
+    border-color: var(--color-primary-light);
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+    transform: translateY(-1px);
+}
+
+.ui-sync-fleet-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Mobile: hide split handles (mobile is single-column) */
+@media (max-width: 768px) {
+    .split-handle {
+        display: none !important;
+    }
+    .dashboard-community-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
