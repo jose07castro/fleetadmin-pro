@@ -1,5 +1,5 @@
-/* ============================================
-   FleetAdmin Pro — Estilos de Módulos
+﻿/* ============================================
+   FleetAdmin Pro â€” Estilos de MÃ³dulos
    ============================================ */
 
 /* --- Pantalla de Login --- */
@@ -117,7 +117,7 @@
     margin-top: var(--space-6);
 }
 
-/* --- Dashboard del Dueño --- */
+/* --- Dashboard del DueÃ±o --- */
 .dashboard-welcome {
     margin-bottom: var(--space-6);
 }
@@ -211,7 +211,7 @@
     margin-top: var(--space-1);
 }
 
-/* --- Módulo de Turnos --- */
+/* --- MÃ³dulo de Turnos --- */
 .shift-status {
     display: flex;
     align-items: center;
@@ -283,7 +283,7 @@
     text-align: center;
 }
 
-/* --- Módulo de Mantenimiento --- */
+/* --- MÃ³dulo de Mantenimiento --- */
 .maintenance-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -344,7 +344,7 @@
     color: var(--text-secondary);
 }
 
-/* --- Módulo del Mecánico --- */
+/* --- MÃ³dulo del MecÃ¡nico --- */
 .mechanic-header {
     display: flex;
     align-items: center;
@@ -375,7 +375,7 @@
     gap: var(--space-4);
 }
 
-/* --- Configuración --- */
+/* --- ConfiguraciÃ³n --- */
 .settings-section {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -484,7 +484,7 @@
     transform: scale(1.03);
 }
 
-/* --- Página de Vehículos --- */
+/* --- PÃ¡gina de VehÃ­culos --- */
 .vehicle-detail-header {
     display: flex;
     align-items: center;
@@ -514,7 +514,7 @@
     font-size: var(--font-size-sm);
 }
 
-/* -- Responsivo móvil para módulos -- */
+/* -- Responsivo mÃ³vil para mÃ³dulos -- */
 @media (max-width: 768px) {
     .role-selector {
         grid-template-columns: 1fr;
@@ -567,7 +567,7 @@
     }
 }
 
-/* --- Comunidad de Dueños --- */
+/* --- Comunidad de DueÃ±os --- */
 .community-header-btn {
     display: inline-flex;
     align-items: center;
@@ -904,7 +904,7 @@
     font-size: var(--font-size-sm) !important;
 }
 
-/* --- Bottom section (separator + actions) — siempre visible --- */
+/* --- Bottom section (separator + actions) â€” siempre visible --- */
 .compose-card-bottom {
     display: block !important;
     visibility: visible !important;
@@ -1151,7 +1151,7 @@
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-full);
-    padding: 2px 8px;
+    padding: 1px 5px;
     font-size: var(--font-size-xs);
     color: var(--text-secondary);
     font-weight: 600;
@@ -1531,7 +1531,7 @@
         box-sizing: border-box;
     }
 
-    /* Ajuste Tipográfico Responsivo y Truncado de Nombres */
+    /* Ajuste TipogrÃ¡fico Responsivo y Truncado de Nombres */
     .sponsor-ad-name {
         font-size: var(--font-size-sm) !important;
         white-space: nowrap;
@@ -1687,7 +1687,7 @@
 }
 
 /* ============================================
-   📢 Announcement Banner (Marquesina Global)
+   ðŸ“¢ Announcement Banner (Marquesina Global)
    ============================================ */
 @keyframes announcementMarquee {
     0%   { transform: translateX(100%); }
@@ -1789,10 +1789,10 @@
 .toggle-status {
     white-space: nowrap;
 }
-/* ═══════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    PANEL DE PERSONALIZACION UI (v108)
    Boton engranaje + panel deslizable
-   ═══════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .ui-settings-gear {
     position: fixed;
@@ -2029,9 +2029,9 @@
     }
 }
 
-/* ═══════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    SPLIT-PANE DIVIDERS + S-PEN OPTIMIZATION (v110)
-   ═══════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* Grid con split handle = 3 columnas */
 .dashboard-community-grid {
@@ -2079,7 +2079,7 @@
 
 /* Grip dots */
 .split-handle-grip {
-    font-size: 10px;
+    font-size: 9px; letter-spacing: -0.2px;
     color: var(--text-tertiary);
     letter-spacing: 2px;
     writing-mode: vertical-lr;
@@ -2089,7 +2089,7 @@
     z-index: 1;
 }
 
-/* Hover state — glow for S-Pen detection */
+/* Hover state â€” glow for S-Pen detection */
 .split-handle.split-hover::after,
 .split-handle:hover::after {
     width: 6px;
@@ -2173,12 +2173,12 @@
     }
 }
 
-/* ═══════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    RADAR GPS EN TIEMPO REAL (v111)
    Mapa fullscreen + marcadores + botones
-   ═══════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* Botón Desplegar en Dashboard */
+/* BotÃ³n Desplegar en Dashboard */
 .radar-deploy-btn {
     position: relative;
     display: flex;
@@ -2321,7 +2321,7 @@
     50% { opacity: 1; }
 }
 
-/* Close Button — BIG for S-Pen */
+/* Close Button â€” BIG for S-Pen */
 .radar-close-btn {
     padding: 10px 24px;
     border-radius: var(--radius-lg);
@@ -2435,9 +2435,9 @@
     }
 }
 
-/* ═══════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    GPS PERMISSIONS DIALOG STYLES (v112)
-   ═══════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .gps-perm-highlight {
     padding: 16px;
@@ -2485,9 +2485,9 @@
     flex-shrink: 0;
 }
 
-/* ═══════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    RADAR GPS LABELS ENHANCEMENT (v114)
-   ═══════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .radar-car-marker {
     background: none !important;
@@ -2512,10 +2512,10 @@
     transform: translateX(-50%);
     background: rgba(15, 23, 42, 0.9);
     color: #e2e8f0;
-    font-size: 10px;
+    font-size: 9px; letter-spacing: -0.2px;
     font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 8px;
+    padding: 1px 5px;
+    border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.15);
     white-space: nowrap;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
@@ -2615,3 +2615,4 @@
     border: 1.5px solid rgba(100,116,139,0.4);
     filter: grayscale(100%) opacity(70%);
 }
+

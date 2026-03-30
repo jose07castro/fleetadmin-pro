@@ -1,39 +1,39 @@
 ﻿// Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v115';
+const CACHE_NAME = 'fleetadmin-pro-v116';
 const ASSETS = [
     './',
-    './index.html?v=115',
-    './css/index.css?v=115',
-    './css/components.css?v=115',
-    './css/modules.css?v=115',
-    './js/i18n.js?v=115',
-    './js/firebase-config.js?v=115',
-    './js/db.js?v=115',
-    './js/units.js?v=115',
-    './js/auth.js?v=115',
-    './js/alerts.js?v=115',
-    './js/components.js?v=115',
-    './js/router.js?v=115',
-    './js/storage.js?v=115',
-    './js/modules/login.js?v=115',
-    './js/modules/dashboard.js?v=115',
-    './js/modules/shifts.js?v=115',
-    './js/modules/maintenance.js?v=115',
-    './js/modules/vehicles.js?v=115',
-    './js/modules/settings.js?v=115',
-    './js/modules/community.js?v=115',
-    './js/modules/sos.js?v=115',
-    './js/modules/announcements.js?v=115',
-    './js/whatsapp.js?v=115',
-    './js/modules/gps.js?v=115',
-    './js/fcm.js?v=115',
-    './js/notifications.js?v=115',
-    './js/pwa-install.js?v=115',
-    './js/ui-settings.js?v=115',
-    './js/modules/radar.js?v=115',
-    './js/gps-permissions.js?v=115',
-    './js/app.js?v=115',
-    './manifest.json?v=115',
+    './index.html?v=116',
+    './css/index.css?v=116',
+    './css/components.css?v=116',
+    './css/modules.css?v=116',
+    './js/i18n.js?v=116',
+    './js/firebase-config.js?v=116',
+    './js/db.js?v=116',
+    './js/units.js?v=116',
+    './js/auth.js?v=116',
+    './js/alerts.js?v=116',
+    './js/components.js?v=116',
+    './js/router.js?v=116',
+    './js/storage.js?v=116',
+    './js/modules/login.js?v=116',
+    './js/modules/dashboard.js?v=116',
+    './js/modules/shifts.js?v=116',
+    './js/modules/maintenance.js?v=116',
+    './js/modules/vehicles.js?v=116',
+    './js/modules/settings.js?v=116',
+    './js/modules/community.js?v=116',
+    './js/modules/sos.js?v=116',
+    './js/modules/announcements.js?v=116',
+    './js/whatsapp.js?v=116',
+    './js/modules/gps.js?v=116',
+    './js/fcm.js?v=116',
+    './js/notifications.js?v=116',
+    './js/pwa-install.js?v=116',
+    './js/ui-settings.js?v=116',
+    './js/modules/radar.js?v=116',
+    './js/gps-permissions.js?v=116',
+    './js/app.js?v=116',
+    './manifest.json?v=116',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -111,7 +111,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegaciÃƒÆ’Ã‚Â³n
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=115')
+                return caches.match('./index.html?v=116')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }
@@ -306,6 +306,7 @@ self.addEventListener('push', event => {
 
     event.waitUntil(self.registration.showNotification(title, options));
 });
+
 
 
 

@@ -163,10 +163,24 @@ const RadarModule = (() => {
 
         const heading = data.heading || 0;
         const speed = data.speed || 0;
-        const name = data.driverName || data.name || driverId;
         const updatedAt = data.updated_at ? new Date(data.updated_at) : null;
         const timeAgoSecs = updatedAt ? Math.floor((Date.now() - updatedAt.getTime()) / 1000) : 99999;
         const timeAgo = updatedAt ? _timeAgo(updatedAt) : 'desconocido';
+
+        let rawName = data.driverName || data.name || '';
+        if (!rawName || rawName === driverId) {
+            rawName = shift ? (shift.driverName || 'Chofer') : 'Chofer';
+        }
+        
+        let firstName = rawName.split(' ')[0];
+        // v116: Evitar mostrar UID largos "chorizos"
+        if (firstName.length > 20) firstName = 'Chofer';
+
+        const vehicleName = vehicle ? vehicle.name : 'V. no asignado';
+        const vehiclePlate = vehicle ? vehicle.plate : 'N/P';
+        
+        // Formato final "Nombre - Patente"
+        const displayName = `${firstName} - ${vehiclePlate}`;
 
         let carMode = (speed > 5) ? 'moving' : 'stopped';
         // v115 - Limpieza de fantasmas
@@ -175,10 +189,6 @@ const RadarModule = (() => {
         }
 
         const statusClass = 'status-' + carMode;
-        const displayName = name.split(' ')[0]; // short name
-
-        const vehicleName = vehicle ? vehicle.name : 'Vehículo no asignado';
-        const vehiclePlate = vehicle ? vehicle.plate : '---';
         const shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
 
         const popupContent = `
