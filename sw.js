@@ -1,36 +1,36 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v101';
+const CACHE_NAME = 'fleetadmin-pro-v107';
 const ASSETS = [
     './',
-    './index.html?v=96',
-    './css/index.css?v=96',
-    './css/components.css?v=96',
-    './css/modules.css?v=96',
-    './js/i18n.js?v=96',
-    './js/firebase-config.js?v=96',
-    './js/db.js?v=96',
-    './js/units.js?v=96',
-    './js/auth.js?v=96',
-    './js/alerts.js?v=96',
-    './js/components.js?v=96',
-    './js/router.js?v=96',
-    './js/storage.js?v=96',
-    './js/modules/login.js?v=96',
-    './js/modules/dashboard.js?v=96',
-    './js/modules/shifts.js?v=96',
-    './js/modules/maintenance.js?v=96',
-    './js/modules/vehicles.js?v=96',
-    './js/modules/settings.js?v=96',
-    './js/modules/community.js?v=96',
-    './js/modules/sos.js?v=96',
-    './js/modules/announcements.js?v=96',
-    './js/whatsapp.js?v=96',
-    './js/modules/gps.js?v=96',
-    './js/fcm.js?v=96',
-    './js/notifications.js?v=96',
-    './js/pwa-install.js?v=96',
-    './js/app.js?v=96',
-    './manifest.json?v=96',
+    './index.html?v=107',
+    './css/index.css?v=107',
+    './css/components.css?v=107',
+    './css/modules.css?v=107',
+    './js/i18n.js?v=107',
+    './js/firebase-config.js?v=107',
+    './js/db.js?v=107',
+    './js/units.js?v=107',
+    './js/auth.js?v=107',
+    './js/alerts.js?v=107',
+    './js/components.js?v=107',
+    './js/router.js?v=107',
+    './js/storage.js?v=107',
+    './js/modules/login.js?v=107',
+    './js/modules/dashboard.js?v=107',
+    './js/modules/shifts.js?v=107',
+    './js/modules/maintenance.js?v=107',
+    './js/modules/vehicles.js?v=107',
+    './js/modules/settings.js?v=107',
+    './js/modules/community.js?v=107',
+    './js/modules/sos.js?v=107',
+    './js/modules/announcements.js?v=107',
+    './js/whatsapp.js?v=107',
+    './js/modules/gps.js?v=107',
+    './js/fcm.js?v=107',
+    './js/notifications.js?v=107',
+    './js/pwa-install.js?v=107',
+    './js/app.js?v=107',
+    './manifest.json?v=107',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -43,7 +43,7 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // v101: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
+    // v107: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
     self.skipWaiting();
 });
 
@@ -108,7 +108,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=96')
+                return caches.match('./index.html?v=107')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }

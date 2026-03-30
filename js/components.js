@@ -318,6 +318,10 @@ const Components = (() => {
     }
 
     // --- Componente de captura de foto ---
+    // v106: FileReader.readAsDataURL() ELIMINADO
+    // Ya no se convierte la imagen a Base64 en memoria.
+    // El preview usa URL.createObjectURL (no toca la RAM).
+    // La subida real a Storage la hace StorageUtil directamente.
     function renderPhotoCapture(id, label) {
         return `
             <div class="form-group">
@@ -348,17 +352,23 @@ const Components = (() => {
         `;
     }
 
+    // v106: handlePhoto ya NO usa FileReader.readAsDataURL()
+    // Usa URL.createObjectURL para preview ligero (0 bytes en RAM)
     function handlePhoto(id, event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            document.getElementById(`${id}Img`).src = e.target.result;
-            document.getElementById(`${id}Wrapper`).style.display = 'none';
-            document.getElementById(`${id}Preview`).style.display = 'inline-block';
-        };
-        reader.readAsDataURL(file);
+        // Preview ligero sin Base64
+        const objectUrl = URL.createObjectURL(file);
+        document.getElementById(`${id}Img`).src = objectUrl;
+        document.getElementById(`${id}Wrapper`).style.display = 'none';
+        document.getElementById(`${id}Preview`).style.display = 'inline-block';
+
+        // Guardar referencia al File para que StorageUtil lo suba después
+        const hiddenInput = document.getElementById(`${id}Input`);
+        if (hiddenInput) hiddenInput.dataset.file = 'pending';
+
+        console.log(`📷 v106 handlePhoto('${id}'): preview con ObjectURL (0 bytes Base64)`);
     }
 
     function removePhoto(id) {
@@ -367,15 +377,29 @@ const Components = (() => {
         const inputGal = document.getElementById(`${id}InputGallery`);
         if (inputGal) inputGal.value = '';
         const inputMain = document.getElementById(`${id}Input`);
-        if (inputMain) inputMain.value = '';
-        document.getElementById(`${id}Img`).src = '';
+        if (inputMain) { inputMain.value = ''; delete inputMain.dataset.file; }
+        const img = document.getElementById(`${id}Img`);
+        if (img && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+        if (img) img.src = '';
         document.getElementById(`${id}Wrapper`).style.display = 'flex';
         document.getElementById(`${id}Preview`).style.display = 'none';
     }
 
+    // v106: getPhotoData ya NO devuelve Base64 gigante
+    // Devuelve el File original del input para que StorageUtil lo comprima y suba
     function getPhotoData(id) {
-        const img = document.getElementById(`${id}Img`);
-        return img?.src || null;
+        const inputCam = document.getElementById(`${id}InputCamera`);
+        const inputGal = document.getElementById(`${id}InputGallery`);
+        const file = (inputCam && inputCam.files[0]) || (inputGal && inputGal.files[0]);
+        if (file) {
+            // Devolver como data URL solo si es estrictamente necesario (legacy compat)
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+        return null;
     }
 
     // --- Estado vacío ---
