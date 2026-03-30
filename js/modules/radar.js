@@ -75,11 +75,6 @@ const RadarModule = (() => {
 
         // Start listening to driver positions
         _startFirebaseListener();
-
-        // If I'm a driver, start my own tracking
-        if (typeof Auth !== 'undefined' && !Auth.isOwner()) {
-            _startDriverTracking();
-        }
     }
 
     // ============ CLOSE MAP ============
@@ -89,9 +84,6 @@ const RadarModule = (() => {
 
         // Stop Firebase listener
         _stopFirebaseListener();
-
-        // Stop driver tracking
-        _stopDriverTracking();
 
         // Destroy map
         if (_map) {
@@ -173,15 +165,21 @@ const RadarModule = (() => {
         const speed = data.speed || 0;
         const name = data.driverName || data.name || driverId;
         const updatedAt = data.updated_at ? new Date(data.updated_at) : null;
+        const timeAgoSecs = updatedAt ? Math.floor((Date.now() - updatedAt.getTime()) / 1000) : 99999;
         const timeAgo = updatedAt ? _timeAgo(updatedAt) : 'desconocido';
 
-        const carMode = (speed > 5) ? 'moving' : 'stopped';
+        let carMode = (speed > 5) ? 'moving' : 'stopped';
+        // v115 - Limpieza de fantasmas
+        if (timeAgoSecs > 60) {
+            carMode = 'offline';
+        }
+
         const statusClass = 'status-' + carMode;
         const displayName = name.split(' ')[0]; // short name
 
         const vehicleName = vehicle ? vehicle.name : 'Vehículo no asignado';
         const vehiclePlate = vehicle ? vehicle.plate : '---';
-        const shiftStatusText = shift ? (carMode === 'moving' ? 'En viaje' : 'Detenido') : 'Sin turno activo';
+        const shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
 
         const popupContent = `
             <div style="font-family:Inter,sans-serif; min-width:200px;">
@@ -327,99 +325,6 @@ const RadarModule = (() => {
         if (_firebaseRef) {
             _firebaseRef.off('value');
             _firebaseRef = null;
-        }
-    }
-
-    // ============ DRIVER TRACKING (MOBILE) ============
-
-    function _startDriverTracking() {
-        if (!navigator.geolocation) {
-            console.warn('📡 Radar: Geolocation no soportada');
-            return;
-        }
-
-        const userId = Auth.getUserId() || Auth.getUserName();
-        if (!userId) return;
-
-        console.log('📡 Radar: Iniciando tracking GPS para', userId);
-
-        // Immediate position
-        _sendPosition(userId);
-
-        // Update every 20 seconds
-        _trackingInterval = setInterval(() => _sendPosition(userId), UPDATE_INTERVAL_MS);
-
-        // Watch for continuous updates
-        try {
-            _watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    // Silently cache — actual Firebase writes happen on interval
-                    _lastPosition = {
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude,
-                        heading: pos.coords.heading || 0,
-                        speed: (pos.coords.speed || 0) * 3.6 // m/s → km/h
-                    };
-                },
-                (err) => console.warn('📡 Radar: watchPosition error:', err.message),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
-            );
-        } catch (e) {
-            console.warn('📡 Radar: watchPosition no disponible');
-        }
-    }
-
-    let _lastPosition = null;
-
-    async function _sendPosition(userId) {
-        try {
-            const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    (p) => resolve({
-                        lat: p.coords.latitude,
-                        lng: p.coords.longitude,
-                        heading: p.coords.heading || 0,
-                        speed: (p.coords.speed || 0) * 3.6
-                    }),
-                    (e) => reject(e),
-                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
-                );
-            });
-
-            _lastPosition = pos;
-
-            if (typeof firebaseDB !== 'undefined') {
-                await firebaseDB.ref(`${DRIVER_POSITIONS_NODE}/${userId}`).set({
-                    lat: pos.lat,
-                    lng: pos.lng,
-                    heading: pos.heading,
-                    speed: pos.speed,
-                    driverName: Auth.getUserName() || userId,
-                    updated_at: new Date().toISOString()
-                });
-            }
-
-            console.log('📡 Radar: Posición enviada:', pos.lat.toFixed(4), pos.lng.toFixed(4), 
-                         '| heading:', pos.heading.toFixed(0), '| speed:', pos.speed.toFixed(0));
-        } catch (e) {
-            // Use cached position if available
-            if (_lastPosition && typeof firebaseDB !== 'undefined') {
-                await firebaseDB.ref(`${DRIVER_POSITIONS_NODE}/${userId}`).update({
-                    updated_at: new Date().toISOString()
-                });
-            }
-            console.warn('📡 Radar: Error GPS:', e.message || e);
-        }
-    }
-
-    function _stopDriverTracking() {
-        if (_watchId !== null) {
-            navigator.geolocation.clearWatch(_watchId);
-            _watchId = null;
-        }
-        if (_trackingInterval) {
-            clearInterval(_trackingInterval);
-            _trackingInterval = null;
         }
     }
 

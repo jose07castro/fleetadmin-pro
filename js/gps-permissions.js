@@ -404,6 +404,14 @@ const GPSPermissions = (() => {
         const userId = typeof Auth !== 'undefined' ? (Auth.getUserId() || Auth.getUserName()) : null;
         if (!userId || typeof firebaseDB === 'undefined') return;
 
+        // Validar si el chofer está en turno (En Línea)
+        const inShift = localStorage.getItem('active_shift_state') === 'true';
+        if (!inShift) {
+            // No enviar coordenadas si no está trabajando
+            // Opcional: limpiar la posición en la DB para forzar fantasma
+            return;
+        }
+
         try {
             const pos = await new Promise((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(
@@ -429,7 +437,8 @@ const GPSPermissions = (() => {
                 updated_at: new Date().toISOString()
             });
         } catch (e) {
-            // Use cached if available
+            // Si el GPS falla, subir 'ping' de última posición si hay alguna,
+            // pero solo actualizar el tiempo para no desaparecer si perdió brevemente la señal
             if (_cachedPosition) {
                 try {
                     await firebaseDB.ref(`driver_positions/${userId}`).update({

@@ -2603,3 +2603,15 @@
     display: inline-block;
     text-align: center;
 }
+
+/* Ghost / Offline State applied to v115 */
+.radar-car-label.status-offline {
+    border-color: #64748b;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.7);
+}
+.radar-car-icon-wrapper.status-offline {
+    background: radial-gradient(circle, rgba(100,116,139,0.2) 0%, transparent 70%);
+    border: 1.5px solid rgba(100,116,139,0.4);
+    filter: grayscale(100%) opacity(70%);
+}
