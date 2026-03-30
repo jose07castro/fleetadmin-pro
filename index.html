@@ -5,22 +5,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
     <script>
-        // ÃƒÂ¢Ã‹Å“Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v118: LIMPIEZA INCONDICIONAL de IndexedDB 'fleet-admin-db'
+        // ÃƒÂ¢Ã‹Å“Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v119: LIMPIEZA INCONDICIONAL de IndexedDB 'fleet-admin-db'
         // Purga envÃƒÆ’Ã‚Â­os fallidos y datos corruptos en cada carga.
         (function() {
             try {
                 var req = indexedDB.deleteDatabase('fleet-admin-db');
-                req.onsuccess = function() { console.log('ÃƒÂ¢Ã‹Å“Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v118: IndexedDB fleet-admin-db DESTRUIDA'); };
-                req.onerror = function() { console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v118: No se pudo borrar fleet-admin-db'); };
+                req.onsuccess = function() { console.log('ÃƒÂ¢Ã‹Å“Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v119: IndexedDB fleet-admin-db DESTRUIDA'); };
+                req.onerror = function() { console.warn('ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â v119: No se pudo borrar fleet-admin-db'); };
             } catch(e) { console.warn('v110 IndexedDB cleanup error:', e); }
         })();
 
-        // FORCE CACHE PURGE v118 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Ejecutar ANTES de que el SW intercepte
+        // FORCE CACHE PURGE v119 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 118;
+            var REQUIRED_VERSION = 119;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
-                console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥ PURGE v118: Forzando limpieza total...');
+                console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥ PURGE v119: Forzando limpieza total...');
                 localStorage.setItem('fa_cache_ver', String(REQUIRED_VERSION));
 
                 caches.keys().then(function(names) {
@@ -36,7 +36,7 @@
                         return reg.unregister();
                     }));
                 }).then(function() {
-                    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ PURGE v118 completado. Recargando...');
+                    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ PURGE v119 completado. Recargando...');
                     window.location.reload(true);
                 }).catch(function(e) {
                     console.error('PURGE error:', e);
@@ -57,9 +57,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-    <link rel="stylesheet" href="css/index.css?v=118">
-    <link rel="stylesheet" href="css/components.css?v=118">
-    <link rel="stylesheet" href="css/modules.css?v=118">
+    <link rel="stylesheet" href="css/index.css?v=119">
+    <link rel="stylesheet" href="css/components.css?v=119">
+    <link rel="stylesheet" href="css/modules.css?v=119">
 </head>
 
 <body>
@@ -87,35 +87,35 @@
     <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
 
     <!-- Scripts del sistema -->
-    <script src="js/i18n.js?v=118"></script>
-    <script src="js/firebase-config.js?v=118"></script>
-    <script src="js/db.js?v=118"></script>
-    <script src="js/units.js?v=118"></script>
-    <script src="js/auth.js?v=118"></script>
-    <script src="js/alerts.js?v=118"></script>
-    <script src="js/components.js?v=118"></script>
-    <script src="js/router.js?v=118"></script>
-    <script src="js/storage.js?v=118"></script>
-    <script src="js/modules/login.js?v=118"></script>
-    <script src="js/modules/dashboard.js?v=118"></script>
-    <script src="js/modules/shifts.js?v=118"></script>
-    <script src="js/modules/maintenance.js?v=118"></script>
-    <script src="js/modules/vehicles.js?v=118"></script>
-    <script src="js/modules/settings.js?v=118"></script>
-    <script src="js/modules/community.js?v=118"></script>
-    <script src="js/whatsapp.js?v=118"></script>
-    <script src="js/modules/gps.js?v=118"></script>
-    <script src="js/modules/sos.js?v=118"></script>
-    <script src="js/modules/announcements.js?v=118"></script>
-    <script src="js/modules/applicants.js?v=118"></script>
-    <script src="js/fcm.js?v=118"></script>
-    <script src="js/notifications.js?v=118"></script>
-    <script src="js/pwa-install.js?v=118"></script>
-    <script src="js/ui-settings.js?v=118"></script>
+    <script src="js/i18n.js?v=119"></script>
+    <script src="js/firebase-config.js?v=119"></script>
+    <script src="js/db.js?v=119"></script>
+    <script src="js/units.js?v=119"></script>
+    <script src="js/auth.js?v=119"></script>
+    <script src="js/alerts.js?v=119"></script>
+    <script src="js/components.js?v=119"></script>
+    <script src="js/router.js?v=119"></script>
+    <script src="js/storage.js?v=119"></script>
+    <script src="js/modules/login.js?v=119"></script>
+    <script src="js/modules/dashboard.js?v=119"></script>
+    <script src="js/modules/shifts.js?v=119"></script>
+    <script src="js/modules/maintenance.js?v=119"></script>
+    <script src="js/modules/vehicles.js?v=119"></script>
+    <script src="js/modules/settings.js?v=119"></script>
+    <script src="js/modules/community.js?v=119"></script>
+    <script src="js/whatsapp.js?v=119"></script>
+    <script src="js/modules/gps.js?v=119"></script>
+    <script src="js/modules/sos.js?v=119"></script>
+    <script src="js/modules/announcements.js?v=119"></script>
+    <script src="js/modules/applicants.js?v=119"></script>
+    <script src="js/fcm.js?v=119"></script>
+    <script src="js/notifications.js?v=119"></script>
+    <script src="js/pwa-install.js?v=119"></script>
+    <script src="js/ui-settings.js?v=119"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script src="js/modules/radar.js?v=118"></script>
-    <script src="js/gps-permissions.js?v=118"></script>
-    <script src="js/app.js?v=118"></script>
+    <script src="js/modules/radar.js?v=119"></script>
+    <script src="js/gps-permissions.js?v=119"></script>
+    <script src="js/app.js?v=119"></script>
 
     <script>
         // =============================================
@@ -211,6 +211,7 @@
 </body>
 
 </html>
+
 
 
 

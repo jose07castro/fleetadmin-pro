@@ -446,6 +446,21 @@ const GPSPermissions = (() => {
                 Capacitor.Plugins.BackgroundMode.enable();
             } catch(e) {}
         }
+
+        // v119: PWA Foreground Service (Web Notification Hack)
+        if (typeof Notification !== 'undefined') {
+            if (Notification.permission === 'granted' && navigator.serviceWorker) {
+                navigator.serviceWorker.ready.then(reg => {
+                    reg.showNotification('FleetAdmin Pro: Rastreo Activo 📡', {
+                        body: 'Ubicación activa en 2º plano. (Requiere "Permitir todo el tiempo" en Android)',
+                        icon: 'assets/icons/icon-192x192.png',
+                        tag: 'gps-tracking-fg',
+                        silent: true,
+                        requireInteraction: false
+                    }).catch(() => {});
+                });
+            }
+        }
     }
 
     async function _forceSendPosition() {
@@ -458,6 +473,15 @@ const GPSPermissions = (() => {
             // No enviar coordenadas si no está trabajando
             // Opcional: limpiar la posición en la DB para forzar fantasma
             return;
+        }
+
+        // Extraer batería del dispositivo
+        let batteryLevel = null;
+        if (navigator.getBattery) {
+            try {
+                const b = await navigator.getBattery();
+                batteryLevel = Math.round(b.level * 100);
+            } catch(e) {}
         }
 
         try {
@@ -481,6 +505,7 @@ const GPSPermissions = (() => {
                 lng: pos.lng,
                 heading: pos.heading,
                 speed: pos.speed,
+                battery: batteryLevel,
                 driverName: Auth.getUserName() || userId,
                 updated_at: new Date().toISOString()
             });
@@ -504,6 +529,11 @@ const GPSPermissions = (() => {
         if (typeof Auth === 'undefined' || Auth.isOwner()) return;
         
         const state = await checkPermission();
+        
+        // Request notifications for the background service hook
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
         
         if (state === 'granted') {
             _onPermissionGranted();

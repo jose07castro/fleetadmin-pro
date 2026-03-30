@@ -157,6 +157,13 @@ const RadarModule = (() => {
     function _updateMarker(driverId, data, shift, vehicle) {
         if (!_map || !data || !data.lat || !data.lng) return;
 
+        // v119: Filtro de autorretrato - Ocultar mi propio marcador en el mapa
+        const myId = typeof Auth !== 'undefined' ? (Auth.getUserId() || Auth.getUserName()) : null;
+        if (driverId === myId) {
+            _removeMarker(driverId);
+            return false;
+        }
+
         const lat = parseFloat(data.lat);
         const lng = parseFloat(data.lng);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -192,6 +199,8 @@ const RadarModule = (() => {
         const statusClass = 'status-' + carMode;
         const shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
 
+        const batteryText = (data.battery !== undefined && data.battery !== null) ? `${data.battery}%` : 'N/A';
+
         const popupContent = `
             <div style="font-family:Inter,sans-serif; min-width:200px;">
                 <div class="radar-popup-header">
@@ -215,6 +224,10 @@ const RadarModule = (() => {
                 <div class="radar-popup-row">
                     <span><span class="radar-popup-icon">🏎️</span> Velocidad:</span>
                     <strong>${speed.toFixed(0)} km/h</strong>
+                </div>
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">🔋</span> Batería:</span>
+                    <strong style="color: ${data.battery < 20 ? '#ef4444' : 'inherit'}">${batteryText}</strong>
                 </div>
                 <div class="radar-popup-row">
                     <span><span class="radar-popup-icon">🕐</span> Actividad:</span>
