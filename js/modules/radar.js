@@ -182,12 +182,13 @@ const RadarModule = (() => {
         // Formato final "Nombre - Patente"
         const displayName = `${firstName} - ${vehiclePlate}`;
 
-        let carMode = (speed > 5) ? 'moving' : 'stopped';
-        // v115 - Limpieza de fantasmas
+        // v117 - Limpieza TOTAL de fantasmas
         if (timeAgoSecs > 60) {
-            carMode = 'offline';
+            _removeMarker(driverId);
+            return false; // Indicamos al caller que el chofer ya no está online
         }
 
+        let carMode = (speed > 5) ? 'moving' : 'stopped';
         const statusClass = 'status-' + carMode;
         const shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
 
@@ -235,6 +236,8 @@ const RadarModule = (() => {
             marker.bindPopup(popupContent);
             _markers[driverId] = marker;
         }
+
+        return true; // Marcador vivo y renderizado
     }
 
     function _removeMarker(driverId) {
@@ -290,8 +293,10 @@ const RadarModule = (() => {
                 if (data && data.lat && data.lng) {
                     const shift = driverShiftMap[driverId];
                     const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
-                    _updateMarker(driverId, data, shift, vehicle);
-                    activeCount++;
+                    const isAlive = _updateMarker(driverId, data, shift, vehicle);
+                    if (isAlive) {
+                        activeCount++;
+                    }
                 }
             }
 
