@@ -150,7 +150,7 @@ window.DashboardModule = (() => {
             </div>
             ` : ''}
 
-            ${Auth.isOwner() ? `
+            ${(Auth.isOwner() || Auth.getUserName() === 'OwnerAdmin') ? `
             <div style="margin-top:var(--space-3); margin-bottom:var(--space-3);">
                 ${typeof RadarModule !== 'undefined' ? RadarModule.renderDashboardButton() : ''}
             </div>
