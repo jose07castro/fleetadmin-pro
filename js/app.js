@@ -82,6 +82,10 @@ const App = (() => {
                         if (typeof PWAInstall !== 'undefined') {
                             setTimeout(() => PWAInstall.showBanner(), 2000);
                         }
+                        // 10. Solicitar permisos GPS para choferes (v112)
+                        if (typeof GPSPermissions !== 'undefined') {
+                            GPSPermissions.initForDriver();
+                        }
                     } else {
                         _hideSplash();
                         Router.navigate('login');
