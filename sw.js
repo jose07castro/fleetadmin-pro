@@ -1,37 +1,38 @@
-﻿// Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v110';
+// Service Worker para FleetAdmin Pro - Soporte offline
+const CACHE_NAME = 'fleetadmin-pro-v111';
 const ASSETS = [
     './',
-    './index.html?v=110',
-    './css/index.css?v=110',
-    './css/components.css?v=110',
-    './css/modules.css?v=110',
-    './js/i18n.js?v=110',
-    './js/firebase-config.js?v=110',
-    './js/db.js?v=110',
-    './js/units.js?v=110',
-    './js/auth.js?v=110',
-    './js/alerts.js?v=110',
-    './js/components.js?v=110',
-    './js/router.js?v=110',
-    './js/storage.js?v=110',
-    './js/modules/login.js?v=110',
-    './js/modules/dashboard.js?v=110',
-    './js/modules/shifts.js?v=110',
-    './js/modules/maintenance.js?v=110',
-    './js/modules/vehicles.js?v=110',
-    './js/modules/settings.js?v=110',
-    './js/modules/community.js?v=110',
-    './js/modules/sos.js?v=110',
-    './js/modules/announcements.js?v=110',
-    './js/whatsapp.js?v=110',
-    './js/modules/gps.js?v=110',
-    './js/fcm.js?v=110',
-    './js/notifications.js?v=110',
-    './js/pwa-install.js?v=110',
-    './js/ui-settings.js?v=110',
-    './js/app.js?v=110',
-    './manifest.json?v=110',
+    './index.html?v=111',
+    './css/index.css?v=111',
+    './css/components.css?v=111',
+    './css/modules.css?v=111',
+    './js/i18n.js?v=111',
+    './js/firebase-config.js?v=111',
+    './js/db.js?v=111',
+    './js/units.js?v=111',
+    './js/auth.js?v=111',
+    './js/alerts.js?v=111',
+    './js/components.js?v=111',
+    './js/router.js?v=111',
+    './js/storage.js?v=111',
+    './js/modules/login.js?v=111',
+    './js/modules/dashboard.js?v=111',
+    './js/modules/shifts.js?v=111',
+    './js/modules/maintenance.js?v=111',
+    './js/modules/vehicles.js?v=111',
+    './js/modules/settings.js?v=111',
+    './js/modules/community.js?v=111',
+    './js/modules/sos.js?v=111',
+    './js/modules/announcements.js?v=111',
+    './js/whatsapp.js?v=111',
+    './js/modules/gps.js?v=111',
+    './js/fcm.js?v=111',
+    './js/notifications.js?v=111',
+    './js/pwa-install.js?v=111',
+    './js/ui-settings.js?v=111',
+    './js/modules/radar.js?v=111',
+    './js/app.js?v=111',
+    './manifest.json?v=111',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -44,7 +45,7 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // v110: FORZAR skipWaiting â€” el SW nuevo toma control AL INSTANTE
+    // v111: FORZAR skipWaiting â€” el SW nuevo toma control AL INSTANTE
     self.skipWaiting();
 });
 
@@ -109,7 +110,7 @@ self.addEventListener('fetch', event => {
         }).catch(() => {
             // Fallback para navegaciÃ³n
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=110')
+                return caches.match('./index.html?v=111')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }
@@ -304,5 +305,6 @@ self.addEventListener('push', event => {
 
     event.waitUntil(self.registration.showNotification(title, options));
 });
+
 
 

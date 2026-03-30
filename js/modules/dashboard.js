@@ -150,6 +150,12 @@ window.DashboardModule = (() => {
             </div>
             ` : ''}
 
+            ${Auth.isOwner() ? `
+            <div style="margin-top:var(--space-3); margin-bottom:var(--space-3);">
+                ${typeof RadarModule !== 'undefined' ? RadarModule.renderDashboardButton() : ''}
+            </div>
+            ` : ''}
+
             ${locationBanner}
             ${alertsHTML}
 
