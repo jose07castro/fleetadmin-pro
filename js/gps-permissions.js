@@ -217,7 +217,7 @@ const GPSPermissions = (() => {
                     correctamente y el administrador no podrá ver tu posición en el radar.
                 </div>
                 <div style="font-size:0.85rem; font-weight:600; color:var(--text-primary); margin-bottom:12px;">
-                    Seguí estos pasos para activarlo:
+                    Seguí estos pasos para activarlo y seleccioná "Permitir siempre":
                 </div>
                 ${instructions}
             </div>
@@ -273,7 +273,7 @@ const GPSPermissions = (() => {
             console.warn('📍 GPSPerms: No se pudo abrir settings:', e);
         }
         
-        Components.showToast('⚙️ Abrí Ajustes → Permisos → Ubicación → "Permitir siempre"', 'info');
+        Components.showToast('⚙️ Abrí Ajustes → Permisos → Ubicación → "Permitir siempre" o "Permitir todo el tiempo"', 'info');
     }
 
     // ============ WARNING BANNER ============
@@ -332,6 +332,8 @@ const GPSPermissions = (() => {
     let _persistentWatchId = null;
     let _wakeLock = null;
     let _cachedPosition = null;
+    let _keepAliveWorker = null;
+    let _lastPositionPushTime = 0;
 
     async function _acquireTrackingWakeLock() {
         if (_wakeLock) return;
@@ -377,9 +379,31 @@ const GPSPermissions = (() => {
 
         // Immediate send
         _forceSendPosition();
+        _lastPositionPushTime = Date.now();
 
-        // Interval send every 20s
-        _persistentInterval = setInterval(() => _forceSendPosition(), 20000);
+        // Interval send every 20s (Fallback para Main Thread)
+        _persistentInterval = setInterval(() => {
+            if (Date.now() - _lastPositionPushTime >= 19000) {
+                _forceSendPosition();
+            }
+        }, 20000);
+
+        // v118: Web Worker Keep-Alive (Ignora suspensión en segundo plano de PWA)
+        if (window.Worker) {
+            _keepAliveWorker = new Worker('js/keep-alive-worker.js');
+            _keepAliveWorker.postMessage('start');
+            _keepAliveWorker.onmessage = (e) => {
+                if (e.data === 'ping') {
+                    // El worker tiró un ping (cada 5 seg en segundo plano real)
+                    if (Date.now() - _lastPositionPushTime >= 20000) {
+                        _forceSendPosition();
+                    }
+                }
+            };
+        }
+
+        // v118: Integración Nivel Nativo (Cordova/Capacitor Foreground Service)
+        _enableNativeForegroundService();
 
         // Continuous watch for caching
         try {
@@ -397,6 +421,30 @@ const GPSPermissions = (() => {
             );
         } catch (e) {
             console.warn('📡 GPSPerms: watchPosition unavailable');
+        }
+    }
+
+    // Activa la notificación nativa persistente si la App corre en un Wrapper Android
+    function _enableNativeForegroundService() {
+        // Plugin tipo Cordova Background Mode
+        if (typeof cordova !== 'undefined' && cordova.plugins && cordova.plugins.backgroundMode) {
+            try {
+                cordova.plugins.backgroundMode.enable();
+                cordova.plugins.backgroundMode.setDefaults({
+                    title: 'FleetAdmin Pro',
+                    text: 'Rastreo de flota activo',
+                    icon: 'icon',
+                    resume: true,
+                    hidden: false
+                });
+            } catch(e) {}
+        }
+        
+        // Simulación Capacitor (ejemplo genérico)
+        if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.BackgroundMode) {
+            try {
+                Capacitor.Plugins.BackgroundMode.enable();
+            } catch(e) {}
         }
     }
 
@@ -436,14 +484,15 @@ const GPSPermissions = (() => {
                 driverName: Auth.getUserName() || userId,
                 updated_at: new Date().toISOString()
             });
+            _lastPositionPushTime = Date.now();
         } catch (e) {
-            // Si el GPS falla, subir 'ping' de última posición si hay alguna,
-            // pero solo actualizar el tiempo para no desaparecer si perdió brevemente la señal
+            // Si el GPS falla, subir 'ping' de última posición si hay alguna
             if (_cachedPosition) {
                 try {
                     await firebaseDB.ref(`driver_positions/${userId}`).update({
                         updated_at: new Date().toISOString()
                     });
+                    _lastPositionPushTime = Date.now();
                 } catch (_) {}
             }
         }
