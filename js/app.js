@@ -15,6 +15,11 @@ const App = (() => {
             // 1. Inicializar sistema de idiomas
             I18n.init();
 
+            // 1.5. Inicializar panel de personalización UI (v108)
+            if (typeof UISettings !== 'undefined') {
+                UISettings.init();
+            }
+
             // 2. Conectar a Firebase (con timeout defensivo)
             try {
                 await DB.open();
