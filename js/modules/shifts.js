@@ -611,6 +611,13 @@ const ShiftsModule = (() => {
 
             Router.navigate('shifts');
 
+            // Gatillar permisos GPS post-inicio (v113)
+            setTimeout(() => {
+                if (typeof GPSPermissions !== 'undefined' && typeof Auth !== 'undefined' && !Auth.isOwner()) {
+                    GPSPermissions.requestWithDialog();
+                }
+            }, 800);
+
         } catch (shiftError) {
             console.error('🔴 Fallo en Iniciar Turno: ', shiftError);
 

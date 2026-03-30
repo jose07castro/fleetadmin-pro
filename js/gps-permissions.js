@@ -71,22 +71,14 @@ const GPSPermissions = (() => {
                 <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:16px;">
                     Permiso de Ubicación Requerido
                 </div>
-                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:left; padding:0 8px;">
-                    Para que el <strong>dueño de la flota</strong> pueda asistirte y ver tu 
-                    ubicación en tiempo real, necesitamos acceso a tu GPS.
-                </div>
-                <div class="gps-perm-highlight">
-                    <div style="font-size:1.5rem; margin-bottom:8px;">⚠️</div>
-                    <div style="font-weight:700; margin-bottom:4px;">Paso importante:</div>
-                    <div>Seleccioná <strong>"Permitir siempre"</strong> en la siguiente pantalla 
-                    para que el rastreo funcione aunque minimices la app.</div>
+                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:center; padding:0 8px;">
+                    Para que el radar de la flota funcione, necesitamos acceso a tu ubicación mientras usás la app.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:12px; text-align:left;">
-                    <div style="font-size:0.8rem; color:#86efac; font-weight:600; margin-bottom:6px;">✅ Con este permiso podrás:</div>
+                    <div style="font-size:0.85rem; color:#86efac; font-weight:600; margin-bottom:6px;">⚠️ Por favor seleccioná:</div>
                     <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
-                        <li>Aparecer en el radar del administrador</li>
-                        <li>Recibir asistencia rápida en emergencias SOS</li>
-                        <li>Mantener tu modo "En Línea" activo</li>
+                        <li><strong>"Permitir solo con la app en uso"</strong></li>
+                        <li><strong>"Ubicación precisa"</strong></li>
                     </ul>
                 </div>
             </div>
