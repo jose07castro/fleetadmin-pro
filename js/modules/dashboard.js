@@ -80,6 +80,13 @@ window.DashboardModule = (() => {
                 setTimeout(() => _wireDragAndDrop(), 100);
             }
 
+            // Wiring de Split-Panes arrastrables (v110)
+            setTimeout(() => {
+                if (typeof UISettings !== 'undefined' && UISettings.wireSplitPanes) {
+                    UISettings.wireSplitPanes();
+                }
+            }, 150);
+
             // Cargar Order del Layout
             let savedOrder = [];
             try {

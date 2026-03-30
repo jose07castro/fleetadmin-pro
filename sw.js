@@ -1,37 +1,37 @@
-// Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v108';
+﻿// Service Worker para FleetAdmin Pro - Soporte offline
+const CACHE_NAME = 'fleetadmin-pro-v110';
 const ASSETS = [
     './',
-    './index.html?v=108',
-    './css/index.css?v=108',
-    './css/components.css?v=108',
-    './css/modules.css?v=108',
-    './js/i18n.js?v=108',
-    './js/firebase-config.js?v=108',
-    './js/db.js?v=108',
-    './js/units.js?v=108',
-    './js/auth.js?v=108',
-    './js/alerts.js?v=108',
-    './js/components.js?v=108',
-    './js/router.js?v=108',
-    './js/storage.js?v=108',
-    './js/modules/login.js?v=108',
-    './js/modules/dashboard.js?v=108',
-    './js/modules/shifts.js?v=108',
-    './js/modules/maintenance.js?v=108',
-    './js/modules/vehicles.js?v=108',
-    './js/modules/settings.js?v=108',
-    './js/modules/community.js?v=108',
-    './js/modules/sos.js?v=108',
-    './js/modules/announcements.js?v=108',
-    './js/whatsapp.js?v=108',
-    './js/modules/gps.js?v=108',
-    './js/fcm.js?v=108',
-    './js/notifications.js?v=108',
-    './js/pwa-install.js?v=108',
-    './js/ui-settings.js?v=108',
-    './js/app.js?v=108',
-    './manifest.json?v=108',
+    './index.html?v=110',
+    './css/index.css?v=110',
+    './css/components.css?v=110',
+    './css/modules.css?v=110',
+    './js/i18n.js?v=110',
+    './js/firebase-config.js?v=110',
+    './js/db.js?v=110',
+    './js/units.js?v=110',
+    './js/auth.js?v=110',
+    './js/alerts.js?v=110',
+    './js/components.js?v=110',
+    './js/router.js?v=110',
+    './js/storage.js?v=110',
+    './js/modules/login.js?v=110',
+    './js/modules/dashboard.js?v=110',
+    './js/modules/shifts.js?v=110',
+    './js/modules/maintenance.js?v=110',
+    './js/modules/vehicles.js?v=110',
+    './js/modules/settings.js?v=110',
+    './js/modules/community.js?v=110',
+    './js/modules/sos.js?v=110',
+    './js/modules/announcements.js?v=110',
+    './js/whatsapp.js?v=110',
+    './js/modules/gps.js?v=110',
+    './js/fcm.js?v=110',
+    './js/notifications.js?v=110',
+    './js/pwa-install.js?v=110',
+    './js/ui-settings.js?v=110',
+    './js/app.js?v=110',
+    './manifest.json?v=110',
     './assets/icon.svg',
     './assets/icon-192.png',
     './assets/icon-512.png',
@@ -39,16 +39,16 @@ const ASSETS = [
     './assets/screenshot-dashboard.png'
 ];
 
-// Instalar: cachear todos los archivos estáticos + FORZAR activación inmediata
+// Instalar: cachear todos los archivos estÃ¡ticos + FORZAR activaciÃ³n inmediata
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // v108: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
+    // v110: FORZAR skipWaiting â€” el SW nuevo toma control AL INSTANTE
     self.skipWaiting();
 });
 
-// Activar: limpiar cachés viejas
+// Activar: limpiar cachÃ©s viejas
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
@@ -58,7 +58,7 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch: Firebase y API van a red, estáticos cache-first
+// Fetch: Firebase y API van a red, estÃ¡ticos cache-first
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
@@ -77,7 +77,7 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // Archivos estáticos: cache-first con fallback a red
+    // Archivos estÃ¡ticos: cache-first con fallback a red
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
@@ -107,9 +107,9 @@ self.addEventListener('fetch', event => {
             });
 
         }).catch(() => {
-            // Fallback para navegación
+            // Fallback para navegaciÃ³n
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
-                return caches.match('./index.html?v=108')
+                return caches.match('./index.html?v=110')
                     .then(res => res || caches.match('./index.html'))
                     .then(res => res || caches.match('./'));
             }
@@ -125,22 +125,22 @@ self.addEventListener('notificationclick', event => {
     const data = event.notification.data || {};
     const action = event.action;
 
-    // Si el usuario tocó "Ver Mapa" y tenemos URL de Google Maps
+    // Si el usuario tocÃ³ "Ver Mapa" y tenemos URL de Google Maps
     if (action === 'open-map' && data.mapsUrl) {
         event.waitUntil(clients.openWindow(data.mapsUrl));
         return;
     }
 
-    // Para cualquier otro click/acción: abrir/focus la app
+    // Para cualquier otro click/acciÃ³n: abrir/focus la app
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            // Buscar si la app ya está abierta
+            // Buscar si la app ya estÃ¡ abierta
             for (let client of windowClients) {
                 if (client.url.includes(self.location.origin) && 'focus' in client) {
                     return client.focus();
                 }
             }
-            // Si no está abierta, abrir
+            // Si no estÃ¡ abierta, abrir
             if (clients.openWindow) {
                 return clients.openWindow(data.url || '/');
             }
@@ -149,29 +149,29 @@ self.addEventListener('notificationclick', event => {
 });
 
 // =============================================
-// 🚨 SOS: Listener de mensajes desde el main thread
+// ðŸš¨ SOS: Listener de mensajes desde el main thread
 // Permite disparar notificaciones incluso cuando
-// el OS está suspendiendo la pestaña (background)
+// el OS estÃ¡ suspendiendo la pestaÃ±a (background)
 // =============================================
 self.addEventListener('message', event => {
     const msg = event.data;
     if (!msg) return;
 
-    // Mensaje del frontend para forzar activación del SW nuevo
+    // Mensaje del frontend para forzar activaciÃ³n del SW nuevo
     if (msg.type === 'SKIP_WAITING') {
-        console.log('🔄 SW: SKIP_WAITING recibido — activando nueva versión');
+        console.log('ðŸ”„ SW: SKIP_WAITING recibido â€” activando nueva versiÃ³n');
         self.skipWaiting();
         return;
     }
 
     if (msg.type !== 'SOS_ALERT') return;
 
-    console.log('🚨 SW: Mensaje SOS_ALERT recibido del main thread');
+    console.log('ðŸš¨ SW: Mensaje SOS_ALERT recibido del main thread');
 
     const alertData = msg.alertData || {};
     const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || 'Emergencia';
-    const title = '🚨 ¡ALERTA SOS!';
-    const body = `${alertData.driverName || 'Un conductor'} necesita ayuda\n${typeLabel}\n🚗 ${alertData.vehicleName || 'Vehículo'}`;
+    const title = 'ðŸš¨ Â¡ALERTA SOS!';
+    const body = `${alertData.driverName || 'Un conductor'} necesita ayuda\n${typeLabel}\nðŸš— ${alertData.vehicleName || 'VehÃ­culo'}`;
 
     event.waitUntil(
         self.registration.showNotification(title, {
@@ -187,21 +187,21 @@ self.addEventListener('message', event => {
                 mapsUrl: alertData.mapsUrl || null
             },
             actions: alertData.mapsUrl ? [
-                { action: 'open-map', title: '📍 Ver Mapa' },
-                { action: 'open-app', title: '🚨 Abrir App' }
+                { action: 'open-map', title: 'ðŸ“ Ver Mapa' },
+                { action: 'open-app', title: 'ðŸš¨ Abrir App' }
             ] : [
-                { action: 'open-app', title: '🚨 Abrir App' }
+                { action: 'open-app', title: 'ðŸš¨ Abrir App' }
             ]
         }).then(() => {
-            console.log('🚨 SW: ✅ Notificación SOS de background mostrada');
+            console.log('ðŸš¨ SW: âœ… NotificaciÃ³n SOS de background mostrada');
         }).catch(err => {
-            console.error('🚨 SW: ❌ Error mostrando notificación:', err);
+            console.error('ðŸš¨ SW: âŒ Error mostrando notificaciÃ³n:', err);
         })
     );
 });
 
 // =============================================
-// 🔔 Firebase Cloud Messaging (FCM) — Service Worker
+// ðŸ”” Firebase Cloud Messaging (FCM) â€” Service Worker
 // Importar Firebase SDKs para manejar push en background
 // =============================================
 try {
@@ -220,15 +220,15 @@ try {
 
     const messaging = firebase.messaging();
 
-    // Handler para mensajes en background (cuando la app NO está en foreground)
-    // FCM invoca esto automáticamente para data-only messages
+    // Handler para mensajes en background (cuando la app NO estÃ¡ en foreground)
+    // FCM invoca esto automÃ¡ticamente para data-only messages
     messaging.onBackgroundMessage((payload) => {
-        console.log('🔔 FCM SW: 📩 Background message recibido:', payload);
+        console.log('ðŸ”” FCM SW: ðŸ“© Background message recibido:', payload);
 
         const data = payload.data || {};
         const notification = payload.notification || {};
 
-        const title = notification.title || data.title || '🚨 ¡ALERTA SOS!';
+        const title = notification.title || data.title || 'ðŸš¨ Â¡ALERTA SOS!';
         const body = notification.body || data.body || 'Un conductor necesita ayuda inmediata.';
 
         const options = {
@@ -244,41 +244,41 @@ try {
                 mapsUrl: data.mapsUrl || null
             },
             actions: data.mapsUrl ? [
-                { action: 'open-map', title: '📍 Ver Mapa' },
-                { action: 'open-app', title: '🚨 Abrir App' }
+                { action: 'open-map', title: 'ðŸ“ Ver Mapa' },
+                { action: 'open-app', title: 'ðŸš¨ Abrir App' }
             ] : [
-                { action: 'open-app', title: '🚨 Abrir App' }
+                { action: 'open-app', title: 'ðŸš¨ Abrir App' }
             ]
         };
 
         return self.registration.showNotification(title, options);
     });
 
-    console.log('🔔 FCM SW: ✅ Firebase Messaging inicializado en Service Worker');
+    console.log('ðŸ”” FCM SW: âœ… Firebase Messaging inicializado en Service Worker');
 
 } catch (e) {
-    console.warn('🔔 FCM SW: ⚠️ Error inicializando Firebase en SW (push manual sigue funcionando):', e.message);
+    console.warn('ðŸ”” FCM SW: âš ï¸ Error inicializando Firebase en SW (push manual sigue funcionando):', e.message);
 }
 
 // =============================================
-// 🔔 Push Event FALLBACK (para push genéricos sin FCM SDK)
+// ðŸ”” Push Event FALLBACK (para push genÃ©ricos sin FCM SDK)
 // Si Firebase Messaging SDK maneja el push, este handler
 // NO se ejecuta (FCM lo intercepta primero).
 // =============================================
 self.addEventListener('push', event => {
-    // Si Firebase messaging ya manejó el evento, no hacer nada
+    // Si Firebase messaging ya manejÃ³ el evento, no hacer nada
     if (event.__handled) return;
 
     let data = {};
     try {
         data = event.data ? event.data.json() : {};
     } catch (e) {
-        data = { title: '🚨 ¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
+        data = { title: 'ðŸš¨ Â¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
     }
 
-    console.log('🔔 PUSH FALLBACK: Evento push recibido:', data);
+    console.log('ðŸ”” PUSH FALLBACK: Evento push recibido:', data);
 
-    const title = data.title || data.notification?.title || '🚨 ¡ALERTA SOS!';
+    const title = data.title || data.notification?.title || 'ðŸš¨ Â¡ALERTA SOS!';
     const body = data.body || data.notification?.body || 'Un conductor necesita ayuda inmediata.';
     const pushData = data.data || data;
 
@@ -295,13 +295,14 @@ self.addEventListener('push', event => {
             mapsUrl: pushData.mapsUrl || null
         },
         actions: pushData.mapsUrl ? [
-            { action: 'open-map', title: '📍 Ver Mapa' },
-            { action: 'open-app', title: '🚨 Abrir App' }
+            { action: 'open-map', title: 'ðŸ“ Ver Mapa' },
+            { action: 'open-app', title: 'ðŸš¨ Abrir App' }
         ] : [
-            { action: 'open-app', title: '🚨 Abrir App' }
+            { action: 'open-app', title: 'ðŸš¨ Abrir App' }
         ]
     };
 
     event.waitUntil(self.registration.showNotification(title, options));
 });
+
 
