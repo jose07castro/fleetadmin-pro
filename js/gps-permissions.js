@@ -261,16 +261,22 @@ const GPSPermissions = (() => {
 
     // ============ ANDROID SETTINGS DEEP-LINK ============
 
-    function _openAndroidSettings() {
-        // For Chrome on Android, we can try to open app info settings
-        // The intent:// scheme opens Android's app settings page
+    async function _openAndroidSettings() {
+        // v121: Auto-Ajustes Nativos en App Híbrida Capacitor
+        if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.App) {
+            try {
+                await Capacitor.Plugins.App.openAppSettings();
+                return; // Si es nativo, corta acá y abre el Activity en Java directamente
+            } catch(e) {}
+        }
+
+        // Para Chrome en Android (PWA pura): Web fallback Deep link a settings
         try {
-            // This opens the site settings in Chrome
             if (window.location.protocol === 'https:') {
                 window.open('intent://settings/location#Intent;scheme=android-app;end;', '_blank');
             }
         } catch (e) {
-            console.warn('📍 GPSPerms: No se pudo abrir settings:', e);
+            console.warn('📍 GPSPerms: No se pudo abrir settings web:', e);
         }
         
         Components.showToast('⚙️ Abrí Ajustes → Permisos → Ubicación → "Permitir siempre" o "Permitir todo el tiempo"', 'info');
@@ -335,6 +341,54 @@ const GPSPermissions = (() => {
     let _keepAliveWorker = null;
     let _lastPositionPushTime = 0;
 
+    // v121: MOTOR NATIVO ANDROID VÍA CAPACITOR API
+    async function _startNativeBackgroundTracking(userId) {
+        if (!Capacitor.Plugins.BackgroundGeolocation) return;
+        
+        console.log('📱 GPSPerms: Modo INMORTAL Híbrido Android Detectado. Desplegando Foreground Service.');
+
+        try {
+            const watcherId = await Capacitor.Plugins.BackgroundGeolocation.addWatcher(
+                {
+                    // Alerta y título de la Notificación Persistente de Sistema (Obligatorio en Android 10+)
+                    backgroundMessage: 'Enviando coordenadas GPS de la Flota...', 
+                    backgroundTitle: 'FleetAdmin Pro: Rastreo Activo',
+                    requestPermissions: true, // Auto-chequeo del Permiso "Siempre" / "Always" y abre el prompt de OS
+                    stale: false,
+                    distanceFilter: 0 // Cada cambio actualiza
+                },
+                async (location, error) => {
+                    if (error) return console.error('BG_GEO Native Error:', error);
+                    
+                    const inShift = localStorage.getItem('active_shift_state') === 'true';
+                    if (!inShift) return;
+
+                    let batteryLevel = null;
+                    if (navigator.getBattery) {
+                        try { const b = await navigator.getBattery(); batteryLevel = Math.round(b.level * 100); } catch(e){}
+                    }
+
+                    try {
+                        await firebaseDB.ref(`driver_positions/${userId}`).set({
+                            lat: location.latitude,
+                            lng: location.longitude,
+                            heading: location.bearing || 0,
+                            speed: (location.speed || 0) * 3.6, // m/s to km/h
+                            battery: batteryLevel,
+                            driverName: Auth.getUserName() || userId,
+                            updated_at: new Date().toISOString(),
+                            _native: true // Marca nativa de calidad paridad
+                        });
+                        _lastPositionPushTime = Date.now();
+                    } catch(e) {}
+                }
+            );
+            _persistentWatchId = watcherId;
+        } catch(e) {
+            console.warn('Fallo iniciando BackgroundGeolocation nativa', e);
+        }
+    }
+
     async function _acquireTrackingWakeLock() {
         if (_wakeLock) return;
         try {
@@ -381,7 +435,17 @@ const GPSPermissions = (() => {
         _forceSendPosition();
         _lastPositionPushTime = Date.now();
 
-        // Interval send every 20s (Fallback para Main Thread)
+        // v118/121: Integración Nivel Nativo (Cordova/Capacitor Foreground Service)
+        _enableNativeForegroundService();
+
+        // v121: Capacitor Native Background Geolocation (Immortal Mode)
+        if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.BackgroundGeolocation) {
+            _startNativeBackgroundTracking(userId);
+            // Salimos: el Tracking Nativo desactiva nuestro humilde fallback web porque es 100% superior
+            return;
+        }
+
+        // Interval send every 20s (Fallback para Main Thread en Web Puro)
         _persistentInterval = setInterval(() => {
             if (Date.now() - _lastPositionPushTime >= 19000) {
                 _forceSendPosition();
