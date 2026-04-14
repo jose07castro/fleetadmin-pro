@@ -1,7 +1,7 @@
 {
   "appId": "com.jose07castro.fleetadminpro",
   "appName": "FleetAdmin",
-  "webDir": ".",
+  "webDir": "www",
   "bundledWebRuntime": false,
   "plugins": {
     "LocalNotifications": {

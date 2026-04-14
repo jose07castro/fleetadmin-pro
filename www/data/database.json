@@ -1,0 +1,63 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "jose",
+      "role": "owner",
+      "pin": "22209365",
+      "createdAt": "2026-02-27T11:35:57.673Z",
+      "profilePhoto": "http://localhost:8080/",
+      "updatedAt": "2026-02-27T11:47:31.664Z"
+    },
+    {
+      "id": 3,
+      "name": "Miguel",
+      "role": "mechanic",
+      "pin": "222222222222222",
+      "createdAt": "2026-02-27T11:35:57.673Z"
+    },
+    {
+      "name": "Kiara Ayala",
+      "pin": "44732566",
+      "role": "driver",
+      "profilePhoto": "http://localhost:8080/",
+      "id": 4,
+      "createdAt": "2026-02-27T11:53:13.073Z"
+    }
+  ],
+  "vehicles": [
+    {
+      "name": "Chevrolet Cobalt LT (01)",
+      "plate": "PNJ898",
+      "year": 2016,
+      "currentOdometer": 1000,
+      "status": "active",
+      "id": 2,
+      "createdAt": "2026-02-27T11:49:47.191Z",
+      "updatedAt": "2026-03-09T02:02:47.898Z"
+    }
+  ],
+  "shifts": [],
+  "oilLogs": [],
+  "repairs": [
+    {
+      "vehicleId": 2,
+      "mechanicId": 1,
+      "description": "Test Repair Edited",
+      "odometer": 1000,
+      "cost": 75,
+      "date": "2026-03-09",
+      "photo": "http://127.0.0.1:8080/",
+      "id": 1,
+      "createdAt": "2026-03-09T02:02:45.747Z",
+      "updatedAt": "2026-03-09T02:03:59.282Z"
+    }
+  ],
+  "beltChanges": [],
+  "settings": {},
+  "_counters": {
+    "users": 4,
+    "vehicles": 2,
+    "repairs": 1
+  }
+}

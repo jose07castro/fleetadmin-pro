@@ -10,6 +10,12 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
+        "@anuradev/capacitor-background-mode": "^7.2.1",
+        "@capacitor/android": "^8.3.0",
         "firebase-admin": "^13.7.0"
+    },
+    "devDependencies": {
+        "@capacitor/cli": "^8.3.0",
+        "@capacitor/core": "^8.3.0"
     }
 }
