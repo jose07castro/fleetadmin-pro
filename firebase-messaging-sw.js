@@ -1,24 +1,21 @@
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
+importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js');
 
-firebase.initializeApp({
+const firebaseConfig = {
   apiKey: "AIzaSyCc9FJiqwDUglN0vd9VXZndDBRsxJGDfuI",
   projectId: "fleetadmin-pro",
   messagingSenderId: "289124272326",
   appId: "1:289124272326:web:b3d31d7d72c929e54e2fc7"
-});
+};
 
+firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Este es el vigía que despierta al celular cuando llega una alerta
 messaging.onBackgroundMessage((payload) => {
-  console.log('Alerta recibida en segundo plano:', payload);
-  
-  const notificationTitle = payload.notification.title || "Alerta de Flota";
+  const notificationTitle = payload.notification.title;
   const notificationOptions = {
-    body: payload.notification.body || "Revisá la aplicación para más detalles.",
-    icon: '/favicon.ico' // O la ruta de tu logo
+    body: payload.notification.body,
+    icon: '/favicon.ico'
   };
-
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
