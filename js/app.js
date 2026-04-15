@@ -1,7 +1,11 @@
-import { BackgroundMode } from '@anuradev/capacitor-background-mode';
+// Módulo de Android anulado temporalmente para que la Web arranque sin errores:
+// import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 
 async function activarEscudoAntigravity() {
     try {
+        console.log("🛡 ESCUDO ANTIGRAVITY: En pausa para la versión Web.");
+        
+        /* --- TODO ESTE BLOQUE QUEDA APAGADO EN LA WEB ---
         // 1. Prendemos el escudo protector
         await BackgroundMode.enable();
 
@@ -17,7 +21,9 @@ async function activarEscudoAntigravity() {
         // 3. Le pedimos a Android permiso para ignorar el ahorro de batería
         await BackgroundMode.requestDisableBatteryOptimizations();
 
-        console.log("🛡️ ESCUDO ANTIGRAVITY ACTIVO: La app ya no se va a dormir.");
+        console.log("🛡 ESCUDO ANTIGRAVITY ACTIVO: La app ya no se va a dormir.");
+        --------------------------------------------------- */
+        
     } catch (error) {
         console.log("Error activando el escudo:", error);
     }
