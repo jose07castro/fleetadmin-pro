@@ -550,16 +550,31 @@ const GPSPermissions = (() => {
 
         try {
             const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    (p) => resolve({
+                const timeoutId = setTimeout(() => reject(new Error('Hard timeout GPS')), 10000);
+
+                const handleSuccess = (p) => {
+                    clearTimeout(timeoutId);
+                    resolve({
                         lat: p.coords.latitude,
                         lng: p.coords.longitude,
                         heading: p.coords.heading || 0,
                         speed: (p.coords.speed || 0) * 3.6
-                    }),
-                    (e) => reject(e),
-                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
-                );
+                    });
+                };
+
+                const handleError = (e) => {
+                    clearTimeout(timeoutId);
+                    reject(e);
+                };
+
+                // Prioridad absoluta a API Nativa de Capacitor si existe (funciona perfecto en 2do plano con BackgroundMode)
+                if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Geolocation) {
+                    Capacitor.Plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 })
+                        .then(handleSuccess)
+                        .catch(handleError);
+                } else {
+                    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
+                }
             });
 
             _cachedPosition = pos;
