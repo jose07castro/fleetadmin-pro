@@ -963,3 +963,4 @@ const I18n = (() => {
 
     return { setLanguage, getLanguage, t, init, getAvailableLanguages };
 })();
+window.I18n = I18n;
