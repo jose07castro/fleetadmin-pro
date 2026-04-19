@@ -18,10 +18,10 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file("release.keystore")
-            storePassword "fleetadmin123"
-            keyAlias "fleetadmin"
-            keyPassword "fleetadmin123"
+            storeFile file("keystore.jks")
+            storePassword "puntoalertas123"
+            keyAlias "puntoalertas"
+            keyPassword "puntoalertas123"
         }
     }
 
