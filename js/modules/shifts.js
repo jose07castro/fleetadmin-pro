@@ -269,7 +269,7 @@ const ShiftsModule = (() => {
             </div>
 
             <!-- Botón SOS de Emergencia (solo chofer en turno activo) -->
-            ${Auth.isDriver() ? SOSModule.renderSOSButton(shift.id, shift.vehicleId, vehicle ? `${vehicle.name} — ${vehicle.plate}` : '') : ''}
+            ${Auth.isDriver() && typeof SOSModule !== 'undefined' ? SOSModule.renderSOSButton(shift.id, shift.vehicleId, vehicle ? `${vehicle.name} — ${vehicle.plate}` : '') : ''}
 
             <!-- Finalizar turno -->
             <div class="card">

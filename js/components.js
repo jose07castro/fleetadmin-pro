@@ -182,6 +182,7 @@ const Components = (() => {
     function renderSOSFab() {
         return `
             <button class="sos-fab" onclick="(function(){
+                if (typeof SOSModule === 'undefined') { console.warn('SOSModule not loaded yet'); return; }
                 var d = typeof ShiftsModule !== 'undefined' ? ShiftsModule.getActiveShiftData() : {};
                 SOSModule.triggerSOS(d.shiftId || '', d.vehicleId || '', d.vehicleName || '');
             })()" title="SOS Emergencia">
