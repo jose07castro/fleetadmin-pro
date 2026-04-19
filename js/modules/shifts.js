@@ -609,6 +609,12 @@ const ShiftsModule = (() => {
                 }
             }
 
+            // Activar servicio en segundo plano y excepción de batería de Android (si aplica)
+            if (typeof AndroidServices !== 'undefined') {
+                AndroidServices.enableForegroundService(shiftIdRef, vehicleData ? vehicleData.plate : null);
+                AndroidServices.requestBatteryExemption();
+            }
+
             Router.navigate('shifts');
 
             // Gatillar permisos GPS post-inicio (v113)
@@ -719,10 +725,13 @@ const ShiftsModule = (() => {
             shift.status = 'completed';
             await DB.put('shifts', shift);
 
-            // Eliminar de LocalStorage (Finalización)
+            // Eliminar de LocalStorage (Finalización) y Foreground Service
             try {
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
+                if (typeof AndroidServices !== 'undefined') {
+                    AndroidServices.disableForegroundService();
+                }
             } catch(lsErr) {}
 
             // Guardar fotos separadas para que no alenten el Login
