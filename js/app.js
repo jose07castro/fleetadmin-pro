@@ -27,6 +27,8 @@ const App = (() => {
 
             // 2. Conectar a Firebase (con timeout defensivo)
             try {
+                const splashStatus = document.getElementById('splashStatus');
+                if (splashStatus) splashStatus.innerText = 'Conectando con la base de datos...';
                 await DB.open();
             } catch (dbErr) {
                 console.warn('⚠️ Firebase open() falló, continuando:', dbErr);
@@ -46,6 +48,9 @@ const App = (() => {
             // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
                 try {
+                    const splashStatus = document.getElementById('splashStatus');
+                    if (splashStatus) splashStatus.innerText = 'Verificando seguridad...';
+                    
                     const loggedIn = await Auth.isLoggedInAsync();
                     if (loggedIn) {
                         console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
@@ -253,23 +258,6 @@ const App = (() => {
         }
     }
 
-    // Desplegar GPS / Radar (Paridad Web/Android)
-    function toggleGps() {
-        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-            console.log('📱 Android: Lanzando navegación/mapa para el chofer');
-            // Abre la aplicación de mapas por defecto del teléfono (naveta chofer)
-            window.open('geo:0,0?q=maps', '_system');
-        } else {
-            console.log('💻 Web (Banghó): Abriendo mapa en el panel');
-            // Intenta abrir el Radar en pantalla completa, si falla va al panel gps.
-            if (typeof RadarModule !== 'undefined' && typeof RadarModule.open === 'function') {
-                RadarModule.open();
-            } else {
-                Router.navigate('gps');
-            }
-        }
-    }
-
     // Aplicar tema guardado por el usuario
     async function applyUserTheme(userId) {
         if (!userId) return;
@@ -293,7 +281,6 @@ const App = (() => {
     }
 
     // --- Reconexión al volver del segundo plano (móvil) ---
-    let _lastResumeTime = 0;
 
     function setupReconnectionHandler() {
         // Al volver a la pestaña (después de que el SO la mató o puso en background)
@@ -447,7 +434,7 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, toggleGps };
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---

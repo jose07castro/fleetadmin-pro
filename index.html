@@ -56,6 +56,7 @@
     <link rel="apple-touch-icon" href="assets/icon-192.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/index.css?v=110">
     <link rel="stylesheet" href="css/components.css?v=110">
     <link rel="stylesheet" href="css/modules.css?v=110">
@@ -68,17 +69,13 @@
             <div class="splash-content">
                 <div class="splash-icon">ðŸš—</div>
                 <h1 class="splash-title">FleetAdmin Pro</h1>
+                <p id="splashStatus" style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 5px;">Iniciando motores...</p>
                 <div class="splash-loader">
                     <div class="splash-loader-bar"></div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Botón Desplegar GPS -->
-    <button id="btn-gps" class="fab-gps" onclick="App.toggleGps()" title="Desplegar GPS" style="position:fixed; bottom:80px; right:20px; z-index:9999; background:var(--color-primary); color:white; width:60px; height:60px; border-radius:50%; border:none; font-size:26px; box-shadow:var(--shadow-lg); cursor:pointer; display:flex; justify-content:center; align-items:center; transition: transform 0.2s;">
-        🧭
-    </button>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -100,18 +97,10 @@
     <script src="js/components.js?v=110"></script>
     <script src="js/router.js?v=110"></script>
     <script src="js/storage.js?v=110"></script>
-    <script src="js/modules/login.js?v=110"></script>
-    <script src="js/modules/dashboard.js?v=110"></script>
-    <script src="js/modules/shifts.js?v=110"></script>
-    <script src="js/modules/maintenance.js?v=110"></script>
-    <script src="js/modules/vehicles.js?v=110"></script>
-    <script src="js/modules/settings.js?v=110"></script>
-    <script src="js/modules/community.js?v=110"></script>
-    <script src="js/whatsapp.js?v=110"></script>
-    <script src="js/modules/gps.js?v=110"></script>
-    <script src="js/modules/sos.js?v=110"></script>
-    <script src="js/modules/announcements.js?v=110"></script>
-    <script src="js/modules/applicants.js?v=110"></script>
+    <!-- Se han eliminado los scripts de módulos mediante Patrón Lazy Loading en el Router -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="js/modules/radar.js?v=119"></script>
+    <script src="js/gps-permissions.js?v=119"></script>
     <script src="js/fcm.js?v=110"></script>
     <script src="js/notifications.js?v=110"></script>
     <script src="js/pwa-install.js?v=110"></script>
