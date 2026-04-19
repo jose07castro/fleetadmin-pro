@@ -253,6 +253,23 @@ const App = (() => {
         }
     }
 
+    // Desplegar GPS / Radar (Paridad Web/Android)
+    function toggleGps() {
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+            console.log('📱 Android: Lanzando navegación/mapa para el chofer');
+            // Abre la aplicación de mapas por defecto del teléfono (naveta chofer)
+            window.open('geo:0,0?q=maps', '_system');
+        } else {
+            console.log('💻 Web (Banghó): Abriendo mapa en el panel');
+            // Intenta abrir el Radar en pantalla completa, si falla va al panel gps.
+            if (typeof RadarModule !== 'undefined' && typeof RadarModule.open === 'function') {
+                RadarModule.open();
+            } else {
+                Router.navigate('gps');
+            }
+        }
+    }
+
     // Aplicar tema guardado por el usuario
     async function applyUserTheme(userId) {
         if (!userId) return;
@@ -430,7 +447,7 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme };
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, toggleGps };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---
