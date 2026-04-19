@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">FleetAdmin</string>
-    <string name="title_activity_main">FleetAdmin</string>
+    <string name="app_name">Punto Alertas</string>
+    <string name="title_activity_main">Punto Alertas</string>
     <string name="package_name">com.jose07castro.fleetadminpro</string>
     <string name="custom_url_scheme">com.jose07castro.fleetadminpro</string>
 </resources>
