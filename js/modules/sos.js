@@ -643,7 +643,13 @@ const SOSModule = (() => {
                 emergencyType: alertData.emergencyType,
                 emergencyTypeLabel: alertData.emergencyTypeLabel,
                 emergencyDetails: alertData.emergencyDetails,
-                created_at: alertData.created_at
+                created_at: alertData.created_at,
+                // INSTRUCCIÓN AL BACKEND: Android ignora Alertas en segundo plano si envían "notification".
+                // Se debe usar un Data Message puro con prioridad alta para despertar a Capacitor.
+                fcmConfig: {
+                    priority: 'high',
+                    asDataMessage: true
+                }
             })
         }).then(res => {
             if (res.ok) {
