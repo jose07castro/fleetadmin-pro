@@ -33,18 +33,7 @@ const VehiclesModule = (() => {
         `;
     }
 
-    // Helper: estado de RTO/VTV
-    function getVtvStatus(vehicle) {
-        if (!vehicle.vtvExpiryDate) return { level: 'unknown', daysLeft: null };
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const expiryDate = new Date(vehicle.vtvExpiryDate + 'T00:00:00');
-        const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-
-        if (daysLeft < 0) return { level: 'danger', daysLeft };
-        if (daysLeft <= 60) return { level: 'warning', daysLeft };
-        return { level: 'ok', daysLeft };
-    }
+    // Dependencia: getVtvStatus fue migrada a Alerts.js para resolver Lazy Loading.
 
     async function renderVehicleCards(vehicles) {
         let html = '';
@@ -55,7 +44,7 @@ const VehiclesModule = (() => {
             const totalKm = completedShifts.reduce((sum, s) => sum + ((s.endOdometer || 0) - (s.startOdometer || 0)), 0);
 
             // Badge RTO/VTV
-            const vtv = getVtvStatus(v);
+            const vtv = Alerts.getVtvStatus(v);
             let vtvBadge = '';
             if (vtv.level === 'danger') {
                 vtvBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('vtv_title')}: ${I18n.t('vtv_expired')}</span>`;
@@ -516,7 +505,7 @@ const VehiclesModule = (() => {
     }
 
     return { 
-        render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv, getVtvStatus,
+        render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv,
         calcRemaining, toggleFinanceFields, togglePrendario
     };
 })();
