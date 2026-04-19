@@ -3,12 +3,11 @@ let intervalId = null;
 self.onmessage = function (e) {
     if (e.data === 'start') {
         if (!intervalId) {
-            // Ping the main thread every 5 seconds.
-            // Web Workers don't suffer from the same severe background throttling 
-            // as the main browser thread (which slows to 1 per minute or fully stops).
+            // Ping the main thread every 2 seconds.
+            // Para forzar la evaluación agresiva (3.5s normal o 10s ecosistema).
             intervalId = setInterval(() => {
                 self.postMessage('ping');
-            }, 5000);
+            }, 2000);
         }
     } else if (e.data === 'stop') {
         if (intervalId) {

@@ -445,12 +445,22 @@ const GPSPermissions = (() => {
             return;
         }
 
-        // Interval send every 20s (Fallback para Main Thread en Web Puro)
-        _persistentInterval = setInterval(() => {
-            if (Date.now() - _lastPositionPushTime >= 19000) {
+        // Intervalo Dinámico (3.5s normal, 10s si batería baja) 
+        const evaluateAndSend = async () => {
+            let limitMs = 3500; // 3.5 segundos por defecto (agresivo)
+            if (navigator.getBattery) {
+                try {
+                    const b = await navigator.getBattery();
+                    if (b.level * 100 < 15) limitMs = 10000;
+                } catch(e) {}
+            }
+            if (Date.now() - _lastPositionPushTime >= limitMs) {
                 _forceSendPosition();
             }
-        }, 20000);
+        };
+
+        // Fallback Web: Revisión ultra-rápida (1s) para no atrasar el ciclo de envío
+        _persistentInterval = setInterval(evaluateAndSend, 1000);
 
         // v118: Web Worker Keep-Alive (Ignora suspensión en segundo plano de PWA)
         if (window.Worker) {
@@ -458,10 +468,8 @@ const GPSPermissions = (() => {
             _keepAliveWorker.postMessage('start');
             _keepAliveWorker.onmessage = (e) => {
                 if (e.data === 'ping') {
-                    // El worker tiró un ping (cada 5 seg en segundo plano real)
-                    if (Date.now() - _lastPositionPushTime >= 20000) {
-                        _forceSendPosition();
-                    }
+                    // El worker reacciona cada 2 seg en segundo plano real
+                    evaluateAndSend();
                 }
             };
         }
@@ -495,8 +503,8 @@ const GPSPermissions = (() => {
             try {
                 cordova.plugins.backgroundMode.enable();
                 cordova.plugins.backgroundMode.setDefaults({
-                    title: 'FleetAdmin Pro',
-                    text: 'Rastreo de flota activo',
+                    title: 'Punto Remis: Rastreo de seguridad activo',
+                    text: 'Tracking de alta frecuencia (3s)',
                     icon: 'icon',
                     resume: true,
                     hidden: false
@@ -515,8 +523,8 @@ const GPSPermissions = (() => {
         if (typeof Notification !== 'undefined') {
             if (Notification.permission === 'granted' && navigator.serviceWorker) {
                 navigator.serviceWorker.ready.then(reg => {
-                    reg.showNotification('FleetAdmin Pro: Rastreo Activo 📡', {
-                        body: 'Ubicación activa en 2º plano. (Requiere "Permitir todo el tiempo" en Android)',
+                    reg.showNotification('Punto Remis: Rastreo de seguridad activo', {
+                        body: 'Reportando ubicación al radar del administrador. (App Activa)',
                         icon: 'assets/icons/icon-192x192.png',
                         tag: 'gps-tracking-fg',
                         silent: true,

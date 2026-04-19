@@ -27,20 +27,25 @@ const AndroidServices = (() => {
         
         try {
             if (Capacitor.Plugins.BackgroundMode) {
-                // Habilitamos el modo background continuo
+                // Habilitamos el modo background continuo (Partial WakeLock nativo)
                 await Capacitor.Plugins.BackgroundMode.enable();
                 
+                // Forzar Wakelock parcial a nivel de WebView si la librería lo soporta
+                if (Capacitor.Plugins.BackgroundMode.disableWebViewOptimizations) {
+                    await Capacitor.Plugins.BackgroundMode.disableWebViewOptimizations();
+                }
+
                 // Configuramos los detalles de la notificación
                 await Capacitor.Plugins.BackgroundMode.setSettings({
-                    title: 'FleetAdmin Pro: Turno Activo',
-                    text: `SOS y Tracking GPS en segundo plano (Vehículo: ${vehiclePlate || 'N/A'})`,
+                    title: 'Punto Remis: Rastreo de seguridad activo',
+                    text: `Tracking GPS de alta precisión en viaje (Vehículo: ${vehiclePlate || 'N/A'})`,
                     icon: 'ic_launcher',
                     color: '1e1b4b', // Deep Indigo para mantener el esquema
                     resume: true,
                     hidden: false
                 });
 
-                console.log('📱 AndroidServices: Foreground Service (BackgroundMode) activado para el turno.');
+                console.log('📱 AndroidServices: Foreground Service (WakeLock parcial) activado.');
             } else {
                 console.warn('📱 AndroidServices: Capacitor.Plugins.BackgroundMode no está instalado en el wrapper.');
             }
