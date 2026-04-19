@@ -14,9 +14,24 @@ async function activarEscudoAntigravity() {
     }
 }
 
-// ---------------------------------------------------------
-// 📑 PEGÁ AQUÍ TODO TU CÓDIGO DE LA v110 (FIREBASE, PANELES, ETC.)
-// El que rescatamos de GitHub que tiene los Sliders y el S-Pen.
-// ---------------------------------------------------------
+// =========================================================
+// 📑 AQUÍ VA TU LÓGICA DE LA v110 (FIREBASE Y PANELES)
+// =========================================================
+
+// Configuración de Firebase (Sacada de tu v110)
+const firebaseConfig = {
+    // Acá deberían estar tus llaves de Firebase que rescataste
+    apiKey: "TU_API_KEY",
+    authDomain: "fleetadmin-pro.firebaseapp.com",
+    projectId: "fleetadmin-pro",
+    storageBucket: "fleetadmin-pro.appspot.com",
+    messagingSenderId: "TU_ID",
+    appId: "TU_APP_ID"
+};
+
+// ... (Acá pegá el resto del código largo que copiaste de GitHub) ...
+// Asegurate de incluir las funciones del S-Pen y los Sliders que vimos en v110.
+
+// =========================================================
 
 activarEscudoAntigravity();
