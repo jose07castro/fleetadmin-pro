@@ -16,7 +16,7 @@ async function activarEscudoAntigravity() {
 
 // ---------------------------------------------------------
 // 📑 PEGÁ AQUÍ TODO TU CÓDIGO DE LA v110 (FIREBASE, PANELES, ETC.)
-// Ese que rescatamos de GitHub que es bien largo.
+// El que rescatamos de GitHub que tiene los Sliders y el S-Pen.
 // ---------------------------------------------------------
 
 activarEscudoAntigravity();
