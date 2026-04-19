@@ -71,7 +71,7 @@ public class LocationTrackingService extends Service {
         Log.i(TAG, "🚀 LocationTrackingService.onStartCommand() — Activando GPS de alta precisión");
 
         // === 1. FOREGROUND NOTIFICATION (obligatorio en <1 segundo tras startService) ===
-        Notification notification = buildNotification("Rastreo GPS activo", "Enviando coordenadas al radar de la flota...");
+        Notification notification = buildNotification("Punto Remis: Turno activo", "Enviando coordenadas al radar de la flota...");
 
         // Android 14+ (API 34): DEBE especificar foregroundServiceType al arrancar
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -107,7 +107,7 @@ public class LocationTrackingService extends Service {
 
                 // Actualizar la notificación con las coordenadas actuales
                 updateNotification(
-                    "Rastreo GPS activo",
+                    "Punto Remis: Turno activo",
                     String.format("📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
                 );
 

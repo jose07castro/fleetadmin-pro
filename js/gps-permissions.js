@@ -352,7 +352,7 @@ const GPSPermissions = (() => {
                 {
                     // Alerta y título de la Notificación Persistente de Sistema (Obligatorio en Android 10+)
                     backgroundMessage: 'Enviando coordenadas GPS de la Flota...', 
-                    backgroundTitle: 'FleetAdmin Pro: Rastreo Activo',
+                    backgroundTitle: 'Punto Remis: Turno activo',
                     requestPermissions: true, // Auto-chequeo del Permiso "Siempre" / "Always" y abre el prompt de OS
                     stale: false,
                     distanceFilter: 0 // Cada cambio actualiza
@@ -503,7 +503,7 @@ const GPSPermissions = (() => {
             try {
                 cordova.plugins.backgroundMode.enable();
                 cordova.plugins.backgroundMode.setDefaults({
-                    title: 'Punto Remis: Rastreo de seguridad activo',
+                    title: 'Punto Remis: Turno activo',
                     text: 'Tracking de alta frecuencia (3s)',
                     icon: 'icon',
                     resume: true,
@@ -523,7 +523,7 @@ const GPSPermissions = (() => {
         if (typeof Notification !== 'undefined') {
             if (Notification.permission === 'granted' && navigator.serviceWorker) {
                 navigator.serviceWorker.ready.then(reg => {
-                    reg.showNotification('Punto Remis: Rastreo de seguridad activo', {
+                    reg.showNotification('Punto Remis: Turno activo', {
                         body: 'Reportando ubicación al radar del administrador. (App Activa)',
                         icon: 'assets/icons/icon-192x192.png',
                         tag: 'gps-tracking-fg',

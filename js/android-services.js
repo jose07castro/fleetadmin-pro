@@ -67,9 +67,8 @@ const AndroidServices = (() => {
                         await Capacitor.Plugins.BackgroundMode.disableWebViewOptimizations();
                     }
 
-                    // Configurar notificación persistente
                     await Capacitor.Plugins.BackgroundMode.setSettings({
-                        title: 'FleetAdmin Pro: Rastreo Activo',
+                        title: 'Punto Remis: Turno activo',
                         text: `📍 GPS de alta precisión — ${vehiclePlate || 'En turno'}`,
                         icon: 'ic_launcher',
                         color: '1e1b4b',
@@ -105,7 +104,7 @@ const AndroidServices = (() => {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && navigator.serviceWorker) {
             try {
                 const reg = await navigator.serviceWorker.ready;
-                await reg.showNotification('FleetAdmin Pro: Rastreo Activo', {
+                await reg.showNotification('Punto Remis: Turno activo', {
                     body: `📍 GPS de alta precisión — ${vehiclePlate || 'En turno'}`,
                     icon: 'assets/icons/icon-192x192.png',
                     tag: 'gps-tracking-fg',
