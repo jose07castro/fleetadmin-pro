@@ -45,7 +45,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         webView = null; // Evitar memory leak
         super.onDestroy();
     }
