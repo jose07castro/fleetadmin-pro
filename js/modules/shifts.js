@@ -609,10 +609,9 @@ const ShiftsModule = (() => {
                 }
             }
 
-            // Activar servicio en segundo plano y excepción de batería de Android (si aplica)
+            // Activar servicio en segundo plano (Foreground Service nativo)
             if (typeof AndroidServices !== 'undefined') {
                 AndroidServices.enableForegroundService(shiftIdRef, vehicleData ? vehicleData.plate : null);
-                AndroidServices.requestBatteryExemption();
             }
 
             Router.navigate('shifts');
@@ -623,6 +622,13 @@ const ShiftsModule = (() => {
                     GPSPermissions.requestWithDialog();
                 }
             }, 800);
+
+            // Solicitar exención de batería 3s después (no saturar al usuario con diálogos)
+            setTimeout(() => {
+                if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) {
+                    AndroidServices.showBatteryExemptionDialog();
+                }
+            }, 3500);
 
         } catch (shiftError) {
             console.error('🔴 Fallo en Iniciar Turno: ', shiftError);

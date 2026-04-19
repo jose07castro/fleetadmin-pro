@@ -2,21 +2,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jose07castro.fleetadminpro">
 
-    <!-- Location permissions -->
+    <!-- ========================================== -->
+    <!-- LOCATION PERMISSIONS (GPS Alta Precisión)  -->
+    <!-- ========================================== -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Android 10+ (API 29): Obligatorio para GPS en 2do plano -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- Network permissions -->
+    <!-- ========================================== -->
+    <!-- NETWORK                                     -->
+    <!-- ========================================== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Foreground service and related permissions -->
+    <!-- ========================================== -->
+    <!-- FOREGROUND SERVICE + ANTI-DOZE             -->
+    <!-- ========================================== -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ (API 34): Tipo obligatorio para servicios con GPS -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Permite solicitar al usuario "Sin restricciones de batería" -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Mantener vivo tras reboot (futuro: auto-start) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -26,6 +37,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- ====== MAIN ACTIVITY (Capacitor WebView) ====== -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,6 +52,16 @@
             </intent-filter>
         </activity>
 
+        <!-- ====== PERSISTENT FOREGROUND SERVICE (GPS Tracking) ====== -->
+        <!-- foregroundServiceType="location" es OBLIGATORIO en Android 10+ (API 29)    -->
+        <!-- Sin esto, startForeground() con GPS tira SecurityException en Android 14+  -->
+        <service
+            android:name=".LocationTrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- ====== FILE PROVIDER (Fotos) ====== -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
