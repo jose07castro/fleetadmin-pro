@@ -68,6 +68,7 @@ const AndroidServices = (() => {
         } catch (e) {
             console.error('📱 AndroidServices: Error deteniendo Foreground Service:', e);
         }
+        disableWebWakeLockHack();
     }
 
     /**
@@ -114,7 +115,39 @@ const AndroidServices = (() => {
                 // Queda preparado en este hook.
             }
         } catch (e) {
+        } catch (e) {
             console.error('📱 AndroidServices: Error intentando solicitar Overlay:', e);
+        }
+    }
+
+    let _silentAudio = null;
+
+    /**
+     * Hack legendario absoluto para PWAs (Chrome/Safari): 
+     * Reproduce un archivo MP3 en bucle inaudible para engañar al sistema operativo 
+     * pensando que es una app de música. Previene que se suspenda el JavaScript.
+     */
+    function enableWebWakeLockHack() {
+        if (_silentAudio) return;
+        try {
+            const silentURI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+            _silentAudio = new Audio(silentURI);
+            _silentAudio.loop = true;
+            _silentAudio.volume = 0.01;
+            
+            const p = _silentAudio.play();
+            if (p !== undefined) {
+                p.then(() => {
+                    console.log('🛡️ WebWakeLock: Inmortalidad de PWA activada. GPS y SOS correrán 100% en fondo.');
+                }).catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    function disableWebWakeLockHack() {
+        if (_silentAudio) {
+            _silentAudio.pause();
+            _silentAudio = null;
         }
     }
 
@@ -123,7 +156,9 @@ const AndroidServices = (() => {
         enableForegroundService,
         disableForegroundService,
         requestBatteryExemption,
-        requestOverlayPermission
+        requestOverlayPermission,
+        enableWebWakeLockHack,
+        disableWebWakeLockHack
     };
 
 })();
