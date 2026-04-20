@@ -60,7 +60,6 @@ const UISettings = (() => {
     function init() {
         const settings = _load();
         apply(settings);
-        _mountGearButton();
         _mountPanel();
         _startFirebaseListener();
         console.log('⚙️ UISettings v110 inicializado:', settings);
@@ -68,16 +67,7 @@ const UISettings = (() => {
 
     // ============ GEAR BUTTON ============
 
-    function _mountGearButton() {
-        if (document.getElementById('uiSettingsGear')) return;
-        const btn = document.createElement('button');
-        btn.id = 'uiSettingsGear';
-        btn.className = 'ui-settings-gear';
-        btn.innerHTML = '⚙️';
-        btn.title = 'Personalizar interfaz';
-        btn.onclick = togglePanel;
-        document.body.appendChild(btn);
-    }
+
 
     // ============ SETTINGS PANEL ============
 
@@ -197,28 +187,7 @@ const UISettings = (() => {
 
     // ============ PANEL TOGGLE ============
 
-    function togglePanel() {
-        _panelOpen ? closePanel() : openPanel();
-    }
 
-    function openPanel() {
-        // Rebuild panel to get latest admin state
-        const oldPanel = document.getElementById('uiSettingsPanel');
-        const oldOverlay = document.getElementById('uiSettingsOverlay');
-        if (oldPanel) oldPanel.remove();
-        if (oldOverlay) oldOverlay.remove();
-        _mountPanel();
-
-        const overlay = document.getElementById('uiSettingsOverlay');
-        const panel = document.getElementById('uiSettingsPanel');
-        if (overlay) overlay.classList.add('open');
-        if (panel) panel.classList.add('open');
-        _panelOpen = true;
-
-        const settings = _load();
-        _syncSliders(settings);
-        _updateLabels(settings);
-    }
 
     function closePanel() {
         const overlay = document.getElementById('uiSettingsOverlay');
@@ -477,7 +446,7 @@ const UISettings = (() => {
     }
 
     return {
-        init, apply, togglePanel, openPanel, closePanel,
+        init, apply,
         onSliderChange, resetDefaults, getSettings,
         syncToFleet, wireSplitPanes
     };
