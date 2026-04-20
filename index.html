@@ -17,7 +17,7 @@
 
         // FORCE CACHE PURGE v110 â€” Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 112;
+            var REQUIRED_VERSION = 113;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
                 console.log('ðŸ”¥ PURGE v110: Forzando limpieza total...');

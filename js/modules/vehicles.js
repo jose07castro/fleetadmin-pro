@@ -175,24 +175,40 @@ const VehiclesModule = (() => {
                 </div>
                 <div class="repair-form-grid">
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_plate')}</label>
+                        <label class="form-label">${I18n.t('veh_plate')} *</label>
                         <input type="text" class="form-input" id="vehPlate"
                             value="${vehicle?.plate || ''}" placeholder="ABC-1234" style="text-transform:uppercase;">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_year')}</label>
+                        <label class="form-label">${I18n.t('veh_year')} *</label>
                         <input type="number" class="form-input" id="vehYear"
                             value="${vehicle?.year || ''}" placeholder="2020" inputmode="numeric">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">${I18n.t('veh_odometer')} (${Units.distanceLabel()})</label>
-                    <input type="number" class="form-input" id="vehOdometer"
-                        value="${vehicle ? Units.displayDistance(vehicle.currentOdometer || 0) : ''}"
-                        inputmode="numeric">
+                <div class="repair-form-grid">
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('veh_odometer')} (${Units.distanceLabel()}) *</label>
+                        <input type="number" class="form-input" id="vehOdometer"
+                            value="${vehicle ? Units.displayDistance(vehicle.currentOdometer || 0) : ''}"
+                            inputmode="numeric">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">${I18n.t('veh_color')} *</label>
+                        <select class="form-select" id="vehColor">
+                            <option value="">-- ${I18n.t('search')} --</option>
+                            <option value="white" ${vehicle?.color === 'white' ? 'selected' : ''}>${I18n.t('color_white')}</option>
+                            <option value="black" ${vehicle?.color === 'black' ? 'selected' : ''}>${I18n.t('color_black')}</option>
+                            <option value="taxi" ${vehicle?.color === 'taxi' ? 'selected' : ''}>${I18n.t('color_taxi')}</option>
+                            <option value="gray" ${vehicle?.color === 'gray' ? 'selected' : ''}>${I18n.t('color_gray')}</option>
+                            <option value="silver" ${vehicle?.color === 'silver' ? 'selected' : ''}>${I18n.t('color_silver')}</option>
+                            <option value="red" ${vehicle?.color === 'red' ? 'selected' : ''}>${I18n.t('color_red')}</option>
+                            <option value="blue" ${vehicle?.color === 'blue' ? 'selected' : ''}>${I18n.t('color_blue')}</option>
+                            <option value="maroon" ${vehicle?.color === 'maroon' ? 'selected' : ''}>${I18n.t('color_maroon')}</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('veh_status')}</label>
+                    <label class="form-label">${I18n.t('veh_status')} *</label>
                     <select class="form-select" id="vehStatus">
                         <option value="active" ${vehicle?.status === 'active' ? 'selected' : ''}>${I18n.t('veh_active')}</option>
                         <option value="inactive" ${vehicle?.status === 'inactive' ? 'selected' : ''}>${I18n.t('veh_inactive')}</option>
@@ -206,7 +222,7 @@ const VehiclesModule = (() => {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_payment_method')}</label>
+                        <label class="form-label">${I18n.t('veh_payment_method')} *</label>
                         <select class="form-select" id="vehMetodoPago" onchange="VehiclesModule.toggleFinanceFields()">
                             <option value="Contado" ${vehicle?.metodoPago === 'Contado' || !vehicle?.metodoPago ? 'selected' : ''}>${I18n.t('veh_method_cash')}</option>
                             <option value="Crédito" ${vehicle?.metodoPago === 'Crédito' ? 'selected' : ''}>${I18n.t('veh_method_credit')}</option>
@@ -262,7 +278,7 @@ const VehiclesModule = (() => {
                         ${I18n.t('veh_insurance_title')}
                     </div>
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_insurance_company')}</label>
+                        <label class="form-label">${I18n.t('veh_insurance_company')} *</label>
                         <input type="text" class="form-input" id="vehCompaniaSeguro" value="${vehicle?.companiaSeguro || ''}" placeholder="La Caja, Sancor, etc.">
                     </div>
                     <div class="repair-form-grid">
@@ -340,20 +356,12 @@ const VehiclesModule = (() => {
         const name = document.getElementById('vehName')?.value.trim();
         const plate = document.getElementById('vehPlate')?.value.trim().toUpperCase();
         const year = parseInt(document.getElementById('vehYear')?.value) || null;
-        const odometer = parseFloat(document.getElementById('vehOdometer')?.value) || 0;
-        const status = document.getElementById('vehStatus')?.value || 'active';
-        const vtvIssueDate = document.getElementById('vehVtvIssue')?.value || null;
-        const vtvExpiryDate = document.getElementById('vehVtvExpiry')?.value || null;
-
-        if (!name) {
-            Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
-            return;
-        }
-
-        const odometerKm = Units.toKm(odometer);
+        const odometer = parseFloat(document.getElementById('vehOdometer')?.value);
+        const status = document.getElementById('vehStatus')?.value;
+        const color = document.getElementById('vehColor')?.value;
 
         // Finanzas y Seguros
-        const metodoPago = document.getElementById('vehMetodoPago')?.value || 'Contado';
+        const metodoPago = document.getElementById('vehMetodoPago')?.value;
         const esPrendario = document.getElementById('vehEsPrendario')?.checked || false;
         const fechaOtorgamiento = document.getElementById('vehFechaOtorgamiento')?.value || null;
         const diaVencimientoStr = document.getElementById('vehDiaVencimiento')?.value;
@@ -361,14 +369,23 @@ const VehiclesModule = (() => {
         const cuotasTotales = parseInt(document.getElementById('vehCuotasTotales')?.value) || 0;
         const cuotasPagas = parseInt(document.getElementById('vehCuotasPagas')?.value) || 0;
         const valorCuota = parseFloat(document.getElementById('vehValorCuota')?.value) || 0;
-        const companiaSeguro = document.getElementById('vehCompaniaSeguro')?.value.trim() || '';
+        const companiaSeguro = document.getElementById('vehCompaniaSeguro')?.value.trim();
         const tipoCobertura = document.getElementById('vehTipoCobertura')?.value.trim() || '';
         const telefonoAuxilio = document.getElementById('vehTelefonoAuxilio')?.value.trim() || '';
+
+        // VALIDACIÓN DE CAMPOS OBLIGATORIOS
+        if (!name || !plate || !year || isNaN(odometer) || !status || !color || !metodoPago || !companiaSeguro) {
+            Components.showToast(I18n.t('error') + ': ' + I18n.t('required') + ' (Completa todos los campos con *)', 'danger');
+            return;
+        }
+
+        const odometerKm = Units.toKm(odometer);
 
         const data = {
             name, plate, year,
             currentOdometer: odometerKm,
             status,
+            color,
             metodoPago,
             esPrendario,
             cuotasTotales,

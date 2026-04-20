@@ -133,15 +133,49 @@ const RadarModule = (() => {
 
     // ============ CREATE CAR MARKER ============
 
-    function _createCarIcon(heading, displayName, statusClass) {
+    function _createCarIcon(heading, displayName, statusClass, carColor) {
         const rotation = heading || 0;
+        
+        // Mapeo de colores técnicos para SVG
+        const colors = {
+            'white': '#ffffff',
+            'black': '#18181b',
+            'taxi': '#18181b', // Color base negro, luego pintamos el techo amarillo
+            'gray': '#52525b',
+            'silver': '#a1a1aa',
+            'red': '#dc2626',
+            'blue': '#2563eb',
+            'maroon': '#7f1d1d'
+        };
+
+        const hexColor = colors[carColor] || '#52525b';
+        const isTaxi = carColor === 'taxi';
+
+        // Silueta de auto premium vista desde arriba
+        const carSvg = `
+            <svg viewBox="0 0 100 100" width="40" height="40" style="display:block;">
+                <!-- Cuerpo del vehículo -->
+                <path d="M30 15 C30 10, 70 10, 70 15 L75 35 L75 75 L70 90 C70 95, 30 95, 30 90 L25 75 L25 35 Z" fill="${hexColor}" stroke="rgba(0,0,0,0.5)" stroke-width="2"/>
+                <!-- Vidrios -->
+                <path d="M35 30 L65 30 L68 45 L32 45 Z" fill="rgba(255,255,255,0.4)"/>
+                <path d="M32 65 L68 65 L65 85 L35 85 Z" fill="rgba(255,255,255,0.4)"/>
+                <!-- Detalles de techo -->
+                ${isTaxi ? '<rect x="35" y="48" width="30" height="15" fill="#facc15" rx="2" stroke="black" stroke-width="1"/>' : '<rect x="40" y="48" width="20" height="15" fill="rgba(255,255,255,0.1)" rx="2"/>'}
+                <!-- Luces traseras -->
+                <rect x="30" y="88" width="8" height="3" fill="#ef4444" rx="1"/>
+                <rect x="62" y="88" width="8" height="3" fill="#ef4444" rx="1"/>
+            </svg>
+        `;
+
         return L.divIcon({
             className: 'radar-car-marker',
             html: `
                 <div class="radar-car-container">
                     <div class="radar-car-label ${statusClass}">${displayName}</div>
-                    <div class="radar-car-icon-wrapper ${statusClass}">
-                        <div class="radar-car-internal" style="transform: rotate(${rotation}deg);">🚗</div>
+                    <div class="radar-car-icon-wrapper ${statusClass}" style="transform: rotate(${rotation}deg);">
+                        <div class="radar-car-internal">
+                            ${carSvg}
+                        </div>
                     </div>
                 </div>
             `,
@@ -233,15 +267,17 @@ const RadarModule = (() => {
             </div>
         `;
 
+        const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
+
         if (_markers[driverId]) {
             // Update existing marker
             _markers[driverId].setLatLng([lat, lng]);
-            _markers[driverId].setIcon(_createCarIcon(heading, displayName, statusClass));
+            _markers[driverId].setIcon(_createCarIcon(heading, displayName, statusClass, carColor));
             _markers[driverId].getPopup().setContent(popupContent);
         } else {
             // Create new marker
             const marker = L.marker([lat, lng], {
-                icon: _createCarIcon(heading, displayName, statusClass)
+                icon: _createCarIcon(heading, displayName, statusClass, carColor)
             }).addTo(_map);
             marker.bindPopup(popupContent);
             _markers[driverId] = marker;
