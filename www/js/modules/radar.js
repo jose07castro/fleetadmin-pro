@@ -138,50 +138,49 @@ const RadarModule = (() => {
         
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
         const colors = {
-            'white': { body: '#ffffff', side: '#e5e7eb', roof: '#f9fafb' },
-            'black': { body: '#18181b', side: '#09090b', roof: '#27272a' },
-            'taxi': { body: '#18181b', side: '#09090b', roof: '#facc15' },
-            'gray': { body: '#52525b', side: '#3f3f46', roof: '#71717a' },
-            'silver': { body: '#a1a1aa', side: '#71717a', roof: '#d4d4d8' },
-            'red': { body: '#dc2626', side: '#991b1b', roof: '#ef4444' },
-            'blue': { body: '#2563eb', side: '#1e40af', roof: '#3b82f6' },
-            'maroon': { body: '#7f1d1d', side: '#450a0a', roof: '#991b1b' }
+            'white': { body: '#ffffff', side: '#cbd5e1', roof: '#f8fafc', glass: '#94a3b8' },
+            'black': { body: '#1e293b', side: '#0f172a', roof: '#334155', glass: '#64748b' },
+            'taxi': { body: '#1e293b', side: '#0f172a', roof: '#facc15', glass: '#64748b' },
+            'gray': { body: '#64748b', side: '#475569', roof: '#94a3b8', glass: '#cbd5e1' },
+            'silver': { body: '#e2e8f0', side: '#94a3b8', roof: '#f1f5f9', glass: '#cbd5e1' },
+            'red': { body: '#ef4444', side: '#b91c1c', roof: '#f87171', glass: '#fca5a5' },
+            'blue': { body: '#3b82f6', side: '#1e40af', roof: '#60a5fa', glass: '#93c5fd' },
+            'maroon': { body: '#991b1b', side: '#7f1d1d', roof: '#b91c1c', glass: '#fca5a5' }
         };
 
         const theme = colors[carColor] || colors['gray'];
         const isTaxi = carColor === 'taxi';
 
-        // SVG Isométrico (Vista 3/4) - Rediseño Robusto para visibilidad total
+        // SVG Top-Down HD — Diseño Detallado (Capó, Baúl, Vidrios)
         const carSvg = `
-            <svg viewBox="0 0 100 100" width="50" height="50" style="display:block; overflow:visible;">
-                <!-- Sombra proyectada en el mapa (vía SVG para máxima compatibilidad) -->
-                <ellipse cx="50" cy="75" rx="35" ry="15" fill="rgba(0,0,0,0.2)" />
+            <svg viewBox="0 0 40 60" width="40" height="60" style="display:block; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4)); overflow:visible;">
+                <!-- Carrocería Principal -->
+                <path d="M10 5 C10 2, 30 2, 30 5 L35 15 L35 45 L30 55 C30 58, 10 58, 10 55 L5 45 L5 15 Z" fill="${theme.body}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
                 
-                <g transform="translate(10, 10) scale(0.8)">
-                    <!-- PARTE LATERAL (Sombra de volumen) -->
-                    <path d="M10 50 L10 80 L70 90 L70 60 Z" fill="${theme.side}" />
-                    
-                    <!-- FRONTAL Y CAPÓ -->
-                    <path d="M10 50 L40 35 L90 50 L60 65 Z" fill="${theme.body}" />
-                    
-                    <!-- TECHO (Brillante) -->
-                    <path d="M35 45 L52 38 L80 48 L63 56 Z" fill="${theme.roof}" stroke="rgba(0,0,0,0.05)" />
-                    
-                    <!-- CRISTAL DELANTERO -->
-                    <path d="M38 46 L51 40 L58 45 L45 51 Z" fill="rgba(255,255,255,0.4)" />
-                    
-                    <!-- LUCES (Frontal) -->
-                    <circle cx="15" cy="55" r="4" fill="#fef08a" />
-                    <circle cx="85" cy="55" r="4" fill="#fef08a" opacity="0.3" />
-
-                    <!-- Letrero TAXI (v114) -->
-                    ${isTaxi ? `
-                        <g transform="translate(55, 42) rotate(-10)">
-                            <rect x="-8" y="-6" width="16" height="7" fill="#facc15" stroke="#000" stroke-width="1" rx="1" />
-                            <text x="0" y="-1" font-size="5" font-family="Arial, sans-serif" font-weight="bold" fill="#000" text-anchor="middle">TAXI</text>
-                        </g>
-                    ` : ''}
-                </g>
+                <!-- Parabrisas Delantero -->
+                <path d="M8 18 L32 18 L30 28 L10 28 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.7"/>
+                
+                <!-- Luneta Trasera -->
+                <path d="M10 42 L30 42 L32 50 L8 50 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.6"/>
+                
+                <!-- Techo -->
+                <rect x="10" y="28" width="20" height="14" fill="${theme.roof}" opacity="0.2"/>
+                
+                <!-- Retrovisores -->
+                <rect x="1" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
+                <rect x="35" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
+                
+                <!-- Líneas de Capó y Baúl -->
+                <path d="M12 10 L28 10" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
+                <path d="M12 52 L28 52" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
+                
+                <!-- Letrero TAXI (Solo color taxi) -->
+                ${isTaxi ? `
+                    <g transform="translate(10, 30)">
+                        <rect width="20" height="10" fill="#facc15" stroke="black" stroke-width="1" rx="2"/>
+                        <text x="10" y="7" font-size="6" font-family="Arial" font-weight="bold" fill="black" text-anchor="middle">TAXI</text>
+                    </g>
+                ` : ''}
             </svg>
         `;
 

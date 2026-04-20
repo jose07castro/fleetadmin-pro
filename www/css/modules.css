@@ -2459,12 +2459,12 @@
     align-items: center;
     justify-content: center;
     width: 60px;
-    height: 60px;
+    height: 80px;
 }
 
 .radar-car-label {
     position: absolute;
-    top: -18px;
+    top: -12px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(15, 23, 42, 0.9);

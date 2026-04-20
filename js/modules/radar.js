@@ -151,44 +151,36 @@ const RadarModule = (() => {
         const theme = colors[carColor] || colors['gray'];
         const isTaxi = carColor === 'taxi';
 
-        // SVG Isométrico (Vista 3/4) - Rediseño Total Ultra-Reconocible
+        // SVG Top-Down HD — Diseño Detallado (Capó, Baúl, Vidrios)
         const carSvg = `
-            <svg viewBox="0 0 100 100" width="60" height="60" style="display:block; overflow:visible;">
-                <!-- Sombra proyectada -->
-                <ellipse cx="50" cy="80" rx="40" ry="12" fill="rgba(0,0,0,0.25)" />
+            <svg viewBox="0 0 40 60" width="40" height="60" style="display:block; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4)); overflow:visible;">
+                <!-- Carrocería Principal -->
+                <path d="M10 5 C10 2, 30 2, 30 5 L35 15 L35 45 L30 55 C30 58, 10 58, 10 55 L5 45 L5 15 Z" fill="${theme.body}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
                 
-                <g transform="translate(5, 5) scale(0.9)">
-                    <!-- Chasis Inferior (Ruedas y profundidad) -->
-                    <rect x="25" y="70" width="12" height="6" rx="2" fill="#111" /> <!-- Rueda del -->
-                    <rect x="65" y="75" width="12" height="6" rx="2" fill="#111" /> <!-- Rueda tra -->
-                    
-                    <!-- Cuerpo Lateral Bajo -->
-                    <path d="M15 65 L85 75 L85 60 L15 50 Z" fill="${theme.side}" />
-                    
-                    <!-- Capó Delantero (Frontal inclinado) -->
-                    <path d="M15 50 L45 40 L45 60 L15 65 Z" fill="${theme.body}" />
-                    
-                    <!-- Parabrisas (Inclinación de cabina) -->
-                    <path d="M45 40 L55 25 L80 32 L70 48 Z" fill="${theme.glass}" opacity="0.6" />
-                    
-                    <!-- Techo Plana -->
-                    <path d="M55 25 L75 22 L92 28 L80 32 Z" fill="${theme.roof}" />
-                    
-                    <!-- Baúl / Parte Trasera -->
-                    <path d="M80 32 L92 28 L95 45 L85 60 L70 48 Z" fill="${theme.body}" />
-                    
-                    <!-- Luces y Detalles Frontales -->
-                    <circle cx="20" cy="55" r="4" fill="#fef08a" /> <!-- Luz izq -->
-                    <path d="M20 58 L40 52" stroke="rgba(255,255,255,0.2)" stroke-width="1" /> <!-- Línea capó -->
-
-                    <!-- Letrero TAXI (v115) -->
-                    ${isTaxi ? `
-                        <g transform="translate(68, 25) rotate(-8)">
-                            <rect x="-10" y="-8" width="20" height="10" fill="#facc15" stroke="#000" stroke-width="1.5" rx="2" />
-                            <text x="0" y="-1" font-size="6" font-family="Arial, sans-serif" font-weight="bold" fill="#000" text-anchor="middle">TAXI</text>
-                        </g>
-                    ` : ''}
-                </g>
+                <!-- Parabrisas Delantero -->
+                <path d="M8 18 L32 18 L30 28 L10 28 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.7"/>
+                
+                <!-- Luneta Trasera -->
+                <path d="M10 42 L30 42 L32 50 L8 50 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.6"/>
+                
+                <!-- Techo -->
+                <rect x="10" y="28" width="20" height="14" fill="${theme.roof}" opacity="0.2"/>
+                
+                <!-- Retrovisores -->
+                <rect x="1" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
+                <rect x="35" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
+                
+                <!-- Líneas de Capó y Baúl -->
+                <path d="M12 10 L28 10" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
+                <path d="M12 52 L28 52" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
+                
+                <!-- Letrero TAXI (Solo color taxi) -->
+                ${isTaxi ? `
+                    <g transform="translate(10, 30)">
+                        <rect width="20" height="10" fill="#facc15" stroke="black" stroke-width="1" rx="2"/>
+                        <text x="10" y="7" font-size="6" font-family="Arial" font-weight="bold" fill="black" text-anchor="middle">TAXI</text>
+                    </g>
+                ` : ''}
             </svg>
         `;
 
