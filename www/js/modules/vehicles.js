@@ -359,6 +359,8 @@ const VehiclesModule = (() => {
         const odometer = parseFloat(document.getElementById('vehOdometer')?.value);
         const status = document.getElementById('vehStatus')?.value;
         const color = document.getElementById('vehColor')?.value;
+        const vtvIssueDate = document.getElementById('vehVtvIssue')?.value || null;
+        const vtvExpiryDate = document.getElementById('vehVtvExpiry')?.value || null;
 
         // Finanzas y Seguros
         const metodoPago = document.getElementById('vehMetodoPago')?.value;
