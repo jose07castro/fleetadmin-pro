@@ -58,7 +58,7 @@ const RadarModule = (() => {
             <div id="radarMap" class="radar-map"></div>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
-                <span class="radar-legend-item">🕐 Actualización: cada 20s</span>
+                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (3.5s)</strong></span>
             </div>
         `;
 
@@ -117,16 +117,13 @@ const RadarModule = (() => {
             attributionControl: false
         });
 
-        // Dark-themed tile layer (CartoDB Dark Matter)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // v120: Mapa a full color y alta resolución (Standard Streets / OpenStreetMap)
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            subdomains: 'abcd'
+            detectRetina: true, // Alta definición para pantallas S25 Ultra / iPhone / Web
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(_map);
 
-        // Attribution
-        L.control.attribution({
-            prefix: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> | CartoDB'
-        }).addTo(_map);
 
         // Fix map sizing
         setTimeout(() => {
