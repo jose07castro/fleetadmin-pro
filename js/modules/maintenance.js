@@ -122,6 +122,17 @@ const MaintenanceModule = (() => {
             }
         }
 
+        // Lógica de Neumáticos
+        const tireRotKm = vehicle.lastTireRotationKm || currentOdo;
+        const tireDiff = currentOdo - tireRotKm;
+        let tireEstadoClase = "estado-ok";
+        let tireBotonTexto = "🛞 Registrar Cambio de Neumáticos";
+        
+        if (tireDiff >= 10000) {
+            tireEstadoClase = "estado-alerta";
+            tireBotonTexto = "⚠️ ROTACIÓN DE NEUMÁTICOS PENDIENTE";
+        }
+
         return `
             <div class="maintenance-card" style="border-color:${belt.level === 'danger' ? 'var(--color-danger)' : belt.level === 'warning' ? 'var(--color-warning)' : 'var(--border-color)'};">
                 <div class="maintenance-card-header">
@@ -160,6 +171,9 @@ const MaintenanceModule = (() => {
                         </button>
                         <button class="btn-mantenimiento btn-aceite ${oilEstadoClase}" onclick="OilModule.registerOilChange('${vehicle.id}')">
                             ${oilBotonTexto}
+                        </button>
+                        <button class="btn-mantenimiento btn-neumaticos ${tireEstadoClase}" onclick="MaintenanceModule.registerTireRotation('${vehicle.id}')">
+                            ${tireBotonTexto}
                         </button>
                         
                         ${vehicle.nextOilChangeKm ? `
@@ -607,7 +621,60 @@ const MaintenanceModule = (() => {
         btn.parentElement.remove();
     }
 
-    return { render, registerBeltChange, saveBeltChange, renderRepairTable, showRepairForm, saveRepair, editRepair, deleteRepair, addPartRow, removePartRow };
+    // --- Neumáticos ---
+    function registerTireRotation(vehicleId) {
+        Promise.all([DB.get('vehicles', vehicleId)]).then(([vehicle]) => {
+            if (!vehicle) return;
+            const currentOdo = vehicle.currentOdometer || 0;
+            Components.showModal(
+                "Registrar Cambio/Rotación de Neumáticos",
+                `
+                    <div class="form-group">
+                        <label class="form-label">Odómetro actual (${Units.distanceLabel()})</label>
+                        <input type="number" class="form-input" id="tireOdometer" inputmode="numeric"
+                            value="${currentOdo || ''}" placeholder="Ej: 15000">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha del cambio/rotación</label>
+                        <input type="date" class="form-input" id="tireDate" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                `,
+                `
+                    <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                    <button class="btn btn-primary" onclick="MaintenanceModule.saveTireRotation('${vehicleId}')">${I18n.t('save')}</button>
+                `
+            );
+        });
+    }
+
+    async function saveTireRotation(vehicleId) {
+        const odometer = parseFloat(document.getElementById('tireOdometer')?.value);
+        const date = document.getElementById('tireDate')?.value || new Date().toISOString();
+
+        if (!odometer) {
+            Components.showToast('Ingresa el odómetro actual', 'danger');
+            return;
+        }
+
+        const odometerKm = Units.toKm(odometer);
+        const vehicle = await DB.get('vehicles', vehicleId);
+        
+        if (vehicle) {
+            vehicle.lastTireRotationKm = odometerKm;
+            vehicle.lastTireRotationDate = date;
+            
+            if (odometerKm > (vehicle.currentOdometer || 0)) {
+                vehicle.currentOdometer = odometerKm;
+            }
+            
+            await DB.put('vehicles', vehicle);
+            Components.closeModal();
+            Components.showToast('Neumáticos registrados ✅', 'success');
+            Router.navigate('maintenance');
+        }
+    }
+
+    return { render, registerBeltChange, saveBeltChange, renderRepairTable, showRepairForm, saveRepair, editRepair, deleteRepair, addPartRow, removePartRow, registerTireRotation, saveTireRotation };
 })();
 
 /* ============================================

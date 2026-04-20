@@ -137,6 +137,18 @@
     transform: scale(1.02);
 }
 
+.btn-neumaticos {
+    background-color: #1976d2;
+    color: white;
+    margin-top: 5px;
+}
+
+.btn-neumaticos:hover {
+    background-color: #1565c0;
+    transform: scale(1.02);
+}
+
+
 /* Animación de parpadeo de color (más liviana para CPU) */
 @keyframes parpadeoColorAlert {
     0%, 100% {
@@ -186,6 +198,23 @@
     0% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
     50% { background-color: #f57c00; box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
     100% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+}
+
+.btn-neumaticos.estado-ok {
+    background-color: #1976d2 !important;
+}
+
+.btn-neumaticos.estado-alerta {
+    background-color: #fbc02d !important;
+    color: #000 !important;
+    font-weight: bold;
+    animation: pulsoAmarillo 2s infinite;
+}
+
+@keyframes pulsoAmarillo {
+    0% { background-color: #fbc02d; box-shadow: 0 0 0 0 rgba(251, 192, 45, 0.7); }
+    50% { background-color: #f57f17; box-shadow: 0 0 0 10px rgba(251, 192, 45, 0); }
+    100% { background-color: #fbc02d; box-shadow: 0 0 0 0 rgba(251, 192, 45, 0); }
 }
 
 .btn-aceite.estado-critico {
