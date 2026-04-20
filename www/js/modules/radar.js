@@ -151,37 +151,34 @@ const RadarModule = (() => {
         const theme = colors[carColor] || colors['gray'];
         const isTaxi = carColor === 'taxi';
 
-        // SVG Isométrico (Vista 3/4) - Perspectiva desde arriba y costado
+        // SVG Isométrico (Vista 3/4) - Rediseño Robusto para visibilidad total
         const carSvg = `
-            <svg viewBox="0 0 100 100" width="50" height="50" style="display:block; filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));">
+            <svg viewBox="0 0 100 100" width="50" height="50" style="display:block; overflow:visible;">
+                <!-- Sombra proyectada en el mapa (vía SVG para máxima compatibilidad) -->
+                <ellipse cx="50" cy="75" rx="35" ry="15" fill="rgba(0,0,0,0.2)" />
+                
                 <g transform="translate(10, 10) scale(0.8)">
-                    <!-- Chasis - Parte Lateral (Sombra/Profundidad) -->
-                    <path d="M20 40 L20 70 L80 80 L80 50 Z" fill="${theme.side}" />
+                    <!-- PARTE LATERAL (Sombra de volumen) -->
+                    <path d="M10 50 L10 80 L70 90 L70 60 Z" fill="${theme.side}" />
                     
-                    <!-- Carrocería Principal (Frente y Capó) -->
-                    <path d="M20 40 L50 30 L90 40 L80 50 L50 45 Z" fill="${theme.body}" />
+                    <!-- FRONTAL Y CAPÓ -->
+                    <path d="M10 50 L40 35 L90 50 L60 65 Z" fill="${theme.body}" />
                     
-                    <!-- Techo (Visto desde arriba) -->
-                    <path d="M35 35 L60 25 L85 35 L75 50 L45 48 Z" fill="${theme.roof}" stroke="rgba(0,0,0,0.1)" />
+                    <!-- TECHO (Brillante) -->
+                    <path d="M35 45 L52 38 L80 48 L63 56 Z" fill="${theme.roof}" stroke="rgba(0,0,0,0.05)" />
                     
-                    <!-- Cristales con Brillo (Shimmer) -->
-                    <path d="M40 36 L55 30 L60 38 L42 42 Z" fill="rgba(255,255,255,0.3)">
-                        <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite" />
-                    </path>
-                    <path d="M65 32 L82 38 L75 48 L62 42 Z" fill="rgba(255,255,255,0.2)" />
+                    <!-- CRISTAL DELANTERO -->
+                    <path d="M38 46 L51 40 L58 45 L45 51 Z" fill="rgba(255,255,255,0.4)" />
                     
-                    <!-- Luces Delanteras -->
-                    <ellipse cx="25" cy="42" rx="4" ry="2" fill="#fef9c3" />
-                    <ellipse cx="85" cy="45" rx="4" ry="2" fill="#fef9c3" />
-                    
-                    <!-- Retrovisor -->
-                    <rect x="35" y="30" width="4" height="2" fill="${theme.body}" transform="rotate(-15)" />
-                    
-                    <!-- Letrero TAXI -->
+                    <!-- LUCES (Frontal) -->
+                    <circle cx="15" cy="55" r="4" fill="#fef08a" />
+                    <circle cx="85" cy="55" r="4" fill="#fef08a" opacity="0.3" />
+
+                    <!-- Letrero TAXI (v114) -->
                     ${isTaxi ? `
-                        <g transform="translate(50, 32) rotate(-5)">
-                            <rect x="-10" y="-8" width="20" height="8" fill="#facc15" stroke="black" stroke-width="1" rx="1" />
-                            <text x="0" y="-2" font-size="5" font-family="Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle">TAXI</text>
+                        <g transform="translate(55, 42) rotate(-10)">
+                            <rect x="-8" y="-6" width="16" height="7" fill="#facc15" stroke="#000" stroke-width="1" rx="1" />
+                            <text x="0" y="-1" font-size="5" font-family="Arial, sans-serif" font-weight="bold" fill="#000" text-anchor="middle">TAXI</text>
                         </g>
                     ` : ''}
                 </g>
