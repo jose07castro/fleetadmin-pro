@@ -41,9 +41,8 @@ const Components = (() => {
             <aside class="app-sidebar" id="sidebar">
                 <div class="sidebar-header">
                     <div class="sidebar-logo">
-                        <img src="assets/logo-3d.png" class="sidebar-logo-img" alt="Punto Alertas Logo">
+                        <img src="assets/sidebar-banner.png" class="sidebar-logo-img" alt="Punto Alertas Branding">
                     </div>
-                    <span class="sidebar-brand">Punto Alertas</span>
                 </div>
                 <nav class="sidebar-nav">
                     <div class="nav-section-title">${I18n.t('nav_operations')}</div>
