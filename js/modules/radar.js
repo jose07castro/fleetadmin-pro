@@ -136,34 +136,55 @@ const RadarModule = (() => {
     function _createCarIcon(heading, displayName, statusClass, carColor) {
         const rotation = heading || 0;
         
-        // Mapeo de colores técnicos para SVG
+        // Mapeo de colores técnicos para SVG (Versión HD 3D)
         const colors = {
-            'white': '#ffffff',
-            'black': '#18181b',
-            'taxi': '#18181b', // Color base negro, luego pintamos el techo amarillo
-            'gray': '#52525b',
-            'silver': '#a1a1aa',
-            'red': '#dc2626',
-            'blue': '#2563eb',
-            'maroon': '#7f1d1d'
+            'white': { body: '#ffffff', side: '#e5e7eb', roof: '#f9fafb' },
+            'black': { body: '#18181b', side: '#09090b', roof: '#27272a' },
+            'taxi': { body: '#18181b', side: '#09090b', roof: '#facc15' },
+            'gray': { body: '#52525b', side: '#3f3f46', roof: '#71717a' },
+            'silver': { body: '#a1a1aa', side: '#71717a', roof: '#d4d4d8' },
+            'red': { body: '#dc2626', side: '#991b1b', roof: '#ef4444' },
+            'blue': { body: '#2563eb', side: '#1e40af', roof: '#3b82f6' },
+            'maroon': { body: '#7f1d1d', side: '#450a0a', roof: '#991b1b' }
         };
 
-        const hexColor = colors[carColor] || '#52525b';
+        const theme = colors[carColor] || colors['gray'];
         const isTaxi = carColor === 'taxi';
 
-        // Silueta de auto premium vista desde arriba
+        // SVG Isométrico (Vista 3/4) - Perspectiva desde arriba y costado
         const carSvg = `
-            <svg viewBox="0 0 100 100" width="40" height="40" style="display:block;">
-                <!-- Cuerpo del vehículo -->
-                <path d="M30 15 C30 10, 70 10, 70 15 L75 35 L75 75 L70 90 C70 95, 30 95, 30 90 L25 75 L25 35 Z" fill="${hexColor}" stroke="rgba(0,0,0,0.5)" stroke-width="2"/>
-                <!-- Vidrios -->
-                <path d="M35 30 L65 30 L68 45 L32 45 Z" fill="rgba(255,255,255,0.4)"/>
-                <path d="M32 65 L68 65 L65 85 L35 85 Z" fill="rgba(255,255,255,0.4)"/>
-                <!-- Detalles de techo -->
-                ${isTaxi ? '<rect x="35" y="48" width="30" height="15" fill="#facc15" rx="2" stroke="black" stroke-width="1"/>' : '<rect x="40" y="48" width="20" height="15" fill="rgba(255,255,255,0.1)" rx="2"/>'}
-                <!-- Luces traseras -->
-                <rect x="30" y="88" width="8" height="3" fill="#ef4444" rx="1"/>
-                <rect x="62" y="88" width="8" height="3" fill="#ef4444" rx="1"/>
+            <svg viewBox="0 0 100 100" width="50" height="50" style="display:block; filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));">
+                <g transform="translate(10, 10) scale(0.8)">
+                    <!-- Chasis - Parte Lateral (Sombra/Profundidad) -->
+                    <path d="M20 40 L20 70 L80 80 L80 50 Z" fill="${theme.side}" />
+                    
+                    <!-- Carrocería Principal (Frente y Capó) -->
+                    <path d="M20 40 L50 30 L90 40 L80 50 L50 45 Z" fill="${theme.body}" />
+                    
+                    <!-- Techo (Visto desde arriba) -->
+                    <path d="M35 35 L60 25 L85 35 L75 50 L45 48 Z" fill="${theme.roof}" stroke="rgba(0,0,0,0.1)" />
+                    
+                    <!-- Cristales con Brillo (Shimmer) -->
+                    <path d="M40 36 L55 30 L60 38 L42 42 Z" fill="rgba(255,255,255,0.3)">
+                        <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite" />
+                    </path>
+                    <path d="M65 32 L82 38 L75 48 L62 42 Z" fill="rgba(255,255,255,0.2)" />
+                    
+                    <!-- Luces Delanteras -->
+                    <ellipse cx="25" cy="42" rx="4" ry="2" fill="#fef9c3" />
+                    <ellipse cx="85" cy="45" rx="4" ry="2" fill="#fef9c3" />
+                    
+                    <!-- Retrovisor -->
+                    <rect x="35" y="30" width="4" height="2" fill="${theme.body}" transform="rotate(-15)" />
+                    
+                    <!-- Letrero TAXI -->
+                    ${isTaxi ? `
+                        <g transform="translate(50, 32) rotate(-5)">
+                            <rect x="-10" y="-8" width="20" height="8" fill="#facc15" stroke="black" stroke-width="1" rx="1" />
+                            <text x="0" y="-2" font-size="5" font-family="Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle">TAXI</text>
+                        </g>
+                    ` : ''}
+                </g>
             </svg>
         `;
 
