@@ -88,6 +88,10 @@ const App = (() => {
                         if (typeof SOSModule !== 'undefined') {
                             SOSModule.startListening();
                         }
+                        // 8.5 Activar detección de alertas de tráfico (WhatsApp)
+                        if (typeof TrafficAlerts !== 'undefined') {
+                            TrafficAlerts.init();
+                        }
                         // 9. Mostrar banner PWA de instalación (solo drivers móviles)
                         if (typeof PWAInstall !== 'undefined') {
                             setTimeout(() => PWAInstall.showBanner(), 2000);

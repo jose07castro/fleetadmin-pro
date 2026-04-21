@@ -11,9 +11,11 @@ const RadarModule = (() => {
     const DRIVER_POSITIONS_NODE = 'driver_positions';
     const UPDATE_INTERVAL_MS = 20000; // 20 segundos
     let _map = null;
-    let _markers = {};       // { driverId: L.marker }
     let _firebaseRef = null;
+    let _alertRef = null;
     let _isOpen = false;
+    let _markers = {};       // { driverId: L.marker }
+    let _alertMarkers = {};  // { alertId: L.marker }
     let _trackingInterval = null;
     let _watchId = null;
 
@@ -75,6 +77,7 @@ const RadarModule = (() => {
 
         // Start listening to driver positions
         _startFirebaseListener();
+        _startAlertListener();
     }
 
     // ============ CLOSE MAP ============
@@ -84,6 +87,7 @@ const RadarModule = (() => {
 
         // Stop Firebase listener
         _stopFirebaseListener();
+        _stopAlertListener();
 
         // Destroy map
         if (_map) {
@@ -455,6 +459,137 @@ const RadarModule = (() => {
         }
     }
 
+    // ============ TRAFFIC ALERTS LISTENER ============
+
+    function _startAlertListener() {
+        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        _alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+
+        _alertRef.on('value', (snap) => {
+            const allAlerts = snap.val() || {};
+            const alertIds = Object.keys(allAlerts);
+
+            // 1. Update/Add alerts
+            alertIds.forEach(id => {
+                const alert = allAlerts[id];
+                const now = Date.now();
+                
+                // Solo mostrar si no ha expirado
+                if (alert.expiresAt > now && alert.status === 'active') {
+                    _updateAlertMarker(id, alert);
+                } else {
+                    _removeAlertMarker(id);
+                }
+            });
+
+            // 2. Remove deleted alerts
+            Object.keys(_alertMarkers).forEach(id => {
+                if (!allAlerts[id]) {
+                    _removeAlertMarker(id);
+                }
+            });
+        });
+    }
+
+    function _stopAlertListener() {
+        if (_alertRef) {
+            _alertRef.off('value');
+            _alertRef = null;
+        }
+    }
+
+    function _updateAlertMarker(id, data) {
+        if (!_map) return;
+
+        const lat = parseFloat(data.lat);
+        const lng = parseFloat(data.lng);
+        const type = data.type || 'warning'; // 'police' o 'warning'
+        
+        const popupContent = `
+            <div class="radar-alert-popup">
+                <div class="alert-popup-header ${type}">
+                    ${type === 'police' ? '👮 Control de Policía' : '⚠️ Alerta de Tráfico'}
+                </div>
+                <div class="alert-popup-body">
+                    <p><strong>Ubicación:</strong> ${data.location}</p>
+                    <p><strong>Detectado:</strong> ${new Date(data.timestamp).toLocaleTimeString()}</p>
+                    <p class="alert-expiry">Expira en: ${Math.round((data.expiresAt - Date.now()) / 60000)} min</p>
+                </div>
+                <div class="alert-popup-actions">
+                    <button class="btn-confirm" onclick="RadarModule.confirmAlert('${id}')">👍 Sigue ahí</button>
+                    <button class="btn-dismiss" onclick="RadarModule.dismissAlert('${id}')">👎 Ya no está</button>
+                </div>
+            </div>
+        `;
+
+        if (_alertMarkers[id]) {
+            _alertMarkers[id].setLatLng([lat, lng]);
+            _alertMarkers[id].getPopup().setContent(popupContent);
+        } else {
+            const marker = L.marker([lat, lng], {
+                icon: _createAlertIcon(type)
+            }).addTo(_map);
+            marker.bindPopup(popupContent);
+            _alertMarkers[id] = marker;
+        }
+    }
+
+    function _removeAlertMarker(id) {
+        if (_alertMarkers[id]) {
+            _map.removeLayer(_alertMarkers[id]);
+            delete _alertMarkers[id];
+        }
+    }
+
+    function _createAlertIcon(type) {
+        const color = type === 'police' ? '#3b82f6' : '#ef4444';
+        const iconHtml = type === 'police' 
+            ? `<div class="radar-alert-icon police">🚓<div class="siren"></div></div>`
+            : `<div class="radar-alert-icon warning">⚠️</div>`;
+
+        return L.divIcon({
+            className: 'radar-custom-alert',
+            html: iconHtml,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+    }
+
+    // ============ FEEDBACK LOGIC ============
+
+    async function confirmAlert(alertId) {
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        try {
+            const ref = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`);
+            await ref.transaction(current => {
+                if (current) {
+                    current.confirmations = (current.confirmations || 0) + 1;
+                    // Extender vida 15 min si hay confirmación
+                    current.expiresAt = Math.max(current.expiresAt, Date.now() + (15 * 60 * 1000));
+                }
+                return current;
+            });
+            if (typeof Components !== 'undefined') Components.showToast('¡Gracias por confirmar!', 'success');
+        } catch(e) { console.error('Error confirming alert:', e); }
+    }
+
+    async function dismissAlert(alertId) {
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        try {
+            const ref = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`);
+            await ref.update({ status: 'dismissed' });
+            if (typeof Components !== 'undefined') Components.showToast('Alerta marcada como inactiva', 'info');
+        } catch(e) { console.error('Error dismissing alert:', e); }
+    }
+
     // ============ UI HELPERS ============
 
     function _setStatus(type, text) {
@@ -473,6 +608,6 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close
+        renderDashboardButton, open, close, confirmAlert, dismissAlert
     };
 })();
