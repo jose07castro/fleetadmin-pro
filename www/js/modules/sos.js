@@ -643,7 +643,13 @@ const SOSModule = (() => {
                 emergencyType: alertData.emergencyType,
                 emergencyTypeLabel: alertData.emergencyTypeLabel,
                 emergencyDetails: alertData.emergencyDetails,
-                created_at: alertData.created_at
+                created_at: alertData.created_at,
+                // INSTRUCCIÓN AL BACKEND: Android ignora Alertas en segundo plano si envían "notification".
+                // Se debe usar un Data Message puro con prioridad alta para despertar a Capacitor.
+                fcmConfig: {
+                    priority: 'high',
+                    asDataMessage: true
+                }
             })
         }).then(res => {
             if (res.ok) {
@@ -1595,16 +1601,8 @@ const SOSModule = (() => {
     // Botón SOS para turno activo (desktop)
     // =============================================
     function renderSOSButton(shiftId, vehicleId, vehicleName) {
-        const safeVehicleName = (vehicleName || '').replace(/'/g, "\\'");
-        return `
-            <div class="sos-button-container">
-                <button class="sos-button" onclick="SOSModule.triggerSOS('${shiftId}', '${vehicleId}', '${safeVehicleName}')">
-                    <span class="sos-button-icon">🆘</span>
-                    <span class="sos-button-text">SOS EMERGENCIA</span>
-                </button>
-                <p class="sos-hint">Presioná en caso de robo, accidente o emergencia</p>
-            </div>
-        `;
+        // v118: Desactivado a favor del botón circular SOS FAB global
+        return '';
     }
 
     return {
