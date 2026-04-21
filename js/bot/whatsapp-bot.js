@@ -37,7 +37,10 @@ const WhatsappBot = (() => {
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
     function init() {
-        console.log('🚀 Iniciando WhatsApp Bot Worker...');
+        // Log diagnóstico solicitado por el usuario para ver la ruta en Render
+        const exePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
+        console.log(`🚀 Iniciando WhatsApp Bot Worker...`);
+        console.log(`🔍 Ruta del navegador en uso: ${exePath}`);
         
         client = new Client({
             authStrategy: new LocalAuth(),
@@ -53,7 +56,7 @@ const WhatsappBot = (() => {
                     '--single-process',
                     '--disable-gpu'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+                executablePath: exePath
             }
         });
 
