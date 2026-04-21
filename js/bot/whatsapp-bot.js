@@ -10,7 +10,7 @@ const admin = require('firebase-admin');
 
 // 1. Inicialización de Firebase Admin (vía Variables de Entorno)
 if (!admin.apps.length) {
-    try {
+    try { 
         admin.initializeApp({
             credential: admin.credential.cert({
                 projectId: process.env.FIREBASE_PROJECT_ID,
