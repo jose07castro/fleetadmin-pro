@@ -3,6 +3,10 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Importar Bot de WhatsApp (Escucha grupos en segundo plano)
+const WhatsappBot = require('./js/bot/whatsapp-bot');
+WhatsappBot.init();
+
 // 1. Dejamos que Express sirva los archivos libremente (JS, CSS, HTML, lo que sea)
 app.use(express.static(__dirname));
 app.use(express.json());
