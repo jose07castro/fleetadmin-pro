@@ -139,57 +139,106 @@ const RadarModule = (() => {
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
         const colors = {
             'white': { body: '#ffffff', side: '#cbd5e1', roof: '#f8fafc', glass: '#94a3b8' },
+            'blanco': { body: '#ffffff', side: '#cbd5e1', roof: '#f8fafc', glass: '#94a3b8' },
             'black': { body: '#1e293b', side: '#0f172a', roof: '#334155', glass: '#64748b' },
+            'negro': { body: '#1e293b', side: '#0f172a', roof: '#334155', glass: '#64748b' },
             'taxi': { body: '#1e293b', side: '#0f172a', roof: '#facc15', glass: '#64748b' },
             'gray': { body: '#64748b', side: '#475569', roof: '#94a3b8', glass: '#cbd5e1' },
+            'gris': { body: '#64748b', side: '#475569', roof: '#94a3b8', glass: '#cbd5e1' },
             'silver': { body: '#e2e8f0', side: '#94a3b8', roof: '#f1f5f9', glass: '#cbd5e1' },
+            'plata': { body: '#e2e8f0', side: '#94a3b8', roof: '#f1f5f9', glass: '#cbd5e1' },
             'red': { body: '#ef4444', side: '#b91c1c', roof: '#f87171', glass: '#fca5a5' },
+            'rojo': { body: '#ef4444', side: '#b91c1c', roof: '#f87171', glass: '#fca5a5' },
             'blue': { body: '#3b82f6', side: '#1e40af', roof: '#60a5fa', glass: '#93c5fd' },
-            'maroon': { body: '#991b1b', side: '#7f1d1d', roof: '#b91c1c', glass: '#fca5a5' }
+            'azul': { body: '#3b82f6', side: '#1e40af', roof: '#60a5fa', glass: '#93c5fd' },
+            'maroon': { body: '#991b1b', side: '#7f1d1d', roof: '#b91c1c', glass: '#fca5a5' },
+            'bordo': { body: '#7f1d1d', side: '#450a0a', roof: '#991b1b', glass: '#fca5a5' },
+            'bordo metalizado': { body: '#991b1b', side: '#450a0a', roof: '#b91c1c', glass: '#fca5a5' }
         };
 
-        const theme = colors[carColor] || colors['gray'];
-        const isTaxi = carColor === 'taxi';
+        const carColorKey = (carColor || 'gray').toLowerCase();
+        const theme = colors[carColorKey] || colors['gray'];
+        const isTaxi = carColorKey === 'taxi';
 
-        // SVG Top-Down HD — Diseño Detallado (Capó, Baúl, Vidrios)
-        const carSvg = `
-            <svg viewBox="0 0 40 60" width="40" height="60" style="display:block; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4)); overflow:visible;">
-                <!-- Carrocería Principal -->
-                <path d="M10 5 C10 2, 30 2, 30 5 L35 15 L35 45 L30 55 C30 58, 10 58, 10 55 L5 45 L5 15 Z" fill="${theme.body}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
-                
-                <!-- Parabrisas Delantero -->
-                <path d="M8 18 L32 18 L30 28 L10 28 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.7"/>
-                
-                <!-- Luneta Trasera -->
-                <path d="M10 42 L30 42 L32 50 L8 50 Z" fill="${theme.glass || 'rgba(255,255,255,0.4)'}" opacity="0.6"/>
-                
-                <!-- Techo -->
-                <rect x="10" y="28" width="20" height="14" fill="${theme.roof}" opacity="0.2"/>
-                
-                <!-- Retrovisores -->
-                <rect x="1" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
-                <rect x="35" y="20" width="4" height="2" rx="1" fill="${theme.side}"/>
-                
-                <!-- Líneas de Capó y Baúl -->
-                <path d="M12 10 L28 10" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
-                <path d="M12 52 L28 52" stroke="rgba(0,0,0,0.2)" stroke-width="0.5"/>
-                
-                <!-- Letrero TAXI (Solo color taxi) -->
-                ${isTaxi ? `
-                    <g transform="translate(10, 30)">
-                        <rect width="20" height="10" fill="#facc15" stroke="black" stroke-width="1" rx="2"/>
-                        <text x="10" y="7" font-size="6" font-family="Arial" font-weight="bold" fill="black" text-anchor="middle">TAXI</text>
-                    </g>
-                ` : ''}
-            </svg>
-        `;
+        // v119: Lógica de Perspectiva 3D Dinámica (8 ángulos)
+        // Mapeamos el 'heading' (rumbo) a una de las 8 vistas isométricas detalladas
+        const angle = (rotation + 360) % 360;
+        let viewAngle = 180; // Default: Trompa (acercándose)
+        
+        if (angle >= 337.5 || angle < 22.5) viewAngle = 0;      // Espalda (alejándose)
+        else if (angle >= 22.5 && angle < 67.5) viewAngle = 45;   // Espalda-Derecha
+        else if (angle >= 67.5 && angle < 112.5) viewAngle = 90;  // Perfil Derecho
+        else if (angle >= 112.5 && angle < 157.5) viewAngle = 135; // Frente-Derecha
+        else if (angle >= 157.5 && angle < 202.5) viewAngle = 180; // Frente (trompa)
+        else if (angle >= 202.5 && angle < 247.5) viewAngle = 225; // Frente-Izquierda
+        else if (angle >= 247.5 && angle < 292.5) viewAngle = 270; // Perfil Izquierdo
+        else if (angle >= 292.5 && angle < 337.5) viewAngle = 315; // Espalda-Izquierda
+
+        // Generar el SVG según la perspectiva (Plantillas de Alta Definición)
+        function generateDetailedCarSVG(view, theme, isTaxi) {
+            const baseStyle = `style="display:block; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3)); overflow:visible;"`;
+            const glassColor = theme.glass || 'rgba(148, 163, 184, 0.7)';
+            
+            // Plantilla: FRENTE (Trompa) - 180°
+            if (view === 180) {
+                return `
+                <svg viewBox="0 0 60 40" width="60" height="40" ${baseStyle}>
+                    <path d="M5 30 L55 30 L50 15 L10 15 Z" fill="${theme.side}" /> <!-- Chasis bajo -->
+                    <path d="M10 25 L50 25 L45 5 L15 5 Z" fill="${theme.body}" /> <!-- Capó/Techo -->
+                    <path d="M18 15 L42 15 L38 8 L22 8 Z" fill="${glassColor}" /> <!-- Parabrisas -->
+                    <rect x="5" y="22" width="8" height="4" fill="#fef08a" /> <!-- Luz Izq -->
+                    <rect x="47" y="22" width="8" height="4" fill="#fef08a" /> <!-- Luz Der -->
+                    ${isTaxi ? '<rect x="22" y="2" width="16" height="5" fill="#facc15" stroke="black" rx="1"/>' : ''}
+                </svg>`;
+            }
+            
+            // Plantilla: ESPALDA (Cola) - 0°
+            if (view === 0) {
+                return `
+                <svg viewBox="0 0 60 40" width="60" height="40" ${baseStyle}>
+                    <path d="M5 30 L55 30 L50 15 L10 15 Z" fill="${theme.side}" />
+                    <path d="M10 25 L50 25 L45 5 L15 5 Z" fill="${theme.body}" />
+                    <path d="M18 20 L42 20 L40 10 L20 10 Z" fill="${glassColor}" opacity="0.6"/> <!-- Luneta -->
+                    <rect x="8" y="22" width="10" height="3" fill="#ef4444" /> <!-- Luz Roja Izq -->
+                    <rect x="42" y="22" width="10" height="3" fill="#ef4444" /> <!-- Luz Roja Der -->
+                </svg>`;
+            }
+
+            // Plantilla: DIAGONALES (45, 135, 225, 315)
+            if ([45, 135, 225, 315].includes(view)) {
+                const isFront = [135, 225].includes(view);
+                const isLeft = [225, 315].includes(view);
+                return `
+                <svg viewBox="0 0 70 45" width="70" height="45" ${baseStyle} transform="${isLeft ? 'scale(-1, 1)' : ''}">
+                    <path d="M5 35 L60 30 L55 15 L10 20 Z" fill="${theme.side}" /> <!-- Lateral Fugado -->
+                    <path d="M10 20 L55 15 L45 5 L15 10 Z" fill="${theme.body}" /> <!-- Techo Fugado -->
+                    <path d="${isFront ? 'M10 20 L25 10 L45 8 L50 15 Z' : 'M30 15 L50 12 L55 18 L35 22 Z'}" fill="${glassColor}" /> <!-- Parabrisas/Luneta -->
+                    ${isFront ? '<rect x="5" y="25" width="6" height="4" fill="#fef08a" transform="skewY(-10)"/>' : '<rect x="50" y="20" width="6" height="3" fill="#ef4444"/>'}
+                    ${isTaxi ? '<rect x="25" y="5" width="12" height="4" fill="#facc15" stroke="black" rx="1" transform="rotate(-5)"/>' : ''}
+                </svg>`;
+            }
+
+            // Plantilla: PERFIL (Derecho/Izquierdo) - 90°/270°
+            const isLeft = view === 270;
+            return `
+            <svg viewBox="0 0 80 40" width="80" height="40" ${baseStyle} transform="${isLeft ? 'scale(-1, 1)' : ''}">
+                <path d="M5 30 L75 30 L70 15 L10 15 Z" fill="${theme.side}" /> <!-- Lateral -->
+                <path d="M15 15 L65 15 L55 5 L20 5 Z" fill="${theme.body}" /> <!-- Techo/Cuerpo -->
+                <path d="M25 15 L35 7 L55 7 L60 15 Z" fill="${glassColor}" /> <!-- Ventanas -->
+                <circle cx="15" cy="30" r="6" fill="#111" /> <!-- Rueda del -->
+                <circle cx="65" cy="30" r="6" fill="#111" /> <!-- Rueda tra -->
+                ${isTaxi ? '<rect x="35" y="2" width="15" height="5" fill="#facc15" stroke="black" rx="1"/>' : ''}
+            </svg>`;
+        }
+
+        const carSvg = generateDetailedCarSVG(viewAngle, theme, isTaxi);
 
         return L.divIcon({
             className: 'radar-car-marker',
             html: `
                 <div class="radar-car-container">
                     <div class="radar-car-label ${statusClass}">${displayName}</div>
-                    <div class="radar-car-icon-wrapper ${statusClass}" style="transform: rotate(${rotation}deg);">
+                    <div class="radar-car-icon-wrapper ${statusClass}">
                         <div class="radar-car-internal">
                             ${carSvg}
                         </div>
