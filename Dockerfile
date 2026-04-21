@@ -1,24 +1,45 @@
-# Usa una imagen oficial de Node con soporte de Puppeteers
-FROM ghcr.io/puppeteer/puppeteer:22.0.0
+# Usa una imagen liviana de Node.js
+FROM node:20-slim
 
-# Establecer el directorio de trabajo
+# Instala Chromium y todas las dependencias necesarias para Puppeteer en Debian
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    fonts-liberation \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Establece el directorio de trabajo
 WORKDIR /usr/src/app
 
-# Variables de entorno para Puppeteer y Firebase
+# Variables de entorno para que Puppeteer no descargue Chrome y use el del sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Copiar archivos de dependencia
+# Copia los archivos de configuración de dependencias
 COPY package*.json ./
 
-# Instalar dependencias (incluyendo las nuevas como whatsapp-web.js)
+# Instala dependencias
 RUN npm install
 
-# Copiar el resto del código
+# Copia el resto del código del proyecto
 COPY . .
 
-# Exponer el puerto
+# Expone el puerto que usa Express
 EXPOSE 10000
 
-# Iniciar el servidor que a su vez inicia el Bot
+# Inicia el servidor
 CMD ["node", "server.js"]
