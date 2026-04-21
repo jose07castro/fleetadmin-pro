@@ -92,6 +92,10 @@ const App = (() => {
                         if (typeof TrafficAlerts !== 'undefined') {
                             TrafficAlerts.init();
                         }
+                        // 8.6 Activar comandos de voz (Manos Libres)
+                        if (typeof VoiceModule !== 'undefined') {
+                            VoiceModule.init();
+                        }
                         // 9. Mostrar banner PWA de instalación (solo drivers móviles)
                         if (typeof PWAInstall !== 'undefined') {
                             setTimeout(() => PWAInstall.showBanner(), 2000);

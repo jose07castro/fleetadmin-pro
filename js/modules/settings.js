@@ -96,6 +96,32 @@ const SettingsModule = (() => {
                     </div>
                 </div>
             </div>
+            
+            <!-- Comandos de Voz (v120) -->
+            <div class="settings-section">
+                <div class="settings-section-title">🎙️ Comandos de Voz (Manos Libres)</div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">Modo "ALERTA"</div>
+                        <div class="settings-item-desc">Activá el micrófono para registrar alertas por voz</div>
+                    </div>
+                    <div class="toggle-group">
+                        <button class="toggle-option ${VoiceModule.isEnabled() ? 'active' : ''}"
+                            onclick="SettingsModule.toggleVoice(true)">
+                            ON
+                        </button>
+                        <button class="toggle-option ${!VoiceModule.isEnabled() ? 'active' : ''}"
+                            onclick="SettingsModule.toggleVoice(false)">
+                            OFF
+                        </button>
+                    </div>
+                </div>
+                ${VoiceModule.isEnabled() ? `
+                <div style="font-size:11px; color:#22c55e; margin-top:var(--space-2); text-align:right; font-weight:600;">
+                    ✅ Escuchando "ALERTA..."
+                </div>
+                ` : ''}
+            </div>
 
             <!-- Perfil -->
             <div class="settings-section">
@@ -537,6 +563,17 @@ const SettingsModule = (() => {
         } else {
             Router.navigate('settings');
         }
+    }
+
+    function toggleVoice(enable) {
+        if (typeof VoiceModule === 'undefined') return;
+        if (enable) {
+            VoiceModule.start();
+        } else {
+            VoiceModule.stop();
+        }
+        // Forzar un re-render de la vista de configuración para mostrar el estado
+        Router.navigate('settings');
     }
 
     // --- Identificar al Super Admin (fundador de la flota) ---
@@ -1293,6 +1330,17 @@ const SettingsModule = (() => {
         }
     }
 
+    function toggleVoice(enable) {
+        if (typeof VoiceModule === 'undefined') return;
+        if (enable) {
+            VoiceModule.start();
+        } else {
+            VoiceModule.stop();
+        }
+        // Forzar un re-render de la vista de configuración para mostrar el estado activado/desactivado
+        Router.navigate('settings');
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1300,6 +1348,6 @@ const SettingsModule = (() => {
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
         showReportModal, submitReport, toggleReportDriverType,
-        saveVapidKey
+        saveVapidKey, toggleVoice
     };
 })();
