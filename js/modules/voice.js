@@ -8,6 +8,14 @@ const VoiceModule = (() => {
     let _isListeningWakeWord = false;
     let _isConversing = false;
     let _voiceEnabled = false;
+    let _voiceProfile = null;
+    
+    // Audio buffering for biometrics
+    let _audioCtx = null;
+    let _rollingBuffer = []; // Array of Float32Array (chunks)
+    let _stream = null;
+    let _processor = null;
+    const BUFFER_MAX_SIZE = 44100 * 2; // 2 segundos a 44.1kHz
 
     // Configuración de palabras clave
     const WAKE_WORD = 'alerta';
@@ -46,7 +54,7 @@ const VoiceModule = (() => {
             console.log('🎙️ Reconocido:', result);
 
             if (result.includes(WAKE_WORD)) {
-                _startConversation();
+                _verifyAndStartConversation();
             }
         };
 
@@ -61,10 +69,40 @@ const VoiceModule = (() => {
             if (e.error === 'not-allowed') _voiceEnabled = false;
         };
 
+        // Cargar perfil de voz (Biometría)
+        _loadVoiceProfile();
+
         // Cargar preferencia del usuario
         _voiceEnabled = localStorage.getItem('fleetadmin_voice_enabled') === 'true';
         if (_voiceEnabled) {
             start();
+        }
+    }
+
+    async function _loadVoiceProfile() {
+        const userId = Auth.getUserId();
+        if (!userId) return;
+
+        // 1. Intentar local
+        const local = localStorage.getItem(`voice_profile_${userId}`);
+        if (local) {
+            _voiceProfile = JSON.parse(local);
+            console.log('🛡️ Biometría: Perfil local cargado.');
+        }
+
+        // 2. Intentar Firebase (sincro)
+        const fleetId = Auth.getFleetId();
+        if (fleetId) {
+            try {
+                const snap = await firebaseDB.ref(`fleets/${fleetId}/users/${userId}/voiceProfile`).once('value');
+                if (snap.exists()) {
+                    _voiceProfile = snap.val();
+                    localStorage.setItem(`voice_profile_${userId}`, JSON.stringify(_voiceProfile));
+                    console.log('🛡️ Biometría: Perfil sincronizado desde Firebase.');
+                }
+            } catch (e) {
+                console.warn('🛡️ Biometría: Error cargando perfil remoto:', e);
+            }
         }
     }
 
@@ -73,6 +111,7 @@ const VoiceModule = (() => {
         localStorage.setItem('fleetadmin_voice_enabled', 'true');
         try {
             _recognition.start();
+            _startRollingBuffer(); // Iniciar captura para biometría
             _isListeningWakeWord = true;
             console.log('🎙️ Wake-word "ALERTA" activado');
             if (typeof Components !== 'undefined') Components.showToast('🎙️ Modo Manos Libres activado', 'info');
@@ -169,6 +208,73 @@ const VoiceModule = (() => {
             _speak('Error al obtener tu ubicación. No se pudo registrar.');
             _isConversing = false;
         });
+    }
+
+    // --- Manejo del Rolling Buffer para Biometría ---
+
+    async function _startRollingBuffer() {
+        try {
+            if (_audioCtx) return;
+            
+            _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            _stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const source = _audioCtx.createMediaStreamSource(_stream);
+            
+            // Usar ScriptProcessor para capturar buffers en tiempo real
+            _processor = _audioCtx.createScriptProcessor(4096, 1, 1);
+            
+            source.connect(_processor);
+            _processor.connect(_audioCtx.destination);
+            
+            _processor.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                // Guardar una copia
+                _rollingBuffer.push(new Float32Array(inputData));
+                
+                // Mantener solo los últimos ~2-3 segundos
+                const totalSamples = _rollingBuffer.length * 4096;
+                if (totalSamples > BUFFER_MAX_SIZE * 1.5) {
+                    _rollingBuffer.shift();
+                }
+            };
+        } catch (e) {
+            console.warn('🛡️ Biometría: No se pudo iniciar el buffer continuo:', e);
+        }
+    }
+
+    async function _verifyAndStartConversation() {
+        if (_isConversing) return;
+
+        // 1. Si no hay perfil, permitir pero avisar
+        if (!_voiceProfile) {
+            console.log('🛡️ Biometría: Sin perfil. Permitiendo por defecto.');
+            _startConversation();
+            return;
+        }
+
+        // 2. Extraer buffer actual (últimos 2 segundos)
+        const totalSamples = _rollingBuffer.length * 4096;
+        const mergedBuffer = new Float32Array(totalSamples);
+        let offset = 0;
+        for (const chunk of _rollingBuffer) {
+            mergedBuffer.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        // Crear un AudioBuffer para Biometrics
+        const audioBuffer = _audioCtx.createBuffer(1, mergedBuffer.length, _audioCtx.sampleRate);
+        audioBuffer.copyToChannel(mergedBuffer, 0);
+
+        // 3. Verificar Identidad
+        const isAuthorized = await Biometrics.verifySpeaker(audioBuffer, _voiceProfile);
+
+        if (isAuthorized) {
+            console.log('✅ Biometría: Chofer autorizado.');
+            _startConversation();
+        } else {
+            console.warn('🚫 Biometría: Intento no autorizado detectado. Ignorando.');
+            // Opcional: Feedback visual discreto
+        }
     }
 
     // --- Helpers de Audio ---
