@@ -5,11 +5,15 @@ const PORT = process.env.PORT || 10000;
 
 // Importar Bot de WhatsApp (Escucha grupos en segundo plano)
 const WhatsappBot = require('./js/bot/whatsapp-bot');
-WhatsappBot.init();
 
 // 1. Dejamos que Express sirva los archivos libremente (JS, CSS, HTML, lo que sea)
 app.use(express.static(__dirname));
 app.use(express.json());
+
+// Ruta de Salud rápida para Render (evita el "Port binding timeout")
+app.get('/', (req, res) => {
+    res.send('🚀 FleetAdmin Pro Backend is ONLINE');
+});
 
 // ============================================
 // WhatsApp Bot Webhook
@@ -45,4 +49,8 @@ app.get('*', (req, res) => {
 // 3. Arranque del motor
 app.listen(PORT, () => {
     console.log('Servidor FleetAdmin Pro rugiendo en el puerto ' + PORT);
+    
+    // Iniciar Bot de WhatsApp de forma asíncrona para no bloquear el puerto
+    console.log('⏳ Iniciando componente WhatsApp en segundo plano...');
+    WhatsappBot.init();
 });
