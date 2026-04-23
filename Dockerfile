@@ -13,4 +13,4 @@ ENV PORT=10000
 EXPOSE 10000
 
 # Arrancamos el bot
-CMD ["node", "whatsapp-bot.js"]
+CMD ["node", "js/bot/whatsapp-bot.js"]
