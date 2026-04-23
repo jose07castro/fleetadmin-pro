@@ -13,6 +13,6 @@ RUN npm install
 COPY --chown=pptruser:pptruser . .
 
 ENV PORT=10000
-EXPOSE 10000
+EXPOSE 10000 
 
 CMD ["node", "whatsapp-bot.js"]
