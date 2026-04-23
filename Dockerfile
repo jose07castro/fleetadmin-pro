@@ -1,16 +1,18 @@
 FROM ghcr.io/puppeteer/puppeteer:21.5.0
 
-# Saltamos las instalaciones extras para evitar el error 100
+# Usamos la imagen que ya trae Chrome para evitar errores
 WORKDIR /app
 
-# Copiamos los archivos de la app
+# Copiamos los archivos de configuración
 COPY --chown=pptruser:pptruser package*.json ./
 RUN npm install
+
+# Copiamos todo el proyecto
 COPY --chown=pptruser:pptruser . .
 
 # Configuramos el puerto para Render
 ENV PORT=10000
 EXPOSE 10000
 
-# Arrancamos el bot
+# EL CAMINO CORRECTO:
 CMD ["node", "js/bot/whatsapp-bot.js"]
