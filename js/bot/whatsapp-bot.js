@@ -9,6 +9,8 @@ const axios = require('axios');
 const admin = require('firebase-admin');
 
 // 1. Inicialización de Firebase Admin (vía Variables de Entorno)
+let db = null;
+
 if (!admin.apps.length) {
     try {
         const projectId = process.env.FIREBASE_PROJECT_ID;
@@ -16,15 +18,18 @@ if (!admin.apps.length) {
         let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
         if (privateKey) {
-            // Manejar saltos de línea de Render y posibles comillas accidentales
-            privateKey = privateKey.replace(/\\n/g, '\n');
+            // 1. Limpieza extrema: saltos de línea, comillas y espacios
+            privateKey = privateKey.replace(/\\n/g, '\n').trim();
             if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
                 privateKey = privateKey.substring(1, privateKey.length - 1);
             }
+            
+            // Log de control (Verás esto en Render para confirmar que se procesó bien)
+            console.log(`📦 Firebase Init: Clave de ${privateKey.length} caracteres detectada.`);
         }
 
-        if (!projectId || !clientEmail || !privateKey) {
-            throw new Error('Faltan variables de entorno de Firebase (PROJECT_ID, CLIENT_EMAIL o PRIVATE_KEY)');
+        if (!projectId || !clientEmail || !privateKey || privateKey.length < 100) {
+            throw new Error('Variables de Firebase ausentes o clave demasiado corta.');
         }
 
         admin.initializeApp({
@@ -35,11 +40,11 @@ if (!admin.apps.length) {
             }),
             databaseURL: process.env.FIREBASE_DATABASE_URL
         });
+        
+        db = admin.database();
         console.log('✅ Firebase Admin: Inicializado con éxito vía Variables de Entorno.');
     } catch (e) {
         console.error('❌ Firebase Admin: Error crítico de inicialización:', e.message);
-        // No salimos con error para permitir que el servidor Express (si lo hay) siga vivo, 
-        // pero el bot no funcionará correctamente sin esto.
     }
 }
 
