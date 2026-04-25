@@ -417,7 +417,7 @@
 
 .form-textarea-auto {
     min-height: 40px !important;
-    max-height: 200px !important;
+    max-height: 250px !important;
     resize: none !important;
     overflow-y: hidden;
     line-height: 1.4 !important;

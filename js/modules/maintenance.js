@@ -270,6 +270,7 @@ const MaintenanceModule = (() => {
             return;
         }
 
+        const vehicle = await DB.get('vehicles', vehicleId);
         const odometerKm = Units.toKm(odometer);
 
         // Validar KM contra odómetro actual del vehículo según ROL
@@ -592,11 +593,11 @@ const MaintenanceModule = (() => {
             el.style.height = 'auto';
             let newHeight = el.scrollHeight;
             if (newHeight < 40) newHeight = 40;
-            if (newHeight > 200) newHeight = 200;
+            if (newHeight > 250) newHeight = 250;
             el.style.height = newHeight + 'px';
             
             // Si supera el máximo, permitir scroll
-            el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden';
+            el.style.overflowY = el.scrollHeight > 250 ? 'auto' : 'hidden';
         };
 
         el.addEventListener('input', adjustHeight);
