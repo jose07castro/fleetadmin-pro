@@ -48,7 +48,8 @@ if (!admin.apps.length) {
     }
 }
 
-const db = admin.database();
+// Nota: db ya fue declarado arriba como let y asignado dentro del try.
+// Eliminamos la declaración redundante aquí.
 
 /**
  * Módulo de Lógica del Bot
