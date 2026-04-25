@@ -10,18 +10,36 @@ const admin = require('firebase-admin');
 
 // 1. Inicialización de Firebase Admin (vía Variables de Entorno)
 if (!admin.apps.length) {
-    try { 
+    try {
+        const projectId = process.env.FIREBASE_PROJECT_ID;
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+        let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+        if (privateKey) {
+            // Manejar saltos de línea de Render y posibles comillas accidentales
+            privateKey = privateKey.replace(/\\n/g, '\n');
+            if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+                privateKey = privateKey.substring(1, privateKey.length - 1);
+            }
+        }
+
+        if (!projectId || !clientEmail || !privateKey) {
+            throw new Error('Faltan variables de entorno de Firebase (PROJECT_ID, CLIENT_EMAIL o PRIVATE_KEY)');
+        }
+
         admin.initializeApp({
             credential: admin.credential.cert({
-                projectId: process.env.FIREBASE_PROJECT_ID,
-                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+                projectId,
+                clientEmail,
+                privateKey
             }),
             databaseURL: process.env.FIREBASE_DATABASE_URL
         });
-        console.log('✅ Firebase Admin: Conectado correctamente.');
+        console.log('✅ Firebase Admin: Inicializado con éxito vía Variables de Entorno.');
     } catch (e) {
-        console.warn('⚠️ Firebase Admin: Error inicializando. El bot no podrá guardar alertas.', e.message);
+        console.error('❌ Firebase Admin: Error crítico de inicialización:', e.message);
+        // No salimos con error para permitir que el servidor Express (si lo hay) siga vivo, 
+        // pero el bot no funcionará correctamente sin esto.
     }
 }
 

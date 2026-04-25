@@ -434,7 +434,11 @@ const MaintenanceModule = (() => {
                         <div class="form-group">
                             <label class="form-label">${I18n.t('date')}</label>
                             <input type="date" class="form-input" id="repairDate"
-                                value="${repair?.date ? new Date(repair.date).toISOString().split('T'                    <div class="form-group">
+                                value="${repair?.date ? new Date(repair.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
                         <label class="form-label">${I18n.t('mech_repair_desc')}</label>
                         <textarea class="form-input form-textarea-auto" id="repairDescription" 
                             placeholder="Ej: Bomba de nafta, bujías, correa...">${repair?.description || (repair?.parts ? repair.parts.map(p => p.name).join(', ') : '')}</textarea>
@@ -456,11 +460,6 @@ const MaintenanceModule = (() => {
             // Inicializar auto-expandir
             const textarea = document.getElementById('repairDescription');
             if (textarea) MaintenanceModule.initAutoExpand(textarea);
-        });
-    }
-click="MaintenanceModule.saveRepair('${repair?.id || ''}')">${I18n.t('save')}</button>
-                `
-            );
         });
     }
 
@@ -486,7 +485,6 @@ click="MaintenanceModule.saveRepair('${repair?.id || ''}')">${I18n.t('save')}</b
         }
 
         const totalCost = laborCost + partsTotalCost;
-        const odometerKm = Units.toKm(odometer);
 
 
 

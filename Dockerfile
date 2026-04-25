@@ -14,5 +14,5 @@ COPY --chown=pptruser:pptruser . .
 ENV PORT=10000
 EXPOSE 10000
 
-# EL CAMINO CORRECTO:
-CMD ["node", "js/bot/whatsapp-bot.js"]
+# Ejecutamos el servidor principal que inicia el bot
+CMD ["node", "server.js"]
