@@ -18,22 +18,25 @@ if (!admin.apps.length) {
         let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim();
 
         if (privateKey) {
-            // 1. Normalizar saltos de línea
-            privateKey = privateKey.replace(/\\n/g, '\n').replace(/\n\n+/g, '\n');
-            // 2. Quitar comillas
-            privateKey = privateKey.replace(/^"|"$/g, '');
-            // 3. Extracción estricta del bloque PEM
-            const startTag = '-----BEGIN PRIVATE KEY-----';
-            const endTag = '-----END PRIVATE KEY-----';
-            if (privateKey.includes(startTag) && privateKey.includes(endTag)) {
+            privateKey = privateKey.replace(/\\n/g, '\n').replace(/\n\n+/g, '\n').replace(/^"|"$/g, '').trim();
+            
+            const hasStart = privateKey.includes('-----BEGIN PRIVATE KEY-----');
+            const hasEnd = privateKey.includes('-----END PRIVATE KEY-----');
+            
+            if (!hasStart || !hasEnd) {
+                console.error(`⚠️ LA CLAVE ESTÁ INCOMPLETA: Start=${hasStart}, End=${hasEnd}.`);
+            }
+
+            // Extracción
+            if (hasStart && hasEnd) {
                 privateKey = privateKey.substring(
-                    privateKey.indexOf(startTag),
-                    privateKey.indexOf(endTag) + endTag.length
+                    privateKey.indexOf('-----BEGIN PRIVATE KEY-----'),
+                    privateKey.indexOf('-----END PRIVATE KEY-----') + 25
                 );
             }
         }
 
-        console.log(`📡 Config: ID=${projectId.substring(0, 5)}..., Email=${clientEmail.substring(0, 5)}..., Key=${privateKey.length} chars`);
+        console.log(`📡 Config: ID=${projectId.substring(0, 5)}..., KeyLength=${privateKey.length}, EndsCorrectly=${privateKey.endsWith('-----END PRIVATE KEY-----')}`);
 
         if (!projectId || !clientEmail || privateKey.length < 100) {
             throw new Error('Variables de Firebase incompletas o inválidas.');
