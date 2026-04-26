@@ -13,18 +13,16 @@ let db = null;
 
 if (!admin.apps.length) {
     try {
-        const projectId = process.env.FIREBASE_PROJECT_ID;
-        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+        const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
+        const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
+        let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim();
 
         if (privateKey) {
-            // 1. Limpieza inicial de saltos de línea y comillas
-            privateKey = privateKey.replace(/\\n/g, '\n').trim();
-            if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-                privateKey = privateKey.substring(1, privateKey.length - 1);
-            }
-
-            // 2. EXTRACCIÓN PRECISA: Ignorar cualquier texto antes o después de los tags
+            // 1. Normalizar saltos de línea
+            privateKey = privateKey.replace(/\\n/g, '\n').replace(/\n\n+/g, '\n');
+            // 2. Quitar comillas
+            privateKey = privateKey.replace(/^"|"$/g, '');
+            // 3. Extracción estricta del bloque PEM
             const startTag = '-----BEGIN PRIVATE KEY-----';
             const endTag = '-----END PRIVATE KEY-----';
             if (privateKey.includes(startTag) && privateKey.includes(endTag)) {
@@ -33,12 +31,12 @@ if (!admin.apps.length) {
                     privateKey.indexOf(endTag) + endTag.length
                 );
             }
-            
-            console.log(`📦 Firebase Init: Clave procesada correctamente (${privateKey.length} caracteres).`);
         }
 
-        if (!projectId || !clientEmail || !privateKey || privateKey.length < 100) {
-            throw new Error('Variables de Firebase ausentes o clave demasiado corta.');
+        console.log(`📡 Config: ID=${projectId.substring(0, 5)}..., Email=${clientEmail.substring(0, 5)}..., Key=${privateKey.length} chars`);
+
+        if (!projectId || !clientEmail || privateKey.length < 100) {
+            throw new Error('Variables de Firebase incompletas o inválidas.');
         }
 
         admin.initializeApp({
@@ -51,9 +49,9 @@ if (!admin.apps.length) {
         });
         
         db = admin.database();
-        console.log('✅ Firebase Admin: Inicializado con éxito vía Variables de Entorno.');
+        console.log('✅ Firebase Admin: ¡Inicializado con éxito!');
     } catch (e) {
-        console.error('❌ Firebase Admin: Error crítico de inicialización:', e.message);
+        console.error('❌ Firebase Admin:', e.message);
     }
 }
 
