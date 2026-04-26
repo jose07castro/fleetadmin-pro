@@ -18,14 +18,23 @@ if (!admin.apps.length) {
         let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
         if (privateKey) {
-            // 1. Limpieza extrema: saltos de línea, comillas y espacios
+            // 1. Limpieza inicial de saltos de línea y comillas
             privateKey = privateKey.replace(/\\n/g, '\n').trim();
             if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
                 privateKey = privateKey.substring(1, privateKey.length - 1);
             }
+
+            // 2. EXTRACCIÓN PRECISA: Ignorar cualquier texto antes o después de los tags
+            const startTag = '-----BEGIN PRIVATE KEY-----';
+            const endTag = '-----END PRIVATE KEY-----';
+            if (privateKey.includes(startTag) && privateKey.includes(endTag)) {
+                privateKey = privateKey.substring(
+                    privateKey.indexOf(startTag),
+                    privateKey.indexOf(endTag) + endTag.length
+                );
+            }
             
-            // Log de control (Verás esto en Render para confirmar que se procesó bien)
-            console.log(`📦 Firebase Init: Clave de ${privateKey.length} caracteres detectada.`);
+            console.log(`📦 Firebase Init: Clave procesada correctamente (${privateKey.length} caracteres).`);
         }
 
         if (!projectId || !clientEmail || !privateKey || privateKey.length < 100) {
