@@ -78,14 +78,10 @@ const WhatsappBot = (() => {
         
         client = new Client({
             authStrategy: new LocalAuth(),
-            qrMaxRetries: 15,
-            authTimeoutMs: 120000, // 2 minutos
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-            },
+            qrMaxRetries: 20,
+            authTimeoutMs: 180000, // 3 minutos
             puppeteer: {
-                headless: 'new',
+                headless: 'shell', // Modo ultra-liviano
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -94,7 +90,10 @@ const WhatsappBot = (() => {
                     '--disable-extensions',
                     '--disable-gpu',
                     '--no-first-run',
-                    '--disable-features=IsolateOrigins,site-per-process'
+                    '--disable-software-rasterizer',
+                    '--disable-setuid-sandbox',
+                    '--memory-pressure-thresholds=1',
+                    '--disable-dev-shm-usage'
                 ],
                 executablePath: exePath
             }
