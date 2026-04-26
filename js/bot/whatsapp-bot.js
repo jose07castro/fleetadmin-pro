@@ -78,7 +78,7 @@ const WhatsappBot = (() => {
         client = new Client({
             authStrategy: new LocalAuth(),
             puppeteer: {
-                headless: 'new', // Modo estable solicitado por Render
+                headless: 'new',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -87,11 +87,17 @@ const WhatsappBot = (() => {
                     '--disable-extensions',
                     '--disable-gpu',
                     '--disable-accelerated-2d-canvas',
-                    '--no-first-run'
+                    '--no-first-run',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
                 ],
                 executablePath: exePath
             }
         });
+        
+        // v121: Mejorar manejo de desconexión por timeout
+        client.on('auth_failure', msg => console.error('❌ Error de autenticación:', msg));
+        client.on('disconnected', (reason) => console.log('⚠️ Bot desconectado:', reason));
 
         // Evento QR
         let qrCount = 0;
