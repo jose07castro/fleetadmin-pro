@@ -94,17 +94,18 @@ const WhatsappBot = (() => {
         });
 
         // Evento QR
+        let qrCount = 0;
         client.on('qr', (qr) => {
-            console.log('📲 ========================================');
-            console.log('📲 ESCANEÁ ESTE QR PARA ACTIVAR EL BOT:');
+            qrCount++;
+            console.log(`📲 [QR #${qrCount}] NUEVO CÓDIGO GENERADO (Expira en 30s)`);
             console.log('📲 ========================================');
             
-            // 1. QR en Terminal (estilo clásico para intentar mejor lectura)
+            // 1. QR en Terminal
             qrcode.generate(qr, { small: false });
 
-            // 2. LINK DE RESPALDO (Copiá y pegá esto en tu navegador si el de arriba se ve mal)
+            // 2. LINK DE RESPALDO
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
-            console.log('🔗 SI NO PODÉS ESCANEAR EL DE ARRIBA, USÁ ESTE LINK:');
+            console.log(`🔗 LINK PARA ESCANEAR (Intento #${qrCount}):`);
             console.log(qrUrl);
             console.log('📲 ========================================');
         });
