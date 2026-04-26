@@ -108,25 +108,29 @@ const WhatsappBot = (() => {
         let qrCount = 0;
         client.on('qr', async (qr) => {
             qrCount++;
-            console.log(`📲 [QR #${qrCount}] NUEVO CÓDIGO GENERADO`);
-            
-            // Si hay un número configurado, pedir código de vinculación (MÁS ESTABLE)
             const phone = process.env.WWEBJS_PHONE;
+            
             if (phone) {
-                try {
-                    const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
-                    console.log('📲 ========================================');
-                    console.log('📲 CÓDIGO DE VINCULACIÓN PARA TU CELULAR:');
-                    console.log(`📲 >>> ${pairingCode} <<<`);
-                    console.log('📲 ========================================');
-                } catch (err) {
-                    console.error('❌ Error al pedir código de vinculación:', err.message);
+                console.log(`📲 [Intento #${qrCount}] Pidiendo código de vinculación para: ${phone}...`);
+                
+                // Reintentar hasta 3 veces por cada evento QR si falla por timeout
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
+                        console.log('📲 ========================================');
+                        console.log('📲 CÓDIGO DE VINCULACIÓN PARA TU CELULAR:');
+                        console.log(`📲 >>> ${pairingCode} <<<`);
+                        console.log('📲 ========================================');
+                        return; // Éxito, salir del loop
+                    } catch (err) {
+                        console.error(`⚠️ Intento ${i+1} fallido: ${err.message}`);
+                        if (i < 2) await new Promise(resolve => setTimeout(resolve, 5000));
+                    }
                 }
+            } else {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
+                console.log(`🔗 ESCANEÁ EL QR: ${qrUrl}`);
             }
-
-            // Fallback al QR clásico
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
-            console.log(`🔗 O ESCANEÁ EL QR (Intento #${qrCount}): ${qrUrl}`);
         });
 
         // Evento Ready
