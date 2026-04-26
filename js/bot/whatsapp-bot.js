@@ -78,6 +78,8 @@ const WhatsappBot = (() => {
         
         client = new Client({
             authStrategy: new LocalAuth(),
+            qrMaxRetries: 10,
+            authTimeoutMs: 60000, // Aumentar a 1 minuto
             puppeteer: {
                 headless: 'new',
                 args: [
@@ -87,12 +89,11 @@ const WhatsappBot = (() => {
                     '--no-zygote',
                     '--disable-extensions',
                     '--disable-gpu',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--disable-features=IsolateOrigins,site-per-process',
-                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                    '--disable-setuid-sandbox',
+                    '--js-flags="--max-old-space-size=400"' // Limitar RAM de JS
                 ],
-                executablePath: exePath
+                executablePath: exePath,
+                timeout: 60000 // Timeouts de 1 min
             }
         });
         
