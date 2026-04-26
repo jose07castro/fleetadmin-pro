@@ -103,19 +103,27 @@ const WhatsappBot = (() => {
 
         // Evento QR
         let qrCount = 0;
-        client.on('qr', (qr) => {
+        client.on('qr', async (qr) => {
             qrCount++;
-            console.log(`📲 [QR #${qrCount}] NUEVO CÓDIGO GENERADO (Expira en 30s)`);
-            console.log('📲 ========================================');
+            console.log(`📲 [QR #${qrCount}] NUEVO CÓDIGO GENERADO`);
             
-            // 1. QR en Terminal
-            qrcode.generate(qr, { small: false });
+            // Si hay un número configurado, pedir código de vinculación (MÁS ESTABLE)
+            const phone = process.env.WWEBJS_PHONE;
+            if (phone) {
+                try {
+                    const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
+                    console.log('📲 ========================================');
+                    console.log('📲 CÓDIGO DE VINCULACIÓN PARA TU CELULAR:');
+                    console.log(`📲 >>> ${pairingCode} <<<`);
+                    console.log('📲 ========================================');
+                } catch (err) {
+                    console.error('❌ Error al pedir código de vinculación:', err.message);
+                }
+            }
 
-            // 2. LINK DE RESPALDO
+            // Fallback al QR clásico
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
-            console.log(`🔗 LINK PARA ESCANEAR (Intento #${qrCount}):`);
-            console.log(qrUrl);
-            console.log('📲 ========================================');
+            console.log(`🔗 O ESCANEÁ EL QR (Intento #${qrCount}): ${qrUrl}`);
         });
 
         // Evento Ready
