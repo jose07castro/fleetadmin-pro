@@ -94,7 +94,6 @@ const WhatsappBot = (() => {
                     '--disable-extensions',
                     '--disable-gpu',
                     '--no-first-run',
-                    '--single-process',
                     '--disable-features=IsolateOrigins,site-per-process'
                 ],
                 executablePath: exePath
