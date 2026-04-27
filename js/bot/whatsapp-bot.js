@@ -99,24 +99,23 @@ const WhatsappBot = (() => {
         client.on('authenticated', () => console.log('✅ Bot autenticado'));
         client.on('auth_failure', msg => console.error('❌ Error de autenticación:', msg));
 
+        let isRequesting = false;
         client.on('qr', async (qr) => {
             const phone = process.env.WWEBJS_PHONE;
-            if (phone) {
-                console.log(`📲 QR Generado. Esperando 30s de "calentamiento" para pedir código...`);
+            if (phone && !isRequesting) {
+                isRequesting = true;
+                console.log(`📲 QR Detectado. Calentando motores (30s)...`);
                 await new Promise(resolve => setTimeout(resolve, 30000));
                 
-                let success = false;
-                while (!success) {
-                    try {
-                        const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
-                        console.log('📲 ========================================');
-                        console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
-                        console.log('📲 ========================================');
-                        success = true;
-                    } catch (err) {
-                        console.error('⚠️ Reintentando pedido de código en 15s...', err.message);
-                        await new Promise(resolve => setTimeout(resolve, 15000));
-                    }
+                try {
+                    const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
+                    console.log('📲 ========================================');
+                    console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
+                    console.log('📲 ========================================');
+                } catch (err) {
+                    // Falló silenciosamente, permitiremos el próximo QR
+                } finally {
+                    isRequesting = false;
                 }
             }
         });
