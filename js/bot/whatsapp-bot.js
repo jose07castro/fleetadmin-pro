@@ -78,33 +78,27 @@ const WhatsappBot = (() => {
         
         client = new Client({
             authStrategy: new LocalAuth(),
-            qrMaxRetries: 20,
-            authTimeoutMs: 180000, // 3 minutos
+            qrMaxRetries: 15,
+            authTimeoutMs: 120000,
             puppeteer: {
-                headless: 'shell', // Modo ultra-liviano
+                headless: 'new',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--no-zygote',
                     '--disable-extensions',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--disable-software-rasterizer',
-                    '--disable-setuid-sandbox',
-                    '--memory-pressure-thresholds=1',
-                    '--disable-dev-shm-usage'
+                    '--disable-gpu'
                 ],
                 executablePath: exePath
             }
         });
-        
-        // v121: Mejorar manejo de desconexión por timeout
-        client.on('auth_failure', msg => console.error('❌ Error de autenticación:', msg));
-        client.on('disconnected', (reason) => console.log('⚠️ Bot desconectado:', reason));
 
-        // Evento QR
-        let qrCount = 0;
+        // Eventos de depuración
+        client.on('loading_screen', (percent, message) => console.log(`⏳ Cargando WhatsApp: ${percent}% - ${message}`));
+        client.on('authenticated', () => console.log('✅ Bot autenticado'));
+        client.on('auth_failure', msg => console.error('❌ Error de autenticación:', msg));
+
         client.on('qr', async (qr) => {
             const phone = process.env.WWEBJS_PHONE;
             if (phone) {
@@ -114,14 +108,13 @@ const WhatsappBot = (() => {
                     console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
                     console.log('📲 ========================================');
                 } catch (err) {
-                    // Ignorar errores de timeout silenciosamente para no llenar el log
+                    console.error('⚠️ Error al pedir código:', err.message);
                 }
             }
         });
 
-        // Evento Ready
         client.on('ready', () => {
-            console.log('✅ Bot conectado y escuchando grupos satisfactoriamente.');
+            console.log('✅ Bot de WhatsApp listo y escuchando mensajes');
         });
 
         // Evento Mensaje
@@ -129,22 +122,33 @@ const WhatsappBot = (() => {
             // Ignorar mis propios mensajes o mensajes que no son de grupos
             if (!msg.from.includes('@g.us')) return;
 
-            const content = msg.body.toLowerCase();
+            const content = (msg.body || '').toLowerCase();
             
             // 1. Filtrado por Palabras Clave
             if (ALERT_KEYWORDS.some(k => content.includes(k))) {
                 console.log(`🚨 Posible alerta detectada en grupo: "${msg.body}"`);
                 
-                // 2. Intentar extraer intersección (Calle X y Calle Y)
-                const intersection = _extractIntersection(content);
-                if (intersection) {
-                    _processAlert(intersection, msg.body, msg.from);
+                try {
+                    const group = await msg.getChat();
+                    const contact = await msg.getContact();
+                    
+                    // Guardar en Firebase
+                    await db.ref('bot_alerts').push({
+                        group: group.name,
+                        author: contact.pushname || contact.number,
+                        text: msg.body,
+                        timestamp: Date.now()
+                    });
+                    
+                    console.log('✅ Alerta guardada en Firebase');
+                } catch (err) {
+                    console.error('❌ Error al procesar alerta:', err.message);
                 }
             }
         });
 
-        console.log('🚀 INICIANDO BOT v128 (ULTRA-LITE)...');
-        client.initialize();
+        console.log('🚀 INICIANDO BOT v131 (MODO ESTABLE)...');
+        client.initialize().catch(err => console.error('❌ Error al iniciar cliente:', err.message));
     }
 
     /**
