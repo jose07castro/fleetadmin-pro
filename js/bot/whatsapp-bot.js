@@ -104,33 +104,32 @@ const WhatsappBot = (() => {
             const phone = process.env.WWEBJS_PHONE;
             if (phone && !isRequesting) {
                 isRequesting = true;
-                console.log(`📲 QR Detectado. Calentando motores (15s)...`);
-                await new Promise(resolve => setTimeout(resolve, 15000));
+                console.log(`📲 QR Detectado. Súper Calentamiento (45s) para Render...`);
+                await new Promise(resolve => setTimeout(resolve, 45000));
                 
-                try {
-                    const cleanPhone = phone.replace(/\D/g, '');
-                    console.log(`📲 Intento 1: Enviando pedido para ${cleanPhone}...`);
-                    const pairingCode = await client.requestPairingCode(cleanPhone);
-                    console.log('📲 ========================================');
-                    console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
-                    console.log('📲 ========================================');
-                } catch (err) {
-                    console.error(`❌ Intento 1 falló: ${err.message}`);
-                    
-                    // Intento 2: Sin el '9' (formato alternativo para Argentina)
+                const baseNumber = phone.replace(/\D/g, '');
+                const formats = [
+                    baseNumber,                     // 549341...
+                    baseNumber.replace('549', '54'), // 54341...
+                    `+${baseNumber}`,               // +549341...
+                    baseNumber.substring(2)         // 341... (local)
+                ];
+
+                for (const fmt of formats) {
                     try {
-                        const altPhone = phone.replace(/\D/g, '').replace('549', '54');
-                        console.log(`📲 Intento 2: Probando sin el "9": ${altPhone}...`);
-                        const pairingCode = await client.requestPairingCode(altPhone);
+                        console.log(`📲 Probando formato: ${fmt}...`);
+                        const pairingCode = await client.requestPairingCode(fmt);
                         console.log('📲 ========================================');
-                        console.log(`📲 CÓDIGO ACTUAL (Alt): >>> ${pairingCode} <<<`);
+                        console.log(`📲 CÓDIGO CONSEGUIDO (Formato ${fmt}):`);
+                        console.log(`📲 >>> ${pairingCode} <<<`);
                         console.log('📲 ========================================');
-                    } catch (err2) {
-                        console.error(`❌ Intento 2 también falló: ${err2.message}`);
+                        return; // Si uno funciona, cortamos acá
+                    } catch (err) {
+                        console.error(`❌ Falló con ${fmt}: ${err.message}`);
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Pequeña pausa entre intentos
                     }
-                } finally {
-                    isRequesting = false;
                 }
+                isRequesting = false;
             }
         });
 
