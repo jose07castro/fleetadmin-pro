@@ -108,13 +108,26 @@ const WhatsappBot = (() => {
                 await new Promise(resolve => setTimeout(resolve, 15000));
                 
                 try {
-                    console.log(`📲 Enviando pedido de código para ${phone}...`);
-                    const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    console.log(`📲 Intento 1: Enviando pedido para ${cleanPhone}...`);
+                    const pairingCode = await client.requestPairingCode(cleanPhone);
                     console.log('📲 ========================================');
                     console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
                     console.log('📲 ========================================');
                 } catch (err) {
-                    console.error(`❌ Error al pedir código: ${err.message}`);
+                    console.error(`❌ Intento 1 falló: ${err.message}`);
+                    
+                    // Intento 2: Sin el '9' (formato alternativo para Argentina)
+                    try {
+                        const altPhone = phone.replace(/\D/g, '').replace('549', '54');
+                        console.log(`📲 Intento 2: Probando sin el "9": ${altPhone}...`);
+                        const pairingCode = await client.requestPairingCode(altPhone);
+                        console.log('📲 ========================================');
+                        console.log(`📲 CÓDIGO ACTUAL (Alt): >>> ${pairingCode} <<<`);
+                        console.log('📲 ========================================');
+                    } catch (err2) {
+                        console.error(`❌ Intento 2 también falló: ${err2.message}`);
+                    }
                 } finally {
                     isRequesting = false;
                 }
