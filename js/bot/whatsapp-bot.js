@@ -104,16 +104,17 @@ const WhatsappBot = (() => {
             const phone = process.env.WWEBJS_PHONE;
             if (phone && !isRequesting) {
                 isRequesting = true;
-                console.log(`📲 QR Detectado. Calentando motores (30s)...`);
-                await new Promise(resolve => setTimeout(resolve, 30000));
+                console.log(`📲 QR Detectado. Calentando motores (15s)...`);
+                await new Promise(resolve => setTimeout(resolve, 15000));
                 
                 try {
+                    console.log(`📲 Enviando pedido de código para ${phone}...`);
                     const pairingCode = await client.requestPairingCode(phone.replace(/\D/g, ''));
                     console.log('📲 ========================================');
                     console.log(`📲 CÓDIGO ACTUAL: >>> ${pairingCode} <<<`);
                     console.log('📲 ========================================');
                 } catch (err) {
-                    // Falló silenciosamente, permitiremos el próximo QR
+                    console.error(`❌ Error al pedir código: ${err.message}`);
                 } finally {
                     isRequesting = false;
                 }
