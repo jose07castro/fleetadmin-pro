@@ -156,6 +156,7 @@ const WhatsappBot = (() => {
             }
         });
 
+        console.log('🚀 INICIANDO BOT v128 (ULTRA-LITE)...');
         client.initialize();
     }
 
