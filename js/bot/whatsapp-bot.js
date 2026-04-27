@@ -98,15 +98,15 @@ const WhatsappBot = (() => {
         const phone = process.env.WWEBJS_PHONE;
         if (phone && !state.creds.registered) {
             const cleanPhone = phone.replace(/\D/g, '');
-            // Formato que funcionó: sin el prefijo 54
-            const targetNumber = cleanPhone.startsWith('54') ? cleanPhone.substring(2) : cleanPhone;
+            // Baileys necesita formato E.164 COMPLETO con código de país
+            // Para Argentina: 5493415707731
             
-            // Esperar un par de segundos a que el socket se estabilice
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Esperar a que el socket se estabilice
+            await new Promise(resolve => setTimeout(resolve, 5000));
             
             try {
-                console.log(`📲 Solicitando código de vinculación para: ${targetNumber}...`);
-                const code = await sock.requestPairingCode(targetNumber);
+                console.log(`📲 Solicitando código de vinculación para: ${cleanPhone}...`);
+                const code = await sock.requestPairingCode(cleanPhone);
                 console.log('📲 ========================================');
                 console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${code} <<<`);
                 console.log('📲 ========================================');
