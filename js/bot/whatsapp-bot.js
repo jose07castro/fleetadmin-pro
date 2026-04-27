@@ -154,7 +154,8 @@ const WhatsappBot = (() => {
             }
         });
 
-        console.log('🚀 INICIANDO BOT v131 (MODO ESTABLE)...');
+        console.log('🚀 INICIANDO BOT v135 (FRENO DE MANO ACTIVO)...');
+        console.log('📡 Vigilando conexión con WhatsApp... (esto puede tardar 1 minuto)');
         client.initialize().catch(err => console.error('❌ Error al iniciar cliente:', err.message));
     }
 
