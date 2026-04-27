@@ -75,6 +75,8 @@ const WhatsappBot = (() => {
         await startSocket();
     }
 
+    let hasPaired = false; // Track if we already paired in this session
+
     async function startSocket() {
         // Limpiar credenciales viejas si hay intentos fallidos
         const fs = require('fs');
@@ -85,6 +87,7 @@ const WhatsappBot = (() => {
         const { version } = await fetchLatestBaileysVersion();
         
         console.log(`📱 Versión de WhatsApp: ${version.join('.')}`);
+        console.log(`📱 Registrado: ${state.creds.registered}, Ya pareado: ${hasPaired}`);
 
         sock = makeWASocket({
             version,
@@ -98,9 +101,10 @@ const WhatsappBot = (() => {
             markOnlineOnConnect: false
         });
 
-        // Solicitar código de vinculación si no está registrado
+        // Solicitar código SOLO si no está registrado Y no hemos pareado aún
         const phone = process.env.WWEBJS_PHONE;
-        if (phone && !state.creds.registered) {
+        if (phone && !state.creds.registered && !hasPaired) {
+            hasPaired = true; // Marcar para no pedir de nuevo
             const cleanPhone = phone.replace(/\D/g, '');
             
             // Esperar a que el socket se estabilice
@@ -112,24 +116,27 @@ const WhatsappBot = (() => {
                 console.log('📲 ========================================');
                 console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${code} <<<`);
                 console.log('📲 ========================================');
-                console.log('📲 WhatsApp > Dispositivos vinculados > Vincular con número de teléfono');
             } catch (err) {
                 console.error(`❌ Error código: ${err.message}`);
+                hasPaired = false; // Permitir reintentar si falló
             }
+        } else {
+            console.log('📱 Sesión existente detectada, reconectando sin pedir código...');
         }
 
         // Evento: Actualización de conexión
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
 
-            // Si sale un QR, mostrarlo como URL (fallback)
-            if (qr) {
+            // Si sale un QR y no hemos pareado, mostrarlo como URL
+            if (qr && !hasPaired) {
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
                 console.log('📱 ========================================');
                 console.log('📱 ALTERNATIVA: Escaneá este QR:');
                 console.log(`📱 ${qrUrl}`);
                 console.log('📱 ========================================');
             }
+
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
