@@ -1,5 +1,12 @@
 FROM node:20-slim
 
+# Instalar dependencias de compilación para módulos nativos (sharp, etc.)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copiamos los archivos de configuración
