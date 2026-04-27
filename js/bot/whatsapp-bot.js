@@ -1,10 +1,11 @@
 /* ============================================
-   FleetAdmin Pro — WhatsApp Bot Worker (v120)
+   FleetAdmin Pro — WhatsApp Bot Worker (v200 - Baileys)
    Escucha grupos de Rosario, detecta operativos y sincroniza con Firebase.
+   Usa Baileys (ultra-liviano, sin navegador).
    ============================================ */
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const P = require('pino');
 const axios = require('axios');
 const admin = require('firebase-admin');
 
@@ -58,111 +59,143 @@ if (!admin.apps.length) {
     }
 }
 
-// Nota: db ya fue declarado arriba como let y asignado dentro del try.
-// Eliminamos la declaración redundante aquí.
-
 /**
- * Módulo de Lógica del Bot
+ * Módulo de Lógica del Bot (Baileys)
  */
 const WhatsappBot = (() => {
-    let client = null;
+    let sock = null;
 
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
-    function init() {
-        // Log diagnóstico solicitado por el usuario para ver la ruta en Render
-        const exePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
-        console.log(`🚀 Iniciando WhatsApp Bot Worker...`);
-        console.log(`🔍 Ruta del navegador en uso: ${exePath}`);
+    async function init() {
+        console.log('🚀 INICIANDO BOT v200 (BAILEYS - ULTRA LIVIANO)...');
+        console.log('📡 Sin navegador necesario - conexión directa a WhatsApp');
         
-        client = new Client({
-            authStrategy: new LocalAuth(),
-            qrMaxRetries: 25,
-            authTimeoutMs: 300000, // 5 minutos
-            puppeteer: {
-                headless: 'new',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--no-zygote',
-                    '--disable-extensions',
-                    '--disable-gpu',
-                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-                ],
-                executablePath: exePath,
-                protocolTimeout: 180000
-            }
+        await startSocket();
+    }
+
+    async function startSocket() {
+        // Autenticación persistente (se guarda en ./auth_info)
+        const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
+        const { version } = await fetchLatestBaileysVersion();
+        
+        console.log(`📱 Versión de WhatsApp: ${version.join('.')}`);
+
+        sock = makeWASocket({
+            version,
+            auth: state,
+            printQRInTerminal: false, // Lo manejamos nosotros
+            logger: P({ level: 'silent' }), // Silenciar logs internos
+            browser: ['FleetAdmin Pro', 'Chrome', '122.0.0'],
+            connectTimeoutMs: 120000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
+            markOnlineOnConnect: false // Ahorrar batería
         });
 
-        // Eventos de depuración
-        client.on('loading_screen', (percent, message) => console.log(`⏳ Cargando WhatsApp: ${percent}% - ${message}`));
-        client.on('authenticated', () => console.log('✅ Bot autenticado'));
-        client.on('auth_failure', msg => console.error('❌ Error de autenticación:', msg));
+        // Evento: Actualización de conexión
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
 
-        let isRequesting = false;
-        client.on('qr', async (qr) => {
-            const phone = process.env.WWEBJS_PHONE;
-            if (phone && !isRequesting) {
-                isRequesting = true;
-                console.log(`📲 QR Detectado. Calentando motores (30s)...`);
-                await new Promise(resolve => setTimeout(resolve, 30000));
-                
-                const baseNumber = phone.replace(/\D/g, '');
-                // Probaremos el formato que funcionó (9 + código de área + número)
-                const targetNumber = baseNumber.startsWith('54') ? baseNumber.substring(2) : baseNumber;
-                
-                try {
-                    console.log(`📲 Intentando vinculación directa con: ${targetNumber}...`);
-                    const pairingCode = await client.requestPairingCode(targetNumber);
-                    console.log('📲 ========================================');
-                    console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${pairingCode} <<<`);
-                    console.log('📲 ========================================');
-                } catch (err) {
-                    console.error(`❌ Falló la vinculación: ${err.message}`);
-                }
-                isRequesting = false;
-            }
-        });
-
-        client.on('ready', () => {
-            console.log('✅ Bot de WhatsApp listo y escuchando mensajes');
-        });
-
-        // Evento Mensaje
-        client.on('message_create', async (msg) => {
-            // Ignorar mis propios mensajes o mensajes que no son de grupos
-            if (!msg.from.includes('@g.us')) return;
-
-            const content = (msg.body || '').toLowerCase();
-            
-            // 1. Filtrado por Palabras Clave
-            if (ALERT_KEYWORDS.some(k => content.includes(k))) {
-                console.log(`🚨 Posible alerta detectada en grupo: "${msg.body}"`);
-                
-                try {
-                    const group = await msg.getChat();
-                    const contact = await msg.getContact();
+            if (qr) {
+                // Pedir código de vinculación en vez de QR
+                const phone = process.env.WWEBJS_PHONE;
+                if (phone) {
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    // Formato que funcionó: sin el prefijo 54
+                    const targetNumber = cleanPhone.startsWith('54') ? cleanPhone.substring(2) : cleanPhone;
                     
-                    // Guardar en Firebase
-                    await db.ref('bot_alerts').push({
-                        group: group.name,
-                        author: contact.pushname || contact.number,
-                        text: msg.body,
-                        timestamp: Date.now()
-                    });
-                    
-                    console.log('✅ Alerta guardada en Firebase');
-                } catch (err) {
-                    console.error('❌ Error al procesar alerta:', err.message);
+                    try {
+                        console.log(`📲 Solicitando código de vinculación para: ${targetNumber}...`);
+                        const code = await sock.requestPairingCode(targetNumber);
+                        console.log('📲 ========================================');
+                        console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${code} <<<`);
+                        console.log('📲 ========================================');
+                        console.log('📲 Ingresá este código en tu celular:');
+                        console.log('📲 WhatsApp > Dispositivos vinculados > Vincular dispositivo');
+                    } catch (err) {
+                        console.error(`❌ Error al pedir código: ${err.message}`);
+                    }
+                } else {
+                    // Mostrar QR en terminal como fallback
+                    console.log('📱 Escaneá el QR con tu celular (WhatsApp > Dispositivos vinculados)');
+                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
+                    console.log(`🔗 O abrí este link: ${qrUrl}`);
                 }
             }
+
+            if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                
+                console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
+                
+                if (shouldReconnect) {
+                    // Esperar 5 segundos antes de reconectar
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    await startSocket();
+                } else {
+                    console.log('🔴 Bot deslogueado. Para reconectar, eliminá la carpeta auth_info y reiniciá.');
+                }
+            } else if (connection === 'open') {
+                console.log('✅ ¡Bot de WhatsApp conectado y escuchando mensajes!');
+                console.log('📡 Memoria usada:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
+            }
         });
 
-        console.log('🚀 INICIANDO BOT v135 (FRENO DE MANO ACTIVO)...');
-        console.log('📡 Vigilando conexión con WhatsApp... (esto puede tardar 1 minuto)');
-        client.initialize().catch(err => console.error('❌ Error al iniciar cliente:', err.message));
+        // Guardar credenciales cuando se actualizan
+        sock.ev.on('creds.update', saveCreds);
+
+        // Evento: Mensajes nuevos
+        sock.ev.on('messages.upsert', async ({ messages, type }) => {
+            if (type !== 'notify') return;
+
+            for (const msg of messages) {
+                // Solo mensajes de grupos
+                if (!msg.key.remoteJid?.endsWith('@g.us')) continue;
+                // Ignorar mensajes propios
+                if (msg.key.fromMe) continue;
+
+                const text = msg.message?.conversation 
+                    || msg.message?.extendedTextMessage?.text 
+                    || '';
+                
+                if (!text) continue;
+
+                const content = text.toLowerCase();
+
+                // Filtrado por Palabras Clave
+                if (ALERT_KEYWORDS.some(k => content.includes(k))) {
+                    console.log(`🚨 Alerta detectada en grupo: "${text}"`);
+                    
+                    try {
+                        // Obtener info del grupo
+                        const groupInfo = await sock.groupMetadata(msg.key.remoteJid);
+                        const senderNumber = msg.key.participant || msg.key.remoteJid;
+                        
+                        // Guardar en Firebase
+                        if (db) {
+                            await db.ref('bot_alerts').push({
+                                group: groupInfo.subject,
+                                author: senderNumber,
+                                text: text,
+                                timestamp: Date.now()
+                            });
+                            console.log('✅ Alerta guardada en Firebase');
+                        }
+
+                        // Intentar geocodificar
+                        const intersection = _extractIntersection(content);
+                        if (intersection) {
+                            await _processAlert(intersection, text, groupInfo.subject);
+                        }
+                    } catch (err) {
+                        console.error('❌ Error al procesar alerta:', err.message);
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -214,8 +247,10 @@ const WhatsappBot = (() => {
                     source: 'whatsapp_bot'
                 };
 
-                await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-                console.log('✅ Alerta sincronizada con éxito en el mapa de la flota.');
+                if (db) {
+                    await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
+                    console.log('✅ Alerta sincronizada con éxito en el mapa de la flota.');
+                }
             }
         } catch (e) {
             console.error('❌ Error procesando alerta:', e.message);

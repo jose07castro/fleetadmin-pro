@@ -1,14 +1,13 @@
-FROM ghcr.io/puppeteer/puppeteer:21.5.0
+FROM node:20-slim
 
-# Usamos la imagen que ya trae Chrome para evitar errores
 WORKDIR /app
 
 # Copiamos los archivos de configuración
-COPY --chown=pptruser:pptruser package*.json ./
-RUN npm install
+COPY package*.json ./
+RUN npm install --production
 
 # Copiamos todo el proyecto
-COPY --chown=pptruser:pptruser . .
+COPY . .
 
 # Configuramos el puerto para Render
 ENV PORT=10000
