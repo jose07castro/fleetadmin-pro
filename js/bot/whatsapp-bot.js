@@ -76,8 +76,12 @@ const WhatsappBot = (() => {
     }
 
     async function startSocket() {
-        // Autenticación persistente (se guarda en ./auth_info)
-        const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
+        // Limpiar credenciales viejas si hay intentos fallidos
+        const fs = require('fs');
+        const authDir = './auth_info';
+        
+        // Autenticación persistente
+        const { state, saveCreds } = await useMultiFileAuthState(authDir);
         const { version } = await fetchLatestBaileysVersion();
         
         console.log(`📱 Versión de WhatsApp: ${version.join('.')}`);
@@ -85,44 +89,47 @@ const WhatsappBot = (() => {
         sock = makeWASocket({
             version,
             auth: state,
-            printQRInTerminal: false, // Lo manejamos nosotros
-            logger: P({ level: 'silent' }), // Silenciar logs internos
+            printQRInTerminal: false,
+            logger: P({ level: 'silent' }),
             browser: ['FleetAdmin Pro', 'Chrome', '122.0.0'],
             connectTimeoutMs: 120000,
             defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 30000,
-            markOnlineOnConnect: false // Ahorrar batería
+            markOnlineOnConnect: false
         });
 
         // Solicitar código de vinculación si no está registrado
         const phone = process.env.WWEBJS_PHONE;
         if (phone && !state.creds.registered) {
-            let cleanPhone = phone.replace(/\D/g, '');
-            // Argentina: WhatsApp puede usar formato SIN el '9'
-            // +54 9 341 XXX -> 54 341 XXX (sin el 9)
-            if (cleanPhone.startsWith('549')) {
-                cleanPhone = '54' + cleanPhone.substring(3);
-            }
+            const cleanPhone = phone.replace(/\D/g, '');
             
             // Esperar a que el socket se estabilice
             await new Promise(resolve => setTimeout(resolve, 5000));
             
             try {
-                console.log(`📲 Solicitando código de vinculación para: ${cleanPhone}...`);
+                console.log(`📲 Solicitando código para: ${cleanPhone}...`);
                 const code = await sock.requestPairingCode(cleanPhone);
                 console.log('📲 ========================================');
                 console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${code} <<<`);
                 console.log('📲 ========================================');
-                console.log('📲 Ingresá este código en tu celular:');
-                console.log('📲 WhatsApp > Dispositivos vinculados > Vincular dispositivo');
+                console.log('📲 WhatsApp > Dispositivos vinculados > Vincular con número de teléfono');
             } catch (err) {
-                console.error(`❌ Error al pedir código: ${err.message}`);
+                console.error(`❌ Error código: ${err.message}`);
             }
         }
 
         // Evento: Actualización de conexión
         sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect } = update;
+            const { connection, lastDisconnect, qr } = update;
+
+            // Si sale un QR, mostrarlo como URL (fallback)
+            if (qr) {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
+                console.log('📱 ========================================');
+                console.log('📱 ALTERNATIVA: Escaneá este QR:');
+                console.log(`📱 ${qrUrl}`);
+                console.log('📱 ========================================');
+            }
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
