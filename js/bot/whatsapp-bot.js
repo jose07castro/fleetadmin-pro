@@ -97,9 +97,12 @@ const WhatsappBot = (() => {
         // Solicitar código de vinculación si no está registrado
         const phone = process.env.WWEBJS_PHONE;
         if (phone && !state.creds.registered) {
-            const cleanPhone = phone.replace(/\D/g, '');
-            // Baileys necesita formato E.164 COMPLETO con código de país
-            // Para Argentina: 5493415707731
+            let cleanPhone = phone.replace(/\D/g, '');
+            // Argentina: WhatsApp puede usar formato SIN el '9'
+            // +54 9 341 XXX -> 54 341 XXX (sin el 9)
+            if (cleanPhone.startsWith('549')) {
+                cleanPhone = '54' + cleanPhone.substring(3);
+            }
             
             // Esperar a que el socket se estabilice
             await new Promise(resolve => setTimeout(resolve, 5000));
