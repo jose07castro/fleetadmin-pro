@@ -90,7 +90,8 @@ const WhatsappBot = (() => {
                     '--disable-extensions',
                     '--disable-gpu'
                 ],
-                executablePath: exePath
+                executablePath: exePath,
+                protocolTimeout: 120000 // 2 minutos de tolerancia para Render
             }
         });
 
@@ -104,30 +105,21 @@ const WhatsappBot = (() => {
             const phone = process.env.WWEBJS_PHONE;
             if (phone && !isRequesting) {
                 isRequesting = true;
-                console.log(`📲 QR Detectado. Súper Calentamiento (45s) para Render...`);
-                await new Promise(resolve => setTimeout(resolve, 45000));
+                console.log(`📲 QR Detectado. Calentando motores (30s)...`);
+                await new Promise(resolve => setTimeout(resolve, 30000));
                 
                 const baseNumber = phone.replace(/\D/g, '');
-                const formats = [
-                    baseNumber,                     // 549341...
-                    baseNumber.replace('549', '54'), // 54341...
-                    `+${baseNumber}`,               // +549341...
-                    baseNumber.substring(2)         // 341... (local)
-                ];
-
-                for (const fmt of formats) {
-                    try {
-                        console.log(`📲 Probando formato: ${fmt}...`);
-                        const pairingCode = await client.requestPairingCode(fmt);
-                        console.log('📲 ========================================');
-                        console.log(`📲 CÓDIGO CONSEGUIDO (Formato ${fmt}):`);
-                        console.log(`📲 >>> ${pairingCode} <<<`);
-                        console.log('📲 ========================================');
-                        return; // Si uno funciona, cortamos acá
-                    } catch (err) {
-                        console.error(`❌ Falló con ${fmt}: ${err.message}`);
-                        await new Promise(resolve => setTimeout(resolve, 2000)); // Pequeña pausa entre intentos
-                    }
+                // Probaremos el formato que funcionó (9 + código de área + número)
+                const targetNumber = baseNumber.startsWith('54') ? baseNumber.substring(2) : baseNumber;
+                
+                try {
+                    console.log(`📲 Intentando vinculación directa con: ${targetNumber}...`);
+                    const pairingCode = await client.requestPairingCode(targetNumber);
+                    console.log('📲 ========================================');
+                    console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${pairingCode} <<<`);
+                    console.log('📲 ========================================');
+                } catch (err) {
+                    console.error(`❌ Falló la vinculación: ${err.message}`);
                 }
                 isRequesting = false;
             }
