@@ -74,7 +74,7 @@ const WhatsappBot = (() => {
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v201 (BAILEYS - CONEXIÓN ROBUSTA)...');
+        console.log('🚀 INICIANDO BOT v202 (BAILEYS - PAIRING FIX)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         
         await startSocket();
@@ -114,16 +114,14 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: false,
                 logger: P({ level: 'silent' }),
-                // IMPORTANTE: Usar 'Chrome' como browser para compatibilidad con pairing code
-                browser: ['Chrome (Linux)', '', ''],
-                connectTimeoutMs: 60000,
+                // Browser DEBE tener valores reales, no vacíos, para que WhatsApp acepte el pairing
+                browser: ['Ubuntu', 'Chrome', '20.0.04'],
+                connectTimeoutMs: 90000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
                 markOnlineOnConnect: false,
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: false,
-                // Retry config
-                retryRequestDelayMs: 500,
             });
 
             // ============================================
@@ -136,8 +134,8 @@ const WhatsappBot = (() => {
                     const cleanPhone = phone.replace(/\D/g, '');
                     console.log(`📲 Solicitando código de vinculación para: ${cleanPhone}...`);
                     
-                    // Pequeña pausa para que el WebSocket se estabilice (2s máx)
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // Pausa para que el WebSocket se estabilice antes de pedir código
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                     
                     try {
                         const code = await sock.requestPairingCode(cleanPhone);
