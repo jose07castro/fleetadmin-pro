@@ -1,5 +1,5 @@
 /* ============================================
-   FleetAdmin Pro — WhatsApp Bot Worker (v200 - Baileys)
+   FleetAdmin Pro — WhatsApp Bot Worker (v201 - Baileys Fix)
    Escucha grupos de Rosario, detecta operativos y sincroniza con Firebase.
    Usa Baileys (ultra-liviano, sin navegador).
    ============================================ */
@@ -8,6 +8,8 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLat
 const P = require('pino');
 const axios = require('axios');
 const admin = require('firebase-admin');
+const fs = require('fs');
+const path = require('path');
 
 // 1. Inicialización de Firebase Admin (vía Variables de Entorno)
 let db = null;
@@ -60,155 +62,242 @@ if (!admin.apps.length) {
 }
 
 /**
- * Módulo de Lógica del Bot (Baileys)
+ * Módulo de Lógica del Bot (Baileys v201 - Conexión Robusta)
  */
 const WhatsappBot = (() => {
     let sock = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 10;
+    const AUTH_DIR = './auth_info';
 
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v200 (BAILEYS - ULTRA LIVIANO)...');
-        console.log('📡 Sin navegador necesario - conexión directa a WhatsApp');
+        console.log('🚀 INICIANDO BOT v201 (BAILEYS - CONEXIÓN ROBUSTA)...');
+        console.log('📡 Sin navegador - conexión directa a WhatsApp');
         
         await startSocket();
     }
 
-    let hasPaired = false; // Track if we already paired in this session
+    /**
+     * Limpia la carpeta de autenticación para forzar un nuevo pairing
+     */
+    function clearAuthInfo() {
+        try {
+            if (fs.existsSync(AUTH_DIR)) {
+                fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+                console.log('🗑️ Credenciales antiguas eliminadas.');
+            }
+        } catch (e) {
+            console.error('⚠️ Error limpiando credenciales:', e.message);
+        }
+    }
 
     async function startSocket() {
-        // Limpiar credenciales viejas si hay intentos fallidos
-        const fs = require('fs');
-        const authDir = './auth_info';
-        
-        // Autenticación persistente
-        const { state, saveCreds } = await useMultiFileAuthState(authDir);
-        const { version } = await fetchLatestBaileysVersion();
-        
-        console.log(`📱 Versión de WhatsApp: ${version.join('.')}`);
-        console.log(`📱 Registrado: ${state.creds.registered}, Ya pareado: ${hasPaired}`);
+        try {
+            // Asegurar que existe el directorio de auth
+            if (!fs.existsSync(AUTH_DIR)) {
+                fs.mkdirSync(AUTH_DIR, { recursive: true });
+            }
 
-        sock = makeWASocket({
-            version,
-            auth: state,
-            printQRInTerminal: false,
-            logger: P({ level: 'silent' }),
-            browser: ['FleetAdmin Pro', 'Chrome', '122.0.0'],
-            connectTimeoutMs: 120000,
-            defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 30000,
-            markOnlineOnConnect: false
-        });
-
-        // Solicitar código SOLO si no está registrado Y no hemos pareado aún
-        const phone = process.env.WWEBJS_PHONE;
-        if (phone && !state.creds.registered && !hasPaired) {
-            hasPaired = true; // Marcar para no pedir de nuevo
-            const cleanPhone = phone.replace(/\D/g, '');
+            // Autenticación persistente
+            const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+            const { version } = await fetchLatestBaileysVersion();
             
-            // Esperar a que el socket se estabilice
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            
-            try {
-                console.log(`📲 Solicitando código para: ${cleanPhone}...`);
-                const code = await sock.requestPairingCode(cleanPhone);
-                console.log('📲 ========================================');
-                console.log(`📲 CÓDIGO DE VINCULACIÓN: >>> ${code} <<<`);
-                console.log('📲 ========================================');
-            } catch (err) {
-                console.error(`❌ Error código: ${err.message}`);
-                hasPaired = false; // Permitir reintentar si falló
-            }
-        } else {
-            console.log('📱 Sesión existente detectada, reconectando sin pedir código...');
-        }
+            const isRegistered = state.creds.registered;
+            console.log(`📱 Versión WA: ${version.join('.')}`);
+            console.log(`📱 Registrado: ${isRegistered}`);
 
-        // Evento: Actualización de conexión
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
+            sock = makeWASocket({
+                version,
+                auth: state,
+                printQRInTerminal: false,
+                logger: P({ level: 'silent' }),
+                // IMPORTANTE: Usar 'Chrome' como browser para compatibilidad con pairing code
+                browser: ['Chrome (Linux)', '', ''],
+                connectTimeoutMs: 60000,
+                defaultQueryTimeoutMs: 0,
+                keepAliveIntervalMs: 25000,
+                markOnlineOnConnect: false,
+                generateHighQualityLinkPreview: false,
+                syncFullHistory: false,
+                // Retry config
+                retryRequestDelayMs: 500,
+            });
 
-            // Si sale un QR y no hemos pareado, mostrarlo como URL
-            if (qr && !hasPaired) {
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
-                console.log('📱 ========================================');
-                console.log('📱 ALTERNATIVA: Escaneá este QR:');
-                console.log(`📱 ${qrUrl}`);
-                console.log('📱 ========================================');
-            }
-
-
-            if (connection === 'close') {
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
-                console.log(`⚠️ Conexión cerrada. Código: ${statusCode}. Reconectando: ${shouldReconnect}`);
-                
-                if (shouldReconnect) {
-                    // Esperar 5 segundos antes de reconectar
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    await startSocket();
-                } else {
-                    console.log('🔴 Bot deslogueado. Para reconectar, eliminá la carpeta auth_info y reiniciá.');
-                }
-            } else if (connection === 'open') {
-                console.log('✅ ¡Bot de WhatsApp conectado y escuchando mensajes!');
-                console.log('📡 Memoria usada:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
-            }
-        });
-
-        // Guardar credenciales cuando se actualizan
-        sock.ev.on('creds.update', saveCreds);
-
-        // Evento: Mensajes nuevos
-        sock.ev.on('messages.upsert', async ({ messages, type }) => {
-            if (type !== 'notify') return;
-
-            for (const msg of messages) {
-                // Solo mensajes de grupos
-                if (!msg.key.remoteJid?.endsWith('@g.us')) continue;
-                // Ignorar mensajes propios
-                if (msg.key.fromMe) continue;
-
-                const text = msg.message?.conversation 
-                    || msg.message?.extendedTextMessage?.text 
-                    || '';
-                
-                if (!text) continue;
-
-                const content = text.toLowerCase();
-
-                // Filtrado por Palabras Clave
-                if (ALERT_KEYWORDS.some(k => content.includes(k))) {
-                    console.log(`🚨 Alerta detectada en grupo: "${text}"`);
+            // ============================================
+            // PAIRING CODE: Solicitar INMEDIATAMENTE si no está registrado
+            // NO esperar a connection.update, hacerlo directo
+            // ============================================
+            if (!isRegistered) {
+                const phone = process.env.WWEBJS_PHONE;
+                if (phone) {
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    console.log(`📲 Solicitando código de vinculación para: ${cleanPhone}...`);
+                    
+                    // Pequeña pausa para que el WebSocket se estabilice (2s máx)
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     
                     try {
-                        // Obtener info del grupo
-                        const groupInfo = await sock.groupMetadata(msg.key.remoteJid);
-                        const senderNumber = msg.key.participant || msg.key.remoteJid;
-                        
-                        // Guardar en Firebase
-                        if (db) {
-                            await db.ref('bot_alerts').push({
-                                group: groupInfo.subject,
-                                author: senderNumber,
-                                text: text,
-                                timestamp: Date.now()
-                            });
-                            console.log('✅ Alerta guardada en Firebase');
-                        }
-
-                        // Intentar geocodificar
-                        const intersection = _extractIntersection(content);
-                        if (intersection) {
-                            await _processAlert(intersection, text, groupInfo.subject);
-                        }
+                        const code = await sock.requestPairingCode(cleanPhone);
+                        console.log('');
+                        console.log('📲 ╔══════════════════════════════════════════╗');
+                        console.log(`📲 ║   CÓDIGO DE VINCULACIÓN: ${code}        ║`);
+                        console.log('📲 ╠══════════════════════════════════════════╣');
+                        console.log('📲 ║ 1. Abrí WhatsApp en tu celular          ║');
+                        console.log('📲 ║ 2. Configuración → Dispositivos         ║');
+                        console.log('📲 ║    vinculados → Vincular dispositivo     ║');
+                        console.log('📲 ║ 3. Tocá "Vincular con número de         ║');
+                        console.log('📲 ║    teléfono en su lugar"                 ║');
+                        console.log('📲 ║ 4. Ingresá el código de arriba           ║');
+                        console.log('📲 ╚══════════════════════════════════════════╝');
+                        console.log('');
                     } catch (err) {
-                        console.error('❌ Error al procesar alerta:', err.message);
+                        console.error(`❌ Error al pedir código: ${err.message}`);
+                        console.log('🔄 Se reintentará en la próxima reconexión...');
+                    }
+                } else {
+                    console.error('❌ Variable WWEBJS_PHONE no definida. No se puede vincular.');
+                    console.log('💡 Configurá la variable de entorno WWEBJS_PHONE con tu número (ej: 5493412345678)');
+                }
+            } else {
+                console.log('📱 Sesión registrada encontrada, reconectando automáticamente...');
+            }
+
+            // Evento: Actualización de conexión
+            sock.ev.on('connection.update', async (update) => {
+                const { connection, lastDisconnect, qr } = update;
+
+                if (connection === 'connecting') {
+                    console.log('🔄 Conectando a WhatsApp...');
+                }
+
+                if (connection === 'close') {
+                    const statusCode = lastDisconnect?.error?.output?.statusCode;
+                    const reason = DisconnectReason;
+                    
+                    console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
+
+                    if (statusCode === reason.loggedOut) {
+                        // 401 = LoggedOut: Limpiar sesión y reconectar pidiendo nuevo código
+                        console.log('🔴 Sesión cerrada por WhatsApp. Limpiando credenciales...');
+                        clearAuthInfo();
+                        retryCount = 0;
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        await startSocket();
+                    } else if (statusCode === reason.restartRequired) {
+                        // 515 = RestartRequired: Reconectar inmediatamente
+                        console.log('🔄 Reinicio requerido por WhatsApp...');
+                        retryCount = 0;
+                        await startSocket();
+                    } else if (statusCode === reason.timedOut || statusCode === 408) {
+                        // 408 = Timeout: Reconectar con backoff
+                        retryCount++;
+                        if (retryCount > MAX_RETRIES) {
+                            console.log('🔴 Demasiados reintentos. Limpiando sesión y empezando de cero...');
+                            clearAuthInfo();
+                            retryCount = 0;
+                        }
+                        const delay = Math.min(5000 * retryCount, 30000);
+                        console.log(`🔄 Reintento ${retryCount}/${MAX_RETRIES} en ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await startSocket();
+                    } else if (statusCode === reason.connectionClosed || statusCode === reason.connectionLost) {
+                        // 428/408 = Connection issues: Reconectar con backoff corto
+                        retryCount++;
+                        const delay = Math.min(3000 * retryCount, 20000);
+                        console.log(`🔄 Reconectando (intento ${retryCount}) en ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await startSocket();
+                    } else {
+                        // Cualquier otro error: reconectar con backoff
+                        retryCount++;
+                        if (retryCount <= MAX_RETRIES) {
+                            const delay = Math.min(5000 * retryCount, 30000);
+                            console.log(`🔄 Error desconocido (${statusCode}). Reintento ${retryCount}/${MAX_RETRIES} en ${delay / 1000}s...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            await startSocket();
+                        } else {
+                            console.log('🔴 Máximo de reintentos alcanzado. Limpiando y reiniciando...');
+                            clearAuthInfo();
+                            retryCount = 0;
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            await startSocket();
+                        }
+                    }
+                } else if (connection === 'open') {
+                    retryCount = 0; // Reset retries on successful connection
+                    console.log('');
+                    console.log('✅ ══════════════════════════════════════════');
+                    console.log('✅  ¡Bot de WhatsApp CONECTADO y ESCUCHANDO!');
+                    console.log('✅ ══════════════════════════════════════════');
+                    console.log(`📡 Memoria: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
+                    console.log('');
+                }
+            });
+
+            // Guardar credenciales cuando se actualizan
+            sock.ev.on('creds.update', saveCreds);
+
+            // Evento: Mensajes nuevos
+            sock.ev.on('messages.upsert', async ({ messages, type }) => {
+                if (type !== 'notify') return;
+
+                for (const msg of messages) {
+                    // Solo mensajes de grupos
+                    if (!msg.key.remoteJid?.endsWith('@g.us')) continue;
+                    // Ignorar mensajes propios
+                    if (msg.key.fromMe) continue;
+
+                    const text = msg.message?.conversation 
+                        || msg.message?.extendedTextMessage?.text 
+                        || '';
+                    
+                    if (!text) continue;
+
+                    const content = text.toLowerCase();
+
+                    // Filtrado por Palabras Clave
+                    if (ALERT_KEYWORDS.some(k => content.includes(k))) {
+                        console.log(`🚨 Alerta detectada en grupo: "${text}"`);
+                        
+                        try {
+                            // Obtener info del grupo
+                            const groupInfo = await sock.groupMetadata(msg.key.remoteJid);
+                            const senderNumber = msg.key.participant || msg.key.remoteJid;
+                            
+                            // Guardar en Firebase
+                            if (db) {
+                                await db.ref('bot_alerts').push({
+                                    group: groupInfo.subject,
+                                    author: senderNumber,
+                                    text: text,
+                                    timestamp: Date.now()
+                                });
+                                console.log('✅ Alerta guardada en Firebase');
+                            }
+
+                            // Intentar geocodificar
+                            const intersection = _extractIntersection(content);
+                            if (intersection) {
+                                await _processAlert(intersection, text, groupInfo.subject);
+                            }
+                        } catch (err) {
+                            console.error('❌ Error al procesar alerta:', err.message);
+                        }
                     }
                 }
-            }
-        });
+            });
+
+        } catch (err) {
+            console.error('❌ Error fatal en startSocket:', err.message);
+            retryCount++;
+            const delay = Math.min(10000 * retryCount, 60000);
+            console.log(`🔄 Reintentando en ${delay / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            await startSocket();
+        }
     }
 
     /**
