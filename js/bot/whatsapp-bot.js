@@ -74,7 +74,7 @@ const WhatsappBot = (() => {
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v202 (BAILEYS - PAIRING FIX)...');
+        console.log('🚀 INICIANDO BOT v203 (BAILEYS - QR CODE)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         
         await startSocket();
@@ -112,11 +112,10 @@ const WhatsappBot = (() => {
             sock = makeWASocket({
                 version,
                 auth: state,
-                printQRInTerminal: false,
+                printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                // Browser DEBE tener valores reales, no vacíos, para que WhatsApp acepte el pairing
                 browser: ['Ubuntu', 'Chrome', '20.0.04'],
-                connectTimeoutMs: 90000,
+                connectTimeoutMs: 120000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
                 markOnlineOnConnect: false,
@@ -124,48 +123,34 @@ const WhatsappBot = (() => {
                 syncFullHistory: false,
             });
 
-            // ============================================
-            // PAIRING CODE: Solicitar INMEDIATAMENTE si no está registrado
-            // NO esperar a connection.update, hacerlo directo
-            // ============================================
-            if (!isRegistered) {
-                const phone = process.env.WWEBJS_PHONE;
-                if (phone) {
-                    const cleanPhone = phone.replace(/\D/g, '');
-                    console.log(`📲 Solicitando código de vinculación para: ${cleanPhone}...`);
-                    
-                    // Pausa para que el WebSocket se estabilice antes de pedir código
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    
-                    try {
-                        const code = await sock.requestPairingCode(cleanPhone);
-                        console.log('');
-                        console.log('📲 ╔══════════════════════════════════════════╗');
-                        console.log(`📲 ║   CÓDIGO DE VINCULACIÓN: ${code}        ║`);
-                        console.log('📲 ╠══════════════════════════════════════════╣');
-                        console.log('📲 ║ 1. Abrí WhatsApp en tu celular          ║');
-                        console.log('📲 ║ 2. Configuración → Dispositivos         ║');
-                        console.log('📲 ║    vinculados → Vincular dispositivo     ║');
-                        console.log('📲 ║ 3. Tocá "Vincular con número de         ║');
-                        console.log('📲 ║    teléfono en su lugar"                 ║');
-                        console.log('📲 ║ 4. Ingresá el código de arriba           ║');
-                        console.log('📲 ╚══════════════════════════════════════════╝');
-                        console.log('');
-                    } catch (err) {
-                        console.error(`❌ Error al pedir código: ${err.message}`);
-                        console.log('🔄 Se reintentará en la próxima reconexión...');
-                    }
-                } else {
-                    console.error('❌ Variable WWEBJS_PHONE no definida. No se puede vincular.');
-                    console.log('💡 Configurá la variable de entorno WWEBJS_PHONE con tu número (ej: 5493412345678)');
-                }
-            } else {
+            if (isRegistered) {
                 console.log('📱 Sesión registrada encontrada, reconectando automáticamente...');
+            } else {
+                console.log('📱 Esperando QR para vincular... Mirá los logs.');
             }
 
             // Evento: Actualización de conexión
             sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
+
+                // ============================================
+                // QR CODE: Mostrar como URL escaneable
+                // ============================================
+                if (qr) {
+                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`;
+                    console.log('');
+                    console.log('📱 ╔══════════════════════════════════════════════════════╗');
+                    console.log('📱 ║          ESCANEÁ ESTE QR PARA VINCULAR               ║');
+                    console.log('📱 ╠══════════════════════════════════════════════════════╣');
+                    console.log('📱 ║ 1. Copiá este link y abrilo en tu navegador:        ║');
+                    console.log(`📱 ║ ${qrUrl}`);
+                    console.log('📱 ║                                                      ║');
+                    console.log('📱 ║ 2. Abrí WhatsApp → Configuración →                  ║');
+                    console.log('📱 ║    Dispositivos vinculados → Vincular dispositivo    ║');
+                    console.log('📱 ║ 3. Escaneá el QR de la imagen del link               ║');
+                    console.log('📱 ╚══════════════════════════════════════════════════════╝');
+                    console.log('');
+                }
 
                 if (connection === 'connecting') {
                     console.log('🔄 Conectando a WhatsApp...');
