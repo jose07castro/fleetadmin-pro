@@ -228,26 +228,36 @@ const WhatsappBot = (() => {
                 if (type !== 'notify') return;
 
                 for (const msg of messages) {
-                    // Solo mensajes de grupos
-                    if (!msg.key.remoteJid?.endsWith('@g.us')) continue;
+                    const jid = msg.key.remoteJid;
+                    const isGroup = jid?.endsWith('@g.us');
+                    
                     // Ignorar mensajes propios
                     if (msg.key.fromMe) continue;
 
                     const text = msg.message?.conversation 
                         || msg.message?.extendedTextMessage?.text 
+                        || msg.message?.imageMessage?.caption
                         || '';
                     
                     if (!text) continue;
+
+                    // Log para debugging (puedes verlo en Render)
+                    if (isGroup) {
+                        console.log(`📩 Mensaje en grupo [${jid}]: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+                    }
 
                     const content = text.toLowerCase();
 
                     // Filtrado por Palabras Clave
                     if (ALERT_KEYWORDS.some(k => content.includes(k))) {
-                        console.log(`🚨 Alerta detectada en grupo: "${text}"`);
+                        console.log(`🚨 ¡PALABRA CLAVE DETECTADA!: "${text}"`);
                         
                         try {
+                            // Solo procesar si es grupo (para evitar spam de privados)
+                            if (!isGroup) continue;
+
                             // Obtener info del grupo
-                            const groupInfo = await sock.groupMetadata(msg.key.remoteJid);
+                            const groupInfo = await sock.groupMetadata(jid);
                             const senderNumber = msg.key.participant || msg.key.remoteJid;
                             
                             // Guardar en Firebase
@@ -287,11 +297,24 @@ const WhatsappBot = (() => {
      * Extrae calles de un texto usando Regex.
      */
     function _extractIntersection(text) {
-        // Regex simplificado para "Calle A y Calle B"
-        const regex = /([a-z0-9\s]+)\sy\s([a-z0-9\s]+)/i;
+        // Regex para "Calle A y Calle B"
+        const regex = /([a-z0-9\sáéíóúñ]+)\sy\s([a-z0-9\sáéíóúñ]+)/i;
         const match = text.match(regex);
         if (match) {
-            return `${match[1].trim()} y ${match[2].trim()}`;
+            let street1 = match[1].trim();
+            let street2 = match[2].trim();
+
+            // Limpiar palabras comunes al inicio de la primera calle
+            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'un', 'operativo', 'control', 'la', 'los', 'las'];
+            let words = street1.split(' ');
+            while (words.length > 0 && noise.includes(words[0].toLowerCase())) {
+                words.shift();
+            }
+            street1 = words.join(' ');
+
+            if (street1 && street2) {
+                return `${street1} y ${street2}`;
+            }
         }
         return null;
     }
@@ -300,7 +323,7 @@ const WhatsappBot = (() => {
      * Geocodifica y guarda en Firebase.
      */
     async function _processAlert(address, originalText, sourceGroup) {
-        console.log(`🔍 Geocodificando: ${address} en Rosario...`);
+        console.log(`🔍 Intentando geocodificar: "${address}" en Rosario...`);
         
         try {
             const fullAddress = `${address}, Rosario, Santa Fe, Argentina`;
@@ -312,21 +335,24 @@ const WhatsappBot = (() => {
 
             if (response.data && response.data.length > 0) {
                 const { lat, lon } = response.data[0];
-                console.log(`📍 Ubicación encontrada: ${lat}, ${lon}`);
+                console.log(`📍 ✅ Ubicación encontrada: ${lat}, ${lon}`);
 
-                // Guardar en Firebase (FLEET_ID por defecto o detectado)
+                // Guardar en Firebase
                 const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07'; 
                 const alertId = `bot_${Date.now()}`;
                 
+                // Determinar tipo: Operativo/Gorra/Control -> policía. Otros -> advertencia.
+                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText);
+
                 const alertData = {
                     id: alertId,
-                    type: originalText.includes('gorra') || originalText.includes('control') ? 'police' : 'warning',
+                    type: isPolice ? 'police' : 'warning',
                     location: address,
                     lat: parseFloat(lat),
                     lng: parseFloat(lon),
                     timestamp: Date.now(),
                     expiresAt: Date.now() + (60 * 60 * 1000), // 60 min TTL
-                    authorName: 'Bot WhatsApp',
+                    authorName: `Bot WA (${sourceGroup})`,
                     confirmations: 1,
                     status: 'active',
                     source: 'whatsapp_bot'
@@ -334,9 +360,15 @@ const WhatsappBot = (() => {
 
                 if (db) {
                     await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-                    console.log('✅ Alerta sincronizada con éxito en el mapa de la flota.');
+                    console.log(`✅ ¡Alerta publicada con éxito en la flota ${fleetId}!`);
                 }
+            } else {
+                console.log(`⚠️ No se pudo encontrar "${address}" en el mapa de Rosario.`);
             }
+        } catch (err) {
+            console.error('❌ Error en geocodificación:', err.message);
+        }
+    }
         } catch (e) {
             console.error('❌ Error procesando alerta:', e.message);
         }
