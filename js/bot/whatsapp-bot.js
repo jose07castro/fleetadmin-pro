@@ -230,20 +230,57 @@ const WhatsappBot = (() => {
                 for (const msg of messages) {
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
-                    
-                    // Ignorar mensajes propios
                     if (msg.key.fromMe) continue;
 
-                    const text = msg.message?.conversation 
+                    let text = msg.message?.conversation 
                         || msg.message?.extendedTextMessage?.text 
                         || msg.message?.imageMessage?.caption
                         || '';
                     
+                    const isAudio = msg.message?.audioMessage;
+
+                    // --- PROCESAR AUDIO (Speech-to-Text) ---
+                    if (isAudio && process.env.OPENAI_API_KEY) {
+                        try {
+                            console.log('🎙️ Audio detectado, intentando transcribir...');
+                            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                            const buffer = await downloadMediaMessage(msg, 'buffer', {}, { 
+                                logger: P({ level: 'silent' }),
+                                reuploadRequest: sock.updateMediaMessage 
+                            });
+
+                            const tmpPath = path.join(__dirname, `tmp_audio_${Date.now()}.ogg`);
+                            fs.writeFileSync(tmpPath, buffer);
+
+                            const FormData = require('form-data');
+                            const form = new FormData();
+                            form.append('file', fs.createReadStream(tmpPath), { filename: 'audio.ogg', contentType: 'audio/ogg' });
+                            form.append('model', 'whisper-1');
+                            form.append('language', 'es');
+
+                            const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+                                headers: {
+                                    ...form.getHeaders(),
+                                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                                }
+                            });
+
+                            fs.unlinkSync(tmpPath);
+
+                            if (whisperRes.data && whisperRes.data.text) {
+                                text = whisperRes.data.text;
+                                console.log(`🎙️ Transcripción: "${text}"`);
+                            }
+                        } catch (err) {
+                            console.error('❌ Error procesando audio:', err.message);
+                        }
+                    }
+
                     if (!text) continue;
 
-                    // Log para debugging (puedes verlo en Render)
                     if (isGroup) {
-                        console.log(`📩 Mensaje en grupo [${jid}]: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+                        const label = isAudio ? '🎙️ Audio' : '📩 Texto';
+                        console.log(`${label} en grupo [${jid}]: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
                     }
 
                     const content = text.toLowerCase();
@@ -253,25 +290,21 @@ const WhatsappBot = (() => {
                         console.log(`🚨 ¡PALABRA CLAVE DETECTADA!: "${text}"`);
                         
                         try {
-                            // Solo procesar si es grupo (para evitar spam de privados)
                             if (!isGroup) continue;
 
-                            // Obtener info del grupo
                             const groupInfo = await sock.groupMetadata(jid);
                             const senderNumber = msg.key.participant || msg.key.remoteJid;
                             
-                            // Guardar en Firebase
                             if (db) {
                                 await db.ref('bot_alerts').push({
                                     group: groupInfo.subject,
                                     author: senderNumber,
                                     text: text,
-                                    timestamp: Date.now()
+                                    timestamp: Date.now(),
+                                    type: isAudio ? 'audio' : 'text'
                                 });
-                                console.log('✅ Alerta guardada en Firebase');
                             }
 
-                            // Intentar geocodificar
                             const intersection = _extractIntersection(content);
                             if (intersection) {
                                 await _processAlert(intersection, text, groupInfo.subject);
