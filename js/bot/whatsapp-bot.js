@@ -11,19 +11,16 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
-// 1. Inicialización de Firebase Admin (vía Variables de Entorno)
+// 1. Inicialización de Firebase Admin
 let db = null;
 
 if (!admin.apps.length) {
     try {
         const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
         const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
-        let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim();
-
+        // FIX: Limpiar la clave privada de posibles errores de formato en Render
+        let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
         if (privateKey) {
-            privateKey = privateKey.replace(/\\n/g, '\n').replace(/\n\n+/g, '\n').replace(/^"|"$/g, '').trim();
-            
-            const hasStart = privateKey.includes('-----BEGIN PRIVATE KEY-----');
             const hasEnd = privateKey.includes('-----END PRIVATE KEY-----');
             
             if (!hasStart || !hasEnd) {
@@ -96,19 +93,13 @@ const WhatsappBot = (() => {
 
     async function startSocket() {
         try {
-            // Asegurar que existe el directorio de auth
             if (!fs.existsSync(AUTH_DIR)) {
                 fs.mkdirSync(AUTH_DIR, { recursive: true });
             }
 
-            // Autenticación persistente
             const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
             const { version } = await fetchLatestBaileysVersion();
             
-            const isRegistered = state.creds.registered;
-            console.log(`📱 Versión WA: ${version.join('.')}`);
-            console.log(`📱 Registrado: ${isRegistered}`);
-
             sock = makeWASocket({
                 version,
                 auth: state,
@@ -123,37 +114,11 @@ const WhatsappBot = (() => {
                 syncFullHistory: false,
             });
 
-            if (isRegistered) {
-                console.log('📱 Sesión registrada encontrada, reconectando automáticamente...');
-            } else {
-                console.log('📱 Esperando QR para vincular... Mirá los logs.');
-            }
-
-            // Evento: Actualización de conexión
             sock.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, qr } = update;
 
-                // ============================================
-                // QR CODE: Mostrar como URL escaneable
-                // ============================================
                 if (qr) {
-                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`;
-                    console.log('');
-                    console.log('📱 ╔══════════════════════════════════════════════════════╗');
-                    console.log('📱 ║          ESCANEÁ ESTE QR PARA VINCULAR               ║');
-                    console.log('📱 ╠══════════════════════════════════════════════════════╣');
-                    console.log('📱 ║ 1. Copiá este link y abrilo en tu navegador:        ║');
-                    console.log(`📱 ║ ${qrUrl}`);
-                    console.log('📱 ║                                                      ║');
-                    console.log('📱 ║ 2. Abrí WhatsApp → Configuración →                  ║');
-                    console.log('📱 ║    Dispositivos vinculados → Vincular dispositivo    ║');
-                    console.log('📱 ║ 3. Escaneá el QR de la imagen del link               ║');
-                    console.log('📱 ╚══════════════════════════════════════════════════════╝');
-                    console.log('');
-                }
-
-                if (connection === 'connecting') {
-                    console.log('🔄 Conectando a WhatsApp...');
+                    console.log(`📱 QR generado: https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`);
                 }
 
                 if (connection === 'close') {
@@ -163,67 +128,36 @@ const WhatsappBot = (() => {
                     console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
 
                     if (statusCode === reason.loggedOut) {
-                        // 401 = LoggedOut: Limpiar sesión y reconectar pidiendo nuevo código
-                        console.log('🔴 Sesión cerrada por WhatsApp. Limpiando credenciales...');
+                        console.log('🔴 Sesión cerrada por el usuario. Limpiando credenciales...');
                         clearAuthInfo();
-                        retryCount = 0;
-                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        await new Promise(resolve => setTimeout(resolve, 5000));
                         await startSocket();
-                    } else if (statusCode === reason.restartRequired) {
-                        // 515 = RestartRequired: Reconectar inmediatamente
-                        console.log('🔄 Reinicio requerido por WhatsApp...');
-                        retryCount = 0;
+                    } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
                         await startSocket();
-                    } else if (statusCode === reason.timedOut || statusCode === 408) {
-                        // 408 = Timeout: Reconectar con backoff
+                    } else if (statusCode === 401) {
                         retryCount++;
                         if (retryCount > MAX_RETRIES) {
-                            console.log('🔴 Demasiados reintentos. Limpiando sesión y empezando de cero...');
+                            console.log('🔴 Demasiados reintentos. Limpiando sesión...');
                             clearAuthInfo();
                             retryCount = 0;
                         }
-                        const delay = Math.min(5000 * retryCount, 30000);
-                        console.log(`🔄 Reintento ${retryCount}/${MAX_RETRIES} en ${delay / 1000}s...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        await startSocket();
-                    } else if (statusCode === reason.connectionClosed || statusCode === reason.connectionLost) {
-                        // 428/408 = Connection issues: Reconectar con backoff corto
-                        retryCount++;
-                        const delay = Math.min(3000 * retryCount, 20000);
-                        console.log(`🔄 Reconectando (intento ${retryCount}) en ${delay / 1000}s...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await new Promise(resolve => setTimeout(resolve, 5000));
                         await startSocket();
                     } else {
-                        // Cualquier otro error: reconectar con backoff
                         retryCount++;
-                        if (retryCount <= MAX_RETRIES) {
-                            const delay = Math.min(5000 * retryCount, 30000);
-                            console.log(`🔄 Error desconocido (${statusCode}). Reintento ${retryCount}/${MAX_RETRIES} en ${delay / 1000}s...`);
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                            await startSocket();
-                        } else {
-                            console.log('🔴 Máximo de reintentos alcanzado. Limpiando y reiniciando...');
-                            clearAuthInfo();
-                            retryCount = 0;
-                            await new Promise(resolve => setTimeout(resolve, 5000));
-                            await startSocket();
-                        }
+                        const delay = Math.min(5000 * retryCount, 30000);
+                        console.log(`🔄 Reconectando en ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await startSocket();
                     }
                 } else if (connection === 'open') {
-                    retryCount = 0; // Reset retries on successful connection
-                    console.log('');
-                    console.log('✅ ══════════════════════════════════════════');
-                    console.log('✅  ¡Bot de WhatsApp CONECTADO y ESCUCHANDO!');
-                    console.log('✅ ══════════════════════════════════════════');
-                    console.log(`📡 Memoria: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
-                    console.log('');
+                    retryCount = 0;
+                    console.log('✅ ¡Bot de WhatsApp CONECTADO!');
                 }
             });
 
-            // Guardar credenciales cuando se actualizan
             sock.ev.on('creds.update', saveCreds);
 
-            // Evento: Mensajes nuevos
             sock.ev.on('messages.upsert', async ({ messages, type }) => {
                 if (type !== 'notify') return;
 
@@ -234,22 +168,21 @@ const WhatsappBot = (() => {
 
                     let text = msg.message?.conversation 
                         || msg.message?.extendedTextMessage?.text 
-                        || msg.message?.imageMessage?.caption
+                        || msg.message?.imageMessage?.caption 
                         || '';
                     
                     const isAudio = msg.message?.audioMessage;
 
-                    // --- PROCESAR AUDIO (Speech-to-Text) ---
+                    // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI)
                     if (isAudio && process.env.OPENAI_API_KEY) {
                         try {
-                            console.log('🎙️ Audio detectado, intentando transcribir...');
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
                             const buffer = await downloadMediaMessage(msg, 'buffer', {}, { 
                                 logger: P({ level: 'silent' }),
                                 reuploadRequest: sock.updateMediaMessage 
                             });
 
-                            const tmpPath = path.join(__dirname, `tmp_audio_${Date.now()}.ogg`);
+                            const tmpPath = path.join(__dirname, `tmp_${Date.now()}.ogg`);
                             fs.writeFileSync(tmpPath, buffer);
 
                             const FormData = require('form-data');
@@ -259,58 +192,65 @@ const WhatsappBot = (() => {
                             form.append('language', 'es');
 
                             const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
-                                headers: {
-                                    ...form.getHeaders(),
-                                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                                }
+                                headers: { ...form.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
                             });
 
                             fs.unlinkSync(tmpPath);
-
-                            if (whisperRes.data && whisperRes.data.text) {
+                            if (whisperRes.data?.text) {
                                 text = whisperRes.data.text;
-                                console.log(`🎙️ Transcripción: "${text}"`);
+                                console.log(`🎙️ Audio transcrito: "${text}"`);
                             }
-                        } catch (err) {
-                            console.error('❌ Error procesando audio:', err.message);
-                        }
+                        } catch (err) { console.error('❌ Error audio:', err.message); }
                     }
 
                     if (!text) continue;
-
-                    if (isGroup) {
-                        const label = isAudio ? '🎙️ Audio' : '📩 Texto';
-                        console.log(`${label} en grupo [${jid}]: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-                    }
-
                     const content = text.toLowerCase();
 
-                    // Filtrado por Palabras Clave
+                    // 2. PRIORIDAD: ALERTA DE TRÁFICO (Geocodificación)
+                    let isAlertProcessed = false;
                     if (ALERT_KEYWORDS.some(k => content.includes(k))) {
-                        console.log(`🚨 ¡PALABRA CLAVE DETECTADA!: "${text}"`);
-                        
                         try {
-                            if (!isGroup) continue;
+                            if (isGroup) {
+                                const groupInfo = await sock.groupMetadata(jid);
+                                const senderNumber = msg.key.participant || msg.key.remoteJid;
+                                
+                                if (db) {
+                                    await db.ref('bot_alerts').push({
+                                        group: groupInfo.subject,
+                                        author: senderNumber,
+                                        text: text,
+                                        timestamp: Date.now(),
+                                        type: isAudio ? 'audio' : 'text'
+                                    });
+                                }
 
-                            const groupInfo = await sock.groupMetadata(jid);
-                            const senderNumber = msg.key.participant || msg.key.remoteJid;
-                            
-                            if (db) {
-                                await db.ref('bot_alerts').push({
-                                    group: groupInfo.subject,
-                                    author: senderNumber,
-                                    text: text,
-                                    timestamp: Date.now(),
-                                    type: isAudio ? 'audio' : 'text'
-                                });
+                                const intersection = _extractIntersection(content);
+                                if (intersection) {
+                                    await _processAlert(intersection, text, groupInfo.subject);
+                                    isAlertProcessed = true;
+                                }
                             }
+                        } catch (err) { console.error('❌ Error alerta:', err.message); }
+                    }
 
-                            const intersection = _extractIntersection(content);
-                            if (intersection) {
-                                await _processAlert(intersection, text, groupInfo.subject);
-                            }
-                        } catch (err) {
-                            console.error('❌ Error al procesar alerta:', err.message);
+                    // 3. PRIORIDAD: INTERACCIÓN IA (Gemini Flash)
+                    if (!isAlertProcessed && gemini) {
+                        const botNumber = sock.user.id.split(':')[0];
+                        const isMentioned = content.includes(botNumber) || content.includes('bot');
+                        const isPrivate = !isGroup;
+
+                        if (isPrivate || isMentioned) {
+                            try {
+                                console.log(`🧠 Consultando Gemini...`);
+                                const result = await gemini.generateContent(text);
+                                const response = await result.response;
+                                const aiResponse = response.text();
+
+                                if (aiResponse) {
+                                    await sock.sendMessage(jid, { text: aiResponse }, { quoted: msg });
+                                    console.log('✅ IA respondió con éxito.');
+                                }
+                            } catch (aiErr) { console.error('❌ Error Gemini:', aiErr.message); }
                         }
                     }
                 }
