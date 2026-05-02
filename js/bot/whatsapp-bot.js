@@ -11,6 +11,17 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
+let gemini = null;
+if (process.env.GEMINI_API_KEY) {
+    try {
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        gemini = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    } catch (e) {
+        console.error('❌ Error inicializando Gemini:', e.message);
+    }
+}
+
 // 1. Inicialización de Firebase Admin
 let db = null;
 
@@ -21,6 +32,7 @@ if (!admin.apps.length) {
         // FIX: Limpiar la clave privada de posibles errores de formato en Render
         let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
         if (privateKey) {
+            const hasStart = privateKey.includes('-----BEGIN PRIVATE KEY-----');
             const hasEnd = privateKey.includes('-----END PRIVATE KEY-----');
             
             if (!hasStart || !hasEnd) {
@@ -340,10 +352,6 @@ const WhatsappBot = (() => {
             }
         } catch (err) {
             console.error('❌ Error en geocodificación:', err.message);
-        }
-    }
-        } catch (e) {
-            console.error('❌ Error procesando alerta:', e.message);
         }
     }
 
