@@ -56,7 +56,7 @@ const I18n = (() => {
             nav_maintenance: 'Mantenimiento / Reparaciones',
             nav_mechanic: 'Mecánico',
             nav_oil: 'Control de Aceite',
-            nav_gps: 'GPS & Geofencing',
+            nav_gps: 'Desplegar GPS',
             nav_settings: 'Configuración',
             nav_community: 'Comunidad',
             nav_logout: 'Cerrar Sesión',

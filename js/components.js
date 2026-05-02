@@ -136,7 +136,7 @@ const Components = (() => {
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             driver: [
-                { icon: '📡', label: 'Mapa', route: 'gps' },
+                { icon: '📡', label: 'Desplegar GPS', route: 'gps' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
                 { icon: '🛢️', label: 'Aceite', route: 'oil' },
