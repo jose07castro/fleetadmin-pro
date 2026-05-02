@@ -1,13 +1,20 @@
-/* ============================================
-   FleetAdmin Pro — Módulo GPS & Geofencing
-   Recepción de alertas GPS, geofencing con
-   auto-checkout y panel de eventos
-   ============================================ */
-
-const GPSModule = (() => {
-
-    // --- Renderizar panel GPS (solo owner) ---
+    // --- Renderizar panel GPS ---
     async function render() {
+        const role = Auth.getRole();
+        
+        // Si es Dueño, mostrar configuración técnica
+        if (role === 'owner') {
+            return _renderOwnerSettings();
+        }
+
+        // Si es Conductor (o cualquier otro), mostrar el MAPA EN VIVO
+        return _renderDriverMap();
+    }
+
+    // =============================================
+    // VISTA PARA DUEÑOS: Configuración Técnica
+    // =============================================
+    async function _renderOwnerSettings() {
         const gpsToken = await DB.getSetting('gps_webhook_token') || '';
         const whatsappPhone = await DB.getSetting('whatsapp_phone') || '';
         const whatsappApiKey = await DB.getSetting('whatsapp_apikey') || '';
@@ -17,112 +24,227 @@ const GPSModule = (() => {
             .slice(0, 30);
 
         return `
-            <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
-                📡 GPS & Geofencing
-            </h2>
+            <div class="gps-admin-panel" style="animation: fadeIn 0.5s ease-out;">
+                <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6); display:flex; align-items:center; gap:10px;">
+                    <span style="background:var(--accent-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">📡 Configuración GPS</span>
+                </h2>
 
-            <!-- Configuración del Webhook -->
-            <div class="settings-section">
-                <div class="settings-section-title">🔑 Configuración Webhook GPS</div>
-                <div class="settings-item">
-                    <div>
-                        <div class="settings-item-label">Token de Seguridad</div>
-                        <div class="settings-item-desc">Se envía como header X-GPS-Token en cada request</div>
-                    </div>
-                    <div style="display:flex; gap:var(--space-2); align-items:center;">
-                        <input type="text" id="gpsTokenInput" class="form-input" value="${gpsToken}"
-                            style="width:200px; background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;"
-                            placeholder="mi-token-secreto">
-                        <button class="btn btn-primary btn-sm" onclick="GPSModule.saveToken()">💾</button>
-                    </div>
-                </div>
-                <div class="settings-item">
-                    <div>
-                        <div class="settings-item-label">URL del Webhook</div>
-                        <div class="settings-item-desc">Configura este URL en tu dispositivo GPS</div>
-                    </div>
-                    <code style="font-size:var(--font-size-xs); background:var(--bg-tertiary); padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); word-break:break-all;">
-                        POST ${window.location.origin}/api/gps/webhook
-                    </code>
-                </div>
-            </div>
-
-            <!-- Configuración WhatsApp -->
-            <div class="settings-section">
-                <div class="settings-section-title">📱 Notificaciones WhatsApp (CallMeBot)</div>
-                <div class="settings-item">
-                    <div>
-                        <div class="settings-item-label">Número de teléfono</div>
-                        <div class="settings-item-desc">Con código de país, ej: 5493476123456</div>
-                    </div>
-                    <input type="text" id="waPhoneInput" class="form-input" value="${whatsappPhone}"
-                        style="width:200px; background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;"
-                        placeholder="5493476123456" inputmode="tel">
-                </div>
-                <div class="settings-item">
-                    <div>
-                        <div class="settings-item-label">API Key de CallMeBot</div>
-                        <div class="settings-item-desc">Obtené tu key en callmebot.com/blog/free-api-whatsapp-messages</div>
-                    </div>
-                    <div style="display:flex; gap:var(--space-2); align-items:center;">
-                        <input type="text" id="waApiKeyInput" class="form-input" value="${whatsappApiKey}"
-                            style="width:200px; background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;"
-                            placeholder="123456">
-                        <button class="btn btn-primary btn-sm" onclick="GPSModule.saveWhatsApp()">💾</button>
-                    </div>
-                </div>
-                <div class="settings-item" style="justify-content:flex-end;">
-                    <button class="btn btn-secondary btn-sm" onclick="GPSModule.testWhatsApp()">
-                        📤 Enviar Test
-                    </button>
-                </div>
-            </div>
-
-            <!-- Simulador GPS (para testing) -->
-            <div class="settings-section">
-                <div class="settings-section-title">🧪 Simulador GPS</div>
-                <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-3);">
-                    <div class="repair-form-grid">
-                        <div class="form-group">
-                            <label class="form-label">Patente del Vehículo</label>
-                            <input type="text" class="form-input" id="simPlate" placeholder="ABC-1234"
-                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important; text-transform:uppercase;">
+                <div class="settings-section">
+                    <div class="settings-section-title">🔑 Webhook GPS (Traccar/Protocolos)</div>
+                    <div class="settings-item">
+                        <div style="flex:1;">
+                            <div class="settings-item-label">Token de Seguridad</div>
+                            <div class="settings-item-desc">X-GPS-Token header</div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Zona</label>
-                            <select class="form-select" id="simZone"
-                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
-                                <option value="DOMICILIO_CHOFER">DOMICILIO_CHOFER</option>
-                                <option value="TALLER">TALLER</option>
-                                <option value="ZONA_OPERACION">ZONA_OPERACION</option>
-                            </select>
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" id="gpsTokenInput" class="form-input" value="${gpsToken}" style="width:150px;">
+                            <button class="btn btn-primary" onclick="GPSModule.saveToken()">💾</button>
                         </div>
                     </div>
-                    <div class="repair-form-grid">
-                        <div class="form-group">
-                            <label class="form-label">Latitud</label>
-                            <input type="number" class="form-input" id="simLat" value="-33.0232" step="0.0001"
-                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Longitud</label>
-                            <input type="number" class="form-input" id="simLng" value="-60.6389" step="0.0001"
-                                style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
-                        </div>
-                    </div>
-                    <button class="btn btn-warning btn-block" onclick="GPSModule.simulateGPS()">
-                        📡 Simular Alerta GPS
-                    </button>
                 </div>
-            </div>
 
-            <!-- Log de eventos GPS -->
-            <div class="dashboard-section">
-                <div class="dashboard-section-title">📋 Últimos Eventos GPS (${recentEvents.length})</div>
-                ${recentEvents.length > 0 ? renderEventsTable(recentEvents) :
-                    '<p style="color:var(--text-tertiary); text-align:center; padding:var(--space-4);">No hay eventos GPS registrados aún.</p>'}
+                <div class="settings-section">
+                    <div class="settings-section-title">🧪 Simulador de Alertas</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
+                        <input type="text" id="simPlate" class="form-input" placeholder="Patente">
+                        <select id="simZone" class="form-select">
+                            <option value="ZONA_OPERACION">ZONA_OPERACION</option>
+                            <option value="TALLER">TALLER</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-warning btn-block" onclick="GPSModule.simulateGPS()">Probar Alerta GPS</button>
+                </div>
+
+                <div class="dashboard-section">
+                    <div class="dashboard-section-title">📋 Últimos Eventos</div>
+                    ${renderEventsTable(recentEvents)}
+                </div>
             </div>
         `;
+    }
+
+    // =============================================
+    // VISTA PARA CONDUCTORES: Mapa en Vivo y Alertas
+    // =============================================
+    function _renderDriverMap() {
+        // Inyectar Leaflet CSS si no está
+        if (!document.getElementById('leaflet-css')) {
+            const link = document.createElement('link');
+            link.id = 'leaflet-css';
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
+        }
+
+        // Cargar Leaflet JS e inicializar
+        setTimeout(() => _initMap(), 100);
+
+        return `
+            <div class="map-container-wrapper" style="height: calc(100vh - 180px); display: flex; flex-direction: column; gap: 15px; animation: fadeIn 0.5s ease-out;">
+                <div class="map-header" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); padding: 12px 18px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow-md);">
+                    <div>
+                        <h3 style="margin:0; font-size: 1.1rem; color: var(--text-primary);">📍 Mapa de Tránsito en Vivo</h3>
+                        <p style="margin:0; font-size: 0.8rem; color: var(--text-tertiary);">Sincronizado con Bot WhatsApp</p>
+                    </div>
+                    <div id="gps-status-badge" class="badge badge-warning">🛰️ Localizando...</div>
+                </div>
+
+                <div id="live-map" style="flex: 1; border-radius: 20px; border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); overflow: hidden; position: relative; z-index: 1;">
+                    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); z-index: 1000;" id="map-loader">
+                        <div class="loader-spinner"></div>
+                    </div>
+                </div>
+
+                <div id="alerts-summary" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="stat-card" style="padding: 10px 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2);">
+                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #ef4444; font-weight: 700;">Operativos</div>
+                        <div id="police-count" style="font-size: 1.5rem; font-weight: 800; color: #ef4444;">0</div>
+                    </div>
+                    <div class="stat-card" style="padding: 10px 15px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2);">
+                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #f59e0b; font-weight: 700;">Alertas Tráfico</div>
+                        <div id="traffic-count" style="font-size: 1.5rem; font-weight: 800; color: #f59e0b;">0</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    let map = null;
+    let markers = {};
+    let userMarker = null;
+
+    async function _initMap() {
+        if (typeof L === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            script.onload = () => _initMap();
+            document.body.appendChild(script);
+            return;
+        }
+
+        const loader = document.getElementById('map-loader');
+        
+        // Rosario por defecto
+        const defaultCenter = [-32.9468, -60.6393];
+        
+        map = L.map('live-map', {
+            zoomControl: false
+        }).setView(defaultCenter, 13);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        if (loader) loader.style.display = 'none';
+
+        // 1. Localizar al usuario
+        _trackUserLocation();
+
+        // 2. Escuchar alertas de Firebase
+        _listenToFirebaseAlerts();
+    }
+
+    function _trackUserLocation() {
+        const badge = document.getElementById('gps-status-badge');
+        
+        if (!navigator.geolocation) {
+            if (badge) badge.textContent = '❌ GPS no soportado';
+            return;
+        }
+
+        const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                if (badge) {
+                    badge.textContent = '🟢 GPS Activo';
+                    badge.className = 'badge badge-success';
+                }
+
+                if (!userMarker) {
+                    const carIcon = L.divIcon({
+                        html: '<div style="background:var(--accent-primary); width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 0 15px var(--accent-primary);"></div>',
+                        className: '',
+                        iconSize: [16, 16]
+                    });
+                    userMarker = L.marker([latitude, longitude], { icon: carIcon }).addTo(map);
+                    map.panTo([latitude, longitude]);
+                } else {
+                    userMarker.setLatLng([latitude, longitude]);
+                }
+            },
+            (err) => {
+                console.warn('GPS Error:', err);
+                if (badge) {
+                    badge.textContent = '⚠️ GPS Débil';
+                    badge.className = 'badge badge-warning';
+                }
+            },
+            options
+        );
+    }
+
+    function _listenToFirebaseAlerts() {
+        const fleetId = Auth.getFleetId() || 'jose07';
+        const alertsRef = firebase.database().ref(`fleets/${fleetId}/traffic_alerts`);
+
+        alertsRef.on('value', (snapshot) => {
+            const data = snapshot.val() || {};
+            _updateMapMarkers(data);
+        });
+    }
+
+    function _updateMapMarkers(alerts) {
+        let pCount = 0;
+        let tCount = 0;
+
+        // Limpiar markers que ya no están en Firebase
+        Object.keys(markers).forEach(id => {
+            if (!alerts[id]) {
+                map.removeLayer(markers[id]);
+                delete markers[id];
+            }
+        });
+
+        // Agregar o actualizar markers
+        Object.keys(alerts).forEach(id => {
+            const alert = alerts[id];
+            if (alert.type === 'police') pCount++; else tCount++;
+
+            if (markers[id]) {
+                markers[id].setLatLng([alert.lat, alert.lng]);
+            } else {
+                const iconHtml = alert.type === 'police' 
+                    ? '<div style="font-size:24px; filter: drop-shadow(0 0 5px blue);">👮‍♂️</div>' 
+                    : '<div style="font-size:24px; filter: drop-shadow(0 0 5px orange);">⚠️</div>';
+
+                const icon = L.divIcon({
+                    html: iconHtml,
+                    className: 'map-alert-icon',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                });
+
+                markers[id] = L.marker([alert.lat, alert.lng], { icon })
+                    .addTo(map)
+                    .bindPopup(`
+                        <div style="text-align:center; padding:5px;">
+                            <strong style="display:block; margin-bottom:5px;">${alert.type === 'police' ? '🚔 Operativo Detectado' : '⚠️ Alerta de Tránsito'}</strong>
+                            <p style="margin:0; font-size:12px;">${alert.location}</p>
+                            <span style="font-size:10px; color:gray;">Detectado por Bot WhatsApp</span>
+                        </div>
+                    `);
+            }
+        });
+
+        // Actualizar contadores
+        const pElem = document.getElementById('police-count');
+        const tElem = document.getElementById('traffic-count');
+        if (pElem) pElem.textContent = pCount;
+        if (tElem) tElem.textContent = tCount;
     }
 
     function renderEventsTable(events) {
@@ -130,33 +252,24 @@ const GPSModule = (() => {
         for (const e of events) {
             const time = e.timestamp ? new Date(e.timestamp).toLocaleString() : '-';
             const actionBadge = e.autoCheckout
-                ? '<span class="badge badge-danger" style="font-size:0.7rem;">⏹️ Auto-Checkout</span>'
-                : (e.event === 'ZONE_ENTER'
-                    ? '<span class="badge badge-success" style="font-size:0.7rem;">📍 Entrada</span>'
-                    : '<span class="badge badge-warning" style="font-size:0.7rem;">📍 Evento</span>');
+                ? '<span class="badge badge-danger">⏹️ Checkout</span>'
+                : '<span class="badge badge-success">📍 Entrada</span>';
 
             rows += `
                 <tr>
-                    <td data-label="Hora">${time}</td>
-                    <td data-label="Vehículo">${e.vehiclePlate || '-'}</td>
-                    <td data-label="Zona">${e.zone || '-'}</td>
-                    <td data-label="Coords">${e.lat ? e.lat.toFixed(4) : '-'}, ${e.lng ? e.lng.toFixed(4) : '-'}</td>
-                    <td data-label="Acción">${actionBadge}</td>
+                    <td>${time}</td>
+                    <td>${e.vehiclePlate || '-'}</td>
+                    <td>${e.zone || '-'}</td>
+                    <td>${actionBadge}</td>
                 </tr>
             `;
         }
 
         return `
             <div class="data-table-wrapper">
-                <table class="data-table data-table-responsive">
+                <table class="data-table">
                     <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Vehículo</th>
-                            <th>Zona</th>
-                            <th>Coords</th>
-                            <th>Acción</th>
-                        </tr>
+                        <tr><th>Hora</th><th>Móvil</th><th>Zona</th><th>Estado</th></tr>
                     </thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -164,91 +277,33 @@ const GPSModule = (() => {
         `;
     }
 
-    // --- Guardar token GPS ---
     async function saveToken() {
         const token = document.getElementById('gpsTokenInput')?.value.trim();
-        if (!token) {
-            Components.showToast('Ingresá un token de seguridad', 'danger');
-            return;
-        }
         await DB.setSetting('gps_webhook_token', token);
-        Components.showToast('Token GPS guardado ✅', 'success');
+        Components.showToast('Configuración guardada ✅');
     }
 
-    // --- Guardar config WhatsApp ---
-    async function saveWhatsApp() {
-        const phone = document.getElementById('waPhoneInput')?.value.trim();
-        const apiKey = document.getElementById('waApiKeyInput')?.value.trim();
-        if (!phone || !apiKey) {
-            Components.showToast('Completá teléfono y API Key', 'danger');
-            return;
-        }
-        await DB.setSetting('whatsapp_phone', phone);
-        await DB.setSetting('whatsapp_apikey', apiKey);
-        Components.showToast('WhatsApp configurado ✅', 'success');
-    }
-
-    // --- Test WhatsApp ---
-    async function testWhatsApp() {
-        const phone = document.getElementById('waPhoneInput')?.value.trim() || await DB.getSetting('whatsapp_phone');
-        const apiKey = document.getElementById('waApiKeyInput')?.value.trim() || await DB.getSetting('whatsapp_apikey');
-        if (!phone || !apiKey) {
-            Components.showToast('Configurá WhatsApp primero', 'danger');
-            return;
-        }
-        Components.showToast('Enviando mensaje de prueba...', 'warning');
-        const result = await WhatsApp.send(phone, apiKey, '🚗 FleetAdmin Pro: Test de notificación exitoso ✅');
-        if (result.ok) {
-            Components.showToast('Mensaje enviado ✅', 'success');
-        } else {
-            Components.showToast('Error: ' + (result.error || 'No se pudo enviar'), 'danger');
-        }
-    }
-
-    // --- Simulador GPS ---
     async function simulateGPS() {
         const plate = document.getElementById('simPlate')?.value.trim().toUpperCase();
         const zone = document.getElementById('simZone')?.value;
-        const lat = parseFloat(document.getElementById('simLat')?.value);
-        const lng = parseFloat(document.getElementById('simLng')?.value);
-
-        if (!plate) {
-            Components.showToast('Ingresá la patente del vehículo', 'danger');
-            return;
-        }
-
         const token = await DB.getSetting('gps_webhook_token');
+        
+        if (!plate) return Components.showToast('Ingresá patente', 'danger');
 
         try {
-            const response = await fetch('/api/gps/webhook', {
+            await fetch('/api/gps/webhook', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-GPS-Token': token || ''
-                },
+                headers: { 'Content-Type': 'application/json', 'X-GPS-Token': token || '' },
                 body: JSON.stringify({
-                    vehiclePlate: plate,
-                    lat: lat || -33.0232,
-                    lng: lng || -60.6389,
-                    speed: 0,
-                    timestamp: new Date().toISOString(),
-                    event: 'ZONE_ENTER',
-                    zone: zone
+                    vehiclePlate: plate, lat: -32.9468, lng: -60.6393,
+                    timestamp: new Date().toISOString(), event: 'ZONE_ENTER', zone: zone
                 })
             });
-
-            const data = await response.json();
-            if (response.ok) {
-                Components.showToast(`Alerta GPS procesada: ${data.action || 'registrada'} ✅`, 'success');
-                // Refrescar la vista
-                Router.navigate('gps');
-            } else {
-                Components.showToast('Error: ' + (data.error || response.statusText), 'danger');
-            }
-        } catch (e) {
-            Components.showToast('Error de red: ' + e.message, 'danger');
-        }
+            Components.showToast('Simulación enviada ✅');
+            Router.navigate('gps');
+        } catch (e) { Components.showToast('Error de red', 'danger'); }
     }
 
-    return { render, saveToken, saveWhatsApp, testWhatsApp, simulateGPS };
+    return { render, saveToken, simulateGPS };
 })();
+
