@@ -236,7 +236,7 @@ const WhatsappBot = (() => {
                                     });
                                 }
 
-                                const intersection = _extractIntersection(content);
+                                const intersection = await _extractAddressWithAI(text);
                                 if (intersection) {
                                     await _processAlert(intersection, text, groupInfo.subject);
                                     isAlertProcessed = true;
@@ -276,6 +276,35 @@ const WhatsappBot = (() => {
             await new Promise(resolve => setTimeout(resolve, delay));
             await startSocket();
         }
+    }
+
+    /**
+     * Extrae la dirección usando Gemini IA para mayor precisión (con fallback a Regex).
+     */
+    async function _extractAddressWithAI(text) {
+        if (!gemini) return _extractIntersection(text);
+        
+        try {
+            const prompt = `Extrae SOLAMENTE la dirección, calle, intersección o altura (sin ciudad ni provincia) del siguiente mensaje de alerta de tráfico de Rosario, Argentina. 
+Mensaje: "${text}"
+Si no hay una ubicación clara, responde exactamente con la palabra "NULL".
+Ejemplos:
+- "Gorra en San Martin y Pellegrini" -> "San Martin y Pellegrini"
+- "Control por Oroño al 3000" -> "Oroño 3000"
+- "Hay zorros en el parque" -> "NULL"
+Responde SOLO con la dirección o NULL.`;
+            
+            const result = await gemini.generateContent(prompt);
+            const response = await result.response;
+            const address = response.text().trim();
+            
+            if (address && address !== 'NULL' && address !== 'null') {
+                return address;
+            }
+        } catch (e) {
+            console.error('❌ Error IA extrayendo dirección:', e.message);
+        }
+        return _extractIntersection(text);
     }
 
     /**
