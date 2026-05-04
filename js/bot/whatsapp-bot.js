@@ -83,8 +83,11 @@ const WhatsappBot = (() => {
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v203 (BAILEYS - QR CODE)...');
+        console.log('🚀 INICIANDO BOT v204 (BAILEYS - DEBUG TOTAL)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
+        console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
+        console.log(`🧠 Gemini IA: ${gemini ? '✅ ACTIVO' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
+        console.log(`🔑 Env vars: FIREBASE_PROJECT_ID=${process.env.FIREBASE_PROJECT_ID ? 'SET' : 'MISSING'}, DEFAULT_FLEET_ID=${process.env.DEFAULT_FLEET_ID || 'jose07 (default)'}`);
         
         await startSocket();
     }
@@ -171,6 +174,7 @@ const WhatsappBot = (() => {
             sock.ev.on('creds.update', saveCreds);
 
             sock.ev.on('messages.upsert', async ({ messages, type }) => {
+                console.log(`📨 [UPSERT] type=${type}, count=${messages.length}`);
                 if (type !== 'notify') return;
 
                 for (const msg of messages) {
@@ -178,12 +182,17 @@ const WhatsappBot = (() => {
                     const isGroup = jid?.endsWith('@g.us');
                     if (msg.key.fromMe) continue;
 
+                    // Extraer texto del mensaje (múltiples formatos de WhatsApp)
                     let text = msg.message?.conversation 
                         || msg.message?.extendedTextMessage?.text 
-                        || msg.message?.imageMessage?.caption 
+                        || msg.message?.imageMessage?.caption
+                        || msg.message?.videoMessage?.caption
+                        || msg.message?.buttonsResponseMessage?.selectedDisplayText
                         || '';
                     
                     const isAudio = msg.message?.audioMessage;
+
+                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${!!isAudio} | Text="${text.substring(0,80)}"`);
 
                     // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI)
                     if (isAudio && process.env.OPENAI_API_KEY) {
@@ -215,39 +224,57 @@ const WhatsappBot = (() => {
                         } catch (err) { console.error('❌ Error audio:', err.message); }
                     }
 
-                    if (!text) continue;
+                    if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
                     const content = text.toLowerCase();
 
-                    // 2. PRIORIDAD: ALERTA DE TRÁFICO (Geocodificación)
+                    // 2. PRIORIDAD: ALERTA DE TRÁFICO
+                    const matchedKeyword = ALERT_KEYWORDS.find(k => content.includes(k));
                     let isAlertProcessed = false;
-                    if (ALERT_KEYWORDS.some(k => content.includes(k))) {
-                        try {
-                            if (isGroup) {
-                                const groupInfo = await sock.groupMetadata(jid);
-                                const senderNumber = msg.key.participant || msg.key.remoteJid;
-                                
-                                if (db) {
-                                    await db.ref('bot_alerts').push({
-                                        group: groupInfo.subject,
-                                        author: senderNumber,
-                                        text: text,
-                                        timestamp: Date.now(),
-                                        type: isAudio ? 'audio' : 'text'
-                                    });
-                                }
 
-                                const intersection = await _extractAddressWithAI(text);
-                                if (intersection) {
-                                    await _processAlert(intersection, text, groupInfo.subject);
-                                    isAlertProcessed = true;
-                                }
+                    if (matchedKeyword) {
+                        console.log(`🚨 [KEYWORD] Detectada: "${matchedKeyword}" en mensaje: "${text.substring(0,60)}"`);
+                        
+                        try {
+                            let groupName = 'Privado';
+                            if (isGroup) {
+                                try {
+                                    const groupInfo = await sock.groupMetadata(jid);
+                                    groupName = groupInfo.subject;
+                                } catch(ge) { groupName = 'Grupo Desconocido'; }
                             }
-                        } catch (err) { console.error('❌ Error alerta:', err.message); }
+                            const senderNumber = msg.key.participant || msg.key.remoteJid;
+                            
+                            // Guardar raw en bot_alerts (diagnóstico)
+                            if (db) {
+                                await db.ref('bot_alerts').push({
+                                    group: groupName,
+                                    author: senderNumber,
+                                    text: text,
+                                    timestamp: Date.now(),
+                                    type: isAudio ? 'audio' : 'text'
+                                });
+                                console.log('📝 [DB] Raw alert guardada en bot_alerts');
+                            } else {
+                                console.log('❌ [DB] Firebase db es NULL - no se puede guardar');
+                            }
+
+                            // Extraer dirección con IA o Regex
+                            console.log('🧠 [EXTRACT] Intentando extraer dirección...');
+                            const intersection = await _extractAddressWithAI(text);
+                            console.log(`📍 [EXTRACT] Resultado: "${intersection || 'NULL'}"`);
+                            
+                            if (intersection) {
+                                await _processAlert(intersection, text, groupName);
+                                isAlertProcessed = true;
+                            } else {
+                                console.log('⚠️ [EXTRACT] No se pudo extraer dirección del mensaje');
+                            }
+                        } catch (err) { console.error('❌ Error alerta:', err.message, err.stack); }
                     }
 
                     // 3. PRIORIDAD: INTERACCIÓN IA (Gemini Flash)
                     if (!isAlertProcessed && gemini) {
-                        const botNumber = sock.user.id.split(':')[0];
+                        const botNumber = sock.user?.id?.split(':')[0] || '';
                         const isMentioned = content.includes(botNumber) || content.includes('bot');
                         const isPrivate = !isGroup;
 
@@ -337,26 +364,31 @@ Responde SOLO con la dirección o NULL.`;
      * Geocodifica y guarda en Firebase.
      */
     async function _processAlert(address, originalText, sourceGroup) {
-        console.log(`🔍 Intentando geocodificar: "${address}" en Rosario...`);
+        console.log(`🔍 [GEO] Intentando geocodificar: "${address}" en Rosario...`);
         
         try {
             const fullAddress = `${address}, Rosario, Santa Fe, Argentina`;
             const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
             
+            console.log(`🌐 [GEO] URL: ${url.substring(0,80)}...`);
+            
             const response = await axios.get(url, {
-                headers: { 'User-Agent': 'FleetAdminBot/1.0' }
+                headers: { 'User-Agent': 'FleetAdminBot/1.0' },
+                timeout: 10000
             });
+
+            console.log(`🌐 [GEO] Respuesta: ${response.data?.length || 0} resultados`);
 
             if (response.data && response.data.length > 0) {
                 const { lat, lon } = response.data[0];
-                console.log(`📍 ✅ Ubicación encontrada: ${lat}, ${lon}`);
+                console.log(`📍 [GEO] ✅ Ubicación encontrada: ${lat}, ${lon}`);
 
                 // Guardar en Firebase
                 const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07'; 
                 const alertId = `bot_${Date.now()}`;
                 
-                // Determinar tipo: Operativo/Gorra/Control -> policía. Otros -> advertencia.
-                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText);
+                // Determinar tipo
+                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
 
                 const alertData = {
                     id: alertId,
@@ -372,15 +404,46 @@ Responde SOLO con la dirección o NULL.`;
                     source: 'whatsapp_bot'
                 };
 
+                console.log(`💾 [DB] Guardando alerta en fleets/${fleetId}/traffic_alerts/${alertId}...`);
+
                 if (db) {
                     await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-                    console.log(`✅ ¡Alerta publicada con éxito en la flota ${fleetId}!`);
+                    console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA CON ÉXITO en flota ${fleetId}!!!`);
+                    console.log(`✅ [DB] Data: type=${alertData.type}, lat=${alertData.lat}, lng=${alertData.lng}`);
+                } else {
+                    console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR LA ALERTA');
                 }
             } else {
-                console.log(`⚠️ No se pudo encontrar "${address}" en el mapa de Rosario.`);
+                console.log(`⚠️ [GEO] No se pudo encontrar "${address}" en el mapa de Rosario.`);
+                
+                // FALLBACK: si no se encuentra, guardar con coordenadas del centro de Rosario
+                const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07';
+                const alertId = `bot_${Date.now()}`;
+                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
+                
+                const fallbackData = {
+                    id: alertId,
+                    type: isPolice ? 'police' : 'warning',
+                    location: address + ' (ubicación aprox.)',
+                    lat: -32.9468,
+                    lng: -60.6393,
+                    timestamp: Date.now(),
+                    expiresAt: Date.now() + (60 * 60 * 1000),
+                    authorName: `Bot WA (${sourceGroup})`,
+                    confirmations: 0,
+                    status: 'active',
+                    source: 'whatsapp_bot',
+                    approximate: true
+                };
+                
+                if (db) {
+                    await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(fallbackData);
+                    console.log(`⚠️ [DB] Alerta guardada CON UBICACIÓN APROXIMADA (centro Rosario)`);
+                }
             }
         } catch (err) {
-            console.error('❌ Error en geocodificación:', err.message);
+            console.error('❌ [GEO] Error en geocodificación:', err.message);
+            console.error('❌ [GEO] Stack:', err.stack);
         }
     }
 
