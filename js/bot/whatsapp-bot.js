@@ -133,13 +133,68 @@ const WhatsappBot = (() => {
     }
 
     /**
+     * Guarda/restaura credenciales de WhatsApp en Firebase
+     * para que sobrevivan los reinicios de Render
+     */
+    async function _firebaseAuthState() {
+        // Asegurar directorio local existe
+        if (!fs.existsSync(AUTH_DIR)) {
+            fs.mkdirSync(AUTH_DIR, { recursive: true });
+        }
+
+        // Intentar restaurar credenciales desde Firebase
+        if (db) {
+            try {
+                const snap = await db.ref('bot_auth/creds').once('value');
+                const savedCreds = snap.val();
+                if (savedCreds) {
+                    const credsPath = path.join(AUTH_DIR, 'creds.json');
+                    fs.writeFileSync(credsPath, JSON.stringify(savedCreds));
+                    console.log('🔑 [AUTH] Credenciales restauradas desde Firebase ✅');
+                } else {
+                    console.log('🔑 [AUTH] No hay credenciales guardadas, se necesita QR nuevo');
+                }
+            } catch (e) {
+                console.error('🔑 [AUTH] Error restaurando credenciales:', e.message);
+            }
+        }
+
+        // Usar el sistema de archivos local (ya restaurado desde Firebase)
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+        // Wrapper que guarda en Firebase además de local
+        const saveCredsToFirebase = async () => {
+            await saveCreds(); // Guardar local primero
+            if (db) {
+                try {
+                    const credsPath = path.join(AUTH_DIR, 'creds.json');
+                    if (fs.existsSync(credsPath)) {
+                        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                        await db.ref('bot_auth/creds').set(creds);
+                        console.log('🔑 [AUTH] Credenciales guardadas en Firebase ✅');
+                    }
+                } catch (e) {
+                    console.error('🔑 [AUTH] Error guardando en Firebase:', e.message);
+                }
+            }
+        };
+
+        return { state, saveCreds: saveCredsToFirebase };
+    }
+
+    /**
      * Limpia la carpeta de autenticación para forzar un nuevo pairing
      */
-    function clearAuthInfo() {
+    async function clearAuthInfo() {
         try {
             if (fs.existsSync(AUTH_DIR)) {
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-                console.log('🗑️ Credenciales antiguas eliminadas.');
+                console.log('🗑️ Credenciales locales eliminadas.');
+            }
+            // También limpiar en Firebase
+            if (db) {
+                await db.ref('bot_auth').remove();
+                console.log('🗑️ Credenciales de Firebase eliminadas.');
             }
         } catch (e) {
             console.error('⚠️ Error limpiando credenciales:', e.message);
@@ -148,11 +203,7 @@ const WhatsappBot = (() => {
 
     async function startSocket() {
         try {
-            if (!fs.existsSync(AUTH_DIR)) {
-                fs.mkdirSync(AUTH_DIR, { recursive: true });
-            }
-
-            const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+            const { state, saveCreds } = await _firebaseAuthState();
             const { version } = await fetchLatestBaileysVersion();
             
             sock = makeWASocket({
@@ -184,16 +235,17 @@ const WhatsappBot = (() => {
 
                     if (statusCode === reason.loggedOut) {
                         console.log('🔴 Sesión cerrada por el usuario. Limpiando credenciales...');
-                        clearAuthInfo();
+                        await clearAuthInfo();
                         await new Promise(resolve => setTimeout(resolve, 5000));
                         await startSocket();
                     } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
+                        console.log('🔄 Reconectando inmediatamente...');
                         await startSocket();
                     } else if (statusCode === 401) {
                         retryCount++;
                         if (retryCount > MAX_RETRIES) {
                             console.log('🔴 Demasiados reintentos. Limpiando sesión...');
-                            clearAuthInfo();
+                            await clearAuthInfo();
                             retryCount = 0;
                         }
                         await new Promise(resolve => setTimeout(resolve, 5000));
