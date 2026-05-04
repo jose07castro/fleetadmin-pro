@@ -179,6 +179,7 @@ const WhatsappBot = (() => {
                 if (type !== 'notify') return;
 
                 for (const msg of messages) {
+                    try {
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
                     if (msg.key.fromMe) continue;
@@ -229,7 +230,9 @@ const WhatsappBot = (() => {
                     const content = text.toLowerCase();
 
                     // 2. PRIORIDAD: ALERTA DE TRÁFICO
+                    console.log(`🔎 [CHECK] Buscando keywords en: "${content.substring(0,60)}" | Keywords: ${ALERT_KEYWORDS.join(',')}`);
                     const matchedKeyword = ALERT_KEYWORDS.find(k => content.includes(k));
+                    console.log(`🔎 [CHECK] Resultado: ${matchedKeyword ? '✅ ' + matchedKeyword : '❌ ninguna'}`);
                     let isAlertProcessed = false;
 
                     if (matchedKeyword) {
@@ -292,6 +295,9 @@ const WhatsappBot = (() => {
                                 }
                             } catch (aiErr) { console.error('❌ Error Gemini:', aiErr.message); }
                         }
+                    }
+                    } catch (outerErr) {
+                        console.error('💥 [CRASH] Error procesando mensaje:', outerErr.message, outerErr.stack);
                     }
                 }
             });
