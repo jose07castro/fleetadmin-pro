@@ -29,9 +29,12 @@ if (!admin.apps.length) {
     try {
         const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
         const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
-        // FIX: Limpiar la clave privada de posibles errores de formato en Render
+        // FIX v204: Limpiar la clave privada de posibles errores de formato en Render
         let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
         if (privateKey) {
+            // CRÍTICO: Render guarda \n como texto literal, hay que convertirlos a saltos de línea reales
+            privateKey = privateKey.replace(/\\n/g, '\n');
+            
             const hasStart = privateKey.includes('-----BEGIN PRIVATE KEY-----');
             const hasEnd = privateKey.includes('-----END PRIVATE KEY-----');
             
@@ -39,13 +42,7 @@ if (!admin.apps.length) {
                 console.error(`⚠️ LA CLAVE ESTÁ INCOMPLETA: Start=${hasStart}, End=${hasEnd}.`);
             }
 
-            // Extracción
-            if (hasStart && hasEnd) {
-                privateKey = privateKey.substring(
-                    privateKey.indexOf('-----BEGIN PRIVATE KEY-----'),
-                    privateKey.indexOf('-----END PRIVATE KEY-----') + 25
-                );
-            }
+            console.log(`🔑 PEM Debug: hasStart=${hasStart}, hasEnd=${hasEnd}, length=${privateKey.length}, firstChars="${privateKey.substring(0,30)}..."`);
         }
 
         console.log(`📡 Config: ID=${projectId.substring(0, 5)}..., KeyLength=${privateKey.length}, EndsCorrectly=${privateKey.endsWith('-----END PRIVATE KEY-----')}`);
