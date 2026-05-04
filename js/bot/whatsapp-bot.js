@@ -457,12 +457,140 @@ Responde SOLO con la dirección o NULL.`;
         }
         return null;
     }
+    /**
+     * Diccionario de calles rosarinas: nombre popular → nombre completo
+     * Para que Nominatim pueda encontrar "Roca y Corrientes" como "Presidente Roca y Corrientes"
+     */
+    const ROSARIO_STREET_ALIASES = {
+        // Calles principales abreviadas
+        'roca': 'Presidente Roca',
+        'pellegrini': 'Carlos Pellegrini',
+        'lagos': 'Ovidio Lagos',
+        'oroño': 'Boulevard Oroño',
+        'orono': 'Boulevard Oroño',
+        'mitre': 'Bartolomé Mitre',
+        'sarmiento': 'Domingo Sarmiento',
+        'moreno': 'Mariano Moreno',
+        'urquiza': 'Justo José de Urquiza',
+        'brown': 'Almirante Brown',
+        'belgrano': 'Manuel Belgrano',
+        'rivadavia': 'Bernardino Rivadavia',
+        'alvear': 'Marcelo T de Alvear',
+        'alem': 'Leandro N Alem',
+        'illia': 'Arturo Illia',
+        'circunvalacion': 'Avenida de Circunvalación',
+        'circunbalacion': 'Avenida de Circunvalación',
+        'circunva': 'Avenida de Circunvalación',
+        'circunbala': 'Avenida de Circunvalación',
+        // Avenidas
+        'francia': 'Avenida Francia',
+        'españa': 'España',
+        'alberdi': 'Juan Bautista Alberdi',
+        'godoy': 'Avenida Presidente Perón',
+        'arijon': 'Arijón',
+        'avellaneda': 'Avenida Avellaneda',
+        'eva peron': 'Avenida Eva Perón',
+        'uriburu': 'Uriburu',
+        'necochea': 'Necochea',
+        'battle y ordoñez': 'Battle y Ordóñez',
+        // Calles del centro
+        'cafferata': 'Cafferata',
+        'caferata': 'Cafferata',
+        'corrientes': 'Corrientes',
+        'cordoba': 'Córdoba',
+        'cordova': 'Córdoba',
+        'mendoza': 'Mendoza',
+        'santa fe': 'Santa Fe',
+        'san juan': 'San Juan',
+        'san luis': 'San Luis',
+        'san lorenzo': 'San Lorenzo',
+        'san martin': 'San Martín',
+        'san nicolas': 'San Nicolás',
+        'rioja': 'La Rioja',
+        'la rioja': 'La Rioja',
+        'entre rios': 'Entre Ríos',
+        'tucuman': 'Tucumán',
+        'catamarca': 'Catamarca',
+        'santiago': 'Santiago',
+        'jujuy': 'Jujuy',
+        'maipu': 'Maipú',
+        'laprida': 'Laprida',
+        'balcarce': 'Balcarce',
+        'zeballos': 'Zeballos',
+        'wheelwright': 'Wheelwright',
+        'cochabamba': 'Cochabamba',
+        'pasco': 'Pasco',
+        'callao': 'Callao',
+        'suipacha': 'Suipacha',
+        'dorrego': 'Dorrego',
+        'virasoro': 'Virasoro',
+        'vera mujica': 'Vera Mujica',
+        'ayacucho': 'Ayacucho',
+        'montevideo': 'Montevideo',
+        'ituzaingo': 'Ituzaingó',
+        '27': '27 de Febrero',
+        '27 de febrero': '27 de Febrero',
+        'bv oroño': 'Boulevard Oroño',
+        'bv. oroño': 'Boulevard Oroño',
+        'bvar oroño': 'Boulevard Oroño',
+        'juan jose paso': 'Juan José Paso',
+        'jj paso': 'Juan José Paso',
+        'peron': 'Avenida Presidente Perón',
+        'newbery': 'Jorge Newbery',
+        'warnes': 'Warnes',
+    };
+
+    /**
+     * Expande nombres abreviados de calles rosarinas a sus nombres completos
+     */
+    function _expandStreetNames(address) {
+        if (!address) return address;
+        
+        // Separar por " y " (intersección) o por " al " (altura)
+        let parts;
+        let separator;
+        
+        if (address.toLowerCase().includes(' y ')) {
+            parts = address.split(/\s+y\s+/i);
+            separator = ' y ';
+        } else if (address.toLowerCase().includes(' al ')) {
+            parts = address.split(/\s+al\s+/i);
+            separator = ' al ';
+        } else {
+            parts = [address];
+            separator = '';
+        }
+
+        const expanded = parts.map(part => {
+            const trimmed = part.trim().toLowerCase();
+            // Buscar coincidencia exacta primero
+            if (ROSARIO_STREET_ALIASES[trimmed]) {
+                return ROSARIO_STREET_ALIASES[trimmed];
+            }
+            // Buscar coincidencia parcial (si la calle tiene un número al final, ej: "roca 2000")
+            const words = trimmed.split(' ');
+            const lastWord = words[words.length - 1];
+            const streetPart = words.slice(0, -1).join(' ');
+            if (/^\d+$/.test(lastWord) && ROSARIO_STREET_ALIASES[streetPart]) {
+                return `${ROSARIO_STREET_ALIASES[streetPart]} ${lastWord}`;
+            }
+            return part.trim(); // Devolver original si no hay alias
+        });
+
+        const result = expanded.join(separator);
+        if (result.toLowerCase() !== address.toLowerCase()) {
+            console.log(`📝 [ALIAS] "${address}" → "${result}"`);
+        }
+        return result;
+    }
 
     /**
      * Geocodifica y guarda en Firebase.
      */
     async function _processAlert(address, originalText, sourceGroup) {
-        console.log(`🔍 [GEO] Intentando geocodificar: "${address}" en Rosario...`);
+        // Expandir nombres abreviados ANTES de geocodificar
+        const expandedAddress = _expandStreetNames(address);
+        console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
         
         const fleetId = await _resolveFleetId();
         const alertId = `bot_${Date.now()}`;
@@ -476,7 +604,7 @@ Responde SOLO con la dirección o NULL.`;
             // Respetar rate limit de Nominatim (1 req/segundo)
             await new Promise(r => setTimeout(r, 1500));
             
-            const fullAddress = `${address}, Rosario, Santa Fe, Argentina`;
+            const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
             const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
             
             console.log(`🌐 [GEO] URL: ${url.substring(0,80)}...`);
@@ -504,7 +632,7 @@ Responde SOLO con la dirección o NULL.`;
         const alertData = {
             id: alertId,
             type: isPolice ? 'police' : 'warning',
-            location: address + (approximate ? ' (ubicación aprox.)' : ''),
+            location: expandedAddress + (approximate ? ' (ubicación aprox.)' : ''),
             lat,
             lng,
             timestamp: Date.now(),
