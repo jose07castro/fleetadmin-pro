@@ -27,37 +27,41 @@ let db = null;
 
 if (!admin.apps.length) {
     try {
-        const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
-        const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
-        // FIX v204: Limpiar la clave privada de posibles errores de formato en Render
-        let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
-        if (privateKey) {
-            // CRÍTICO: Render guarda \n como texto literal, hay que convertirlos a saltos de línea reales
-            privateKey = privateKey.replace(/\\n/g, '\n');
+        let credential = null;
+
+        // MÉTODO 1 (RECOMENDADO): JSON completo en base64
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            console.log('🔑 Usando FIREBASE_SERVICE_ACCOUNT (JSON base64)...');
+            const json = JSON.parse(
+                Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8')
+            );
+            credential = admin.credential.cert(json);
+            console.log(`📡 Config: project=${json.project_id}, email=${json.client_email?.substring(0,20)}...`);
+        } 
+        // MÉTODO 2 (FALLBACK): Variables individuales
+        else {
+            console.log('🔑 Usando variables individuales (PROJECT_ID + CLIENT_EMAIL + PRIVATE_KEY)...');
+            const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
+            const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
+            let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
             
-            const hasStart = privateKey.includes('-----BEGIN PRIVATE KEY-----');
-            const hasEnd = privateKey.includes('-----END PRIVATE KEY-----');
-            
-            if (!hasStart || !hasEnd) {
-                console.error(`⚠️ LA CLAVE ESTÁ INCOMPLETA: Start=${hasStart}, End=${hasEnd}.`);
+            if (privateKey) {
+                // Render guarda \n como texto literal
+                privateKey = privateKey.replace(/\\n/g, '\n');
             }
 
-            console.log(`🔑 PEM Debug: hasStart=${hasStart}, hasEnd=${hasEnd}, length=${privateKey.length}, firstChars="${privateKey.substring(0,30)}..."`);
-        }
+            console.log(`📡 Config: ID=${projectId?.substring(0, 5)}..., KeyLength=${privateKey.length}`);
 
-        console.log(`📡 Config: ID=${projectId.substring(0, 5)}..., KeyLength=${privateKey.length}, EndsCorrectly=${privateKey.endsWith('-----END PRIVATE KEY-----')}`);
+            if (!projectId || !clientEmail || privateKey.length < 100) {
+                throw new Error('Variables de Firebase incompletas o inválidas.');
+            }
 
-        if (!projectId || !clientEmail || privateKey.length < 100) {
-            throw new Error('Variables de Firebase incompletas o inválidas.');
+            credential = admin.credential.cert({ projectId, clientEmail, privateKey });
         }
 
         admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId,
-                clientEmail,
-                privateKey
-            }),
-            databaseURL: process.env.FIREBASE_DATABASE_URL
+            credential,
+            databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${process.env.FIREBASE_PROJECT_ID || 'fleetadmin-pro'}-default-rtdb.firebaseio.com`
         });
         
         db = admin.database();
