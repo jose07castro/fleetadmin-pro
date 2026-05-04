@@ -373,84 +373,65 @@ Responde SOLO con la dirección o NULL.`;
     async function _processAlert(address, originalText, sourceGroup) {
         console.log(`🔍 [GEO] Intentando geocodificar: "${address}" en Rosario...`);
         
+        const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07';
+        const alertId = `bot_${Date.now()}`;
+        const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
+        
+        let lat = -32.9468; // Centro de Rosario (fallback)
+        let lng = -60.6393;
+        let approximate = true;
+        
         try {
+            // Respetar rate limit de Nominatim (1 req/segundo)
+            await new Promise(r => setTimeout(r, 1500));
+            
             const fullAddress = `${address}, Rosario, Santa Fe, Argentina`;
             const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
             
             console.log(`🌐 [GEO] URL: ${url.substring(0,80)}...`);
             
             const response = await axios.get(url, {
-                headers: { 'User-Agent': 'FleetAdminBot/1.0' },
+                headers: { 'User-Agent': 'FleetAdminPro/2.0 (jose07castro@gmail.com)' },
                 timeout: 10000
             });
 
             console.log(`🌐 [GEO] Respuesta: ${response.data?.length || 0} resultados`);
 
             if (response.data && response.data.length > 0) {
-                const { lat, lon } = response.data[0];
-                console.log(`📍 [GEO] ✅ Ubicación encontrada: ${lat}, ${lon}`);
-
-                // Guardar en Firebase
-                const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07'; 
-                const alertId = `bot_${Date.now()}`;
-                
-                // Determinar tipo
-                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
-
-                const alertData = {
-                    id: alertId,
-                    type: isPolice ? 'police' : 'warning',
-                    location: address,
-                    lat: parseFloat(lat),
-                    lng: parseFloat(lon),
-                    timestamp: Date.now(),
-                    expiresAt: Date.now() + (60 * 60 * 1000), // 60 min TTL
-                    authorName: `Bot WA (${sourceGroup})`,
-                    confirmations: 1,
-                    status: 'active',
-                    source: 'whatsapp_bot'
-                };
-
-                console.log(`💾 [DB] Guardando alerta en fleets/${fleetId}/traffic_alerts/${alertId}...`);
-
-                if (db) {
-                    await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-                    console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA CON ÉXITO en flota ${fleetId}!!!`);
-                    console.log(`✅ [DB] Data: type=${alertData.type}, lat=${alertData.lat}, lng=${alertData.lng}`);
-                } else {
-                    console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR LA ALERTA');
-                }
+                lat = parseFloat(response.data[0].lat);
+                lng = parseFloat(response.data[0].lon);
+                approximate = false;
+                console.log(`📍 [GEO] ✅ Ubicación exacta: ${lat}, ${lng}`);
             } else {
-                console.log(`⚠️ [GEO] No se pudo encontrar "${address}" en el mapa de Rosario.`);
-                
-                // FALLBACK: si no se encuentra, guardar con coordenadas del centro de Rosario
-                const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07';
-                const alertId = `bot_${Date.now()}`;
-                const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
-                
-                const fallbackData = {
-                    id: alertId,
-                    type: isPolice ? 'police' : 'warning',
-                    location: address + ' (ubicación aprox.)',
-                    lat: -32.9468,
-                    lng: -60.6393,
-                    timestamp: Date.now(),
-                    expiresAt: Date.now() + (60 * 60 * 1000),
-                    authorName: `Bot WA (${sourceGroup})`,
-                    confirmations: 0,
-                    status: 'active',
-                    source: 'whatsapp_bot',
-                    approximate: true
-                };
-                
-                if (db) {
-                    await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(fallbackData);
-                    console.log(`⚠️ [DB] Alerta guardada CON UBICACIÓN APROXIMADA (centro Rosario)`);
-                }
+                console.log(`⚠️ [GEO] Sin resultados, usando centro de Rosario`);
             }
         } catch (err) {
-            console.error('❌ [GEO] Error en geocodificación:', err.message);
-            console.error('❌ [GEO] Stack:', err.stack);
+            console.error(`⚠️ [GEO] Error geocodificando (${err.message}), guardando con ubicación aproximada`);
+        }
+
+        // SIEMPRE guardar la alerta, con o sin coordenadas exactas
+        const alertData = {
+            id: alertId,
+            type: isPolice ? 'police' : 'warning',
+            location: address + (approximate ? ' (ubicación aprox.)' : ''),
+            lat,
+            lng,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + (60 * 60 * 1000),
+            authorName: `Bot WA (${sourceGroup})`,
+            confirmations: approximate ? 0 : 1,
+            status: 'active',
+            source: 'whatsapp_bot',
+            approximate
+        };
+
+        console.log(`💾 [DB] Guardando alerta en fleets/${fleetId}/traffic_alerts/${alertId}...`);
+
+        if (db) {
+            await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
+            console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA!!! flota=${fleetId}, type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
+        } else {
+            console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR');
         }
     }
 
