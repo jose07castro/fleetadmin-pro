@@ -83,12 +83,51 @@ const WhatsappBot = (() => {
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
+    // Fleet ID real (se auto-detecta al iniciar)
+    let _resolvedFleetId = null;
+
+    async function _resolveFleetId() {
+        if (_resolvedFleetId) return _resolvedFleetId;
+        
+        // Si hay variable de entorno explícita, usarla
+        if (process.env.DEFAULT_FLEET_ID) {
+            _resolvedFleetId = process.env.DEFAULT_FLEET_ID;
+            console.log(`🏢 [FLEET] Usando DEFAULT_FLEET_ID del env: ${_resolvedFleetId}`);
+            return _resolvedFleetId;
+        }
+
+        // Auto-detectar: buscar la primera flota en Firebase
+        if (db) {
+            try {
+                const snap = await db.ref('fleets').limitToFirst(1).once('value');
+                const val = snap.val();
+                if (val) {
+                    const keys = Object.keys(val);
+                    if (keys.length > 0) {
+                        _resolvedFleetId = keys[0];
+                        console.log(`🏢 [FLEET] ✅ Auto-detectada flota: ${_resolvedFleetId}`);
+                        return _resolvedFleetId;
+                    }
+                }
+            } catch (e) {
+                console.error('🏢 [FLEET] Error buscando flota:', e.message);
+            }
+        }
+
+        // Último fallback
+        _resolvedFleetId = 'jose07';
+        console.log(`🏢 [FLEET] ⚠️ Usando fallback: ${_resolvedFleetId}`);
+        return _resolvedFleetId;
+    }
+
     async function init() {
-        console.log('🚀 INICIANDO BOT v204 (BAILEYS - DEBUG TOTAL)...');
+        console.log('🚀 INICIANDO BOT v207 (BAILEYS - AUTO FLEET)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
         console.log(`🧠 Gemini IA: ${gemini ? '✅ ACTIVO' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
-        console.log(`🔑 Env vars: FIREBASE_PROJECT_ID=${process.env.FIREBASE_PROJECT_ID ? 'SET' : 'MISSING'}, DEFAULT_FLEET_ID=${process.env.DEFAULT_FLEET_ID || 'jose07 (default)'}`);
+        
+        // Auto-detectar fleet ID ANTES de conectar WhatsApp
+        await _resolveFleetId();
         
         await startSocket();
     }
@@ -373,7 +412,7 @@ Responde SOLO con la dirección o NULL.`;
     async function _processAlert(address, originalText, sourceGroup) {
         console.log(`🔍 [GEO] Intentando geocodificar: "${address}" en Rosario...`);
         
-        const fleetId = process.env.DEFAULT_FLEET_ID || 'jose07';
+        const fleetId = await _resolveFleetId();
         const alertId = `bot_${Date.now()}`;
         const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
         
