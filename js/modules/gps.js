@@ -1,3 +1,4 @@
+const GPSModule = (() => {
     // --- Renderizar panel GPS ---
     async function render() {
         const role = Auth.getRole();
