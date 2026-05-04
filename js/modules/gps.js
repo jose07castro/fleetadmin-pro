@@ -23,12 +23,53 @@
             .sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt))
             .slice(0, 30);
 
+        // Inyectar Leaflet CSS si no está
+        if (!document.getElementById('leaflet-css')) {
+            const link = document.createElement('link');
+            link.id = 'leaflet-css';
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
+        }
+
+        // Inicializar mapa después del render
+        setTimeout(() => _initMap(), 100);
+
         return `
             <div class="gps-admin-panel" style="animation: fadeIn 0.5s ease-out;">
                 <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6); display:flex; align-items:center; gap:10px;">
-                    <span style="background:var(--accent-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">📡 Configuración GPS</span>
+                    <span style="background:var(--accent-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">📡 GPS & Alertas de Tránsito</span>
                 </h2>
 
+                <!-- ===== MAPA DE ALERTAS EN VIVO ===== -->
+                <div class="map-container-wrapper" style="height: 400px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                    <div class="map-header" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); padding: 12px 18px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow-md);">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.1rem; color: var(--text-primary);">📍 Mapa de Tránsito en Vivo</h3>
+                            <p style="margin:0; font-size: 0.8rem; color: var(--text-tertiary);">Sincronizado con Bot WhatsApp</p>
+                        </div>
+                        <div id="gps-status-badge" class="badge badge-warning">🛰️ Cargando mapa...</div>
+                    </div>
+
+                    <div id="live-map" style="flex: 1; border-radius: 20px; border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); overflow: hidden; position: relative; z-index: 1;">
+                        <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); z-index: 1000;" id="map-loader">
+                            <div class="loader-spinner"></div>
+                        </div>
+                    </div>
+
+                    <div id="alerts-summary" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="stat-card" style="padding: 10px 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2);">
+                            <div style="font-size: 0.7rem; text-transform: uppercase; color: #ef4444; font-weight: 700;">Operativos</div>
+                            <div id="police-count" style="font-size: 1.5rem; font-weight: 800; color: #ef4444;">0</div>
+                        </div>
+                        <div class="stat-card" style="padding: 10px 15px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2);">
+                            <div style="font-size: 0.7rem; text-transform: uppercase; color: #f59e0b; font-weight: 700;">Alertas Tráfico</div>
+                            <div id="traffic-count" style="font-size: 1.5rem; font-weight: 800; color: #f59e0b;">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== CONFIGURACIÓN TÉCNICA ===== -->
                 <div class="settings-section">
                     <div class="settings-section-title">🔑 Webhook GPS (Traccar/Protocolos)</div>
                     <div class="settings-item">
