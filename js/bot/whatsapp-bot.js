@@ -345,18 +345,16 @@ const WhatsappBot = (() => {
                     }
 
                     if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
-                    const content = text.toLowerCase();
 
-                    // 2. PRIORIDAD: ALERTA DE TRÁFICO
-                    console.log(`🔎 [CHECK] Buscando keywords en: "${content.substring(0,60)}" | Keywords: ${ALERT_KEYWORDS.join(',')}`);
-                    const matchedKeyword = ALERT_KEYWORDS.find(k => content.includes(k));
-                    console.log(`🔎 [CHECK] Resultado: ${matchedKeyword ? '✅ ' + matchedKeyword : '❌ ninguna'}`);
-                    let isAlertProcessed = false;
-
-                    if (matchedKeyword) {
-                        console.log(`🚨 [KEYWORD] Detectada: "${matchedKeyword}" en mensaje: "${text.substring(0,60)}"`);
+                    // --- NUEVA LÓGICA: TODO PASA POR GEMINI FLASH ---
+                    console.log(`🧠 [GEMINI] Analizando mensaje: "${text.substring(0,60)}..."`);
+                    
+                    try {
+                        const analysis = await _analyzeMessageWithAI(text);
                         
-                        try {
+                        if (analysis && analysis.isAlert) {
+                            console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
+                            
                             let groupName = 'Privado';
                             if (isGroup) {
                                 try {
@@ -364,55 +362,38 @@ const WhatsappBot = (() => {
                                     groupName = groupInfo.subject;
                                 } catch(ge) { groupName = 'Grupo Desconocido'; }
                             }
-                            const senderNumber = msg.key.participant || msg.key.remoteJid;
-                            
-                            // Guardar raw en bot_alerts (diagnóstico)
+
+                            // Guardar en Firebase (diagnóstico)
                             if (db) {
                                 await db.ref('bot_alerts').push({
                                     group: groupName,
-                                    author: senderNumber,
                                     text: text,
-                                    timestamp: Date.now(),
-                                    type: isAudio ? 'audio' : 'text'
+                                    analysis: analysis,
+                                    timestamp: Date.now()
                                 });
-                                console.log('📝 [DB] Raw alert guardada en bot_alerts');
-                            } else {
-                                console.log('❌ [DB] Firebase db es NULL - no se puede guardar');
                             }
 
-                            // Extraer dirección con IA o Regex
-                            console.log('🧠 [EXTRACT] Intentando extraer dirección...');
-                            const intersection = await _extractAddressWithAI(text);
-                            console.log(`📍 [EXTRACT] Resultado: "${intersection || 'NULL'}"`);
+                            // Procesar la alerta
+                            await _processAlert(analysis.address, text, groupName, analysis.type);
                             
-                            if (intersection) {
-                                await _processAlert(intersection, text, groupName);
-                                isAlertProcessed = true;
-                            } else {
-                                console.log('⚠️ [EXTRACT] No se pudo extraer dirección del mensaje');
-                            }
-                        } catch (err) { console.error('❌ Error alerta:', err.message, err.stack); }
-                    }
+                        } else {
+                            // Si no es alerta, ver si es una pregunta directa al bot
+                            const botNumber = sock.user?.id?.split(':')[0] || '';
+                            const isMentioned = text.toLowerCase().includes(botNumber) || text.toLowerCase().includes('bot');
+                            const isPrivate = !isGroup;
 
-                    // 3. PRIORIDAD: INTERACCIÓN IA (Gemini Flash)
-                    if (!isAlertProcessed && gemini) {
-                        const botNumber = sock.user?.id?.split(':')[0] || '';
-                        const isMentioned = content.includes(botNumber) || content.includes('bot');
-                        const isPrivate = !isGroup;
-
-                        if (isPrivate || isMentioned) {
-                            try {
-                                console.log(`🧠 Consultando Gemini...`);
+                            if (isPrivate || isMentioned) {
+                                console.log(`🧠 [CHAT] Respondiendo consulta...`);
                                 const result = await gemini.generateContent(text);
                                 const response = await result.response;
                                 const aiResponse = response.text();
-
                                 if (aiResponse) {
                                     await sock.sendMessage(jid, { text: aiResponse }, { quoted: msg });
-                                    console.log('✅ IA respondió con éxito.');
                                 }
-                            } catch (aiErr) { console.error('❌ Error Gemini:', aiErr.message); }
+                            }
                         }
+                    } catch (err) {
+                        console.error('❌ Error en el flujo de IA:', err.message);
                     }
                     } catch (outerErr) {
                         console.error('💥 [CRASH] Error procesando mensaje:', outerErr.message, outerErr.stack);
@@ -431,32 +412,49 @@ const WhatsappBot = (() => {
     }
 
     /**
-     * Extrae la dirección usando Gemini IA para mayor precisión (con fallback a Regex).
+     * Analiza el mensaje con Gemini Flash para determinar si es una alerta y extraer datos.
+     * Incluye lógica especial para Rosario (Helicóptero HECA, etc.)
      */
-    async function _extractAddressWithAI(text) {
-        if (!gemini) return _extractIntersection(text);
+    async function _analyzeMessageWithAI(text) {
+        if (!gemini) return null;
         
         try {
-            const prompt = `Extrae SOLAMENTE la dirección, calle, intersección o altura (sin ciudad ni provincia) del siguiente mensaje de alerta de tráfico de Rosario, Argentina. 
+            const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
 Mensaje: "${text}"
-Si no hay una ubicación clara, responde exactamente con la palabra "NULL".
-Ejemplos:
-- "Gorra en San Martin y Pellegrini" -> "San Martin y Pellegrini"
-- "Control por Oroño al 3000" -> "Oroño 3000"
-- "Hay zorros en el parque" -> "NULL"
-Responde SOLO con la dirección o NULL.`;
+
+REGLAS ESPECIALES:
+1. Si menciona "CODIGO ROJO" o "HELICOPTERO", es el helicóptero sanitario aterrizando en el HECA. La ubicación es "Pellegrini y Vera Mujica". El tipo es "helicopter".
+2. Si menciona "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", es una alerta de POLICÍA.
+3. Si menciona accidentes, cortes, baches o tráfico pesado, es una alerta de TRÁFICO.
+
+Responde estrictamente en formato JSON con esta estructura:
+{
+  "isAlert": boolean,
+  "type": "police" | "traffic" | "helicopter",
+  "address": "calle y calle" o "calle altura",
+  "confidence": 0-1
+}
+Si no es una alerta de tráfico o policía, pon "isAlert": false.
+Si es un "CODIGO ROJO", pon la dirección como "Pellegrini y Vera Mujica".
+
+Responde SOLO el JSON.`;
             
             const result = await gemini.generateContent(prompt);
             const response = await result.response;
-            const address = response.text().trim();
+            const jsonText = response.text().trim().replace(/```json|```/g, '');
             
-            if (address && address !== 'NULL' && address !== 'null') {
-                return address;
+            try {
+                const analysis = JSON.parse(jsonText);
+                if (analysis.isAlert && analysis.address && analysis.address !== 'NULL') {
+                    return analysis;
+                }
+            } catch (jsonErr) {
+                console.error('❌ Error parseando JSON de Gemini:', jsonText);
             }
         } catch (e) {
-            console.error('❌ Error IA extrayendo dirección:', e.message);
+            console.error('❌ Error IA analizando mensaje:', e.message);
         }
-        return _extractIntersection(text);
+        return null;
     }
 
     /**
@@ -614,24 +612,34 @@ Responde SOLO con la dirección o NULL.`;
     /**
      * Geocodifica y guarda en Firebase.
      */
-    async function _processAlert(address, originalText, sourceGroup) {
+    async function _processAlert(address, originalText, sourceGroup, aiType = null) {
         // Expandir nombres abreviados ANTES de geocodificar
         const expandedAddress = _expandStreetNames(address);
         console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
         
         const fleetId = await _resolveFleetId();
         const alertId = `bot_${Date.now()}`;
-        const isPolice = /gorra|control|operativo|zorros|chanchos|ratis|fiscaliz/i.test(originalText);
+        
+        // Determinar tipo: Prioridad a lo que diga la IA, fallback a keywords
+        let type = aiType || ( /gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText) ? 'police' : 'warning');
         
         let lat = -32.9468; // Centro de Rosario (fallback)
         let lng = -60.6393;
         let approximate = true;
         
         try {
-            // Respetar rate limit de Nominatim (1 req/segundo)
-            await new Promise(r => setTimeout(r, 1500));
-            
-            const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
+            // Caso especial: Helicóptero en Pellegrini y Vera Mujica (HECA)
+            if (type === 'helicopter' || originalText.toLowerCase().includes('codigo rojo')) {
+                lat = -32.9515; // Coordenadas HECA Rosario
+                lng = -60.6625;
+                approximate = false;
+                type = 'police'; // Usar icono de policía o aviso por ahora en el mapa
+                console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
+            } else {
+                // Respetar rate limit de Nominatim (1 req/segundo)
+                await new Promise(r => setTimeout(r, 1500));
+                
+                const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
             const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
             
             console.log(`🌐 [GEO] URL: ${url.substring(0,80)}...`);
@@ -658,7 +666,7 @@ Responde SOLO con la dirección o NULL.`;
         // SIEMPRE guardar la alerta, con o sin coordenadas exactas
         const alertData = {
             id: alertId,
-            type: isPolice ? 'police' : 'warning',
+            type: type,
             location: expandedAddress + (approximate ? ' (ubicación aprox.)' : ''),
             lat,
             lng,
