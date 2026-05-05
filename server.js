@@ -42,6 +42,28 @@ app.post('/api/whatsapp/webhook', (req, res) => {
     res.json({ ok: true, status: 'Message received and filtered' });
 });
 
+// ============================================
+// Bot Management Endpoints
+// ============================================
+app.get('/api/bot/status', (req, res) => {
+    res.json({ 
+        ok: true, 
+        status: 'Bot running',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Endpoint para resetear la sesión corrompida (MAC malo)
+app.post('/api/bot/reset-session', async (req, res) => {
+    try {
+        console.log('🔄 [RESET] Limpiando sesión corrompida por petición manual...');
+        await WhatsappBot.resetSession();
+        res.json({ ok: true, message: 'Sesión limpiada. El bot va a pedir QR nuevo en los logs.' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });

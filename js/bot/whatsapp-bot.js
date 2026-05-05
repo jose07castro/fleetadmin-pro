@@ -397,6 +397,14 @@ const WhatsappBot = (() => {
                     }
                     } catch (outerErr) {
                         console.error('💥 [CRASH] Error procesando mensaje:', outerErr.message, outerErr.stack);
+                        // Si es error de MAC, la sesión está corrompida → limpiar y reconectar
+                        if (outerErr.message && (outerErr.message.includes('MAC') || outerErr.message.includes('decrypt'))) {
+                            console.log('🔴 [MAC] Sesión corrompida detectada. Limpiando y reiniciando...');
+                            await clearAuthInfo();
+                            await new Promise(r => setTimeout(r, 3000));
+                            await startSocket();
+                            return;
+                        }
                     }
                 }
             });
@@ -690,7 +698,19 @@ Responde SOLO el JSON.`;
         }
     }
 
-    return { init };
+    async function resetSession() {
+        console.log('🔄 [RESET] Forzando limpieza de sesión...');
+        if (sock) {
+            try { await sock.logout(); } catch(e) { /* ignorar */ }
+            sock = null;
+        }
+        await clearAuthInfo();
+        await new Promise(r => setTimeout(r, 3000));
+        await startSocket();
+        console.log('✅ [RESET] Sesión limpiada, bot reiniciado. Buscá el QR en los logs.');
+    }
+
+    return { init, resetSession };
 })();
 
 module.exports = WhatsappBot;
