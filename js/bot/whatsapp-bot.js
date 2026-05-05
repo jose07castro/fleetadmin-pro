@@ -334,11 +334,12 @@ const WhatsappBot = (() => {
                         if (typeof content === 'string') text = content;
                     }
                     
-                    const isAudio = msg.message?.audioMessage;
+                    // PTT = nota de voz (mantener micrófono), audioMessage = archivo de audio adjunto
+                    const isAudio = msg.message?.audioMessage || msg.message?.pttMessage;
 
-                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${!!isAudio} | Text="${text.substring(0,80)}"`);
+                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${!!isAudio} | PTT=${!!msg.message?.pttMessage} | Text="${text.substring(0,80)}"`);
 
-                    // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI)
+                    // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
                     if (isAudio && process.env.OPENAI_API_KEY) {
                         try {
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
