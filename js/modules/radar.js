@@ -557,20 +557,24 @@ const RadarModule = (() => {
     }
 
     function _createAlertIcon(type) {
-        const icons = {
-            police:     `<div class="radar-alert-icon police">🚓<div class="siren"></div></div>`,
-            radar:      `<div class="radar-alert-icon radar">📷</div>`,
-            helicopter: `<div class="radar-alert-icon helicopter">🚁</div>`,
-            traffic:    `<div class="radar-alert-icon traffic">🚦</div>`,
-            warning:    `<div class="radar-alert-icon warning">⚠️</div>`
+        const iconMap = {
+            police:     '/assets/alert-icons/police.png',
+            radar:      '/assets/alert-icons/radar.png',
+            helicopter: '/assets/alert-icons/helicopter.png',
+            ambulance:  '/assets/alert-icons/ambulance.png',
+            firetruck:  '/assets/alert-icons/firetruck.png',
+            municipal:  '/assets/alert-icons/municipal.png',
+            accident:   '/assets/alert-icons/accident.png',
+            traffic:    '/assets/alert-icons/accident.png',
+            warning:    '/assets/alert-icons/accident.png',
         };
-        const iconHtml = icons[type] || icons.warning;
+        const iconUrl = iconMap[type] || iconMap.warning;
 
-        return L.divIcon({
-            className: 'radar-custom-alert',
-            html: iconHtml,
-            iconSize: [44, 44],
-            iconAnchor: [22, 22]
+        return L.icon({
+            iconUrl,
+            iconSize:   [44, 44],
+            iconAnchor: [22, 22],
+            popupAnchor:[0, -22]
         });
     }
 

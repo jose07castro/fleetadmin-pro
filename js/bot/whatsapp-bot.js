@@ -430,24 +430,28 @@ const WhatsappBot = (() => {
             const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
 Mensaje: "${text}"
 
-REGLAS ESPECIALES:
-1. Si menciona "CODIGO ROJO" o "HELICOPTERO", es el helicóptero sanitario del HECA. Ubicación: "Pellegrini y Vera Mujica". Tipo: "helicopter".
-2. Si menciona "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", es una alerta de POLICÍA. Tipo: "police".
-3. Si menciona "RADAR", "CAMARA DE VELOCIDAD", "VELOCIMETRO", "MULTA FOTO", es una cámara de velocidad. Tipo: "radar".
-4. Si menciona accidentes, cortes de calle, baches, inundaciones, tráfico pesado o demoras, es una alerta de TRÁFICO. Tipo: "traffic".
+REGLAS:
+1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", dirección: "Pellegrini y Vera Mujica"
+2. "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
+3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA" → tipo: "radar"
+4. "AMBULANCIA", "SAMU", "107", "emergencia médica" → tipo: "ambulance"
+5. "BOMBEROS", "INCENDIO", "FUEGO", "100" → tipo: "firetruck"
+6. "MUNICIPAL", "TRÁNSITO MUNICIPAL", "GRUA MUNICIPAL" → tipo: "municipal"
+7. "ACCIDENTE", "CHOQUE", "VOLCAMIENTO", "CARAMBOLAJE" → tipo: "accident"
+8. Cortes de calle, inundaciones, baches, tráfico pesado → tipo: "traffic"
 
-Responde estrictamente en formato JSON con esta estructura:
+Responde SOLO con JSON válido:
 {
   "isAlert": boolean,
-  "type": "police" | "traffic" | "radar" | "helicopter",
-  "address": "calle y calle" o "calle altura",
-  "description": "descripción breve en español",
-  "confidence": 0-1
+  "type": "police"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic",
+  "address": "calle y calle O calle altura O null",
+  "description": "descripción breve en español de qué pasa",
+  "confidence": 0.0-1.0
 }
-Si no es una alerta de tráfico relevante, pon "isAlert": false.
-Si es "CODIGO ROJO", la dirección siempre es "Pellegrini y Vera Mujica".
+Si NO es una alerta relevante → "isAlert": false
+Si es "CODIGO ROJO" → address siempre = "Pellegrini y Vera Mujica"
 
-Responde SOLO el JSON.`;
+Responde SOLO el JSON sin texto extra.`;
             
             const result = await gemini.generateContent(prompt);
             const response = await result.response;
