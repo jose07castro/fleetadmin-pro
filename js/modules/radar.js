@@ -507,14 +507,25 @@ const RadarModule = (() => {
 
         const lat = parseFloat(data.lat);
         const lng = parseFloat(data.lng);
-        const type = data.type || 'warning'; // 'police' o 'warning'
+        const type = data.type || 'warning'; // 'police' | 'radar' | 'traffic' | 'helicopter' | 'warning'
         
+        const typeLabels = {
+            police:     '👮 Control de Policía',
+            radar:      '📷 Radar / Cámara de Velocidad',
+            helicopter: '🚁 Helicóptero Sanitario (HECA)',
+            traffic:    '🚦 Alerta de Tráfico',
+            warning:    '⚠️ Alerta'
+        };
+        const label = typeLabels[type] || typeLabels.warning;
+        const description = data.description || '';
+
         const popupContent = `
             <div class="radar-alert-popup">
                 <div class="alert-popup-header ${type}">
-                    ${type === 'police' ? '👮 Control de Policía' : '⚠️ Alerta de Tráfico'}
+                    ${label}
                 </div>
                 <div class="alert-popup-body">
+                    ${description ? `<p>${description}</p>` : ''}
                     <p><strong>Ubicación:</strong> ${data.location}</p>
                     <p><strong>Detectado:</strong> ${new Date(data.timestamp).toLocaleTimeString()}</p>
                     <p class="alert-expiry">Expira en: ${Math.round((data.expiresAt - Date.now()) / 60000)} min</p>
@@ -546,16 +557,20 @@ const RadarModule = (() => {
     }
 
     function _createAlertIcon(type) {
-        const color = type === 'police' ? '#3b82f6' : '#ef4444';
-        const iconHtml = type === 'police' 
-            ? `<div class="radar-alert-icon police">🚓<div class="siren"></div></div>`
-            : `<div class="radar-alert-icon warning">⚠️</div>`;
+        const icons = {
+            police:     `<div class="radar-alert-icon police">🚓<div class="siren"></div></div>`,
+            radar:      `<div class="radar-alert-icon radar">📷</div>`,
+            helicopter: `<div class="radar-alert-icon helicopter">🚁</div>`,
+            traffic:    `<div class="radar-alert-icon traffic">🚦</div>`,
+            warning:    `<div class="radar-alert-icon warning">⚠️</div>`
+        };
+        const iconHtml = icons[type] || icons.warning;
 
         return L.divIcon({
             className: 'radar-custom-alert',
             html: iconHtml,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
         });
     }
 

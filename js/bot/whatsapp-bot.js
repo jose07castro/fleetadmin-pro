@@ -431,19 +431,21 @@ const WhatsappBot = (() => {
 Mensaje: "${text}"
 
 REGLAS ESPECIALES:
-1. Si menciona "CODIGO ROJO" o "HELICOPTERO", es el helicóptero sanitario aterrizando en el HECA. La ubicación es "Pellegrini y Vera Mujica". El tipo es "helicopter".
-2. Si menciona "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", es una alerta de POLICÍA.
-3. Si menciona accidentes, cortes, baches o tráfico pesado, es una alerta de TRÁFICO.
+1. Si menciona "CODIGO ROJO" o "HELICOPTERO", es el helicóptero sanitario del HECA. Ubicación: "Pellegrini y Vera Mujica". Tipo: "helicopter".
+2. Si menciona "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", es una alerta de POLICÍA. Tipo: "police".
+3. Si menciona "RADAR", "CAMARA DE VELOCIDAD", "VELOCIMETRO", "MULTA FOTO", es una cámara de velocidad. Tipo: "radar".
+4. Si menciona accidentes, cortes de calle, baches, inundaciones, tráfico pesado o demoras, es una alerta de TRÁFICO. Tipo: "traffic".
 
 Responde estrictamente en formato JSON con esta estructura:
 {
   "isAlert": boolean,
-  "type": "police" | "traffic" | "helicopter",
+  "type": "police" | "traffic" | "radar" | "helicopter",
   "address": "calle y calle" o "calle altura",
+  "description": "descripción breve en español",
   "confidence": 0-1
 }
-Si no es una alerta de tráfico o policía, pon "isAlert": false.
-Si es un "CODIGO ROJO", pon la dirección como "Pellegrini y Vera Mujica".
+Si no es una alerta de tráfico relevante, pon "isAlert": false.
+Si es "CODIGO ROJO", la dirección siempre es "Pellegrini y Vera Mujica".
 
 Responde SOLO el JSON.`;
             
