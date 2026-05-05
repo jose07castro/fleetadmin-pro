@@ -242,6 +242,10 @@ const WhatsappBot = (() => {
                         console.log('⚠️ [428] Precondición fallida. Intentando reset de conexión suave...');
                         await new Promise(resolve => setTimeout(resolve, 3000));
                         await startSocket();
+                    } else if (statusCode === 440 || statusCode === 503) {
+                        console.log(`⚠️ [${statusCode}] Conflicto de sesión (posible despliegue en curso). Esperando 15s...`);
+                        await new Promise(resolve => setTimeout(resolve, 15000));
+                        await startSocket();
                     } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
                         console.log('🔄 Reconectando inmediatamente...');
                         await startSocket();
