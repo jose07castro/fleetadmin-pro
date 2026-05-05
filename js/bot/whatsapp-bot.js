@@ -143,10 +143,16 @@ const WhatsappBot = (() => {
     });
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v222 (BAILEYS + GEMINI v1 API)...');
+        console.log('🚀 INICIANDO BOT v227 (BAILEYS + GEMINI HTTP)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
         console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO (gemini-pro HTTP)' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
+        
+        // Esperar 30s al inicio para que el proceso anterior de Render muera
+        // y no cause conflictos de sesión 440 simultáneos
+        console.log('⏳ Esperando 30s para que el proceso anterior libere la sesión...');
+        await new Promise(r => setTimeout(r, 30000));
+        console.log('✅ Espera terminada. Conectando a WhatsApp...');
         
         // Auto-detectar fleet ID ANTES de conectar WhatsApp
         await _resolveFleetId();
