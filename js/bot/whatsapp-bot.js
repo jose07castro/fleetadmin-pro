@@ -284,12 +284,31 @@ const WhatsappBot = (() => {
                     if (msg.key.fromMe) continue;
 
                     // Extraer texto del mensaje (múltiples formatos de WhatsApp)
-                    let text = msg.message?.conversation 
-                        || msg.message?.extendedTextMessage?.text 
-                        || msg.message?.imageMessage?.caption
-                        || msg.message?.videoMessage?.caption
-                        || msg.message?.buttonsResponseMessage?.selectedDisplayText
-                        || '';
+                    let text = "";
+                    const m = msg.message;
+                    
+                    if (m) {
+                        text = m.conversation || 
+                               m.extendedTextMessage?.text || 
+                               m.imageMessage?.caption || 
+                               m.videoMessage?.caption ||
+                               m.buttonsResponseMessage?.selectedDisplayText ||
+                               m.templateButtonReplyMessage?.selectedId ||
+                               m.listResponseMessage?.title ||
+                               // Caso especial: Mensajes efímeros
+                               m.ephemeralMessage?.message?.conversation ||
+                               m.ephemeralMessage?.message?.extendedTextMessage?.text ||
+                               // Caso especial: Ver en el dispositivo (view once)
+                               m.viewOnceMessage?.message?.buttonsResponseMessage?.selectedDisplayText ||
+                               m.viewOnceMessageV2?.message?.imageMessage?.caption ||
+                               "";
+                    }
+
+                    // Si sigue vacío, intentar buscar en el cuerpo crudo por si es un formato nuevo
+                    if (!text && m) {
+                        const content = m.extendedTextMessage || m.conversation;
+                        if (typeof content === 'string') text = content;
+                    }
                     
                     const isAudio = msg.message?.audioMessage;
 
