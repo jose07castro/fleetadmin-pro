@@ -459,10 +459,26 @@ const WhatsappBot = (() => {
         const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
 Mensaje: "${text}"
 
-REGLAS:
-1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", dirección: "Pellegrini y Vera Mujica"
+LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
+- "cancha de Central" / "Arroyito" / "estadio de Central" → "Avenida Gorriti 2001"
+- "cancha de Ñuls" / "cancha de Newells" / "el Parque" → "Miguel Lamas y Cafferata"
+- "el monumento" → "Belgrano y Córdoba"
+- "la terminal" / "terminal de ómnibus" → "Cafferata 702"
+- "el HECA" / "hospital de emergencias" → "Pellegrini y Vera Mujica"
+- "el Puerto" / "zona del puerto" → "Avenida Estación del Puerto"
+- "el Parque Independencia" → "Av. Oroño y Pellegrini"
+- "el shopping Alto Rosario" → "Junín 501"
+- "el Portal" / "shopping Portal" → "Av. Presidente Perón 4200"
+- "la Facultad" / "UNR" → "Maipú y Corrientes"
+- "el aeropuerto" → "Av. Vías del Ferrocarril 1000, Fisherton"
+- "Fisherton" → "zona Av. Dante Alighieri, Rosario"
+- "Tablada" → "zona Av. Presidente Perón, Rosario"
+- "Villa Gobernador Gálvez" / "VGG" → "Av. Alberdi 800, Villa Gobernador Gálvez"
+
+REGLAS DE CLASIFICACIÓN:
+1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", address: "Pellegrini y Vera Mujica"
 2. "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
-3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA" → tipo: "radar"
+3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA", "RADAR MOVIL" → tipo: "radar"
 4. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
 5. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
 6. "MUNICIPAL", "TRANSITO MUNICIPAL", "GRUA MUNICIPAL" → tipo: "municipal"
