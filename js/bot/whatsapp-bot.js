@@ -399,15 +399,13 @@ const WhatsappBot = (() => {
                         console.error('❌ Error en el flujo de IA:', err.message);
                     }
                     } catch (outerErr) {
-                        console.error('💥 [CRASH] Error procesando mensaje:', outerErr.message, outerErr.stack);
-                        // Si es error de MAC, la sesión está corrompida → limpiar y reconectar
+                        // Si es error de MAC, es un mensaje que no se puede descifrar (normal en WhatsApp)
+                        // Solo logueamos y continuamos — no reseteamos la sesión
                         if (outerErr.message && (outerErr.message.includes('MAC') || outerErr.message.includes('decrypt'))) {
-                            console.log('🔴 [MAC] Sesión corrompida detectada. Limpiando y reiniciando...');
-                            await clearAuthInfo();
-                            await new Promise(r => setTimeout(r, 3000));
-                            await startSocket();
-                            return;
+                            console.log('⚠️ [MAC] Mensaje no descifrable (llave desincronizada), saltando...');
+                            continue; // Saltar este mensaje y procesar el siguiente
                         }
+                        console.error('💥 [CRASH] Error procesando mensaje:', outerErr.message);
                     }
                 }
             });
