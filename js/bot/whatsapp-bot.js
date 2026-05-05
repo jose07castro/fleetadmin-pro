@@ -15,8 +15,15 @@ let gemini = null;
 if (process.env.GEMINI_API_KEY) {
     try {
         const { GoogleGenerativeAI } = require('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        gemini = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
+        // Usar v1 API (soporta todos los modelos actuales)
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {
+            apiEndpoint: 'https://generativelanguage.googleapis.com'
+        });
+        gemini = genAI.getGenerativeModel(
+            { model: 'gemini-1.5-flash' },
+            { apiVersion: 'v1' }
+        );
+        console.log('🧠 Gemini 1.5 Flash (v1 API) inicializado ✅');
     } catch (e) {
         console.error('❌ Error inicializando Gemini:', e.message);
     }
@@ -282,9 +289,8 @@ const WhatsappBot = (() => {
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
                     if (msg.key.fromMe) continue;
-                    // Solo procesar mensajes de grupos (no spam de listas de difusión ni privados innecesarios)
-                    // Si querés procesar mensajes privados también, comentá la siguiente línea:
-                    // if (!isGroup) continue;
+                    // Solo analizar mensajes de GRUPOS — los privados se ignoran
+                    if (!isGroup) { console.log('⏭️ [SKIP] Mensaje privado, ignorado'); continue; }
 
                     // Extraer texto del mensaje (múltiples formatos de WhatsApp)
                     let text = "";
