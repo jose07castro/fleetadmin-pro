@@ -184,21 +184,25 @@ const WhatsappBot = (() => {
         // Usar el sistema de archivos local (ya restaurado desde Firebase)
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-        // Wrapper que guarda en Firebase además de local
+        // Debounce: guardar solo si no hubo otra actualización en 3 segundos
+        let saveTimeout = null;
         const saveCredsToFirebase = async () => {
-            await saveCreds(); // Guardar local primero
-            if (db) {
-                try {
-                    const credsPath = path.join(AUTH_DIR, 'creds.json');
-                    if (fs.existsSync(credsPath)) {
-                        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                        await db.ref('bot_auth/creds').set(creds);
-                        console.log('🔑 [AUTH] Credenciales guardadas en Firebase ✅');
+            await saveCreds(); // Guardar local inmediatamente
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                if (db) {
+                    try {
+                        const credsPath = path.join(AUTH_DIR, 'creds.json');
+                        if (fs.existsSync(credsPath)) {
+                            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                            await db.ref('bot_auth/creds').set(creds);
+                            console.log('🔑 [AUTH] Credenciales guardadas en Firebase ✅');
+                        }
+                    } catch (e) {
+                        console.error('🔑 [AUTH] Error guardando en Firebase:', e.message);
                     }
-                } catch (e) {
-                    console.error('🔑 [AUTH] Error guardando en Firebase:', e.message);
                 }
-            }
+            }, 3000); // Esperar 3s antes de escribir en Firebase
         };
 
         return { state, saveCreds: saveCredsToFirebase };
