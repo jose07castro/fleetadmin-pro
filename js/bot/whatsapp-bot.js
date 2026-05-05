@@ -11,23 +11,25 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
-let gemini = null;
-if (process.env.GEMINI_API_KEY) {
+// Gemini via HTTP directo (sin SDK, evita problemas de versiones)
+const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
+const GEMINI_URL = GEMINI_KEY
+    ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`
+    : null;
+
+async function callGemini(prompt) {
+    if (!GEMINI_URL) return null;
     try {
-        const { GoogleGenerativeAI } = require('@google/generative-ai');
-        // Usar v1 API (soporta todos los modelos actuales)
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {
-            apiEndpoint: 'https://generativelanguage.googleapis.com'
-        });
-        gemini = genAI.getGenerativeModel(
-            { model: 'gemini-1.5-flash' },
-            { apiVersion: 'v1' }
-        );
-        console.log('🧠 Gemini 1.5 Flash (v1 API) inicializado ✅');
+        const res = await axios.post(GEMINI_URL, {
+            contents: [{ parts: [{ text: prompt }] }]
+        }, { timeout: 15000 });
+        return res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch (e) {
-        console.error('❌ Error inicializando Gemini:', e.message);
+        console.error('❌ [GEMINI HTTP] Error:', e.response?.data?.error?.message || e.message);
+        return null;
     }
 }
+
 
 // 1. Inicialización de Firebase Admin
 let db = null;
@@ -440,53 +442,39 @@ const WhatsappBot = (() => {
     }
 
     /**
-     * Analiza el mensaje con Gemini Flash para determinar si es una alerta y extraer datos.
-     * Incluye lógica especial para Rosario (Helicóptero HECA, etc.)
+     * Analiza el mensaje con Gemini (HTTP directo) para detectar alertas.
      */
     async function _analyzeMessageWithAI(text) {
-        if (!gemini) return null;
+        if (!GEMINI_KEY) return null;
         
-        try {
-            const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
+        const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
 Mensaje: "${text}"
 
 REGLAS:
 1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", dirección: "Pellegrini y Vera Mujica"
 2. "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
 3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA" → tipo: "radar"
-4. "AMBULANCIA", "SAMU", "107", "emergencia médica" → tipo: "ambulance"
-5. "BOMBEROS", "INCENDIO", "FUEGO", "100" → tipo: "firetruck"
-6. "MUNICIPAL", "TRÁNSITO MUNICIPAL", "GRUA MUNICIPAL" → tipo: "municipal"
-7. "ACCIDENTE", "CHOQUE", "VOLCAMIENTO", "CARAMBOLAJE" → tipo: "accident"
-8. Cortes de calle, inundaciones, baches, tráfico pesado → tipo: "traffic"
+4. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
+5. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
+6. "MUNICIPAL", "TRANSITO MUNICIPAL", "GRUA MUNICIPAL" → tipo: "municipal"
+7. "ACCIDENTE", "CHOQUE" → tipo: "accident"
+8. Cortes, baches, inundaciones, tráfico pesado → tipo: "traffic"
 
-Responde SOLO con JSON válido:
-{
-  "isAlert": boolean,
-  "type": "police"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic",
-  "address": "calle y calle O calle altura O null",
-  "description": "descripción breve en español de qué pasa",
-  "confidence": 0.0-1.0
-}
-Si NO es una alerta relevante → "isAlert": false
-Si es "CODIGO ROJO" → address siempre = "Pellegrini y Vera Mujica"
+Responde SOLO JSON válido:
+{"isAlert":boolean,"type":"police"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"calle y calle o null","description":"resumen breve","confidence":0.0}
+Si NO es alerta: {"isAlert":false}
+Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
 
-Responde SOLO el JSON sin texto extra.`;
-            
-            const result = await gemini.generateContent(prompt);
-            const response = await result.response;
-            const jsonText = response.text().trim().replace(/```json|```/g, '');
-            
-            try {
-                const analysis = JSON.parse(jsonText);
-                if (analysis.isAlert && analysis.address && analysis.address !== 'NULL') {
-                    return analysis;
-                }
-            } catch (jsonErr) {
-                console.error('❌ Error parseando JSON de Gemini:', jsonText);
+        try {
+            const jsonText = await callGemini(prompt);
+            if (!jsonText) return null;
+            const clean = jsonText.trim().replace(/```json|```/g, '').trim();
+            const analysis = JSON.parse(clean);
+            if (analysis.isAlert && analysis.address && analysis.address !== 'null') {
+                return analysis;
             }
         } catch (e) {
-            console.error('❌ Error IA analizando mensaje:', e.message);
+            console.error('❌ [GEMINI] Error parseando respuesta:', e.message);
         }
         return null;
     }
