@@ -127,8 +127,21 @@ const WhatsappBot = (() => {
         return _resolvedFleetId;
     }
 
+    // ============ GLOBAL ERROR HANDLER ============
+    // Los errores MAC ocurren en las internals de Baileys/libsignal
+    // y a veces escapan como "unhandledRejection". Los silenciamos aquí.
+    process.removeAllListeners('unhandledRejection');
+    process.on('unhandledRejection', (reason) => {
+        const msg = reason?.message || String(reason);
+        if (msg.includes('MAC') || msg.includes('decrypt') || msg.includes('Bad MAC')) {
+            console.log('⚠️ [MAC] Mensaje no descifrable (normal después de reinicio), ignorado.');
+            return;
+        }
+        console.error('⚠️ [UNHANDLED]', msg);
+    });
+
     async function init() {
-        console.log('🚀 INICIANDO BOT v207 (BAILEYS - AUTO FLEET)...');
+        console.log('🚀 INICIANDO BOT v222 (BAILEYS + GEMINI v1 API)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
         console.log(`🧠 Gemini IA: ${gemini ? '✅ ACTIVO' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
