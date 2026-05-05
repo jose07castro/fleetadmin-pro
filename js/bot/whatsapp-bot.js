@@ -659,7 +659,8 @@ Responde SOLO el JSON.`;
             } else {
                 console.log(`⚠️ [GEO] Sin resultados, usando centro de Rosario`);
             }
-        } catch (err) {
+        }
+    } catch (err) {
             console.error(`⚠️ [GEO] Error geocodificando (${err.message}), guardando con ubicación aproximada`);
         }
 
