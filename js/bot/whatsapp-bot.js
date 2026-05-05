@@ -146,7 +146,7 @@ const WhatsappBot = (() => {
         console.log('🚀 INICIANDO BOT v222 (BAILEYS + GEMINI v1 API)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
-        console.log(`🧠 Gemini IA: ${gemini ? '✅ ACTIVO' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
+        console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO (gemini-pro HTTP)' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
         
         // Auto-detectar fleet ID ANTES de conectar WhatsApp
         await _resolveFleetId();
@@ -409,9 +409,7 @@ const WhatsappBot = (() => {
 
                             if (isPrivate || isMentioned) {
                                 console.log(`🧠 [CHAT] Respondiendo consulta...`);
-                                const result = await gemini.generateContent(text);
-                                const response = await result.response;
-                                const aiResponse = response.text();
+                                const aiResponse = await callGemini(text);
                                 if (aiResponse) {
                                     await sock.sendMessage(jid, { text: aiResponse }, { quoted: msg });
                                 }
