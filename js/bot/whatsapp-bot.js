@@ -211,8 +211,8 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                browser: ['Ubuntu', 'Chrome', '20.0.04'],
-                connectTimeoutMs: 120000,
+                browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
+                connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
                 markOnlineOnConnect: false,
@@ -238,13 +238,17 @@ const WhatsappBot = (() => {
                         await clearAuthInfo();
                         await new Promise(resolve => setTimeout(resolve, 5000));
                         await startSocket();
+                    } else if (statusCode === 428) {
+                        console.log('⚠️ [428] Precondición fallida. Intentando reset de conexión suave...');
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        await startSocket();
                     } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
                         console.log('🔄 Reconectando inmediatamente...');
                         await startSocket();
                     } else if (statusCode === 401) {
                         retryCount++;
                         if (retryCount > MAX_RETRIES) {
-                            console.log('🔴 Demasiados reintentos. Limpiando sesión...');
+                            console.log('🔴 Sesión expirada (401). Limpiando sesión...');
                             await clearAuthInfo();
                             retryCount = 0;
                         }
