@@ -121,11 +121,13 @@ const RadarModule = (() => {
             attributionControl: false
         });
 
-        // v120: Mapa a full color y alta resolución (Standard Streets / OpenStreetMap)
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            detectRetina: true, // Alta definición para pantallas S25 Ultra / iPhone / Web
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // CartoDB Dark Matter: mapa limpio, oscuro, nombres de calles muy legibles
+        // Los íconos de alertas destacan mucho mejor sobre fondo oscuro
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            subdomains: 'abcd',
+            detectRetina: true,
+            attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
         }).addTo(_map);
 
 
