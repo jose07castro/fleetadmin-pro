@@ -5,7 +5,13 @@
    ============================================ */
 
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const P = require('pino');
+// Logger completamente silencioso para Baileys (evita spam de llaves criptográficas)
+const P = () => ({
+    level: 'silent',
+    trace: () => {}, debug: () => {}, info: () => {},
+    warn: () => {}, error: () => {}, fatal: () => {},
+    child: () => P()
+});
 const axios = require('axios');
 const admin = require('firebase-admin');
 const fs = require('fs');
@@ -381,11 +387,20 @@ const WhatsappBot = (() => {
 
                     if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
 
-                    // --- NUEVA LÓGICA: TODO PASA POR GEMINI FLASH ---
-                    console.log(`🧠 [GEMINI] Analizando mensaje: "${text.substring(0,60)}..."`);
+                    // --- ANÁLISIS: GEMINI + FALLBACK POR PALABRAS CLAVE ---
+                    console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..."`);
                     
                     try {
-                        const analysis = await _analyzeMessageWithAI(text);
+                        let analysis = await _analyzeMessageWithAI(text);
+                        
+                        // Si Gemini falla, usar detector de palabras clave
+                        if (!analysis) {
+                            const kw = _keywordDetect(text);
+                            if (kw) {
+                                console.log(`🔑 [KEYWORD] Detectado por palabras clave: ${kw.type}`);
+                                analysis = { isAlert: true, type: kw.type, address: kw.address, description: text.substring(0, 100), confidence: 0.7 };
+                            }
+                        }
                         
                         if (analysis && analysis.isAlert) {
                             console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
@@ -448,6 +463,22 @@ const WhatsappBot = (() => {
             await new Promise(resolve => setTimeout(resolve, delay));
             await startSocket();
         }
+    }
+
+    /**
+     * Detección rápida por palabras clave (FALLBACK si Gemini falla)
+     */
+    function _keywordDetect(text) {
+        const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
+        if (/gorra|zorros|control|operativo|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
+        if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
+        if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
+        if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
+        if (/municipal|transito/.test(t)) return { type: 'municipal', address: null };
+        if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
+        if (/corte|cortada|trafico|tráfico|bache|inundacion/.test(t)) return { type: 'traffic', address: null };
+        return null;
     }
 
     /**
