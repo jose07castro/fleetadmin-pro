@@ -19,21 +19,32 @@ const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
-const GEMINI_URL = GEMINI_KEY
-    ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`
-    : null;
+// Probar modelos en orden hasta encontrar uno que funcione
+const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+];
+let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 
 async function callGemini(prompt) {
-    if (!GEMINI_URL) return null;
-    try {
-        const res = await axios.post(GEMINI_URL, {
-            contents: [{ parts: [{ text: prompt }] }]
-        }, { timeout: 15000 });
-        return res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    } catch (e) {
-        console.error('❌ [GEMINI HTTP] Error:', e.response?.data?.error?.message || e.message);
-        return null;
+    if (!GEMINI_KEY) return null;
+    const urls = GEMINI_URL ? [GEMINI_URL] : GEMINI_MODELS;
+    for (const url of urls) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{ parts: [{ text: prompt }] }]
+            }, { timeout: 15000 });
+            const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (text) {
+                if (!GEMINI_URL) { GEMINI_URL = url; console.log(`✅ Gemini activo: ${url.split('/models/')[1].split(':')[0]}`); }
+                return text;
+            }
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.response?.data?.error?.message || e.message}`);
+        }
     }
+    return null;
 }
 
 
@@ -397,8 +408,10 @@ const WhatsappBot = (() => {
                         if (!analysis) {
                             const kw = _keywordDetect(text);
                             if (kw) {
-                                console.log(`🔑 [KEYWORD] Detectado por palabras clave: ${kw.type}`);
-                                analysis = { isAlert: true, type: kw.type, address: kw.address, description: text.substring(0, 100), confidence: 0.7 };
+                                // Si no hay dirección de keywords, intentar extraerla del texto
+                                const extractedAddr = kw.address || _extractIntersection(text);
+                                console.log(`🔑 [KEYWORD] Detectado: ${kw.type} | Dir: ${extractedAddr || 'sin dirección'}`);
+                                analysis = { isAlert: true, type: kw.type, address: extractedAddr, description: text.substring(0, 100), confidence: 0.7 };
                             }
                         }
                         
