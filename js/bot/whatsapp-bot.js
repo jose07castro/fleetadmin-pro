@@ -161,16 +161,27 @@ const WhatsappBot = (() => {
     });
 
     async function init() {
-        console.log('🚀 INICIANDO BOT v227 (BAILEYS + GEMINI HTTP)...');
+        console.log('🚀 INICIANDO BOT v236 (BAILEYS + GEMINI HTTP + AUTO-PING)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
-        console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO (gemini-pro HTTP)' : '❌ NO CONFIGURADO (sin GEMINI_API_KEY)'}`);
+        console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
         
         // Esperar 30s al inicio para que el proceso anterior de Render muera
-        // y no cause conflictos de sesión 440 simultáneos
         console.log('⏳ Esperando 30s para que el proceso anterior libere la sesión...');
         await new Promise(r => setTimeout(r, 30000));
         console.log('✅ Espera terminada. Conectando a WhatsApp...');
+        
+        // Auto-ping cada 10 minutos para evitar que Render (free tier) duerma el servicio
+        const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://fleetadmin-pro-1.onrender.com';
+        setInterval(async () => {
+            try {
+                await axios.get(`${selfUrl}/api/bot/status`, { timeout: 10000 });
+                console.log('🏓 [PING] Auto-ping OK — servicio despierto');
+            } catch(e) {
+                console.warn('⚠️ [PING] Auto-ping falló:', e.message);
+            }
+        }, 10 * 60 * 1000); // cada 10 minutos
+        console.log(`🏓 [PING] Auto-ping activado cada 10min → ${selfUrl}`);
         
         // Auto-detectar fleet ID ANTES de conectar WhatsApp
         await _resolveFleetId();
