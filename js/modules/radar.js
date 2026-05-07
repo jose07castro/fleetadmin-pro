@@ -18,6 +18,7 @@ const RadarModule = (() => {
     let _alertMarkers = {};  // { alertId: L.marker }
     let _trackingInterval = null;
     let _watchId = null;
+    let _voiceEnabled = localStorage.getItem('radarVoice') !== 'off'; // ON por defecto
 
     // ============ RENDER BUTTON IN DASHBOARD ============
 
@@ -52,6 +53,12 @@ const RadarModule = (() => {
                         <span class="radar-status-dot"></span>
                         Conectando...
                     </span>
+                    <button class="radar-voice-btn" id="radarVoiceBtn"
+                        onclick="RadarModule.toggleVoice()"
+                        title="Activar/desactivar voz"
+                        style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;padding:6px 12px;color:white;font-size:18px;cursor:pointer;margin-right:8px;">
+                        ${_voiceEnabled ? '🔊' : '🔇'}
+                    </button>
                     <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
                         ✕ Salir
                     </button>
@@ -584,7 +591,7 @@ const RadarModule = (() => {
      * El chofer se entera sin desviar la vista del camino.
      */
     function _speakAlert(type, location) {
-        if (!window.speechSynthesis) return;
+        if (!window.speechSynthesis || !_voiceEnabled) return;
 
         const voiceMessages = {
             police:     'Atención. Control de policía',
@@ -602,22 +609,30 @@ const RadarModule = (() => {
         const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
         const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
 
-        // Cancelar cualquier voz anterior para evitar acumulación
         window.speechSynthesis.cancel();
 
         const utter = new SpeechSynthesisUtterance(fullText);
-        utter.lang = 'es-AR'; // Español Argentina
-        utter.rate = 0.9;      // Un poco más lento que normal
+        utter.lang = 'es-AR';
+        utter.rate = 0.9;
         utter.pitch = 1.0;
         utter.volume = 1.0;
 
-        // Intentar usar voz en español si está disponible
         const voices = window.speechSynthesis.getVoices();
         const esVoice = voices.find(v => v.lang.startsWith('es'));
         if (esVoice) utter.voice = esVoice;
 
         window.speechSynthesis.speak(utter);
         console.log(`🔊 [VOZ] "${fullText}"`);
+    }
+
+    function toggleVoice() {
+        _voiceEnabled = !_voiceEnabled;
+        localStorage.setItem('radarVoice', _voiceEnabled ? 'on' : 'off');
+        const btn = document.getElementById('radarVoiceBtn');
+        if (btn) btn.textContent = _voiceEnabled ? '🔊' : '🔇';
+        // Confirmar con voz si se activa
+        if (_voiceEnabled) _speakAlert('warning', null);
+        console.log(`🔊 [VOZ] ${_voiceEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
     }
 
     function _removeAlertMarker(id) {
@@ -698,6 +713,6 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice
     };
 })();
