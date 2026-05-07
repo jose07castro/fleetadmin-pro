@@ -375,11 +375,34 @@ const RadarModule = (() => {
 
     // ============ FIREBASE LISTENER (ADMIN) ============
 
+    // Reconectar Firebase cuando la app vuelve del background (Android Doze Mode fix)
+    let _visibilityHandler = null;
+    function _setupReconnectOnResume() {
+        if (_visibilityHandler) return; // Ya registrado
+        _visibilityHandler = () => {
+            if (document.visibilityState === 'visible' && _isOpen) {
+                console.log('[RADAR] App volvió al frente — reconectando Firebase...');
+                _stopFirebaseListener();
+                setTimeout(() => {
+                    _startFirebaseListener();
+                    _loadTrafficAlerts();
+                }, 500);
+            }
+        };
+        document.addEventListener('visibilitychange', _visibilityHandler);
+        // También en pageshow (iOS Safari / Android WebView)
+        window.addEventListener('pageshow', _visibilityHandler);
+        window.addEventListener('focus', _visibilityHandler);
+    }
+
     function _startFirebaseListener() {
         if (typeof firebaseDB === 'undefined') {
             _setStatus('error', 'Firebase no disponible');
             return;
         }
+
+        // Activar auto-reconexión al volver del background
+        _setupReconnectOnResume();
 
         _firebaseRef = firebaseDB.ref(DRIVER_POSITIONS_NODE);
 
