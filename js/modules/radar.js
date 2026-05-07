@@ -563,15 +563,61 @@ const RadarModule = (() => {
         `;
 
         if (_alertMarkers[id]) {
+            // Alerta existente: solo actualizar posición y popup (sin voz)
             _alertMarkers[id].setLatLng([lat, lng]);
             _alertMarkers[id].getPopup().setContent(popupContent);
         } else {
+            // Alerta NUEVA: mostrar en mapa y anunciar por voz
             const marker = L.marker([lat, lng], {
                 icon: _createAlertIcon(type)
             }).addTo(_map);
             marker.bindPopup(popupContent);
             _alertMarkers[id] = marker;
+            
+            // Anunciar por voz (Web Speech API — sin costo, funciona offline en Android)
+            _speakAlert(type, data.location);
         }
+    }
+
+    /**
+     * Anuncia la alerta por voz usando Web Speech API.
+     * El chofer se entera sin desviar la vista del camino.
+     */
+    function _speakAlert(type, location) {
+        if (!window.speechSynthesis) return;
+
+        const voiceMessages = {
+            police:     'Atención. Control de policía',
+            radar:      'Cuidado. Radar de velocidad',
+            helicopter: 'Alerta. Helicóptero sanitario en zona',
+            ambulance:  'Precaución. Ambulancia en la vía',
+            firetruck:  'Atención. Bomberos en la vía',
+            municipal:  'Cuidado. Control municipal de tránsito',
+            accident:   'Atención. Accidente vial reportado',
+            traffic:    'Aviso. Tráfico lento reportado',
+            warning:    'Atención. Alerta de tráfico',
+        };
+
+        const msg = voiceMessages[type] || voiceMessages.warning;
+        const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
+        const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+
+        // Cancelar cualquier voz anterior para evitar acumulación
+        window.speechSynthesis.cancel();
+
+        const utter = new SpeechSynthesisUtterance(fullText);
+        utter.lang = 'es-AR'; // Español Argentina
+        utter.rate = 0.9;      // Un poco más lento que normal
+        utter.pitch = 1.0;
+        utter.volume = 1.0;
+
+        // Intentar usar voz en español si está disponible
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es'));
+        if (esVoice) utter.voice = esVoice;
+
+        window.speechSynthesis.speak(utter);
+        console.log(`🔊 [VOZ] "${fullText}"`);
     }
 
     function _removeAlertMarker(id) {
