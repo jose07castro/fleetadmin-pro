@@ -19,9 +19,10 @@ const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
-// Probar modelos en orden hasta encontrar uno que funcione
+// Probar modelos en orden — v1beta es lo que soportan las keys de Google AI Studio
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
 ];
@@ -704,15 +705,11 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
      * Geocodifica y guarda en Firebase.
      */
     async function _processAlert(address, originalText, sourceGroup, aiType = null) {
-        // Expandir nombres abreviados ANTES de geocodificar
-        const expandedAddress = _expandStreetNames(address);
-        console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
-        
         const fleetId = await _resolveFleetId();
         const alertId = `bot_${Date.now()}`;
         
-        // Determinar tipo: Prioridad a lo que diga la IA, fallback a keywords
-        let type = aiType || ( /gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText) ? 'police' : 'warning');
+        // Determinar tipo
+        let type = aiType || (/gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText) ? 'police' : 'warning');
         
         let lat = -32.9468; // Centro de Rosario (fallback)
         let lng = -60.6393;
@@ -720,40 +717,44 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         
         try {
             // Caso especial: Helicóptero en Pellegrini y Vera Mujica (HECA)
-            if (type === 'helicopter' || originalText.toLowerCase().includes('codigo rojo')) {
-                lat = -32.9515; // Coordenadas HECA Rosario
+            if (type === 'helicopter' || /codigo rojo|helicoptero/i.test(originalText)) {
+                lat = -32.9515;
                 lng = -60.6625;
                 approximate = false;
-                type = 'police'; // Usar icono de policía o aviso por ahora en el mapa
                 console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
+            } else if (!address || address === 'null') {
+                // Sin dirección: usar centro de Rosario directamente
+                console.log('⚠️ [GEO] Sin dirección exacta, usando centro de Rosario');
             } else {
                 // Respetar rate limit de Nominatim (1 req/segundo)
                 await new Promise(r => setTimeout(r, 1500));
                 
+                const expandedAddress = _expandStreetNames(address);
+                console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
                 const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
-            
-            console.log(`🌐 [GEO] URL: ${url.substring(0,80)}...`);
-            
-            const response = await axios.get(url, {
-                headers: { 'User-Agent': 'FleetAdminPro/2.0 (jose07castro@gmail.com)' },
-                timeout: 10000
-            });
+                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+                console.log(`🌐 [GEO] URL: ${url.substring(0,100)}...`);
+                
+                const response = await axios.get(url, {
+                    headers: { 'User-Agent': 'FleetAdminPro/2.0 (jose07castro@gmail.com)' },
+                    timeout: 10000
+                });
 
-            console.log(`🌐 [GEO] Respuesta: ${response.data?.length || 0} resultados`);
+                console.log(`🌐 [GEO] Respuesta: ${response.data?.length || 0} resultados`);
 
-            if (response.data && response.data.length > 0) {
-                lat = parseFloat(response.data[0].lat);
-                lng = parseFloat(response.data[0].lon);
-                approximate = false;
-                console.log(`📍 [GEO] ✅ Ubicación exacta: ${lat}, ${lng}`);
-            } else {
-                console.log(`⚠️ [GEO] Sin resultados, usando centro de Rosario`);
+                if (response.data && response.data.length > 0) {
+                    lat = parseFloat(response.data[0].lat);
+                    lng = parseFloat(response.data[0].lon);
+                    approximate = false;
+                    console.log(`📍 [GEO] ✅ Ubicación exacta: ${lat}, ${lng}`);
+                } else {
+                    console.log(`⚠️ [GEO] Sin resultados, usando centro de Rosario`);
+                }
             }
+        } catch (err) {
+            console.error(`⚠️ [GEO] Error (${err.message}), guardando con ubicación aproximada`);
         }
-    } catch (err) {
-            console.error(`⚠️ [GEO] Error geocodificando (${err.message}), guardando con ubicación aproximada`);
-        }
+
 
         // SIEMPRE guardar la alerta, con o sin coordenadas exactas
         const alertData = {
