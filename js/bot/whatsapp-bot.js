@@ -293,8 +293,12 @@ const WhatsappBot = (() => {
                         await new Promise(resolve => setTimeout(resolve, 3000));
                         await startSocket();
                     } else if (statusCode === 440 || statusCode === 503) {
-                        console.log(`⚠️ [${statusCode}] Conflicto de sesión (posible despliegue en curso). Esperando 15s...`);
-                        await new Promise(resolve => setTimeout(resolve, 15000));
+                        retryCount++;
+                        // 440 = conflicto de sesión: esperar más tiempo en cada reintento
+                        // 1º: 90s, 2º: 3min, 3º: 5min (para dejar que el proceso viejo muera)
+                        const delay440 = Math.min(90000 * retryCount, 300000);
+                        console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay440));
                         await startSocket();
                     } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
                         console.log('🔄 Reconectando inmediatamente...');
