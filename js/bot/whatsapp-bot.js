@@ -834,7 +834,12 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         console.log('✅ [RESET] Sesión limpiada, bot reiniciado. Buscá el QR en los logs.');
     }
 
-    return { init, resetSession };
+    return { 
+        init, 
+        resetSession,
+        getFleetId: _resolveFleetId,
+        getDb: () => db
+    };
 })();
 
 module.exports = WhatsappBot;

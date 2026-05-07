@@ -64,6 +64,47 @@ app.post('/api/bot/reset-session', async (req, res) => {
     }
 });
 
+// Inyectar alerta de prueba directamente a Firebase (sin pasar por WhatsApp)
+// Útil para verificar que el mapa lee alertas correctamente
+app.post('/api/bot/test-alert', async (req, res) => {
+    try {
+        const fleetId = await WhatsappBot.getFleetId();
+        const db = WhatsappBot.getDb();
+        if (!db) return res.status(503).json({ ok: false, error: 'Firebase no disponible' });
+
+        const alertId = `test_${Date.now()}`;
+        const alertData = {
+            id: alertId,
+            type: req.body?.type || 'police',
+            location: req.body?.location || 'Salta y Oroño (PRUEBA)',
+            lat: req.body?.lat || -32.9468,
+            lng: req.body?.lng || -60.6393,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + (60 * 60 * 1000),
+            authorName: 'Test Manual',
+            confirmations: 1,
+            status: 'active',
+            source: 'test_manual',
+            approximate: false
+        };
+        await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
+        res.json({ ok: true, fleetId, alertId, message: `✅ Alerta de prueba guardada en fleets/${fleetId}/traffic_alerts/${alertId}` });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Ver qué fleet ID está usando el bot
+app.get('/api/bot/fleet-id', async (req, res) => {
+    try {
+        const fleetId = await WhatsappBot.getFleetId();
+        res.json({ ok: true, fleetId });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
