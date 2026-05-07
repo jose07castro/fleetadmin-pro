@@ -346,9 +346,14 @@ const WhatsappBot = (() => {
                     try {
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
-                    if (msg.key.fromMe) continue;
-                    // Solo analizar mensajes de GRUPOS — los privados se ignoran
-                    if (!isGroup) { console.log('⏭️ [SKIP] Mensaje privado, ignorado'); continue; }
+                    
+                    // Solo analizar mensajes de GRUPOS — privados siempre ignorados
+                    if (!isGroup) { console.log('⏭️ [SKIP] Privado, ignorado'); continue; }
+                    
+                    // En grupos: procesar TODOS los mensajes (incluso fromMe)
+                    // El dueño puede enviar alertas desde su celular/WhatsApp Web
+                    // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
+                    if (!jid) continue;
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
