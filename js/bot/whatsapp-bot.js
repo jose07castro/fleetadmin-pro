@@ -335,37 +335,57 @@ const WhatsappBot = (() => {
                     // Solo analizar mensajes de GRUPOS — los privados se ignoran
                     if (!isGroup) { console.log('⏭️ [SKIP] Mensaje privado, ignorado'); continue; }
 
-                    // Extraer texto del mensaje (múltiples formatos de WhatsApp)
-                    let text = "";
+                    // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
+                    let text = '';
                     const m = msg.message;
                     
                     if (m) {
-                        text = m.conversation || 
-                               m.extendedTextMessage?.text || 
-                               m.imageMessage?.caption || 
+                        text = m.conversation ||
+                               m.extendedTextMessage?.text ||
+                               m.imageMessage?.caption ||
                                m.videoMessage?.caption ||
+                               m.documentMessage?.caption ||
+                               m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
                                m.buttonsResponseMessage?.selectedDisplayText ||
                                m.templateButtonReplyMessage?.selectedId ||
                                m.listResponseMessage?.title ||
-                               // Caso especial: Mensajes efímeros
                                m.ephemeralMessage?.message?.conversation ||
                                m.ephemeralMessage?.message?.extendedTextMessage?.text ||
-                               // Caso especial: Ver en el dispositivo (view once)
-                               m.viewOnceMessage?.message?.buttonsResponseMessage?.selectedDisplayText ||
+                               m.viewOnceMessage?.message?.imageMessage?.caption ||
                                m.viewOnceMessageV2?.message?.imageMessage?.caption ||
-                               "";
+                               m.editedMessage?.message?.protocolMessage?.editedMessage?.conversation ||
+                               m.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
+                               m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson ||
+                               '';
+                        
+                        // Búsqueda profunda si aún vacío: revisar primer nivel del objeto
+                        if (!text) {
+                            for (const key of Object.keys(m)) {
+                                const val = m[key];
+                                if (val && typeof val === 'object') {
+                                    const t = val.text || val.caption || val.conversation;
+                                    if (t && typeof t === 'string') { text = t; break; }
+                                    if (val.message) {
+                                        const deep = val.message.text || val.message.caption ||
+                                                     val.message.conversation || val.message.extendedTextMessage?.text;
+                                        if (deep && typeof deep === 'string') { text = deep; break; }
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    // Si sigue vacío, intentar buscar en el cuerpo crudo por si es un formato nuevo
-                    if (!text && m) {
-                        const content = m.extendedTextMessage || m.conversation;
-                        if (typeof content === 'string') text = content;
+                    // Debug: si el mensaje del grupo no tiene texto, loguear las claves para diagnosticar
+                    if (!text && isGroup && m) {
+                        const keys = Object.keys(m).filter(k => k !== 'messageContextInfo');
+                        console.log(`🐛 [DEBUG] Mensaje sin texto. Claves: [${keys.join(', ')}]`);
                     }
                     
                     // PTT = nota de voz (mantener micrófono), audioMessage = archivo de audio adjunto
                     const isAudio = msg.message?.audioMessage || msg.message?.pttMessage;
 
                     console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${!!isAudio} | PTT=${!!msg.message?.pttMessage} | Text="${text.substring(0,80)}"`);
+
 
                     // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
                     if (isAudio && process.env.OPENAI_API_KEY) {
