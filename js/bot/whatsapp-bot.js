@@ -206,8 +206,10 @@ const WhatsappBot = (() => {
                 const snap = await db.ref('bot_auth_backup').once('value');
                 const backup = snap.val();
                 if (backup) {
-                    for (const file in backup) {
-                        fs.writeFileSync(path.join(AUTH_DIR, file), backup[file]);
+                    for (const fileKey in backup) {
+                        // Firebase no admite '.' en las keys, así que le agregamos el .json al restaurar
+                        const fileName = fileKey.endsWith('.json') ? fileKey : `${fileKey}.json`;
+                        fs.writeFileSync(path.join(AUTH_DIR, fileName), backup[fileKey]);
                     }
                     console.log(`🔑 [AUTH] Sesión completa restaurada (${Object.keys(backup).length} archivos) ✅`);
                 } else {
@@ -221,6 +223,19 @@ const WhatsappBot = (() => {
         // 2. Usar el sistema de archivos local (ya restaurado)
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
+        // Función auxiliar para crear el objeto de backup sin '.' en las keys
+        const _createBackupObject = () => {
+            const files = fs.readdirSync(AUTH_DIR);
+            const backup = {};
+            for (const file of files) {
+                if (file.endsWith('.json')) {
+                    const safeKey = file.replace('.json', ''); // Remover .json para que Firebase no chille
+                    backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
+                }
+            }
+            return backup;
+        };
+
         // 3. Hacer backup a Firebase cada vez que cambien los credenciales, pero con debounce
         let saveTimeout = null;
         const saveCredsToFirebase = async () => {
@@ -230,14 +245,7 @@ const WhatsappBot = (() => {
             saveTimeout = setTimeout(async () => {
                 if (db) {
                     try {
-                        const files = fs.readdirSync(AUTH_DIR);
-                        const backup = {};
-                        // Solo guardar archivos .json válidos
-                        for (const file of files) {
-                            if (file.endsWith('.json')) {
-                                backup[file] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
-                            }
-                        }
+                        const backup = _createBackupObject();
                         await db.ref('bot_auth_backup').set(backup);
                         console.log(`🔑 [AUTH] Backup en la nube actualizado (${Object.keys(backup).length} archivos) ✅`);
                     } catch (e) {
@@ -251,13 +259,7 @@ const WhatsappBot = (() => {
         setInterval(async () => {
             if (db && fs.existsSync(AUTH_DIR)) {
                 try {
-                    const files = fs.readdirSync(AUTH_DIR);
-                    const backup = {};
-                    for (const file of files) {
-                        if (file.endsWith('.json')) {
-                            backup[file] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
-                        }
-                    }
+                    const backup = _createBackupObject();
                     await db.ref('bot_auth_backup').set(backup);
                 } catch(e) {}
             }
