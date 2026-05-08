@@ -105,6 +105,33 @@ app.get('/api/bot/fleet-id', async (req, res) => {
 });
 
 
+// List Gemini Models
+app.get('/api/bot/list-models', async (req, res) => {
+    try {
+        const axios = require('axios');
+        const key = process.env.GEMINI_API_KEY;
+        if (!key) return res.status(400).json({ error: 'No key' });
+        
+        const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+        res.json({ ok: true, models: response.data });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message, data: e.response?.data });
+    }
+});
+
+// Ver todos los fleets
+app.get('/api/bot/fleets', async (req, res) => {
+    try {
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const db = WhatsappBot.getDb();
+        if (!db) return res.status(503).json({ error: 'DB not ready' });
+        const snap = await db.ref('fleets').once('value');
+        res.json({ ok: true, fleets: snap.val() });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
