@@ -581,6 +581,11 @@ const RadarModule = (() => {
             marker.bindPopup(popupContent);
             _alertMarkers[id] = marker;
             
+            // Auto-enfocar el mapa en la nueva alerta con una animación suave
+            if (_map) {
+                _map.flyTo([lat, lng], 14, { animate: true, duration: 1.5 });
+            }
+
             // Anunciar por voz (Web Speech API — sin costo, funciona offline en Android)
             _speakAlert(type, data.location);
         }
