@@ -21,6 +21,8 @@ const path = require('path');
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 // Probar modelos en orden — v1beta es lo que soportan las keys de Google AI Studio
 const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent',
@@ -525,7 +527,7 @@ const WhatsappBot = (() => {
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
-        if (/gorra|zorros|control|operativo|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
+        if (/gorra|zorros|control|operativo|operatico|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
         if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
@@ -795,28 +797,39 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
             console.error(`⚠️ [GEO] Error (${err.message}), guardando con ubicación aproximada`);
         }
 
-
-        // SIEMPRE guardar la alerta, con o sin coordenadas exactas
         const alertData = {
             id: alertId,
             type: type,
-            location: expandedAddress + (approximate ? ' (ubicación aprox.)' : ''),
-            lat,
-            lng,
+            location: expandedAddress || "Rosario (ubicación aprox.)",
+            lat: lat,
+            lng: lng,
             timestamp: Date.now(),
             expiresAt: Date.now() + (60 * 60 * 1000),
-            authorName: `Bot WA (${sourceGroup})`,
+            authorName: sourceGroup,
+            originalText: originalText,
             confirmations: approximate ? 0 : 1,
             status: 'active',
             source: 'whatsapp_bot',
-            approximate
+            approximate: approximate
         };
 
-        console.log(`💾 [DB] Guardando alerta en fleets/${fleetId}/traffic_alerts/${alertId}...`);
+        console.log(`💾 [DB] Guardando alerta en TODAS las flotas...`);
 
         if (db) {
-            await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-            console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA!!! flota=${fleetId}, type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
+            try {
+                // Broadcast a TODAS las flotas para evitar problemas de mismatch
+                const snap = await db.ref('fleets').once('value');
+                const fleets = snap.val() || {};
+                
+                const updatePromises = Object.keys(fleets).map(fId => {
+                    return db.ref(`fleets/${fId}/traffic_alerts/${alertId}`).set(alertData);
+                });
+                
+                await Promise.all(updatePromises);
+                console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA EN ${updatePromises.length} FLOTAS!!! type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
+            } catch (e) {
+                console.error('❌ [FIREBASE] Error guardando alerta en flotas:', e.message);
+            }
         } else {
             console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR');
         }
