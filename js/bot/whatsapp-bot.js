@@ -192,56 +192,77 @@ const WhatsappBot = (() => {
     }
 
     /**
-     * Guarda/restaura credenciales de WhatsApp en Firebase
-     * para que sobrevivan los reinicios de Render
+     * Guarda/restaura TODA la carpeta de autenticación en Firebase
+     * para que sobrevivan los reinicios de Render (evita el Error MAC Malo)
      */
     async function _firebaseAuthState() {
-        // Asegurar directorio local existe
         if (!fs.existsSync(AUTH_DIR)) {
             fs.mkdirSync(AUTH_DIR, { recursive: true });
         }
 
-        // Intentar restaurar credenciales desde Firebase
+        // 1. Restaurar TODAS las llaves desde Firebase (creds.json + keys)
         if (db) {
             try {
-                const snap = await db.ref('bot_auth/creds').once('value');
-                const savedCreds = snap.val();
-                if (savedCreds) {
-                    const credsPath = path.join(AUTH_DIR, 'creds.json');
-                    fs.writeFileSync(credsPath, JSON.stringify(savedCreds));
-                    console.log('🔑 [AUTH] Credenciales restauradas desde Firebase ✅');
+                const snap = await db.ref('bot_auth_backup').once('value');
+                const backup = snap.val();
+                if (backup) {
+                    for (const file in backup) {
+                        fs.writeFileSync(path.join(AUTH_DIR, file), backup[file]);
+                    }
+                    console.log(`🔑 [AUTH] Sesión completa restaurada (${Object.keys(backup).length} archivos) ✅`);
                 } else {
-                    console.log('🔑 [AUTH] No hay credenciales guardadas, se necesita QR nuevo');
+                    console.log('🔑 [AUTH] No hay sesión guardada, se necesita QR nuevo');
                 }
             } catch (e) {
                 console.error('🔑 [AUTH] Error restaurando credenciales:', e.message);
             }
         }
 
-        // Usar el sistema de archivos local (ya restaurado desde Firebase)
+        // 2. Usar el sistema de archivos local (ya restaurado)
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-        // Debounce: guardar solo si no hubo otra actualización en 3 segundos
+        // 3. Hacer backup a Firebase cada vez que cambien los credenciales, pero con debounce
         let saveTimeout = null;
         const saveCredsToFirebase = async () => {
-            await saveCreds(); // Guardar local inmediatamente
+            await saveCreds(); // Guardar local
+            
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
                 if (db) {
                     try {
-                        const credsPath = path.join(AUTH_DIR, 'creds.json');
-                        if (fs.existsSync(credsPath)) {
-                            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                            await db.ref('bot_auth/creds').set(creds);
-                            console.log('🔑 [AUTH] Credenciales guardadas en Firebase ✅');
+                        const files = fs.readdirSync(AUTH_DIR);
+                        const backup = {};
+                        // Solo guardar archivos .json válidos
+                        for (const file of files) {
+                            if (file.endsWith('.json')) {
+                                backup[file] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
+                            }
                         }
+                        await db.ref('bot_auth_backup').set(backup);
+                        console.log(`🔑 [AUTH] Backup en la nube actualizado (${Object.keys(backup).length} archivos) ✅`);
                     } catch (e) {
-                        console.error('🔑 [AUTH] Error guardando en Firebase:', e.message);
+                        console.error('🔑 [AUTH] Error guardando backup en Firebase:', e.message);
                     }
                 }
-            }, 3000); // Esperar 3s antes de escribir en Firebase
+            }, 5000); // Esperar 5s para agrupar escrituras
         };
 
+        // 4. Sync activo de llaves (Baileys no llama saveCreds para las session keys)
+        setInterval(async () => {
+            if (db && fs.existsSync(AUTH_DIR)) {
+                try {
+                    const files = fs.readdirSync(AUTH_DIR);
+                    const backup = {};
+                    for (const file of files) {
+                        if (file.endsWith('.json')) {
+                            backup[file] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
+                        }
+                    }
+                    await db.ref('bot_auth_backup').set(backup);
+                } catch(e) {}
+            }
+        }, 60000); // Sincronizar cada 60s
+        
         return { state, saveCreds: saveCredsToFirebase };
     }
 
@@ -254,9 +275,9 @@ const WhatsappBot = (() => {
                 fs.rmSync(AUTH_DIR, { recursive: true, force: true });
                 console.log('🗑️ Credenciales locales eliminadas.');
             }
-            // También limpiar en Firebase
             if (db) {
-                await db.ref('bot_auth').remove();
+                await db.ref('bot_auth_backup').remove();
+                await db.ref('bot_auth').remove(); // limpiar el viejo también
                 console.log('🗑️ Credenciales de Firebase eliminadas.');
             }
         } catch (e) {
