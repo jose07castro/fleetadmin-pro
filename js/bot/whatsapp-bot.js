@@ -756,6 +756,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         let lat = -32.9468; // Centro de Rosario (fallback)
         let lng = -60.6393;
         let approximate = true;
+        let expandedAddress = address;
         
         try {
             // Caso especial: Helicóptero en Pellegrini y Vera Mujica (HECA)
@@ -763,6 +764,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 lat = -32.9515;
                 lng = -60.6625;
                 approximate = false;
+                expandedAddress = "Pellegrini y Vera Mujica";
                 console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
             } else if (!address || address === 'null') {
                 // Sin dirección: usar centro de Rosario directamente
@@ -771,7 +773,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 // Respetar rate limit de Nominatim (1 req/segundo)
                 await new Promise(r => setTimeout(r, 1500));
                 
-                const expandedAddress = _expandStreetNames(address);
+                expandedAddress = _expandStreetNames(address);
                 console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
                 const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
                 const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
