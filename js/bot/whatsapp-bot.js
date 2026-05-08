@@ -548,11 +548,11 @@ const WhatsappBot = (() => {
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
-        if (/gorra|zorros|control|operativo|operatico|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
+        if (/gorra|control|operativo|operatico|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
         if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
-        if (/municipal|transito/.test(t)) return { type: 'municipal', address: null };
+        if (/municipal|transito|zorros|inspectores/.test(t)) return { type: 'municipal', address: null };
         if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
         if (/corte|cortada|trafico|tráfico|bache|inundacion/.test(t)) return { type: 'traffic', address: null };
         return null;
@@ -585,11 +585,11 @@ LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
 
 REGLAS DE CLASIFICACIÓN:
 1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", address: "Pellegrini y Vera Mujica"
-2. "GORRA", "ZORROS", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
+2. "GORRA", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
 3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA", "RADAR MOVIL" → tipo: "radar"
 4. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
 5. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-6. "MUNICIPAL", "TRANSITO MUNICIPAL", "GRUA MUNICIPAL" → tipo: "municipal"
+6. "MUNICIPAL", "TRANSITO MUNICIPAL", "GRUA MUNICIPAL", "ZORROS", "INSPECTORES" → tipo: "municipal"
 7. "ACCIDENTE", "CHOQUE" → tipo: "accident"
 8. Cortes, baches, inundaciones, tráfico pesado → tipo: "traffic"
 
@@ -796,20 +796,21 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 
                 expandedAddress = _expandStreetNames(address);
                 console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
-                const fullAddress = `${expandedAddress}, Rosario, Santa Fe, Argentina`;
-                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
-                console.log(`🌐 [GEO] URL: ${url.substring(0,100)}...`);
+                const fullAddress = `${expandedAddress} Rosario`;
                 
-                const response = await axios.get(url, {
-                    headers: { 'User-Agent': 'FleetAdminPro/2.0 (jose07castro@gmail.com)' },
-                    timeout: 10000
-                });
+                // Usamos Photon (Komoot) en lugar de Nominatim para evitar bloqueos 429 por IP compartida en Render
+                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1`;
+                console.log(`🌐 [GEO] URL Photon: ${url.substring(0,80)}...`);
+                
+                const response = await axios.get(url, { timeout: 10000 });
+                const features = response.data?.features || [];
 
-                console.log(`🌐 [GEO] Respuesta: ${response.data?.length || 0} resultados`);
+                console.log(`🌐 [GEO] Respuesta: ${features.length} resultados`);
 
-                if (response.data && response.data.length > 0) {
-                    lat = parseFloat(response.data[0].lat);
-                    lng = parseFloat(response.data[0].lon);
+                if (features.length > 0 && features[0].geometry?.coordinates) {
+                    // Photon devuelve [lon, lat]
+                    lng = parseFloat(features[0].geometry.coordinates[0]);
+                    lat = parseFloat(features[0].geometry.coordinates[1]);
                     approximate = false;
                     console.log(`📍 [GEO] ✅ Ubicación exacta: ${lat}, ${lng}`);
                 } else {
