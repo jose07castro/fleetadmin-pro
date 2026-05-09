@@ -206,10 +206,12 @@ const WhatsappBot = (() => {
                 const snap = await db.ref('bot_auth_backup').once('value');
                 const backup = snap.val();
                 if (backup) {
-                    for (const fileKey in backup) {
-                        // Firebase no admite '.' en las keys, así que le agregamos el .json al restaurar
-                        const fileName = fileKey.endsWith('.json') ? fileKey : `${fileKey}.json`;
-                        fs.writeFileSync(path.join(AUTH_DIR, fileName), backup[fileKey]);
+                    for (const safeKey in backup) {
+                        try {
+                            // Decodificar Base64 a nombre real (o fallback si era viejo)
+                            const fileName = safeKey.includes('json') ? safeKey : Buffer.from(safeKey, 'base64').toString('utf8');
+                            fs.writeFileSync(path.join(AUTH_DIR, fileName), backup[safeKey]);
+                        } catch(e) {}
                     }
                     console.log(`🔑 [AUTH] Sesión completa restaurada (${Object.keys(backup).length} archivos) ✅`);
                 } else {
@@ -223,13 +225,16 @@ const WhatsappBot = (() => {
         // 2. Usar el sistema de archivos local (ya restaurado)
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-        // Función auxiliar para crear el objeto de backup sin '.' en las keys
+        // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
             const files = fs.readdirSync(AUTH_DIR);
             const backup = {};
             for (const file of files) {
                 if (file.endsWith('.json')) {
-                    const safeKey = file.replace('.json', ''); // Remover .json para que Firebase no chille
+                    // Firebase prohíbe '.', '#', '$', '/', '[', ']'. 
+                    // Baileys usa '.us' y '.net' en sus archivos, lo que rompe Firebase.
+                    // Solución: codificar el nombre del archivo en Base64
+                    const safeKey = Buffer.from(file).toString('base64');
                     backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
                 }
             }
