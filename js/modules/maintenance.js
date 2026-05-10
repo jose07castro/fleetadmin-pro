@@ -270,59 +270,17 @@ const MaintenanceModule = (() => {
             return;
         }
 
-        const vehicle = await DB.get('vehicles', vehicleId);
         const odometerKm = Units.toKm(odometer);
 
-        // Validar KM contra odómetro actual del vehículo según ROL
-        const role = Auth.getRole();
-        if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
-            if (role === 'driver') {
-                Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
-                return;
-            } else {
-                // Modales de confirmación para owner/admin no bloquean la ejecución si usamos promise o callback.
-                // Sin embargo `Components.confirm` es asíncrono basado en callback, por lo que el flujo debe dividirse.
-                // Refactor to handle Components.confirm cleanly:
-                Components.confirm(
-                    '¿Deseas que este registro actualice el odómetro actual del auto?',
-                    async () => {
-                        // Sí: Actualiza odómetro
-                        await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, true);
-                    },
-                    async () => {
-                        // No: Guarda historial, no actualiza odómetro
-                        await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, false);
-                    }
-                );
-                return; // Sale de la ejecución síncrona, el callback se encarga del resto
-            }
-        }
-
-        // Ejecución normal si el KM >= al actual
-        await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, true);
+        await _finishSaveBeltChange(vehicleId, odometerKm, date);
     }
 
-    async function _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, updateOdometer) {
-        // Warning si es histórico
-        if (updateOdometer === false || (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer)) {
-            Components.showToast('Registrando mantenimiento histórico', 'warning');
-        }
-
+    async function _finishSaveBeltChange(vehicleId, odometerKm, date) {
         await DB.add('beltChanges', {
             vehicleId,
             odometer: odometerKm,
             date: date || new Date().toISOString()
         });
-
-        // Actualizar odómetro del vehículo si corresponde
-        if (updateOdometer && vehicle && odometerKm > (vehicle.currentOdometer || 0)) {
-            vehicle.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicle);
-        } else if (updateOdometer && vehicle && odometerKm < (vehicle.currentOdometer || 0)) {
-            // El dueño puso "Sí" a actualizar un odómetro menor (ej. cambio de tablero)
-            vehicle.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicle);
-        }
 
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
@@ -487,8 +445,6 @@ const MaintenanceModule = (() => {
 
         const totalCost = laborCost + partsTotalCost;
 
-
-
         const data = {
             vehicleId,
             mechanicId: mechanicId,
@@ -502,51 +458,15 @@ const MaintenanceModule = (() => {
 
         console.log('📦 JSON PAYLOAD REPARACIÓN COMPLETO: ', JSON.stringify(data, null, 2));
 
-        // Validar KM contra odómetro actual del vehículo según ROL
-        const role = Auth.getRole();
-        const vehicle = await DB.get('vehicles', vehicleId);
-
-        if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
-            if (role === 'driver') {
-                Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
-                return;
-            } else {
-                Components.confirm(
-                    '¿Deseas que este registro actualice el odómetro actual del auto?',
-                    async () => {
-                        await _finishSaveRepair(repairId, data, vehicle, odometerKm, true);
-                    },
-                    async () => {
-                        await _finishSaveRepair(repairId, data, vehicle, odometerKm, false);
-                    }
-                );
-                return;
-            }
-        }
-
-        // Ejecución normal
-        await _finishSaveRepair(repairId, data, vehicle, odometerKm, true);
+        await _finishSaveRepair(repairId, data);
     }
 
-    async function _finishSaveRepair(repairId, data, vehicle, odometerKm, updateOdometer) {
-        if (updateOdometer === false || (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer)) {
-            Components.showToast('Registrando mantenimiento histórico', 'warning');
-        }
-
+    async function _finishSaveRepair(repairId, data) {
         if (repairId && repairId !== '' && repairId !== 'null') {
             data.id = repairId;
             await DB.put('repairs', data);
         } else {
             await DB.add('repairs', data);
-        }
-
-        // Actualizar odómetro si corresponde
-        if (updateOdometer && vehicle && odometerKm > (vehicle.currentOdometer || 0)) {
-            vehicle.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicle);
-        } else if (updateOdometer && vehicle && odometerKm < (vehicle.currentOdometer || 0)) {
-            vehicle.currentOdometer = odometerKm;
-            await DB.put('vehicles', vehicle);
         }
 
         Components.closeModal();
@@ -652,10 +572,6 @@ const MaintenanceModule = (() => {
         if (vehicle) {
             vehicle.lastTireRotationKm = odometerKm;
             vehicle.lastTireRotationDate = date;
-            
-            if (odometerKm > (vehicle.currentOdometer || 0)) {
-                vehicle.currentOdometer = odometerKm;
-            }
             
             await DB.put('vehicles', vehicle);
             Components.closeModal();
@@ -892,40 +808,17 @@ const OilModule = (() => {
 
         console.log('📦 JSON PAYLOAD ACEITE (formulario principal): ', JSON.stringify(logData, null, 2));
 
-        // Validar KM contra odómetro actual del vehículo según ROL
-        const role = Auth.getRole();
+        // Ya no validamos KM contra odómetro actual del vehículo aquí, solo guardamos el log.
         let vehicle = null;
         
-        if (odometerKm !== null) {
-            vehicle = await DB.get('vehicles', vehicleId);
-            if (vehicle && vehicle.currentOdometer && odometerKm < vehicle.currentOdometer) {
-                if (role === 'driver') {
-                    Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
-                    return;
-                } else {
-                    Components.confirm(
-                        '¿Deseas que este registro actualice el odómetro actual del auto?',
-                        async () => {
-                            await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, true);
-                        },
-                        async () => {
-                            await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, false);
-                        }
-                    );
-                    return;
-                }
-            }
-        } else if (isChange && nextChangeKmInput) {
+        if (isChange && nextChangeKmInput) {
              vehicle = await DB.get('vehicles', vehicleId);
         }
 
-        await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, true);
+        await _finishSaveOilLog(logData, vehicle, isChange, nextChangeKmInput);
     }
 
-    async function _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, updateOdometer) {
-        if (updateOdometer === false || (vehicle && vehicle.currentOdometer && odometerKm !== null && odometerKm < vehicle.currentOdometer)) {
-            Components.showToast('Registrando mantenimiento histórico', 'warning');
-        }
+    async function _finishSaveOilLog(logData, vehicle, isChange, nextChangeKmInput) {
 
         // ══════════════════════════════════════════════════
         // v98: WHITELIST ESTRICTA — reconstruir objeto desde cero
@@ -973,21 +866,7 @@ const OilModule = (() => {
             vehicle.filtroAceite = finalData.filtros_check.aceite;
             vehicle.filtroAire = finalData.filtros_check.aire;
             vehicle.filtroHabitaculo = finalData.filtros_check.habitaculo;
-            if (updateOdometer && odometerKm !== null && odometerKm > (vehicle.currentOdometer || 0)) {
-                vehicle.currentOdometer = odometerKm;
-            } else if (updateOdometer && odometerKm !== null && odometerKm < (vehicle.currentOdometer || 0)) {
-                vehicle.currentOdometer = odometerKm;
-            }
             await DB.put('vehicles', vehicle);
-        } else if (odometerKm !== null && vehicle) {
-            // Actualizar odómetro si corresponde
-            if (updateOdometer && odometerKm > (vehicle.currentOdometer || 0)) {
-                vehicle.currentOdometer = odometerKm;
-                await DB.put('vehicles', vehicle);
-            } else if (updateOdometer && odometerKm < (vehicle.currentOdometer || 0)) {
-                vehicle.currentOdometer = odometerKm;
-                await DB.put('vehicles', vehicle);
-            }
         }
 
         Components.showToast(I18n.t('success') + ' ✅', 'success');
@@ -1164,9 +1043,6 @@ const OilModule = (() => {
             let vehicle = await DB.get('vehicles', vehicleId);
             if (vehicle) {
                 if (nextChangeKm) vehicle.nextOilChangeKm = nextChangeKm;
-                if (odometerKm && odometerKm >= (vehicle.currentOdometer || 0)) {
-                    vehicle.currentOdometer = odometerKm;
-                }
                 vehicle.ultimoAceiteTipo = rawType || '';
                 vehicle.ultimoAceiteLitros = quantityLiters;
                 vehicle.filtroAceite = rawFilterOil;
