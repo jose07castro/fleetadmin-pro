@@ -162,6 +162,26 @@ const WhatsappBot = (() => {
         console.error('⚠️ [UNHANDLED]', msg);
     });
 
+    /**
+     * Rastreador de ancho de banda (Admin solo)
+     */
+    async function _trackBandwidth(payload, type) {
+        if (!db || !payload) return;
+        try {
+            let str = typeof payload === 'string' ? payload : '';
+            if (!str) {
+                try { str = JSON.stringify(payload); } catch(e) { str = String(payload); }
+            }
+            const bytes = Buffer.byteLength(str, 'utf8');
+            const ref = db.ref('stats/consumo_bandwidth');
+            
+            await ref.child('total_bytes').transaction(current => (current || 0) + bytes);
+            await ref.child(`${type}_bytes`).transaction(current => (current || 0) + bytes);
+        } catch (e) {
+            console.warn('⚠️ [BANDWIDTH] Error guardando consumo:', e.message);
+        }
+    }
+
     async function init() {
         console.log('🚀 INICIANDO BOT v236 (BAILEYS + GEMINI HTTP + AUTO-PING)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
@@ -469,6 +489,39 @@ const WhatsappBot = (() => {
 
                     if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
 
+                    // --- RASTREO DE ANCHO DE BANDA (ENTRANTE) ---
+                    _trackBandwidth(msg, 'in');
+
+                    // --- COMANDO ADMIN: .consumo ---
+                    if (text.trim().toLowerCase() === '.consumo') {
+                        // El usuario indico 549341xxxxxxx, validamos que arranque con 549341 o contenga el process.env
+                        const adminPrefix = process.env.ADMIN_NUMBER || '549341';
+                        if (jid.includes(adminPrefix)) {
+                            if (db) {
+                                const snap = await db.ref('stats/consumo_bandwidth').once('value');
+                                const stats = snap.val() || { total_bytes: 0, in_bytes: 0, out_bytes: 0 };
+                                const mbTotal = (stats.total_bytes / (1024 * 1024)).toFixed(3);
+                                const mbIn = ((stats.in_bytes || 0) / (1024 * 1024)).toFixed(3);
+                                const mbOut = ((stats.out_bytes || 0) / (1024 * 1024)).toFixed(3);
+                                
+                                const totalGB = 100;
+                                const usedGB = stats.total_bytes / (1024 * 1024 * 1024);
+                                const percent = ((usedGB / totalGB) * 100).toFixed(6);
+                                
+                                const resText = `📊 *Consumo de Ancho de Banda (Render)*\n\n` +
+                                                `📥 *Entrante:* ${mbIn} MB\n` +
+                                                `📤 *Saliente:* ${mbOut} MB\n` +
+                                                `🧮 *Total Consumido:* ${mbTotal} MB\n\n` +
+                                                `📦 *Plan Total (Hobby):* ${totalGB} GB\n` +
+                                                `📈 *Porcentaje de uso:* ${percent}%`;
+                                
+                                await sock.sendMessage(jid, { text: resText }, { quoted: msg });
+                                _trackBandwidth(resText, 'out');
+                            }
+                            continue;
+                        }
+                    }
+
                     // --- ANÁLISIS: GEMINI + FALLBACK POR PALABRAS CLAVE ---
                     console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..."`);
                     
@@ -521,6 +574,7 @@ const WhatsappBot = (() => {
                                 const aiResponse = await callGemini(text);
                                 if (aiResponse) {
                                     await sock.sendMessage(jid, { text: aiResponse }, { quoted: msg });
+                                    _trackBandwidth(aiResponse, 'out');
                                 }
                             }
                         }

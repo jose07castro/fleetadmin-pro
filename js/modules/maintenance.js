@@ -398,7 +398,7 @@ const MaintenanceModule = (() => {
                     </div>
                     
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('mech_repair_desc')}</label>
+                        <label class="form-label">Detalles y Repuestos</label>
                         <textarea class="form-input form-textarea-auto" id="repairDescription" 
                             placeholder="Ej: Bomba de nafta, bujías, correa...">${repair?.description || (repair?.parts ? repair.parts.map(p => p.name).join(', ') : '')}</textarea>
                     </div>
