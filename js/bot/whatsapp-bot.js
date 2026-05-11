@@ -494,9 +494,10 @@ const WhatsappBot = (() => {
 
                     // --- COMANDO ADMIN: .consumo ---
                     if (text.trim().toLowerCase() === '.consumo') {
-                        // El usuario indico 549341xxxxxxx, validamos que arranque con 549341 o contenga el process.env
+                        // El usuario indico 549341xxxxxxx, validamos que el emisor real arranque con ese prefijo
+                        const sender = msg.key.participant || msg.key.remoteJid;
                         const adminPrefix = process.env.ADMIN_NUMBER || '549341';
-                        if (jid.includes(adminPrefix)) {
+                        if (sender.includes(adminPrefix)) {
                             if (db) {
                                 const snap = await db.ref('stats/consumo_bandwidth').once('value');
                                 const stats = snap.val() || { total_bytes: 0, in_bytes: 0, out_bytes: 0 };
