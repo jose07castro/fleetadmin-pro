@@ -254,12 +254,13 @@ const GPSModule = (() => {
         // Agregar o actualizar markers
         Object.keys(alerts).forEach(id => {
             const alert = alerts[id];
-            if (alert.type === 'police') pCount++; else tCount++;
+            if (alert.type === 'police' || alert.type === 'checkpoint') pCount++; else tCount++;
 
             if (markers[id]) {
                 markers[id].setLatLng([alert.lat, alert.lng]);
             } else {
-                const iconHtml = alert.type === 'police' 
+                const isOperativo = alert.type === 'police' || alert.type === 'checkpoint';
+                const iconHtml = isOperativo 
                     ? '<div style="font-size:24px; filter: drop-shadow(0 0 5px blue);">👮‍♂️</div>' 
                     : '<div style="font-size:24px; filter: drop-shadow(0 0 5px orange);">⚠️</div>';
 
@@ -270,11 +271,12 @@ const GPSModule = (() => {
                     iconAnchor: [15, 15]
                 });
 
+                const popupLabel = isOperativo ? '🚔 Operativo Detectado' : '⚠️ Alerta de Tránsito';
                 markers[id] = L.marker([alert.lat, alert.lng], { icon })
                     .addTo(map)
                     .bindPopup(`
                         <div style="text-align:center; padding:5px;">
-                            <strong style="display:block; margin-bottom:5px;">${alert.type === 'police' ? '🚔 Operativo Detectado' : '⚠️ Alerta de Tránsito'}</strong>
+                            <strong style="display:block; margin-bottom:5px;">${popupLabel}</strong>
                             <p style="margin:0; font-size:12px;">${alert.location}</p>
                             <span style="font-size:10px; color:gray;">Detectado por Bot WhatsApp</span>
                         </div>

@@ -22,9 +22,9 @@ const VoiceModule = (() => {
     const ALERTS_MAP = {
         'policial': 'police',
         'policía': 'police',
-        'operativo': 'police',
+        'operativo': 'checkpoint',
         'tránsito': 'warning',
-        'control': 'police',
+        'control': 'checkpoint',
         'vía': 'warning',
         'corte': 'warning',
         'siniestro': 'warning',

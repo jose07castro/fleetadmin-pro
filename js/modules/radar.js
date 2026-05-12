@@ -543,6 +543,7 @@ const RadarModule = (() => {
         
         const typeLabels = {
             police:     '👮 Control de Policía',
+            checkpoint: '🚧 Operativo / Control',
             radar:      '📷 Radar / Cámara de Velocidad',
             helicopter: '🚁 Helicóptero Sanitario (HECA)',
             traffic:    '🚦 Alerta de Tráfico',
@@ -600,6 +601,7 @@ const RadarModule = (() => {
 
         const voiceMessages = {
             police:     'Atención. Control de policía',
+            checkpoint: 'Atención. Operativo o control en la zona',
             radar:      'Cuidado. Radar de velocidad',
             helicopter: 'Alerta. Helicóptero sanitario en zona',
             ambulance:  'Precaución. Ambulancia en la vía',
@@ -650,6 +652,7 @@ const RadarModule = (() => {
     function _createAlertIcon(type) {
         const iconMap = {
             police:     '/assets/alert-icons/police.png',
+            checkpoint: '/assets/alert-icons/police.png',
             radar:      '/assets/alert-icons/radar.png',
             helicopter: '/assets/alert-icons/helicopter.png',
             ambulance:  '/assets/alert-icons/ambulance.png',

@@ -141,8 +141,12 @@ const TrafficAlerts = (() => {
     }
 
     function _getAlertType(text) {
-        const policeKeywords = ['gorra', 'operativo', 'control', 'zorros', 'chanchos'];
-        return policeKeywords.some(k => text.toLowerCase().includes(k)) ? 'police' : 'warning';
+        const t = text.toLowerCase();
+        const policeKeywords = ['gorra', 'chanchos', 'policia', 'policía', 'cana', 'ratis', 'patrulla'];
+        if (policeKeywords.some(k => t.includes(k))) return 'police';
+        const checkpointKeywords = ['operativo', 'control', 'zorros'];
+        if (checkpointKeywords.some(k => t.includes(k))) return 'checkpoint';
+        return 'warning';
     }
 
     /**

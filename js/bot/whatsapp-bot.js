@@ -619,7 +619,8 @@ const WhatsappBot = (() => {
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
-        if (/gorra|control|operativo|operatico|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
+        if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
+        if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
         if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
@@ -635,8 +636,19 @@ const WhatsappBot = (() => {
     async function _analyzeMessageWithAI(text) {
         if (!GEMINI_KEY) return null;
         
-        const prompt = `Analiza este mensaje de un grupo de WhatsApp de tráfico en Rosario, Argentina.
+        const prompt = `Analiza este mensaje de un grupo de WhatsApp de choferes de Uber/Didi en la zona de Rosario, Argentina.
 Mensaje: "${text}"
+
+ABREVIATURAS COMUNES (IMPORTANTE — resolvé estas SIEMPRE):
+- "vgg" / "VGG" / "v.g.g" = Villa Gobernador Gálvez
+- "vgb" = Villa Gobernador Gálvez (variante)  
+- "bv" / "bvard" / "bulevard" = Boulevard
+- "av" = Avenida
+- "pte" = Presidente
+- "cba" = Córdoba (la calle, no la provincia)
+- "pcia" = Provincia
+- "muni" = Municipal
+- "oño" / "oroño" = Oroño
 
 LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
 - "cancha de Central" / "Arroyito" / "estadio de Central" → "Avenida Gorriti 2001"
@@ -653,19 +665,26 @@ LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
 - "Fisherton" → "zona Av. Dante Alighieri, Rosario"
 - "Tablada" → "zona Av. Presidente Perón, Rosario"
 - "Villa Gobernador Gálvez" / "VGG" → "Av. Alberdi 800, Villa Gobernador Gálvez"
+- "cementerio" + "vgg" / "Villa Gobernador Gálvez" → "Cementerio, Villa Gobernador Gálvez"
+- "Funes" → "Funes, Santa Fe"
+- "Pérez" → "Pérez, Santa Fe"
+- "Granadero Baigorria" / "baigorria" → "Granadero Baigorria, Santa Fe"
 
-REGLAS DE CLASIFICACIÓN:
+REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE - leé con cuidado):
 1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", address: "Pellegrini y Vera Mujica"
-2. "GORRA", "CONTROL", "OPERATIVO", "RATIS", "CHANCHOS", "CANA", "POLICIA" → tipo: "police"
-3. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA", "RADAR MOVIL" → tipo: "radar"
-4. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
-5. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-6. "MUNICIPAL", "TRANSITO MUNICIPAL", "GRUA MUNICIPAL", "ZORROS", "INSPECTORES" → tipo: "municipal"
-7. "ACCIDENTE", "CHOQUE" → tipo: "accident"
-8. Cortes, baches, inundaciones, tráfico pesado → tipo: "traffic"
+2. Si el mensaje dice EXPLÍCITAMENTE "policía", "cana", "ratis", "chanchos", "gorra", "patrulla" → tipo: "police"
+3. Si el mensaje dice EXPLÍCITAMENTE "municipal", "tránsito municipal", "grúa municipal", "zorros", "inspectores" → tipo: "municipal"
+4. Si el mensaje dice EXPLÍCITAMENTE "gendarmería" o "gendarme" → tipo: "police" (subtipo gendarmería)
+5. Si el mensaje dice EXPLÍCITAMENTE "prefectura" → tipo: "police" (subtipo prefectura)
+6. Si dice "OPERATIVO" o "CONTROL" de forma GENÉRICA sin especificar qué fuerza → tipo: "checkpoint" (NO asumas que es policía)
+7. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA", "RADAR MOVIL" → tipo: "radar"
+8. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
+9. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
+10. "ACCIDENTE", "CHOQUE" → tipo: "accident"
+11. Cortes, baches, inundaciones, tráfico pesado → tipo: "traffic"
 
 Responde SOLO JSON válido:
-{"isAlert":boolean,"type":"police"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"calle y calle o null","description":"resumen breve","confidence":0.0}
+{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa o null","description":"resumen breve","confidence":0.0}
 Si NO es alerta: {"isAlert":false}
 Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
 
