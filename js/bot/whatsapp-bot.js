@@ -208,6 +208,9 @@ const WhatsappBot = (() => {
         // Auto-detectar fleet ID ANTES de conectar WhatsApp
         await _resolveFleetId();
         
+        // Iniciar rutina de limpieza de base de datos en segundo plano
+        _startDatabaseCleanup();
+        
         await startSocket();
     }
 
@@ -959,6 +962,72 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         await new Promise(r => setTimeout(r, 3000));
         await startSocket();
         console.log('✅ [RESET] Sesión limpiada, bot reiniciado. Buscá el QR en los logs.');
+    }
+
+    /**
+     * Limpieza automática de Base de Datos: elimina alertas expiradas y posiciones viejas.
+     * Se ejecuta al iniciar y luego cada 12 horas.
+     */
+    function _startDatabaseCleanup() {
+        if (!db) return;
+        console.log('🧹 [CRON] Sistema de auto-limpieza de DB programado (cada 12hs).');
+        
+        async function runCleanup() {
+            try {
+                const now = Date.now();
+                console.log('🧹 [CRON] Iniciando limpieza automática de DB...');
+
+                // 1. Purgar Traffic Alerts viejas (más de 24hs)
+                const cutOffAlerts = now - (24 * 60 * 60 * 1000);
+                const fleetsSnap = await db.ref('fleets').once('value');
+                const fleets = fleetsSnap.val();
+                
+                let countAlerts = 0;
+                if (fleets) {
+                    for (const fid in fleets) {
+                        const alerts = fleets[fid].traffic_alerts;
+                        if (alerts) {
+                            for (const aid in alerts) {
+                                const a = alerts[aid];
+                                // Si tiene timestamp y es más viejo que 24hs, O si expiró explícitamente
+                                if ((a.timestamp && a.timestamp < cutOffAlerts) || (a.expiresAt && a.expiresAt < now)) {
+                                    await db.ref(`fleets/${fid}/traffic_alerts/${aid}`).remove();
+                                    countAlerts++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Purgar Posiciones GPS fantasma (inactivas más de 12 horas)
+                const cutOffGps = now - (12 * 60 * 60 * 1000);
+                const positionsSnap = await db.ref('driver_positions').once('value');
+                const positions = positionsSnap.val();
+                
+                let countPositions = 0;
+                if (positions) {
+                    for (const uid in positions) {
+                        const p = positions[uid];
+                        // Usar el timestamp o _lastUpdate
+                        const ts = p.timestamp || p._lastUpdate || p.lastUpdate;
+                        if (ts && ts < cutOffGps) {
+                            await db.ref(`driver_positions/${uid}`).remove();
+                            countPositions++;
+                        }
+                    }
+                }
+
+                console.log(`✨ [CRON] Limpieza finalizada. Removidas ${countAlerts} alertas viejas y ${countPositions} posiciones fantasma.`);
+
+            } catch (e) {
+                console.error('❌ [CRON] Error en rutina de limpieza DB:', e.message);
+            }
+        }
+
+        // Ejecutar la primera vez después de 2 minutos (para no saturar el arranque del bot)
+        setTimeout(runCleanup, 120000);
+        // Programar cada 12 horas
+        setInterval(runCleanup, 12 * 60 * 60 * 1000);
     }
 
     return { 
