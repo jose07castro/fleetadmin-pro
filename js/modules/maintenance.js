@@ -690,7 +690,7 @@ const OilModule = (() => {
                     <div class="form-group">
                         <label class="form-label">${I18n.t('oil_quantity')} (${Units.volumeLabel()})</label>
                         <input type="number" class="form-input" id="oilQuantity"
-                            placeholder="0.5" step="0.1" inputmode="decimal">
+                            value="1.0" step="0.1" inputmode="decimal">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Tipo de Aceite</label>
@@ -703,35 +703,38 @@ const OilModule = (() => {
                 </div>
 
                 <!-- Filtros cambiados -->
-                <div style="font-weight:600; margin-top:var(--space-3); margin-bottom:var(--space-2);">Filtros Cambiados</div>
-                <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-2);">
-                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
-                        <input type="checkbox" id="oilFilterOil"> Filtro de Aceite
+                <div style="font-weight:600; margin-top:var(--space-4); margin-bottom:var(--space-2); color:var(--text-secondary); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">Filtros Cambiados</div>
+                <div class="form-group" style="display:flex; flex-direction:column; gap:var(--space-2); margin-bottom:var(--space-4);">
+                    <label style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); cursor:pointer; background:var(--bg-tertiary); padding:12px 16px; border-radius:var(--radius-lg); border:1px solid rgba(255,255,255,0.05); user-select:none;" onclick="">
+                        <span style="display:flex; align-items:center; gap:10px;"><i style="color:var(--color-warning);">🛢️</i> Filtro de Aceite</span>
+                        <input type="checkbox" id="oilFilterOil" style="width:22px; height:22px; accent-color:var(--color-primary); cursor:pointer;">
                     </label>
-                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
-                        <input type="checkbox" id="oilFilterAir"> Filtro de Aire
+                    <label style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); cursor:pointer; background:var(--bg-tertiary); padding:12px 16px; border-radius:var(--radius-lg); border:1px solid rgba(255,255,255,0.05); user-select:none;" onclick="">
+                        <span style="display:flex; align-items:center; gap:10px;"><i style="color:var(--color-info);">💨</i> Filtro de Aire</span>
+                        <input type="checkbox" id="oilFilterAir" style="width:22px; height:22px; accent-color:var(--color-primary); cursor:pointer;">
                     </label>
-                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
-                        <input type="checkbox" id="oilFilterCabin"> Filtro de Habitáculo
+                    <label style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); cursor:pointer; background:var(--bg-tertiary); padding:12px 16px; border-radius:var(--radius-lg); border:1px solid rgba(255,255,255,0.05); user-select:none;" onclick="">
+                        <span style="display:flex; align-items:center; gap:10px;"><i style="color:var(--color-primary-light);">❄️</i> Filtro de Habitáculo</span>
+                        <input type="checkbox" id="oilFilterCabin" style="width:22px; height:22px; accent-color:var(--color-primary); cursor:pointer;">
                     </label>
                 </div>
 
                 <!-- Checkbox de cambio completo de aceite -->
-                <div class="form-group" style="margin-top:var(--space-3);">
-                    <label style="display:flex; align-items:center; gap:var(--space-2); cursor:pointer;">
-                        <input type="checkbox" id="oilIsChange" onchange="OilModule.toggleOilChange()">
-                        <span style="font-weight:600;">🔄 ${I18n.t('oil_change')}</span>
+                <div class="form-group" style="margin-top:var(--space-4); margin-bottom:var(--space-4);">
+                    <label style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); cursor:pointer; background:rgba(99,102,241,0.1); padding:14px 16px; border-radius:var(--radius-lg); border:1px solid rgba(99,102,241,0.3); user-select:none;" onclick="">
+                        <span style="display:flex; align-items:center; gap:10px; font-weight:700; color:#fff;">🔄 ${I18n.t('oil_change')}</span>
+                        <input type="checkbox" id="oilIsChange" onchange="OilModule.toggleOilChange()" style="width:24px; height:24px; accent-color:#6366f1; cursor:pointer;">
                     </label>
                 </div>
-                <div id="oilChangeSection" style="display:none; margin-top:var(--space-3);">
+                <div id="oilChangeSection" style="display:none; margin-top:var(--space-3); margin-bottom:var(--space-4); padding:var(--space-3); background:rgba(0,0,0,0.2); border-radius:var(--radius-md);">
                     <div class="form-group">
                         <label class="form-label">${I18n.t('oil_next_change_km')} (${Units.distanceLabel()})</label>
                         <input type="number" class="form-input" id="oilNextChangeKm"
-                            placeholder="${I18n.t('oil_next_change_km')}" inputmode="numeric">
+                            placeholder="Ej: 140000" inputmode="numeric">
                     </div>
                 </div>
 
-                <button class="btn btn-primary btn-lg" onclick="OilModule.saveOilLog()" style="margin-top:var(--space-2);">
+                <button type="button" class="btn btn-primary btn-lg" onclick="OilModule.saveOilLog()" style="margin-top:var(--space-2); width:100%; justify-content:center;">
                     💾 ${I18n.t('save')}
                 </button>
             </div>
