@@ -211,8 +211,6 @@ const WhatsappBot = (() => {
         await startSocket();
     }
 
-    /**
-     * Guarda/restaura TODA la carpeta de autenticación en Firebase
     let _backupInterval = null;
 
     /**
