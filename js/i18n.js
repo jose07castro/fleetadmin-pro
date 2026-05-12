@@ -8,7 +8,7 @@ const I18n = (() => {
     const translations = {
         es: {
             // General
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Administrador de Flota',
             loading: 'Cargando...',
             save: 'Guardar',
@@ -330,7 +330,7 @@ const I18n = (() => {
         },
 
         en: {
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Fleet Manager',
             loading: 'Loading...',
             save: 'Save',
@@ -640,7 +640,7 @@ const I18n = (() => {
         },
 
         pt: {
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Administrador de Frota',
             loading: 'Carregando...',
             save: 'Salvar',

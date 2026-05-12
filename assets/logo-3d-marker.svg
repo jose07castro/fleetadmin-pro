@@ -1,0 +1,29 @@
+<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+    <radialGradient id="shadow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#000" stop-opacity="0.4"/>
+        <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pinBody" x1="20%" y1="10%" x2="80%" y2="90%">
+        <stop offset="0%" stop-color="#FF5C5C"/>
+        <stop offset="40%" stop-color="#E63946"/>
+        <stop offset="100%" stop-color="#9B1C2E"/>
+    </linearGradient>
+    <linearGradient id="pinHighlight" x1="50%" y1="15%" x2="50%" y2="50%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+</defs>
+<!-- Shadow -->
+<ellipse cx="50" cy="92" rx="15" ry="4" fill="url(#shadow)"/>
+<!-- Pin Outer Shape -->
+<path d="M50 90C50 90 85 60 85 37.5C85 18.17 69.33 2.5 50 2.5C30.67 2.5 15 18.17 15 37.5C15 60 50 90 50 90Z" fill="url(#pinBody)" filter="drop-shadow(0px 4px 8px rgba(0,0,0,0.3))"/>
+<!-- Inner Circle (Transparent Center) -->
+<circle cx="50" cy="37.5" r="14" fill="#0F172A"/> <!-- Match background slate dark -->
+<!-- Center Highlight/Bevel -->
+<circle cx="50" cy="37.5" r="14" stroke="#9B1C2E" stroke-width="2"/>
+<!-- Main Volume Highlight -->
+<path d="M50 6C33.5 6 20 19.5 20 36C20 40.5 22.5 48 25 53C28 45 32 38 50 38C68 38 72 45 75 53C77.5 48 80 40.5 80 36C80 19.5 66.5 6 50 6Z" fill="url(#pinHighlight)"/>
+<!-- Extra Glare Dot -->
+<circle cx="38" cy="22" r="4" fill="#FFF" opacity="0.6"/>
+</svg>

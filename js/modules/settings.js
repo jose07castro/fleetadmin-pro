@@ -238,7 +238,7 @@ const SettingsModule = (() => {
                 <div class="settings-section-title">ℹ️ ${I18n.t('settings_about')}</div>
                 <div class="settings-item">
                     <div>
-                        <div class="settings-item-label">FleetAdmin Pro</div>
+                        <div class="settings-item-label">Punto Alertas</div>
                         <div class="settings-item-desc">${I18n.t('app_subtitle')}</div>
                     </div>
                     <span class="badge badge-info">${I18n.t('settings_version')} 1.0.0</span>
