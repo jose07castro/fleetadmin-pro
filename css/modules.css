@@ -2676,3 +2676,8 @@
     padding-top: var(--space-2);
     padding-bottom: var(--space-2);
 }
+
+/* --- New Compact Vehicle List Animations --- */
+.veh-header-row:hover { background: rgba(255, 255, 255, 0.03); }
+.vehicle-expandable-row:has(.veh-expanded-body[style*='display: block']) { border-color: var(--color-primary) !important; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15) !important; }
+

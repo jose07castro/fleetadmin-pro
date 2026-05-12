@@ -21,7 +21,7 @@ const VehiclesModule = (() => {
             </div>
 
             ${vehicles.length > 0 ? `
-                <div class="vehicle-cards">
+                <div class="vehicle-list-container" style="display:flex; flex-direction:column; gap:var(--space-3);">
                     ${await renderVehicleCards(vehicles)}
                 </div>
             ` : Components.renderEmptyState(
@@ -96,63 +96,89 @@ const VehiclesModule = (() => {
                 btnGrua = `<a href="tel:${v.telefonoAuxilio}" style="width:100%; margin-top:var(--space-3); display:flex; justify-content:center; padding: 0.6rem; text-decoration:none; color:white; background:var(--color-danger); border-radius:var(--radius-md); font-weight:bold; align-items:center; gap:0.5rem; text-transform:uppercase; letter-spacing:0.5px; box-shadow:0 4px 6px rgba(239,68,68,0.2);"><span style="font-size:1.2rem;">🚨</span> ${I18n.t('veh_call_tow')}</a>`;
             }
 
+            // Compact Info for Row
+            const statusBadge = `<span class="badge ${v.status === 'active' ? 'badge-success' : 'badge-warning'}" style="font-size:0.7rem; padding:2px 6px;">${v.status === 'active' ? I18n.t('veh_active') : I18n.t('veh_inactive')}</span>`;
+            const vtvStatusChar = vtv.level === 'danger' ? '🔴' : vtv.level === 'warning' ? '🟡' : vtv.level === 'ok' ? '🟢' : '⚪';
+
             html += `
-                <div class="vehicle-card" style="position:relative;">
-                    ${v.companiaSeguro ? `<div style="position:absolute; top:12px; right:12px; font-size:0.65rem; color:var(--text-secondary); background:var(--bg-tertiary); padding:3px 8px; border-radius:12px; font-weight:600; border:1px solid var(--border-color);">🛡️ ${v.companiaSeguro}</div>` : ''}
-                    <div class="vehicle-card-header" style="padding-right: 80px;">
-                        <span class="vehicle-name">🚗 ${v.name}</span>
-                        <span class="vehicle-plate">${v.plate || '-'}</span>
-                    </div>
-
-                    <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3);">
-                        ${financialBadge}
-                        ${alertsBadge}
-                        ${belt.level !== 'ok' ? `
-                            <span class="badge badge-${belt.level === 'danger' ? 'danger' : 'warning'}">
-                                ${belt.level === 'danger' ? '🔴' : '🟡'} ${I18n.t('maint_timing_belt')}
-                            </span>
-                        ` : ''}
-                        ${vtvBadge}
-                        ${v.zonaBaseLabel ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">📍 ${v.zonaBaseLabel}</span>` : ''}
-                    </div>
-
-                    <div class="vehicle-stats">
-                        <div class="vehicle-stat">
-                            <div class="vehicle-stat-value">${Units.formatDistance(v.currentOdometer || 0)}</div>
-                            <div class="vehicle-stat-label">${I18n.t('veh_odometer')}</div>
-                        </div>
-                        <div class="vehicle-stat">
-                            <div class="vehicle-stat-value">${v.year || '-'}</div>
-                            <div class="vehicle-stat-label">${I18n.t('veh_year')}</div>
-                        </div>
-                        <div class="vehicle-stat">
-                            <div class="vehicle-stat-value">${Units.formatDistance(totalKm)}</div>
-                            <div class="vehicle-stat-label">${I18n.t('shift_total_km')}</div>
-                        </div>
-                        <div class="vehicle-stat">
-                            <div class="vehicle-stat-value">
-                                <span class="badge ${v.status === 'active' ? 'badge-success' : 'badge-warning'}">
-                                    ${v.status === 'active' ? I18n.t('veh_active') : I18n.t('veh_inactive')}
-                                </span>
+                <div class="vehicle-expandable-row" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-xl); overflow:hidden; transition:all 0.2s ease; box-shadow:var(--shadow-sm);">
+                    
+                    <!-- HEADER: Row representation -->
+                    <div class="veh-header-row" onclick="VehiclesModule.toggleExpand('${v.id}')" 
+                         style="display:flex; align-items:center; justify-content:space-between; padding:var(--space-4); cursor:pointer; user-select:none; position:relative;">
+                        
+                        <div style="display:flex; align-items:center; gap:var(--space-3); flex:1;">
+                            <div style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;">🚗</div>
+                            <div style="min-width:0; overflow:hidden;">
+                                <div style="font-weight:700; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#fff;">${v.name}</div>
+                                <div style="display:flex; align-items:center; gap:var(--space-2); font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
+                                    <span style="background:var(--bg-tertiary); padding:1px 6px; border-radius:4px; font-weight:700; color:var(--text-primary); border:1px solid rgba(255,255,255,0.05);">${v.plate || '-'}</span>
+                                    <span>•</span>
+                                    <span>${v.year || '-'}</span>
+                                </div>
                             </div>
-                            <div class="vehicle-stat-label">${I18n.t('veh_status')}</div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:var(--space-3); flex-shrink:0;">
+                            <div class="veh-mini-badges" style="display:flex; gap:4px;">
+                                ${vtvStatusChar === '🔴' ? '<span style="font-size:0.8rem; animation:pulse 1.5s infinite;">⚠️ VTV</span>' : ''}
+                                ${statusBadge}
+                            </div>
+                            <span id="veh-chevron-${v.id}" style="color:var(--text-tertiary); font-size:0.8rem; transition:transform 0.3s ease;">▶</span>
                         </div>
                     </div>
 
-                    ${Auth.isOwner() ? `
-                        <div style="display:flex; gap:var(--space-2); margin-top:var(--space-4);">
-                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showForm('${v.id}')">
-                                ✏️ ${I18n.t('edit')}
-                            </button>
-                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.showVtvEditor('${v.id}')">
-                                🔧 ${I18n.t('vtv_title')}
-                            </button>
-                            <button class="btn btn-ghost btn-sm" onclick="VehiclesModule.deleteVehicle('${v.id}')">
-                                🗑️ ${I18n.t('delete')}
-                            </button>
+                    <!-- BODY: The expanded full card view (hidden by default) -->
+                    <div id="veh-body-${v.id}" class="veh-expanded-body" style="display:none; padding:0 var(--space-5) var(--space-5) var(--space-5); border-top:1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.15);">
+                        
+                        <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin:var(--space-4) 0 var(--space-4) 0;">
+                            ${v.companiaSeguro ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary); border:1px solid rgba(255,255,255,0.1);">🛡️ ${v.companiaSeguro}</span>` : ''}
+                            ${financialBadge}
+                            ${alertsBadge}
+                            ${belt.level !== 'ok' ? `
+                                <span class="badge badge-${belt.level === 'danger' ? 'danger' : 'warning'}" style="font-size:0.7rem;">
+                                    ${belt.level === 'danger' ? '🔴' : '🟡'} ${I18n.t('maint_timing_belt')}
+                                </span>
+                            ` : ''}
+                            ${vtvBadge}
+                            ${v.zonaBaseLabel ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">📍 ${v.zonaBaseLabel}</span>` : ''}
                         </div>
-                    ` : ''}
-                    ${btnGrua}
+
+                        <div class="vehicle-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:var(--space-3); margin-bottom:var(--space-4);">
+                            <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03);">
+                                <div class="vehicle-stat-value" style="font-size:1.1rem;">${Units.formatDistance(v.currentOdometer || 0)}</div>
+                                <div class="vehicle-stat-label">${I18n.t('veh_odometer')}</div>
+                            </div>
+                            <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03);">
+                                <div class="vehicle-stat-value" style="font-size:1.1rem;">${Units.formatDistance(totalKm)}</div>
+                                <div class="vehicle-stat-label">${I18n.t('shift_total_km')}</div>
+                            </div>
+                            <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03);">
+                                <div class="vehicle-stat-value" style="font-size:1.1rem;">${v.metodoPago === 'Crédito' ? v.cuotasTotales - (v.cuotasPagas||0) : '-'}</div>
+                                <div class="vehicle-stat-label">Cuotas Rest.</div>
+                            </div>
+                        </div>
+
+                        ${Auth.isOwner() ? `
+                            <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); border-top:1px solid rgba(255,255,255,0.05); padding-top:var(--space-4);">
+                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); VehiclesModule.showForm('${v.id}')" style="font-size:0.8rem;">
+                                    ✏️ ${I18n.t('edit')}
+                                </button>
+                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); VehiclesModule.showVtvEditor('${v.id}')" style="font-size:0.8rem;">
+                                    🔧 ${I18n.t('vtv_title')}
+                                </button>
+                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); VehiclesModule.deleteVehicle('${v.id}')" style="font-size:0.8rem; color:#ef4444;">
+                                    🗑️ ${I18n.t('delete')}
+                                </button>
+                            </div>
+                        ` : ''}
+                        
+                        ${v.telefonoAuxilio ? `
+                            <div style="margin-top:var(--space-3);" onclick="event.stopPropagation();">
+                                ${btnGrua}
+                            </div>
+                        ` : ''}
+                    </div>
                 </div>
             `;
         }
@@ -523,8 +549,39 @@ const VehiclesModule = (() => {
         }
     }
 
+    function toggleExpand(vehicleId) {
+        const body = document.getElementById(`veh-body-${vehicleId}`);
+        const chevron = document.getElementById(`veh-chevron-${vehicleId}`);
+        if (!body) return;
+
+        const isOpen = body.style.display !== 'none';
+        
+        // Close all others if desired? (Optional usability choice, keeps UI very clean)
+        document.querySelectorAll('.veh-expanded-body').forEach(b => {
+            if (b.id !== `veh-body-${vehicleId}`) {
+                b.style.display = 'none';
+                const targetId = b.id.replace('veh-body-', '');
+                const targetChev = document.getElementById(`veh-chevron-${targetId}`);
+                if (targetChev) targetChev.style.transform = 'rotate(0deg)';
+            }
+        });
+
+        if (isOpen) {
+            body.style.display = 'none';
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        } else {
+            body.style.display = 'block';
+            if (chevron) chevron.style.transform = 'rotate(90deg)';
+            // Add slight glow hover effect to show active
+            body.parentElement.style.borderColor = 'var(--color-primary)';
+            setTimeout(() => {
+                body.parentElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
+        }
+    }
+
     return { 
         render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv,
-        calcRemaining, toggleFinanceFields, togglePrendario
+        calcRemaining, toggleFinanceFields, togglePrendario, toggleExpand
     };
 })();
