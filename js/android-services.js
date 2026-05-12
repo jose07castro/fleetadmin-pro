@@ -72,15 +72,27 @@ const AndroidServices = (() => {
         // Registrar receptor de GPS nativo SIEMPRE primero
         _registerNativeGPSReceiver();
 
+        // Obtener userId y driverName para pasarle al Service Java
+        const userId = (typeof Auth !== 'undefined') ? (Auth.getUserId() || Auth.getUserName()) : null;
+        const driverName = (typeof Auth !== 'undefined') ? (Auth.getUserName() || 'Chofer') : 'Chofer';
+
         // === RUTA A: NATIVO ANDROID (Capacitor con bridge Java) ===
         if (isNativeAndroid()) {
             try {
                 // ── CAPA 1: Arrancar el Foreground Service Java REAL ──
                 if (_hasNativeBridge()) {
                     console.log('📱 AndroidServices: 🔥 CAPA 1 — Arrancando LocationTrackingService via NativeServiceBridge');
-                    window.NativeServiceBridge.startTracking();
+                    console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName}`);
+                    
+                    // Pasar userId y driverName al Service para que suba GPS directo a Firebase
+                    if (userId) {
+                        window.NativeServiceBridge.startTracking(userId, driverName);
+                    } else {
+                        window.NativeServiceBridge.startTracking();
+                    }
+                    
                     _nativeGPSActive = true;
-                    console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo activo');
+                    console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo + Firebase Direct');
                 } else {
                     console.warn('📱 AndroidServices: ⚠️ NativeServiceBridge NO disponible — el Service Java NO se arrancó');
                 }
