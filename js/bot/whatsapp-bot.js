@@ -213,15 +213,25 @@ const WhatsappBot = (() => {
 
     /**
      * Guarda/restaura TODA la carpeta de autenticación en Firebase
+    let _backupInterval = null;
+
+    /**
+     * Carga el estado de sesión de Firebase o del sistema de archivos local
      * para que sobrevivan los reinicios de Render (evita el Error MAC Malo)
      */
     async function _firebaseAuthState() {
+        let isFreshStart = true;
         if (!fs.existsSync(AUTH_DIR)) {
             fs.mkdirSync(AUTH_DIR, { recursive: true });
+        } else if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+            // Si ya existe la carpeta local con credenciales, usamos esas y NO sobrescribimos con Firebase
+            // porque las locales siempre son más nuevas que el backup y sobrescribirlas causa MAC Bad / Error 440
+            isFreshStart = false;
+            console.log('🔑 [AUTH] Sesión local existente detectada. Omitiendo descarga desde Firebase.');
         }
 
-        // 1. Restaurar TODAS las llaves desde Firebase (creds.json + keys)
-        if (db) {
+        // 1. Restaurar TODAS las llaves desde Firebase SOLO si es un inicio limpio (contenedor nuevo)
+        if (db && isFreshStart) {
             try {
                 const snap = await db.ref('bot_auth_backup').once('value');
                 const backup = snap.val();
@@ -233,7 +243,7 @@ const WhatsappBot = (() => {
                             fs.writeFileSync(path.join(AUTH_DIR, fileName), backup[safeKey]);
                         } catch(e) {}
                     }
-                    console.log(`🔑 [AUTH] Sesión completa restaurada (${Object.keys(backup).length} archivos) ✅`);
+                    console.log(`🔑 [AUTH] Sesión completa restaurada desde Firebase (${Object.keys(backup).length} archivos) ✅`);
                 } else {
                     console.log('🔑 [AUTH] No hay sesión guardada, se necesita QR nuevo');
                 }
@@ -281,7 +291,8 @@ const WhatsappBot = (() => {
         };
 
         // 4. Sync activo de llaves (Baileys no llama saveCreds para las session keys)
-        setInterval(async () => {
+        if (_backupInterval) clearInterval(_backupInterval);
+        _backupInterval = setInterval(async () => {
             if (db && fs.existsSync(AUTH_DIR)) {
                 try {
                     const backup = _createBackupObject();
