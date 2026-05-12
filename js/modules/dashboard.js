@@ -41,6 +41,10 @@ window.DashboardModule = (() => {
                     </div>
                 </div>` : '';
 
+            const alertsHTML = alerts.length > 0 ? `
+                <div class="dashboard-section">
+                    <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
+                    ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
                 </div>` : '';
 
             // NUEVO: Accesos Rápidos Dashboard (Botonera VIP)
