@@ -896,7 +896,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
                 
                 // Usamos Photon con sesgo espacial forzado al Centro de Rosario (-32.9477, -60.6652) para dar prioridad absoluta a la zona urbana central
-                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652&lang=es`;
+                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
                 console.log(`🌐 [GEO] URL Photon: ${url.substring(0,100)}...`);
                 
                 const response = await axios.get(url, { timeout: 10000 });
