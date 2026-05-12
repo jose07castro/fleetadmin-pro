@@ -41,11 +41,34 @@ window.DashboardModule = (() => {
                     </div>
                 </div>` : '';
 
-            const alertsHTML = alerts.length > 0 ? `
-                <div class="dashboard-section">
-                    <div class="dashboard-section-title">🚨 ${I18n.t('dash_alerts')}</div>
-                    ${alerts.map(a => Alerts.renderAlertBanner(a)).join('')}
                 </div>` : '';
+
+            // NUEVO: Accesos Rápidos Dashboard (Botonera VIP)
+            const quickActionsHTML = `
+            <div class="dashboard-section" style="margin-bottom:var(--space-5);">
+                <div class="dashboard-section-title" style="font-size:0.85rem; opacity:0.8; margin-bottom:var(--space-2); letter-spacing:0.5px; text-transform:uppercase;">⚡ Accesos Rápidos</div>
+                <div class="quick-actions-scroll-container" style="display:flex; gap:var(--space-3); overflow-x:auto; padding:var(--space-1) var(--space-1) var(--space-3) var(--space-1); margin:0 -4px; scrollbar-width:none; -ms-overflow-style:none; -webkit-overflow-scrolling:touch;">
+                    <style> .quick-actions-scroll-container::-webkit-scrollbar { display: none; } .q-btn:active { transform: scale(0.96); opacity: 0.9; } </style>
+                    
+                    <button class="q-btn" onclick="Router.navigate('oil')" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(217,119,6,0.25); cursor:pointer; transition:all 0.2s;">
+                        <span style="font-size:1.5rem;">🛢️</span> Cargar Aceite
+                    </button>
+                    
+                    ${Auth.isOwner() ? `
+                    <button class="q-btn" onclick="Router.navigate('maintenance')" style="background:linear-gradient(135deg, #ef4444, #b91c1c); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(185,28,28,0.25); cursor:pointer; transition:all 0.2s;">
+                        <span style="font-size:1.5rem;">🔧</span> Reparaciones
+                    </button>
+                    ` : ''}
+                    
+                    <button class="q-btn" onclick="Router.navigate('shifts')" style="background:linear-gradient(135deg, #10b981, #059669); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(16,185,129,0.25); cursor:pointer; transition:all 0.2s;">
+                        <span style="font-size:1.5rem;">⏱️</span> Iniciar Turno
+                    </button>
+                    
+                    <button class="q-btn" onclick="Router.navigate('vehicles')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(59,130,246,0.25); cursor:pointer; transition:all 0.2s;">
+                        <span style="font-size:1.5rem;">🚗</span> Ver Flota
+                    </button>
+                </div>
+            </div>`;
 
             let fleetHTML = '';
             if (vehicles.length > 0) {
@@ -158,6 +181,7 @@ window.DashboardModule = (() => {
 
             ${locationBanner}
             ${alertsHTML}
+            ${quickActionsHTML}
 
             <div class="stats-grid" id="dashboardStatsGrid" style="margin-bottom:var(--space-6);">
                 ${(() => {
