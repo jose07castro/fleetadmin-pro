@@ -685,7 +685,8 @@ const OilModule = (() => {
                     <div class="form-group">
                         <label class="form-label">${I18n.t('oil_odometer')} (${Units.distanceLabel()})</label>
                         <input type="number" class="form-input" id="oilOdometer"
-                            placeholder="${I18n.t('veh_odometer')}" inputmode="numeric">
+                            placeholder="${I18n.t('veh_odometer')}" inputmode="numeric"
+                            oninput="OilModule.calcMainNextChange()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">${I18n.t('oil_quantity')} (${Units.volumeLabel()})</label>
@@ -827,6 +828,17 @@ const OilModule = (() => {
         const isChange = document.getElementById('oilIsChange')?.checked;
         const section = document.getElementById('oilChangeSection');
         if (section) section.style.display = isChange ? 'block' : 'none';
+        if (isChange) {
+            calcMainNextChange();
+        }
+    }
+
+    function calcMainNextChange() {
+        const odo = parseFloat(document.getElementById('oilOdometer')?.value) || 0;
+        const next = document.getElementById('oilNextChangeKm');
+        if (next && odo > 0) {
+            next.value = odo + 10000;
+        }
     }
 
     async function saveOilLog() {
@@ -1053,7 +1065,7 @@ const OilModule = (() => {
                 <div class="form-group">
                     <label class="form-label">${I18n.t('oil_next_change_km')}</label>
                     <input type="number" class="form-input" id="oilModalNextChange" inputmode="numeric"
-                        value="${vehicle.currentOdometer ? Units.displayDistance(vehicle.currentOdometer) + 10000 : 10000}">
+                        value="${vehicle.currentOdometer ? Number(Units.displayDistance(vehicle.currentOdometer)) + 10000 : 10000}">
                 </div>
                 <div class="repair-form-grid">
                     <div class="form-group">
@@ -1205,5 +1217,16 @@ const OilModule = (() => {
         }
     }
 
-    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer, registerOilChange, calcNextChange, saveOilChangeFromModal, finishNavigationAfterSave };
+    return { 
+        render, 
+        prefillOdometer, 
+        saveOilLog, 
+        toggleOilChange, 
+        deleteOilLog, 
+        registerOilChange, 
+        calcNextChange, 
+        calcMainNextChange,
+        saveOilChangeFromModal, 
+        finishNavigationAfterSave 
+    };
 })();
