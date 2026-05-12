@@ -18,9 +18,9 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file("fleetadmin_upload_2026.jks")
+            storeFile file("punto_alertas_final.jks")
             storePassword "PuntoAlertas!2026"
-            keyAlias "fleetadmin"
+            keyAlias "puntoalertas"
             keyPassword "PuntoAlertas!2026"
         }
     }

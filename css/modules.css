@@ -2665,3 +2665,14 @@
 .btn-dismiss:hover { background: #fecaca; }
 
 
+
+/* Auto-expanding Textarea for Repairs */
+.form-textarea-auto {
+    min-height: 45px;
+    resize: none;
+    overflow: hidden;
+    transition: height 0.2s ease;
+    line-height: 1.5;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+}

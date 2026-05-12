@@ -72,20 +72,17 @@ if (!admin.apps.length) {
             console.log('🔑 Usando variables individuales (PROJECT_ID + CLIENT_EMAIL + PRIVATE_KEY)...');
             const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
             const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
-            let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim();
-            
-            // Limpiar comillas envolventes (Render a veces las agrega)
-            privateKey = privateKey.replace(/^"|"$/g, '');
+            let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
             
             if (privateKey) {
-                // Render guarda \n como texto literal "\\n" — convertir a newlines reales
+                // Render guarda \n como texto literal
                 privateKey = privateKey.replace(/\\n/g, '\n');
             }
 
-            console.log(`📡 Config: ID=${projectId?.substring(0, 5)}..., Email=${clientEmail?.substring(0, 15)}..., KeyLen=${privateKey.length}, KeyStart=${privateKey.substring(0, 30)}...`);
+            console.log(`📡 Config: ID=${projectId?.substring(0, 5)}..., KeyLength=${privateKey.length}`);
 
             if (!projectId || !clientEmail || privateKey.length < 100) {
-                throw new Error(`Variables de Firebase incompletas. ID=${!!projectId}, Email=${!!clientEmail}, KeyLen=${privateKey.length}`);
+                throw new Error('Variables de Firebase incompletas o inválidas.');
             }
 
             credential = admin.credential.cert({ projectId, clientEmail, privateKey });
