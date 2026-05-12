@@ -63,6 +63,17 @@ app.post('/api/bot/reset-session', async (req, res) => {
         res.status(500).json({ ok: false, error: e.message });
     }
 });
+// Endpoint para CURACIÓN RÁPIDA de sesión (Soft Reset)
+// Cura el error "MAC Malo" / 440 sin forzar un nuevo código QR!!!
+app.all('/api/bot/soft-reset', async (req, res) => {
+    try {
+        console.log('🔧 [SOFT-RESET] Solicitud de curación rápida manual recibida...');
+        await WhatsappBot.softResetSession();
+        res.json({ ok: true, message: '¡Curación rápida completada! Intentando reconectar conservando emparejamiento.' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
 
 // Inyectar alerta de prueba directamente a Firebase (sin pasar por WhatsApp)
 // Útil para verificar que el mapa lee alertas correctamente

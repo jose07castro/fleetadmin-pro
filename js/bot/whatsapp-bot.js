@@ -324,6 +324,52 @@ const WhatsappBot = (() => {
         }
     }
 
+    /**
+     * Cuidado de emergencia (SOFT RESET): Borra llaves corruptas pero MANTIENE creds.json
+     * Esto soluciona el error de "MAC Malo" y "Conflicto 440" sin pedir escanear el QR de vuelta!
+     */
+    async function softResetAuthInfo() {
+        console.log('🔧 [SOFT-RESET] Intentando curación rápida de MAC corrupto (Conservando QR)...');
+        try {
+            if (fs.existsSync(AUTH_DIR)) {
+                const files = fs.readdirSync(AUTH_DIR);
+                let removedCount = 0;
+                for (const file of files) {
+                    // Conservar estrictamente creds.json que contiene el emparejamiento
+                    if (file !== 'creds.json') {
+                        try {
+                            fs.unlinkSync(path.join(AUTH_DIR, file));
+                            removedCount++;
+                        } catch(e) {}
+                    }
+                }
+                console.log(`🧹 [SOFT-RESET] ${removedCount} archivos efímeros eliminados. creds.json a salvo.`);
+            }
+            
+            if (db) {
+                // En Firebase: Bajar backup, dejar solo creds.json y volver a subir
+                const snap = await db.ref('bot_auth_backup').once('value');
+                const backup = snap.val();
+                if (backup) {
+                    const cleanBackup = {};
+                    const targetKey = Buffer.from('creds.json').toString('base64');
+                    
+                    if (backup[targetKey]) {
+                        cleanBackup[targetKey] = backup[targetKey];
+                        await db.ref('bot_auth_backup').set(cleanBackup);
+                        console.log('🧹 [SOFT-RESET] Backup en la nube curado, solo conservado creds.json.');
+                    } else if (backup['creds.json']) {
+                        cleanBackup['creds.json'] = backup['creds.json'];
+                        await db.ref('bot_auth_backup').set(cleanBackup);
+                        console.log('🧹 [SOFT-RESET] Backup nube curado (legacy mapping).');
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('⚠️ [SOFT-RESET] Falló autocuración:', e.message);
+        }
+    }
+
     async function startSocket() {
         try {
             const { state, saveCreds } = await _firebaseAuthState();
@@ -368,9 +414,14 @@ const WhatsappBot = (() => {
                     } else if (statusCode === 440 || statusCode === 503) {
                         retryCount++;
                         // 440 = conflicto de sesión: esperar más tiempo en cada reintento
-                        // 1º: 90s, 2º: 3min, 3º: 5min (para dejar que el proceso viejo muera)
-                        const delay440 = Math.min(90000 * retryCount, 300000);
+                        const delay440 = Math.min(60000 * retryCount, 300000);
                         console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s...`);
+                        
+                        // AUTO-HEAL: A partir del segundo fallo, asumimos MAC corrupto por reinicio Render y aplicamos curación rápida (Soft Reset)
+                        if (retryCount >= 2) {
+                            await softResetAuthInfo();
+                        }
+
                         await new Promise(resolve => setTimeout(resolve, delay440));
                         await startSocket();
                     } else if (statusCode === reason.restartRequired || statusCode === reason.connectionTimedOut) {
@@ -957,7 +1008,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
     }
 
     async function resetSession() {
-        console.log('🔄 [RESET] Forzando limpieza de sesión...');
+        console.log('🔄 [RESET] Forzando limpieza de sesión COMPLETA (Requiere QR)...');
         if (sock) {
             try { await sock.logout(); } catch(e) { /* ignorar */ }
             sock = null;
@@ -966,6 +1017,19 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         await new Promise(r => setTimeout(r, 3000));
         await startSocket();
         console.log('✅ [RESET] Sesión limpiada, bot reiniciado. Buscá el QR en los logs.');
+    }
+
+    async function softResetSession() {
+        console.log('🔧 [SOFT-RESET] Aplicando curación manual sin pérdida de emparejamiento...');
+        if (sock) {
+            try { sock.end(); } catch(e) {}
+            sock = null;
+        }
+        await softResetAuthInfo();
+        await new Promise(r => setTimeout(r, 3000));
+        retryCount = 0;
+        await startSocket();
+        console.log('✅ [SOFT-RESET] Autocuración ejecutada, intentando reconexión instantánea.');
     }
 
     /**
@@ -1037,6 +1101,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
     return { 
         init, 
         resetSession,
+        softResetSession,
         getFleetId: _resolveFleetId,
         getDb: () => db
     };
