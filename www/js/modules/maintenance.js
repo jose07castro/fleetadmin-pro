@@ -734,7 +734,7 @@ const OilModule = (() => {
                     </div>
                 </div>
 
-                <button type="button" class="btn btn-primary btn-lg" onclick="OilModule.saveOilLog()" style="margin-top:var(--space-2); width:100%; justify-content:center;">
+                <button type="button" id="saveOilBtn" class="btn btn-primary btn-lg" onclick="OilModule.saveOilLog()" style="margin-top:var(--space-2); width:100%; justify-content:center;">
                     💾 ${I18n.t('save')}
                 </button>
             </div>
@@ -830,6 +830,14 @@ const OilModule = (() => {
     }
 
     async function saveOilLog() {
+        const btn = document.getElementById('saveOilBtn');
+        const originalHTML = btn ? btn.innerHTML : '';
+        
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Guardando...';
+        }
+
         const vehicleId = document.getElementById('oilVehicle')?.value;
         const odometerInput = parseFloat(document.getElementById('oilOdometer')?.value);
         const quantity = parseFloat(document.getElementById('oilQuantity')?.value);
@@ -844,6 +852,10 @@ const OilModule = (() => {
 
         if (!vehicleId || vehicleId === '' || !quantity) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
             return;
         }
 
@@ -967,15 +979,38 @@ const OilModule = (() => {
             }
         }
 
-        Components.showToast(I18n.t('success') + ' ✅', 'success');
-        
-        // Redirigir según desde dónde se haya lanzado
+        // BLOQUE DE ÉXITO VISUAL: Prevenir que el usuario piense que se borró.
+        Components.showModal(
+            '<span style="color:#10b981;">✅ Guardado Exitoso</span>',
+            `
+            <div style="text-align:center; padding:var(--space-4) 0;">
+                <div style="font-size:3.5rem; margin-bottom:var(--space-3); color:#10b981;">🎉</div>
+                <h2 style="margin-bottom:var(--space-2); font-size:1.4rem;">¡Registro Completado!</h2>
+                <p style="color:var(--text-secondary); font-size:1rem;">Los datos se han guardado correctamente en el historial del vehículo.</p>
+            </div>
+            `,
+            `
+            <button class="btn btn-primary btn-lg" style="width:100%; justify-content:center;" onclick="OilModule.finishNavigationAfterSave()">
+                Entendido
+            </button>
+            `,
+            { staticBackdrop: true, onClose: () => OilModule.finishNavigationAfterSave() }
+        );
+    }
+
+    function finishNavigationAfterSave() {
+        Components.closeModal();
         const currentHash = window.location.hash;
         if (currentHash.includes('maintenance')) {
             Router.navigate('maintenance');
         } else {
             Router.navigate('oil');
         }
+        // Esperar render y scrollear al historial
+        setTimeout(() => {
+            const table = document.querySelector('.dashboard-section-title');
+            if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
     }
 
     function deleteOilLog(id) {
@@ -1170,5 +1205,5 @@ const OilModule = (() => {
         }
     }
 
-    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer, registerOilChange, calcNextChange, saveOilChangeFromModal };
+    return { render, saveOilLog, deleteOilLog, toggleOilChange, prefillOdometer, registerOilChange, calcNextChange, saveOilChangeFromModal, finishNavigationAfterSave };
 })();
