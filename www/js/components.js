@@ -111,6 +111,7 @@ const Components = (() => {
                 { icon: '📡', label: 'nav_gps', route: 'gps', section: 'mgmt' },
             ],
             driver: [
+                { icon: '📡', label: 'nav_gps', route: 'gps', section: 'ops' },
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'ops' },
                 { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
@@ -135,10 +136,10 @@ const Components = (() => {
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             driver: [
+                { icon: '📡', label: 'Desplegar GPS', route: 'gps' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
-                { icon: '🛢️', label: 'Aceite', route: 'oil' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
-                { icon: '🪪', label: 'Postular', route: 'apply' },
+                { icon: '🛢️', label: 'Aceite', route: 'oil' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             mechanic: [

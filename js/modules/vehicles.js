@@ -99,6 +99,17 @@ const VehiclesModule = (() => {
             // Compact Info for Row
             const statusBadge = `<span class="badge ${v.status === 'active' ? 'badge-success' : 'badge-warning'}" style="font-size:0.7rem; padding:2px 6px;">${v.status === 'active' ? I18n.t('veh_active') : I18n.t('veh_inactive')}</span>`;
             const vtvStatusChar = vtv.level === 'danger' ? '🔴' : vtv.level === 'warning' ? '🟡' : vtv.level === 'ok' ? '🟢' : '⚪';
+            
+            // Oil Status calculation
+            const oil = Alerts.getOilChangeStatus(v);
+            let oilBadge = '';
+            if (oil.level === 'danger') {
+                oilBadge = `<span class="badge badge-danger" style="font-size:0.7rem;">🔴 ${I18n.t('oil_title') || 'Aceite'}: ${I18n.t('oil_expired') || 'Vencido'}</span>`;
+            } else if (oil.level === 'warning') {
+                oilBadge = `<span class="badge badge-warning" style="font-size:0.7rem;">🟡 ${I18n.t('oil_title') || 'Aceite'}: ${Units.formatDistance(oil.remainingKm)}</span>`;
+            } else if (oil.level === 'ok') {
+                oilBadge = `<span class="badge badge-success" style="font-size:0.7rem;">🟢 ${I18n.t('oil_title') || 'Aceite'}: ${Units.formatDistance(oil.remainingKm)}</span>`;
+            }
 
             html += `
                 <div class="vehicle-expandable-row" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-xl); overflow:hidden; transition:all 0.2s ease; box-shadow:var(--shadow-sm);">
@@ -121,7 +132,7 @@ const VehiclesModule = (() => {
 
                         <div style="display:flex; align-items:center; gap:var(--space-3); flex-shrink:0;">
                             <div class="veh-mini-badges" style="display:flex; gap:4px;">
-                                ${vtvStatusChar === '🔴' ? '<span style="font-size:0.8rem; animation:pulse 1.5s infinite;">⚠️ VTV</span>' : ''}
+                                ${vtvStatusChar === '🔴' || oil.level === 'danger' || belt.level === 'danger' ? '<span style="background:#ef4444; color:white; border-radius:50px; padding:2px 8px; font-size:0.7rem; font-weight:bold; animation:pulse 1.5s infinite;">⚠️ MANTENIMIENTO</span>' : ''}
                                 ${statusBadge}
                             </div>
                             <span id="veh-chevron-${v.id}" style="color:var(--text-tertiary); font-size:0.8rem; transition:transform 0.3s ease;">▶</span>
@@ -139,7 +150,8 @@ const VehiclesModule = (() => {
                                 <span class="badge badge-${belt.level === 'danger' ? 'danger' : 'warning'}" style="font-size:0.7rem;">
                                     ${belt.level === 'danger' ? '🔴' : '🟡'} ${I18n.t('maint_timing_belt')}
                                 </span>
-                            ` : ''}
+                            ` : '<span class="badge badge-success" style="font-size:0.7rem;">🟢 Correa de Distribución</span>'}
+                            ${oilBadge}
                             ${vtvBadge}
                             ${v.zonaBaseLabel ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary);">📍 ${v.zonaBaseLabel}</span>` : ''}
                         </div>
@@ -152,6 +164,18 @@ const VehiclesModule = (() => {
                             <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03);">
                                 <div class="vehicle-stat-value" style="font-size:1.1rem;">${Units.formatDistance(totalKm)}</div>
                                 <div class="vehicle-stat-label">${I18n.t('shift_total_km')}</div>
+                            </div>
+                            <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03); border-bottom: 2px solid ${oil.level === 'danger' ? '#ef4444' : oil.level === 'warning' ? '#f59e0b' : '#10b981'};">
+                                <div class="vehicle-stat-value" style="font-size:1.1rem; color: ${oil.level === 'danger' ? '#fca5a5' : '#fff'};">
+                                    ${oil.remainingKm !== null ? Units.formatDistance(oil.remainingKm) : '--'}
+                                </div>
+                                <div class="vehicle-stat-label">Rest. Aceite</div>
+                            </div>
+                            <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03); border-bottom: 2px solid ${belt.level === 'danger' ? '#ef4444' : belt.level === 'warning' ? '#f59e0b' : '#10b981'};">
+                                <div class="vehicle-stat-value" style="font-size:1.1rem; color: ${belt.level === 'danger' ? '#fca5a5' : '#fff'};">
+                                    ${Units.formatDistance(belt.remainingKm)}
+                                </div>
+                                <div class="vehicle-stat-label">Rest. Correa</div>
                             </div>
                             <div class="vehicle-stat" style="background:rgba(30, 41, 59, 0.5); border:1px solid rgba(255,255,255,0.03);">
                                 <div class="vehicle-stat-value" style="font-size:1.1rem;">${v.metodoPago === 'Crédito' ? v.cuotasTotales - (v.cuotasPagas||0) : '-'}</div>

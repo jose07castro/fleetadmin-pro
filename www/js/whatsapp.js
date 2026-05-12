@@ -65,7 +65,7 @@ const WhatsApp = (() => {
             `⏱️ Horas activo: ${hoursActive}h\n` +
             `📍 Motivo: Vehículo en zona DOMICILIO_CHOFER por +8h\n` +
             `📅 ${new Date().toLocaleString()}\n\n` +
-            `_Enviado por FleetAdmin Pro_`;
+            `_Enviado por Punto Alertas_`;
 
         return send(phone, apiKey, message);
     }
@@ -86,7 +86,7 @@ const WhatsApp = (() => {
             `🚗 Vehículo: ${details.vehiclePlate || '-'}\n` +
             `📍 Zona: ${details.zone || '-'}\n` +
             `📅 ${new Date().toLocaleString()}\n\n` +
-            `_Enviado por FleetAdmin Pro_`;
+            `_Enviado por Punto Alertas_`;
 
         return send(phone, apiKey, message);
     }

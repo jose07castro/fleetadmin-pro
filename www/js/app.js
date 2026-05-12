@@ -1,3 +1,8 @@
+// ==========================================
+// 🛡️ AJUSTE ANTIGRAVITY - MODO WEB
+// ==========================================
+// import { BackgroundMode } from '@anuradev/capacitor-background-mode';
+
 /* ============================================
    FleetAdmin Pro — Archivo Principal
    Inicialización de la aplicación PWA
@@ -22,6 +27,8 @@ const App = (() => {
 
             // 2. Conectar a Firebase (con timeout defensivo)
             try {
+                const splashStatus = document.getElementById('splashStatus');
+                if (splashStatus) splashStatus.innerText = 'Conectando con la base de datos...';
                 await DB.open();
             } catch (dbErr) {
                 console.warn('⚠️ Firebase open() falló, continuando:', dbErr);
@@ -41,6 +48,9 @@ const App = (() => {
             // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
                 try {
+                    const splashStatus = document.getElementById('splashStatus');
+                    if (splashStatus) splashStatus.innerText = 'Verificando seguridad...';
+                    
                     const loggedIn = await Auth.isLoggedInAsync();
                     if (loggedIn) {
                         console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
@@ -78,13 +88,17 @@ const App = (() => {
                         if (typeof SOSModule !== 'undefined') {
                             SOSModule.startListening();
                         }
+                        // 8.5 Activar detección de alertas de tráfico (WhatsApp)
+                        if (typeof TrafficAlerts !== 'undefined') {
+                            TrafficAlerts.init();
+                        }
+                        // 8.6 Activar comandos de voz (Manos Libres)
+                        if (typeof VoiceModule !== 'undefined') {
+                            VoiceModule.init();
+                        }
                         // 9. Mostrar banner PWA de instalación (solo drivers móviles)
                         if (typeof PWAInstall !== 'undefined') {
                             setTimeout(() => PWAInstall.showBanner(), 2000);
-                        }
-                        // 10. Solicitar permisos GPS para choferes (v112)
-                        if (typeof GPSPermissions !== 'undefined') {
-                            GPSPermissions.initForDriver();
                         }
                     } else {
                         _hideSplash();
@@ -275,7 +289,6 @@ const App = (() => {
     }
 
     // --- Reconexión al volver del segundo plano (móvil) ---
-    let _lastResumeTime = 0;
 
     function setupReconnectionHandler() {
         // Al volver a la pestaña (después de que el SO la mató o puso en background)

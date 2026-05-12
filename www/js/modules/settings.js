@@ -96,6 +96,42 @@ const SettingsModule = (() => {
                     </div>
                 </div>
             </div>
+            
+            <!-- Comandos de Voz (v120) -->
+            <div class="settings-section">
+                <div class="settings-section-title">🎙️ Comandos de Voz (Manos Libres)</div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">Modo "ALERTA"</div>
+                        <div class="settings-item-desc">Activá el micrófono para registrar alertas por voz</div>
+                    </div>
+                    <div class="toggle-group">
+                        <button class="toggle-option ${VoiceModule.isEnabled() ? 'active' : ''}"
+                            onclick="SettingsModule.toggleVoice(true)">
+                            ON
+                        </button>
+                        <button class="toggle-option ${!VoiceModule.isEnabled() ? 'active' : ''}"
+                            onclick="SettingsModule.toggleVoice(false)">
+                            OFF
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">Biometría de Voz</div>
+                        <div class="settings-item-desc">Asegurá que solo vos puedas activar las alertas</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="SettingsModule.startVoiceEnrollment()">
+                        🫵 Enrolar Huella
+                    </button>
+                </div>
+                ${VoiceModule.isEnabled() ? `
+                <div style="font-size:11px; color:#22c55e; margin-top:var(--space-2); text-align:right; font-weight:600;">
+                    ✅ Escuchando "ALERTA..."
+                </div>
+                ` : ''}
+            </div>
 
             <!-- Perfil -->
             <div class="settings-section">
@@ -202,7 +238,7 @@ const SettingsModule = (() => {
                 <div class="settings-section-title">ℹ️ ${I18n.t('settings_about')}</div>
                 <div class="settings-item">
                     <div>
-                        <div class="settings-item-label">FleetAdmin Pro</div>
+                        <div class="settings-item-label">Punto Alertas</div>
                         <div class="settings-item-desc">${I18n.t('app_subtitle')}</div>
                     </div>
                     <span class="badge badge-info">${I18n.t('settings_version')} 1.0.0</span>
@@ -537,6 +573,17 @@ const SettingsModule = (() => {
         } else {
             Router.navigate('settings');
         }
+    }
+
+    function toggleVoice(enable) {
+        if (typeof VoiceModule === 'undefined') return;
+        if (enable) {
+            VoiceModule.start();
+        } else {
+            VoiceModule.stop();
+        }
+        // Forzar un re-render de la vista de configuración para mostrar el estado
+        Router.navigate('settings');
     }
 
     // --- Identificar al Super Admin (fundador de la flota) ---
@@ -1293,6 +1340,142 @@ const SettingsModule = (() => {
         }
     }
 
+    function toggleVoice(enable) {
+        if (typeof VoiceModule === 'undefined') return;
+        if (enable) {
+            VoiceModule.start();
+        } else {
+            VoiceModule.stop();
+        }
+        // Forzar un re-render de la vista de configuración para mostrar el estado activado/desactivado
+        Router.navigate('settings');
+    }
+
+    // ===========================================
+    // ENROLAMIENTO BIOMÉTRICO (v120)
+    // ===========================================
+    
+    let _enrollmentSamples = [];
+    let _mediaRecorder = null;
+    let _audioChunks = [];
+
+    function startVoiceEnrollment() {
+        _enrollmentSamples = [];
+        _showEnrollmentModal(1);
+    }
+
+    function _showEnrollmentModal(step) {
+        const instruction = step <= 3 
+            ? `Paso ${step}/3: Decí <b>"ALERTA"</b> claro y fuerte.` 
+            : `¡Procesando tu huella vocal!`;
+
+        Components.showModal(
+            '🎙️ Enrolamiento Biométrico',
+            `
+                <div style="text-align:center; padding:var(--space-4);">
+                    <div style="font-size:3rem; margin-bottom:var(--space-4);" id="voiceIcon">🎤</div>
+                    <p style="font-size:var(--font-size-md); font-weight:600; margin-bottom:var(--space-6);">
+                        ${instruction}
+                    </p>
+                    <div id="enrollmentProgress" style="width:100%; height:8px; background:var(--bg-tertiary); border-radius:4px; overflow:hidden;">
+                        <div style="width:${(step - 1) * 33}%; height:100%; background:var(--color-primary); transition:width 0.3s ease;"></div>
+                    </div>
+                </div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
+                ${step <= 3 ? `<button class="btn btn-primary" id="recordBtn" onclick="SettingsModule.recordSample(${step})">🔴 Grabar Muestra</button>` : ''}
+            `
+        );
+    }
+
+    async function recordSample(step) {
+        const btn = document.getElementById('recordBtn');
+        const icon = document.getElementById('voiceIcon');
+        if (!btn || !icon) return;
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            
+            // Usar MediaRecorder para capturar el buffer
+            _audioChunks = [];
+            _mediaRecorder = new MediaRecorder(stream);
+            _mediaRecorder.ondataavailable = e => _audioChunks.push(e.data);
+            
+            _mediaRecorder.onstop = async () => {
+                const blob = new Blob(_audioChunks, { type: 'audio/wav' });
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                
+                // Extraer Fingerprint con Biometrics
+                const fingerprint = Biometrics.extractFingerprint(audioBuffer);
+                if (fingerprint) {
+                    _enrollmentSamples.push(fingerprint);
+                    if (step < 3) {
+                        _showEnrollmentModal(step + 1);
+                    } else {
+                        _finishEnrollment();
+                    }
+                } else {
+                    Components.showToast('⚠️ No se detectó voz clara. Intentá de nuevo.', 'warning');
+                    _showEnrollmentModal(step);
+                }
+                
+                stream.getTracks().forEach(t => t.stop());
+                audioCtx.close();
+            };
+
+            // Grabar por 2 segundos
+            btn.disabled = true;
+            btn.innerHTML = '⌛ Grabando...';
+            icon.style.animation = 'alertBounce 0.5s infinite alternate';
+            
+            _mediaRecorder.start();
+            setTimeout(() => {
+                _mediaRecorder.stop();
+            }, 2000);
+
+        } catch (e) {
+            console.error('Error al grabar:', e);
+            Components.showToast('Error al acceder al micrófono', 'danger');
+        }
+    }
+
+    async function _finishEnrollment() {
+        const finalFingerprint = Biometrics.averageFingerprints(_enrollmentSamples);
+        const fleetId = Auth.getFleetId();
+        const userId = Auth.getUserId();
+
+        if (finalFingerprint && fleetId && userId) {
+            try {
+                // Guardar en Firebase
+                await firebaseDB.ref(`fleets/${fleetId}/users/${userId}/voiceProfile`).set(finalFingerprint);
+                
+                // También guardar un hash local para el dispositivo actual
+                localStorage.setItem(`voice_profile_${userId}`, JSON.stringify(finalFingerprint));
+
+                Components.showModal(
+                    '✅ Huella Registrada',
+                    `
+                        <div style="text-align:center; padding:var(--space-4);">
+                            <div style="font-size:3rem; margin-bottom:var(--space-4);">🛡️</div>
+                            <p>¡Excelente! Tu identidad vocal ha sido blindada.</p>
+                            <p style="font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-2);">
+                                El sistema ahora solo responderá ante tu voz.
+                            </p>
+                        </div>
+                    `,
+                    `<button class="btn btn-primary" onclick="Components.closeModal()">Entendido</button>`
+                );
+            } catch (e) {
+                console.error('Error al guardar huella:', e);
+                Components.showToast('Error al guardar perfil de voz', 'danger');
+            }
+        }
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1300,6 +1483,7 @@ const SettingsModule = (() => {
         toggleLicenseFields, handleLicensePhoto, captureLicensePhoto,
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
         showReportModal, submitReport, toggleReportDriverType,
-        saveVapidKey
+        saveVapidKey, toggleVoice,
+        startVoiceEnrollment, recordSample
     };
 })();

@@ -163,8 +163,8 @@ const Notifications = (() => {
                                 const adminApiKey = await DB.getSetting('whatsapp_apikey');
                                 if (adminApiKey) {
                                     const waMsg = daysLeft < 0
-                                        ? `🚨 *LICENCIA VENCIDA*\n\n👤 ${alert.driver.name}\n📅 Venció: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n\n⚠️ No podrás iniciar turnos hasta renovarla.\n\n_FleetAdmin Pro_`
-                                        : `🪪 *ALERTA DE LICENCIA*\n\n👤 ${alert.driver.name}\n📅 Vence: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n⏳ Faltan ${daysLeft} días\n\n_Renovála a tiempo. FleetAdmin Pro_`;
+                                        ? `🚨 *LICENCIA VENCIDA*\n\n👤 ${alert.driver.name}\n📅 Venció: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n\n⚠️ No podrás iniciar turnos hasta renovarla.\n\n_Punto Alertas_`
+                                        : `🪪 *ALERTA DE LICENCIA*\n\n👤 ${alert.driver.name}\n📅 Vence: ${new Date(alert.driver.licenseExpiryDate).toLocaleDateString()}\n⏳ Faltan ${daysLeft} días\n\n_Renovála a tiempo. Punto Alertas_`;
                                     // Enviar al conductor
                                     WhatsApp.send(alert.driver.whatsapp, adminApiKey, waMsg);
                                     // Enviar al admin

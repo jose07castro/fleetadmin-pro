@@ -2572,3 +2572,112 @@
     filter: grayscale(100%) opacity(70%);
 }
 
+/* ============================================
+   TRAFFIC ALERTS UI (v120)
+   ============================================ */
+
+.radar-alert-icon {
+    width: 36px;
+    height: 36px;
+    background: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 2px solid #ef4444;
+    position: relative;
+    animation: alertBounce 1s infinite alternate;
+}
+
+.radar-alert-icon.police {
+    border-color: #3b82f6;
+}
+
+@keyframes alertBounce {
+    from { transform: translateY(0); }
+    to { transform: translateY(-5px); }
+}
+
+.radar-alert-icon.police .siren {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    animation: policeSiren 0.8s infinite;
+}
+
+@keyframes policeSiren {
+    0% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+    50% { border-color: #ef4444; box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+    100% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.radar-alert-popup {
+    font-family: 'Inter', sans-serif;
+    padding: 2px;
+    min-width: 180px;
+}
+
+.alert-popup-header {
+    font-weight: 800;
+    font-size: 14px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding: 6px;
+    border-radius: 6px;
+    color: white;
+    text-align: center;
+}
+
+.alert-popup-header.police { background: linear-gradient(135deg, #1e40af, #3b82f6); }
+.alert-popup-header.warning { background: linear-gradient(135deg, #b91c1c, #ef4444); }
+
+.alert-popup-body {
+    font-size: 12px;
+    color: #334155;
+    margin-bottom: 12px;
+}
+
+.alert-popup-body p { margin: 4px 0; }
+.alert-expiry { color: #64748b; font-style: italic; font-size: 11px; }
+
+.alert-popup-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.alert-popup-actions button {
+    padding: 8px 4px;
+    border-radius: 6px;
+    border: none;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-confirm { background: #dcfce7; color: #166534; }
+.btn-confirm:hover { background: #bbf7d0; }
+.btn-dismiss { background: #fee2e2; color: #991b1b; }
+.btn-dismiss:hover { background: #fecaca; }
+
+
+
+/* Auto-expanding Textarea for Repairs */
+.form-textarea-auto {
+    min-height: 45px;
+    resize: none;
+    overflow: hidden;
+    transition: height 0.2s ease;
+    line-height: 1.5;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+}
+
+/* --- New Compact Vehicle List Animations --- */
+.veh-header-row:hover { background: rgba(255, 255, 255, 0.03); }
+.vehicle-expandable-row:has(.veh-expanded-body[style*='display: block']) { border-color: var(--color-primary) !important; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15) !important; }
+

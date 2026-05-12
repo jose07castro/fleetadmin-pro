@@ -269,7 +269,7 @@ const ShiftsModule = (() => {
             </div>
 
             <!-- Botón SOS de Emergencia (solo chofer en turno activo) -->
-            ${Auth.isDriver() ? SOSModule.renderSOSButton(shift.id, shift.vehicleId, vehicle ? `${vehicle.name} — ${vehicle.plate}` : '') : ''}
+            ${Auth.isDriver() && typeof SOSModule !== 'undefined' ? SOSModule.renderSOSButton(shift.id, shift.vehicleId, vehicle ? `${vehicle.name} — ${vehicle.plate}` : '') : ''}
 
             <!-- Finalizar turno -->
             <div class="card">
@@ -609,6 +609,11 @@ const ShiftsModule = (() => {
                 }
             }
 
+            // Activar servicio en segundo plano (Foreground Service nativo)
+            if (typeof AndroidServices !== 'undefined') {
+                AndroidServices.enableForegroundService(shiftIdRef, vehicleData ? vehicleData.plate : null);
+            }
+
             Router.navigate('shifts');
 
             // Gatillar permisos GPS post-inicio (v113)
@@ -617,6 +622,13 @@ const ShiftsModule = (() => {
                     GPSPermissions.requestWithDialog();
                 }
             }, 800);
+
+            // Solicitar exención de batería 3s después (no saturar al usuario con diálogos)
+            setTimeout(() => {
+                if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) {
+                    AndroidServices.showBatteryExemptionDialog();
+                }
+            }, 3500);
 
         } catch (shiftError) {
             console.error('🔴 Fallo en Iniciar Turno: ', shiftError);
@@ -719,10 +731,13 @@ const ShiftsModule = (() => {
             shift.status = 'completed';
             await DB.put('shifts', shift);
 
-            // Eliminar de LocalStorage (Finalización)
+            // Eliminar de LocalStorage (Finalización) y Foreground Service
             try {
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
+                if (typeof AndroidServices !== 'undefined') {
+                    AndroidServices.disableForegroundService();
+                }
             } catch(lsErr) {}
 
             // Guardar fotos separadas para que no alenten el Login

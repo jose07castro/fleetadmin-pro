@@ -59,6 +59,19 @@ const Alerts = (() => {
         return { level: 'ok', remainingKm };
     }
 
+    // Helper: estado de RTO/VTV
+    function getVtvStatus(vehicle) {
+        if (!vehicle.vtvExpiryDate) return { level: 'unknown', daysLeft: null };
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiryDate = new Date(vehicle.vtvExpiryDate + 'T00:00:00');
+        const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+
+        if (daysLeft < 0) return { level: 'danger', daysLeft };
+        if (daysLeft <= 60) return { level: 'warning', daysLeft };
+        return { level: 'ok', daysLeft };
+    }
+
     // Obtener todas las alertas de todos los vehículos
     async function getAllAlerts() {
         const vehicles = await DB.getAll('vehicles');
@@ -95,7 +108,7 @@ const Alerts = (() => {
 
         // Alertas de RTO/VTV
         for (const vehicle of vehicles) {
-            const vtv = VehiclesModule.getVtvStatus(vehicle);
+            const vtv = getVtvStatus(vehicle);
             if (vtv.level === 'danger') {
                 const dateStr = new Date(vehicle.vtvExpiryDate + 'T00:00:00').toLocaleDateString();
                 alerts.push({
@@ -233,5 +246,5 @@ const Alerts = (() => {
         `;
     }
 
-    return { getBeltStatus, getOilChangeStatus, getAllAlerts, getLicenseAlerts, getLicenseStatus, renderAlertBanner };
+    return { getBeltStatus, getOilChangeStatus, getVtvStatus, getAllAlerts, getLicenseAlerts, getLicenseStatus, renderAlertBanner };
 })();

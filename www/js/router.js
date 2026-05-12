@@ -6,19 +6,47 @@
 const Router = (() => {
     let currentRoute = null;
 
+    // Mapa de rutas a archivos para Lazy Loading
+    const modulePaths = {
+        login: 'js/modules/login.js',
+        dashboard: 'js/modules/dashboard.js',
+        vehicles: 'js/modules/vehicles.js',
+        shifts: 'js/modules/shifts.js',
+        maintenance: 'js/modules/maintenance.js',
+        oil: 'js/modules/maintenance.js',
+        gps: 'js/modules/gps.js',
+        settings: 'js/modules/settings.js',
+        community: 'js/modules/community.js',
+        applicants: 'js/modules/applicants.js'
+    };
+
+    // Función auxiliar para importar scripts de forma asíncrona
+    function _loadModuleScript(path) {
+        return new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src^="${path}"]`)) {
+                return resolve(); // Ya estaba inyectado
+            }
+            const script = document.createElement('script');
+            script.src = `${path}?v=120`; // versión
+            script.onload = resolve;
+            script.onerror = reject;
+            document.body.appendChild(script);
+        });
+    }
+
     const routes = {
-        login: () => LoginModule.render(),
-        dashboard: () => DashboardModule.render(),
-        vehicles: () => VehiclesModule.render(),
-        shifts: () => ShiftsModule.render(),
-        maintenance: () => MaintenanceModule.render(),
-        oil: () => OilModule.render(),
-        gps: () => GPSModule.render(),
-        settings: () => SettingsModule.render(),
-        community: () => CommunityModule.render(),
-        'complete-profile': () => SettingsModule.renderCompleteProfile(),
-        apply: () => ApplicantsModule.renderApply(),
-        applicants: () => ApplicantsModule.renderAdmin(),
+        login: async () => { await _loadModuleScript(modulePaths.login); return LoginModule.render() },
+        dashboard: async () => { await _loadModuleScript(modulePaths.dashboard); return DashboardModule.render() },
+        vehicles: async () => { await _loadModuleScript(modulePaths.vehicles); return VehiclesModule.render() },
+        shifts: async () => { await _loadModuleScript(modulePaths.shifts); return ShiftsModule.render() },
+        maintenance: async () => { await _loadModuleScript(modulePaths.maintenance); return MaintenanceModule.render() },
+        oil: async () => { await _loadModuleScript(modulePaths.oil); return OilModule.render() },
+        gps: async () => { await _loadModuleScript(modulePaths.gps); return GPSModule.render() },
+        settings: async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.render() },
+        community: async () => { await _loadModuleScript(modulePaths.community); return CommunityModule.render() },
+        'complete-profile': async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.renderCompleteProfile() },
+        apply: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderApply() },
+        applicants: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderAdmin() },
     };
 
     async function navigate(route) {

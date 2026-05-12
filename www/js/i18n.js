@@ -8,7 +8,7 @@ const I18n = (() => {
     const translations = {
         es: {
             // General
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Administrador de Flota',
             loading: 'Cargando...',
             save: 'Guardar',
@@ -56,7 +56,7 @@ const I18n = (() => {
             nav_maintenance: 'Mantenimiento / Reparaciones',
             nav_mechanic: 'Mecánico',
             nav_oil: 'Control de Aceite',
-            nav_gps: 'GPS & Geofencing',
+            nav_gps: 'Desplegar GPS',
             nav_settings: 'Configuración',
             nav_community: 'Comunidad',
             nav_logout: 'Cerrar Sesión',
@@ -330,7 +330,7 @@ const I18n = (() => {
         },
 
         en: {
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Fleet Manager',
             loading: 'Loading...',
             save: 'Save',
@@ -640,7 +640,7 @@ const I18n = (() => {
         },
 
         pt: {
-            app_name: 'FleetAdmin Pro',
+            app_name: 'Punto Alertas',
             app_subtitle: 'Administrador de Frota',
             loading: 'Carregando...',
             save: 'Salvar',

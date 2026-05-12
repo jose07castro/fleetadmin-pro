@@ -11,11 +11,14 @@ const RadarModule = (() => {
     const DRIVER_POSITIONS_NODE = 'driver_positions';
     const UPDATE_INTERVAL_MS = 20000; // 20 segundos
     let _map = null;
-    let _markers = {};       // { driverId: L.marker }
     let _firebaseRef = null;
+    let _alertRef = null;
     let _isOpen = false;
+    let _markers = {};       // { driverId: L.marker }
+    let _alertMarkers = {};  // { alertId: L.marker }
     let _trackingInterval = null;
     let _watchId = null;
+    let _voiceEnabled = localStorage.getItem('radarVoice') !== 'off'; // ON por defecto
 
     // ============ RENDER BUTTON IN DASHBOARD ============
 
@@ -50,6 +53,12 @@ const RadarModule = (() => {
                         <span class="radar-status-dot"></span>
                         Conectando...
                     </span>
+                    <button class="radar-voice-btn" id="radarVoiceBtn"
+                        onclick="RadarModule.toggleVoice()"
+                        title="Activar/desactivar voz"
+                        style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;padding:6px 12px;color:white;font-size:18px;cursor:pointer;margin-right:8px;">
+                        ${_voiceEnabled ? '🔊' : '🔇'}
+                    </button>
                     <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
                         ✕ Salir
                     </button>
@@ -75,6 +84,7 @@ const RadarModule = (() => {
 
         // Start listening to driver positions
         _startFirebaseListener();
+        _startAlertListener();
     }
 
     // ============ CLOSE MAP ============
@@ -84,6 +94,7 @@ const RadarModule = (() => {
 
         // Stop Firebase listener
         _stopFirebaseListener();
+        _stopAlertListener();
 
         // Destroy map
         if (_map) {
@@ -117,11 +128,13 @@ const RadarModule = (() => {
             attributionControl: false
         });
 
-        // v120: Mapa a full color y alta resolución (Standard Streets / OpenStreetMap)
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            detectRetina: true, // Alta definición para pantallas S25 Ultra / iPhone / Web
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // CartoDB Dark Matter: mapa limpio, oscuro, nombres de calles muy legibles
+        // Los íconos de alertas destacan mucho mejor sobre fondo oscuro
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            subdomains: 'abcd',
+            detectRetina: true,
+            attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
         }).addTo(_map);
 
 
@@ -369,11 +382,34 @@ const RadarModule = (() => {
 
     // ============ FIREBASE LISTENER (ADMIN) ============
 
+    // Reconectar Firebase cuando la app vuelve del background (Android Doze Mode fix)
+    let _visibilityHandler = null;
+    function _setupReconnectOnResume() {
+        if (_visibilityHandler) return; // Ya registrado
+        _visibilityHandler = () => {
+            if (document.visibilityState === 'visible' && _isOpen) {
+                console.log('[RADAR] App volvió al frente — reconectando Firebase...');
+                _stopFirebaseListener();
+                setTimeout(() => {
+                    _startFirebaseListener();
+                    _loadTrafficAlerts();
+                }, 500);
+            }
+        };
+        document.addEventListener('visibilitychange', _visibilityHandler);
+        // También en pageshow (iOS Safari / Android WebView)
+        window.addEventListener('pageshow', _visibilityHandler);
+        window.addEventListener('focus', _visibilityHandler);
+    }
+
     function _startFirebaseListener() {
         if (typeof firebaseDB === 'undefined') {
             _setStatus('error', 'Firebase no disponible');
             return;
         }
+
+        // Activar auto-reconexión al volver del background
+        _setupReconnectOnResume();
 
         _firebaseRef = firebaseDB.ref(DRIVER_POSITIONS_NODE);
 
@@ -455,6 +491,218 @@ const RadarModule = (() => {
         }
     }
 
+    // ============ TRAFFIC ALERTS LISTENER ============
+
+    function _startAlertListener() {
+        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        _alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+
+        _alertRef.on('value', (snap) => {
+            const allAlerts = snap.val() || {};
+            const alertIds = Object.keys(allAlerts);
+
+            // 1. Update/Add alerts
+            alertIds.forEach(id => {
+                const alert = allAlerts[id];
+                const now = Date.now();
+                
+                // Solo mostrar si no ha expirado
+                if (alert.expiresAt > now && alert.status === 'active') {
+                    _updateAlertMarker(id, alert);
+                } else {
+                    _removeAlertMarker(id);
+                }
+            });
+
+            // 2. Remove deleted alerts
+            Object.keys(_alertMarkers).forEach(id => {
+                if (!allAlerts[id]) {
+                    _removeAlertMarker(id);
+                }
+            });
+        });
+    }
+
+    function _stopAlertListener() {
+        if (_alertRef) {
+            _alertRef.off('value');
+            _alertRef = null;
+        }
+    }
+
+    function _updateAlertMarker(id, data) {
+        if (!_map) return;
+
+        const lat = parseFloat(data.lat);
+        const lng = parseFloat(data.lng);
+        const type = data.type || 'warning'; // 'police' | 'radar' | 'traffic' | 'helicopter' | 'warning'
+        
+        const typeLabels = {
+            police:     '👮 Control de Policía',
+            checkpoint: '🚧 Operativo / Control',
+            radar:      '📷 Radar / Cámara de Velocidad',
+            helicopter: '🚁 Helicóptero Sanitario (HECA)',
+            traffic:    '🚦 Alerta de Tráfico',
+            warning:    '⚠️ Alerta'
+        };
+        const label = typeLabels[type] || typeLabels.warning;
+        const description = data.description || '';
+
+        const popupContent = `
+            <div class="radar-alert-popup">
+                <div class="alert-popup-header ${type}">
+                    ${label}
+                </div>
+                <div class="alert-popup-body">
+                    ${description ? `<p>${description}</p>` : ''}
+                    <p><strong>Ubicación:</strong> ${data.location}</p>
+                    <p><strong>Detectado:</strong> ${new Date(data.timestamp).toLocaleTimeString()}</p>
+                    <p class="alert-expiry">Expira en: ${Math.round((data.expiresAt - Date.now()) / 60000)} min</p>
+                </div>
+                <div class="alert-popup-actions">
+                    <button class="btn-confirm" onclick="RadarModule.confirmAlert('${id}')">👍 Sigue ahí</button>
+                    <button class="btn-dismiss" onclick="RadarModule.dismissAlert('${id}')">👎 Ya no está</button>
+                </div>
+            </div>
+        `;
+
+        if (_alertMarkers[id]) {
+            // Alerta existente: solo actualizar posición y popup (sin voz)
+            _alertMarkers[id].setLatLng([lat, lng]);
+            _alertMarkers[id].getPopup().setContent(popupContent);
+        } else {
+            // Alerta NUEVA: mostrar en mapa y anunciar por voz
+            const marker = L.marker([lat, lng], {
+                icon: _createAlertIcon(type)
+            }).addTo(_map);
+            marker.bindPopup(popupContent);
+            _alertMarkers[id] = marker;
+            
+            // Auto-enfocar el mapa en la nueva alerta con una animación suave
+            if (_map) {
+                _map.flyTo([lat, lng], 14, { animate: true, duration: 1.5 });
+            }
+
+            // Anunciar por voz (Web Speech API — sin costo, funciona offline en Android)
+            _speakAlert(type, data.location);
+        }
+    }
+
+    /**
+     * Anuncia la alerta por voz usando Web Speech API.
+     * El chofer se entera sin desviar la vista del camino.
+     */
+    function _speakAlert(type, location) {
+        if (!window.speechSynthesis || !_voiceEnabled) return;
+
+        const voiceMessages = {
+            police:     'Atención. Control de policía',
+            checkpoint: 'Atención. Operativo o control en la zona',
+            radar:      'Cuidado. Radar de velocidad',
+            helicopter: 'Alerta. Helicóptero sanitario en zona',
+            ambulance:  'Precaución. Ambulancia en la vía',
+            firetruck:  'Atención. Bomberos en la vía',
+            municipal:  'Cuidado. Control municipal de tránsito',
+            accident:   'Atención. Accidente vial reportado',
+            traffic:    'Aviso. Tráfico lento reportado',
+            warning:    'Atención. Alerta de tráfico',
+        };
+
+        const msg = voiceMessages[type] || voiceMessages.warning;
+        const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
+        const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+
+        window.speechSynthesis.cancel();
+
+        const utter = new SpeechSynthesisUtterance(fullText);
+        utter.lang = 'es-AR';
+        utter.rate = 0.9;
+        utter.pitch = 1.0;
+        utter.volume = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es'));
+        if (esVoice) utter.voice = esVoice;
+
+        window.speechSynthesis.speak(utter);
+        console.log(`🔊 [VOZ] "${fullText}"`);
+    }
+
+    function toggleVoice() {
+        _voiceEnabled = !_voiceEnabled;
+        localStorage.setItem('radarVoice', _voiceEnabled ? 'on' : 'off');
+        const btn = document.getElementById('radarVoiceBtn');
+        if (btn) btn.textContent = _voiceEnabled ? '🔊' : '🔇';
+        // Confirmar con voz si se activa
+        if (_voiceEnabled) _speakAlert('warning', null);
+        console.log(`🔊 [VOZ] ${_voiceEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
+    }
+
+    function _removeAlertMarker(id) {
+        if (_alertMarkers[id]) {
+            _map.removeLayer(_alertMarkers[id]);
+            delete _alertMarkers[id];
+        }
+    }
+
+    function _createAlertIcon(type) {
+        const iconMap = {
+            police:     '/assets/alert-icons/police.png',
+            checkpoint: '/assets/alert-icons/police.png',
+            radar:      '/assets/alert-icons/radar.png',
+            helicopter: '/assets/alert-icons/helicopter.png',
+            ambulance:  '/assets/alert-icons/ambulance.png',
+            firetruck:  '/assets/alert-icons/firetruck.png',
+            municipal:  '/assets/alert-icons/municipal.png',
+            accident:   '/assets/alert-icons/accident.png',
+            traffic:    '/assets/alert-icons/accident.png',
+            warning:    '/assets/alert-icons/accident.png',
+        };
+        const iconUrl = iconMap[type] || iconMap.warning;
+
+        return L.icon({
+            iconUrl,
+            iconSize:   [44, 44],
+            iconAnchor: [22, 22],
+            popupAnchor:[0, -22]
+        });
+    }
+
+    // ============ FEEDBACK LOGIC ============
+
+    async function confirmAlert(alertId) {
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        try {
+            const ref = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`);
+            await ref.transaction(current => {
+                if (current) {
+                    current.confirmations = (current.confirmations || 0) + 1;
+                    // Extender vida 15 min si hay confirmación
+                    current.expiresAt = Math.max(current.expiresAt, Date.now() + (15 * 60 * 1000));
+                }
+                return current;
+            });
+            if (typeof Components !== 'undefined') Components.showToast('¡Gracias por confirmar!', 'success');
+        } catch(e) { console.error('Error confirming alert:', e); }
+    }
+
+    async function dismissAlert(alertId) {
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        try {
+            const ref = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`);
+            await ref.update({ status: 'dismissed' });
+            if (typeof Components !== 'undefined') Components.showToast('Alerta marcada como inactiva', 'info');
+        } catch(e) { console.error('Error dismissing alert:', e); }
+    }
+
     // ============ UI HELPERS ============
 
     function _setStatus(type, text) {
@@ -473,6 +721,6 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice
     };
 })();
