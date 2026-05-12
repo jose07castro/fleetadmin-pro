@@ -19,6 +19,8 @@ const RadarModule = (() => {
     let _trackingInterval = null;
     let _watchId = null;
     let _voiceEnabled = localStorage.getItem('radarVoice') !== 'off'; // ON por defecto
+    let _tileLayer = null;
+    let _mapStyle = localStorage.getItem('radarMapStyle') || 'dark'; // Estilo por defecto
 
     // ============ RENDER BUTTON IN DASHBOARD ============
 
@@ -65,6 +67,10 @@ const RadarModule = (() => {
                 </div>
             </div>
             <div id="radarMap" class="radar-map"></div>
+            <button id="radarMapStyleBtn" onclick="RadarModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
+                style="position:absolute; bottom: 80px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold; transition: transform 0.1s active;">
+                🗺️
+            </button>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
                 <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (3.5s)</strong></span>
@@ -128,9 +134,12 @@ const RadarModule = (() => {
             attributionControl: false
         });
 
-        // CartoDB Dark Matter: mapa limpio, oscuro, nombres de calles muy legibles
-        // Los íconos de alertas destacan mucho mejor sobre fondo oscuro
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // Seleccionar URL del tile provider según preferencia persistida
+        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        const activeUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+
+        _tileLayer = L.tileLayer(activeUrl, {
             maxZoom: 20,
             subdomains: 'abcd',
             detectRetina: true,
@@ -718,9 +727,33 @@ const RadarModule = (() => {
         if (el) el.textContent = count;
     }
 
+    // ============ TOGGLE MAP STYLE ============
+
+    function toggleMapStyle() {
+        if (!_map || !_tileLayer) return;
+        
+        _mapStyle = _mapStyle === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('radarMapStyle', _mapStyle);
+        
+        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        const targetUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+        
+        // Cambiar URL suavemente sin recrear el mapa
+        _tileLayer.setUrl(targetUrl);
+        
+        // Cambiar look del botón flotante
+        const btn = document.getElementById('radarMapStyleBtn');
+        if (btn) {
+            btn.style.background = _mapStyle === 'light' ? '#333' : '#fff';
+            btn.style.borderColor = _mapStyle === 'light' ? '#111' : 'rgba(0,0,0,0.2)';
+            btn.style.boxShadow = _mapStyle === 'light' ? '0 3px 8px rgba(0,0,0,0.6)' : '0 3px 8px rgba(0,0,0,0.4)';
+        }
+    }
+
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle
     };
 })();

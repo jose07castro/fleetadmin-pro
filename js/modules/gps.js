@@ -135,6 +135,11 @@ const GPSModule = (() => {
                     <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); z-index: 1000;" id="map-loader">
                         <div class="loader-spinner"></div>
                     </div>
+                    <!-- Botón flotante para alternar estilo de mapa -->
+                    <button id="gpsMapStyleBtn" onclick="GPSModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
+                        style="position:absolute; bottom: 20px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold;">
+                        🗺️
+                    </button>
                 </div>
 
                 <div id="alerts-summary" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -152,6 +157,8 @@ const GPSModule = (() => {
     }
 
     let map = null;
+    let _tileLayer = null;
+    let _mapStyle = localStorage.getItem('gpsMapStyle') || 'dark';
     let markers = {};
     let userMarker = null;
 
@@ -173,7 +180,12 @@ const GPSModule = (() => {
             zoomControl: false
         }).setView(defaultCenter, 13);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // Seleccionar URL según preferencia persistida
+        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        const activeUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+
+        _tileLayer = L.tileLayer(activeUrl, {
             attribution: '© OpenStreetMap'
         }).addTo(map);
 
@@ -348,6 +360,29 @@ const GPSModule = (() => {
         } catch (e) { Components.showToast('Error de red', 'danger'); }
     }
 
-    return { render, saveToken, simulateGPS };
+    // ============ TOGGLE MAP STYLE ============
+    function toggleMapStyle() {
+        if (!map || !_tileLayer) return;
+        
+        _mapStyle = _mapStyle === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('gpsMapStyle', _mapStyle);
+        
+        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        const targetUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+        
+        // Cambiar URL suavemente
+        _tileLayer.setUrl(targetUrl);
+        
+        // Cambiar aspecto del botón
+        const btn = document.getElementById('gpsMapStyleBtn');
+        if (btn) {
+            btn.style.background = _mapStyle === 'light' ? '#333' : '#fff';
+            btn.style.borderColor = _mapStyle === 'light' ? '#111' : 'rgba(0,0,0,0.2)';
+            btn.style.boxShadow = _mapStyle === 'light' ? '0 3px 8px rgba(0,0,0,0.6)' : '0 3px 8px rgba(0,0,0,0.4)';
+        }
+    }
+
+    return { render, saveToken, simulateGPS, toggleMapStyle };
 })();
 

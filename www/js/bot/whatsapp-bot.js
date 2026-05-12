@@ -889,11 +889,15 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 
                 expandedAddress = _expandStreetNames(address);
                 console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
-                const fullAddress = `${expandedAddress} Rosario`;
                 
-                // Usamos Photon (Komoot) en lugar de Nominatim para evitar bloqueos 429 por IP compartida en Render
-                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1`;
-                console.log(`🌐 [GEO] URL Photon: ${url.substring(0,80)}...`);
+                // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para que Photon/OpenStreetMap identifique el cruce de calles.
+                // Photon falla si ve la palabra de enlace "y". Con la coma encuentra la intersección central de inmediato.
+                const cleanAddressForGeo = expandedAddress.replace(/\s+[yY]\s+/gi, ', ');
+                const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
+                
+                // Usamos Photon con sesgo espacial forzado al Centro de Rosario (-32.9477, -60.6652) para dar prioridad absoluta a la zona urbana central
+                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652&lang=es`;
+                console.log(`🌐 [GEO] URL Photon: ${url.substring(0,100)}...`);
                 
                 const response = await axios.get(url, { timeout: 10000 });
                 const features = response.data?.features || [];
