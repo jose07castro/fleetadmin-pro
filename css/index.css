@@ -119,7 +119,7 @@ html {
 body {
     font-family: var(--font-family);
     background: var(--bg-primary);
-    background-image: url('../assets/wallpaper.png');
+    background-image: linear-gradient(rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.75)), url('../assets/wallpaper.png');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;

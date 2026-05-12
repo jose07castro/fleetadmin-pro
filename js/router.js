@@ -13,7 +13,7 @@ const Router = (() => {
         vehicles: 'js/modules/vehicles.js',
         shifts: 'js/modules/shifts.js',
         maintenance: 'js/modules/maintenance.js',
-        oil: 'js/modules/oil.js',
+        oil: 'js/modules/maintenance.js',
         gps: 'js/modules/gps.js',
         settings: 'js/modules/settings.js',
         community: 'js/modules/community.js',
