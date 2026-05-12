@@ -1,0 +1,24 @@
+{
+  "name": "fleetadmin-pro",
+  "version": "2.0.0",
+  "description": "Administrador de flota",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@awesome-cordova-plugins/background-mode": "^9.1.4",
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@whiskeysockets/baileys": "^6.7.16",
+    "axios": "^1.6.2",
+    "cordova-plugin-background-mode": "^0.7.3",
+    "cordova-plugin-device": "^3.0.0",
+    "express": "^4.18.2",
+    "firebase-admin": "^11.11.1",
+    "form-data": "^4.0.0",
+    "@google/generative-ai": "^0.21.0",
+    "pino": "^9.6.0"
+  }
+}

@@ -3,10 +3,7 @@ data/database.json
 data/firebase-service-account.json
 .env
 auth_info/
-*.json
-!package.json
-!package-lock.json
-!composer.json
-!firebase.json
-!jsconfig.json
-!tsconfig.json
+# Explicit credentials ignore
+fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json
+/google-services.json
+

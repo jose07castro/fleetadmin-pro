@@ -1,0 +1,12 @@
+{
+  "appId": "com.jose07castro.fleetadminpro",
+  "appName": "FleetAdmin",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#488AFF"
+    }
+  }
+}

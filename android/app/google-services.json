@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "289124272326",
+    "firebase_url": "https://fleetadmin-pro-default-rtdb.firebaseio.com",
+    "project_id": "fleetadmin-pro",
+    "storage_bucket": "fleetadmin-pro.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:289124272326:android:2f989bd4c50250574e2fc7",
+        "android_client_info": {
+          "package_name": "com.puntoalertas.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3lkusCw6vflJjiCqooJL-QGnqxnnGpwg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
