@@ -280,21 +280,9 @@ const MaintenanceModule = (() => {
                 Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
                 return;
             } else {
-                // Modales de confirmación para owner/admin no bloquean la ejecución si usamos promise o callback.
-                // Sin embargo `Components.confirm` es asíncrono basado en callback, por lo que el flujo debe dividirse.
-                // Refactor to handle Components.confirm cleanly:
-                Components.confirm(
-                    '¿Deseas que este registro actualice el odómetro actual del auto?',
-                    async () => {
-                        // Sí: Actualiza odómetro
-                        await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, true);
-                    },
-                    async () => {
-                        // No: Guarda historial, no actualiza odómetro
-                        await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, false);
-                    }
-                );
-                return; // Sale de la ejecución síncrona, el callback se encarga del resto
+                // Guarda historial directamente sin preguntar y sin modificar odómetro actual
+                await _finishSaveBeltChange(vehicleId, odometerKm, date, vehicle, false);
+                return;
             }
         }
 
@@ -511,15 +499,8 @@ const MaintenanceModule = (() => {
                 Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
                 return;
             } else {
-                Components.confirm(
-                    '¿Deseas que este registro actualice el odómetro actual del auto?',
-                    async () => {
-                        await _finishSaveRepair(repairId, data, vehicle, odometerKm, true);
-                    },
-                    async () => {
-                        await _finishSaveRepair(repairId, data, vehicle, odometerKm, false);
-                    }
-                );
+                // Guarda reparación directamente sin preguntar y sin modificar odómetro actual
+                await _finishSaveRepair(repairId, data, vehicle, odometerKm, false);
                 return;
             }
         }
@@ -903,15 +884,8 @@ const OilModule = (() => {
                     Components.showToast('El kilometraje no puede ser menor al actual. Por favor, verifica el tablero.', 'danger');
                     return;
                 } else {
-                    Components.confirm(
-                        '¿Deseas que este registro actualice el odómetro actual del auto?',
-                        async () => {
-                            await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, true);
-                        },
-                        async () => {
-                            await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, false);
-                        }
-                    );
+                    // Guarda registro directamente sin preguntar y sin modificar odómetro actual
+                    await _finishSaveOilLog(logData, vehicle, odometerKm, isChange, nextChangeKmInput, false);
                     return;
                 }
             }
