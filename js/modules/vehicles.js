@@ -4,6 +4,32 @@
    ============================================ */
 
 const VehiclesModule = (() => {
+    const CAR_CATALOG_ARG = [
+        "Baic Senova (5p)", "Baic X25 (5p)", "Baic X35 (5p)", "Baic X55 (5p)",
+        "Changan CS15 (5p)", "Changan CS35 (5p)",
+        "Chery Arrizo 5 (4p)", "Chery Fulwin (5p)", "Chery QQ (5p)", "Chery Tiggo 2 (5p)", "Chery Tiggo 3 (5p)", "Chery Tiggo 4 (5p)", "Chery Tiggo 5 (5p)", "Chery Tiggo 8 (5p)",
+        "Chevrolet Aveo (4p)", "Chevrolet Classic (4p)", "Chevrolet Cobalt (4p)", "Chevrolet Corsa (4p)", "Chevrolet Corsa II (5p)", "Chevrolet Cruze (4p)", "Chevrolet Cruze (5p)", "Chevrolet Equinox (5p)", "Chevrolet Onix (5p)", "Chevrolet Onix Plus (4p)", "Chevrolet Prisma (4p)", "Chevrolet S10 (4p)", "Chevrolet Spin (5p)", "Chevrolet Tracker (5p)",
+        "Citroën Berlingo (5p)", "Citroën C3 (5p)", "Citroën C3 Aircross (5p)", "Citroën C4 Cactus (5p)", "Citroën C4 Lounge (4p)", "Citroën C4 Sedan (4p)",
+        "DFSK Glory 580 (5p)",
+        "FAW X40 (5p)",
+        "Fiat Argo (5p)", "Fiat Cronos (4p)", "Fiat Fastback (5p)", "Fiat Grand Siena (4p)", "Fiat Mobi (5p)", "Fiat Palio (5p)", "Fiat Pulse (5p)", "Fiat Punto (5p)", "Fiat Siena (4p)", "Fiat Toro (4p)", "Fiat Uno Way (5p)",
+        "Ford EcoSport (5p)", "Ford Fiesta Kinetic (5p)", "Ford Fiesta Kinetic Sedan (4p)", "Ford Focus (5p)", "Ford Focus Sedan (4p)", "Ford Ka (5p)", "Ford Ka+ (4p)", "Ford Kuga (5p)", "Ford Mondeo (4p)", "Ford Ranger (4p)", "Ford Territory (5p)",
+        "Geely Emgrand (4p)", "Geely Emgrand X7 (5p)", "Geely LC (5p)",
+        "Haval H1 (5p)", "Haval H2 (5p)", "Haval H6 (5p)", "Haval Jolion (5p)",
+        "Honda City (4p)", "Honda Civic (4p)", "Honda CR-V (5p)", "Honda Fit (5p)", "Honda HR-V (5p)",
+        "Hyundai Creta (5p)", "Hyundai Grand i10 (5p)", "Hyundai HB20 (5p)", "Hyundai HB20S (4p)", "Hyundai i10 (5p)", "Hyundai Tucson (5p)",
+        "JAC S2 (5p)", "JAC S3 (5p)", "JAC S5 (5p)", "JAC T6 (4p)",
+        "Jetour X70 (5p)",
+        "Kia Cerato (4p)", "Kia Picanto (5p)", "Kia Rio (5p)", "Kia Seltos (5p)", "Kia Sportage (5p)",
+        "Lifan 530 (4p)", "Lifan Myway (5p)", "Lifan X60 (5p)", "Lifan X70 (5p)",
+        "Nissan Frontier (4p)", "Nissan Kicks (5p)", "Nissan March (5p)", "Nissan Note (5p)", "Nissan Sentra (4p)", "Nissan Tiida (5p)", "Nissan Versa (4p)",
+        "Peugeot 2008 (5p)", "Peugeot 207 Compact (5p)", "Peugeot 207 Sedan (4p)", "Peugeot 208 (5p)", "Peugeot 3008 (5p)", "Peugeot 307 (5p)", "Peugeot 308 (5p)", "Peugeot 408 (4p)", "Peugeot 5008 (5p)", "Peugeot Partner (5p)",
+        "Renault Alaskan (4p)", "Renault Clio IV (5p)", "Renault Clio Mio (5p)", "Renault Duster (5p)", "Renault Fluence (4p)", "Renault Kangoo (5p)", "Renault Koleos (5p)", "Renault Logan (4p)", "Renault Oroch (4p)", "Renault Sandero (5p)", "Renault Stepway (5p)", "Renault Symbol (4p)",
+        "Shineray X30 (5p)",
+        "Toyota Corolla (4p)", "Toyota Corolla Cross (5p)", "Toyota Etios (5p)", "Toyota Etios Sedan (4p)", "Toyota Hilux (4p)", "Toyota SW4 (5p)", "Toyota Yaris (5p)", "Toyota Yaris Sedan (4p)",
+        "VW Amarok (4p)", "VW Bora (4p)", "VW Fox (5p)", "VW Gol Trend (5p)", "VW Nivus (5p)", "VW Polo (5p)", "VW Suran (5p)", "VW T-Cross (5p)", "VW Taos (5p)", "VW Tiguan (5p)", "VW Vento (4p)", "VW Virtus (4p)", "VW Voyage (4p)"
+    ];
+
 
     async function render() {
         const vehicles = await DB.getAll('vehicles');
@@ -220,8 +246,11 @@ const VehiclesModule = (() => {
             `
                 <div class="form-group">
                     <label class="form-label">${I18n.t('veh_name')} *</label>
-                    <input type="text" class="form-input" id="vehName"
-                        value="${vehicle?.name || ''}" placeholder="Toyota Corolla 2020">
+                    <input type="text" class="form-input" id="vehName" list="vehCatalogList"
+                        value="${vehicle?.name || ''}" placeholder="Ej: Toyota Corolla 2020 (Busca marca o modelo)">
+                    <datalist id="vehCatalogList">
+                        ${CAR_CATALOG_ARG.map(c => `<option value="${c}">`).join('')}
+                    </datalist>
                 </div>
                 <div class="repair-form-grid">
                     <div class="form-group">

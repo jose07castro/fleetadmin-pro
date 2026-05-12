@@ -3,3 +3,10 @@ data/database.json
 data/firebase-service-account.json
 .env
 auth_info/
+*.json
+!package.json
+!package-lock.json
+!composer.json
+!firebase.json
+!jsconfig.json
+!tsconfig.json
