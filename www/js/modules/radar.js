@@ -596,49 +596,9 @@ const RadarModule = (() => {
                 _map.flyTo([lat, lng], 14, { animate: true, duration: 1.5 });
             }
 
-            // Anunciar por voz (Web Speech API — sin costo, funciona offline en Android)
-            _speakAlert(type, data.location);
+            // La voz ahora se maneja 100% a nivel GLOBAL por TrafficAlerts
+            // para que suene con el mapa abierto, cerrado o en segundo plano.
         }
-    }
-
-    /**
-     * Anuncia la alerta por voz usando Web Speech API.
-     * El chofer se entera sin desviar la vista del camino.
-     */
-    function _speakAlert(type, location) {
-        if (!window.speechSynthesis || !_voiceEnabled) return;
-
-        const voiceMessages = {
-            police:     'Atención. Control de policía',
-            checkpoint: 'Atención. Operativo o control en la zona',
-            radar:      'Cuidado. Radar de velocidad',
-            helicopter: 'Alerta. Helicóptero sanitario en zona',
-            ambulance:  'Precaución. Ambulancia en la vía',
-            firetruck:  'Atención. Bomberos en la vía',
-            municipal:  'Cuidado. Control municipal de tránsito',
-            accident:   'Atención. Accidente vial reportado',
-            traffic:    'Aviso. Tráfico lento reportado',
-            warning:    'Atención. Alerta de tráfico',
-        };
-
-        const msg = voiceMessages[type] || voiceMessages.warning;
-        const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
-        const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
-
-        window.speechSynthesis.cancel();
-
-        const utter = new SpeechSynthesisUtterance(fullText);
-        utter.lang = 'es-AR';
-        utter.rate = 0.9;
-        utter.pitch = 1.0;
-        utter.volume = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        const esVoice = voices.find(v => v.lang.startsWith('es'));
-        if (esVoice) utter.voice = esVoice;
-
-        window.speechSynthesis.speak(utter);
-        console.log(`🔊 [VOZ] "${fullText}"`);
     }
 
     function toggleVoice() {
@@ -646,8 +606,11 @@ const RadarModule = (() => {
         localStorage.setItem('radarVoice', _voiceEnabled ? 'on' : 'off');
         const btn = document.getElementById('radarVoiceBtn');
         if (btn) btn.textContent = _voiceEnabled ? '🔊' : '🔇';
-        // Confirmar con voz si se activa
-        if (_voiceEnabled) _speakAlert('warning', null);
+        
+        // Confirmar con voz global si se activa
+        if (_voiceEnabled && typeof TrafficAlerts !== 'undefined') {
+            TrafficAlerts.speakAlert('warning', null);
+        }
         console.log(`🔊 [VOZ] ${_voiceEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
     }
 

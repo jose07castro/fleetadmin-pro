@@ -149,29 +149,103 @@ const TrafficAlerts = (() => {
         return 'warning';
     }
 
+    let _isHistoryLoaded = false;
+
+    /**
+     * Anuncia la alerta por voz usando Web Speech API de manera GLOBAL.
+     * Funciona con mapa abierto, cerrado y con la app corriendo de fondo.
+     */
+    function speakAlert(type, location) {
+        const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
+        if (!window.speechSynthesis || !isVoiceEnabled) return;
+
+        const voiceMessages = {
+            police:     'Atención. Control de policía',
+            checkpoint: 'Atención. Operativo o control en la zona',
+            radar:      'Cuidado. Radar de velocidad',
+            helicopter: 'Alerta. Helicóptero sanitario en zona',
+            ambulance:  'Precaución. Ambulancia en la vía',
+            firetruck:  'Atención. Bomberos en la vía',
+            municipal:  'Cuidado. Control municipal de tránsito',
+            accident:   'Atención. Accidente vial reportado',
+            traffic:    'Aviso. Tráfico lento reportado',
+            warning:    'Atención. Alerta de tráfico',
+        };
+
+        const msg = voiceMessages[type] || voiceMessages.warning;
+        const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
+        const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+
+        window.speechSynthesis.cancel();
+
+        const utter = new SpeechSynthesisUtterance(fullText);
+        utter.lang = 'es-AR';
+        utter.rate = 0.9;
+        utter.pitch = 1.0;
+        utter.volume = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es'));
+        if (esVoice) utter.voice = esVoice;
+
+        window.speechSynthesis.speak(utter);
+        console.log(`🔊 [GLOBAL VOZ] "${fullText}"`);
+    }
+
+    /**
+     * Inicia la escucha de alertas de tráfico para anuncios globales por voz
+     */
+    function startGlobalVoiceListener() {
+        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+        const fleetId = Auth.getFleetId();
+        if (!fleetId) return;
+
+        const alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+
+        // 1. Carga de historia silenciosa (prevenir reproducir alertas viejas al iniciar)
+        alertRef.once('value', () => {
+            _isHistoryLoaded = true;
+            console.log('📡 TrafficAlerts: Historial cargado. Anunciador de voz global ACTIVO.');
+        });
+
+        // 2. Escucha en tiempo real de eventos nuevos
+        alertRef.on('child_added', (snap) => {
+            if (!_isHistoryLoaded) return;
+
+            const alert = snap.val();
+            if (!alert || alert.status !== 'active') return;
+
+            // Defensa: Si la alerta expiró, no hablar
+            if (alert.expiresAt && alert.expiresAt < Date.now()) return;
+
+            console.log('🔊 [GLOBAL VOICE] Anunciando alerta:', alert.type, alert.location);
+            speakAlert(alert.type, alert.location);
+        });
+    }
+
     /**
      * Listener para monitorear nuevos posts de comunidad.
      */
     function init() {
-        console.log('📡 TrafficAlerts: Iniciando monitoreo de comunidad...');
+        console.log('📡 TrafficAlerts: Iniciando monitoreo de comunidad y voz global...');
         
         if (typeof firebaseDB === 'undefined') return;
 
-        // Escuchar nuevos posts en tiempo real
-        // Nota: Solo procesamos posts de los últimos 5 minutos al iniciar
+        // 1. Escuchar nuevos posts de comunidad (existente)
         const postsRef = firebaseDB.ref('community_posts').limitToLast(5);
-        
         postsRef.on('child_added', (snapshot) => {
             const post = snapshot.val();
             if (!post) return;
 
-            // Evitar procesar posts muy viejos
             const postTime = post.created_at ? new Date(post.created_at).getTime() : Date.now();
-            if (Date.now() - postTime > 600000) return; // Más de 10 min, ignorar
+            if (Date.now() - postTime > 600000) return;
 
             processPost({ ...post, id: snapshot.key });
         });
+
+        // 2. Escuchar alertas de tráfico de la flota para voz global
+        startGlobalVoiceListener();
     }
 
-    return { init, processPost, geocodeIntersection };
+    return { init, processPost, geocodeIntersection, speakAlert };
 })();
