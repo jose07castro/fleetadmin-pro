@@ -105,6 +105,7 @@ const WhatsappBot = (() => {
     let sock = null;
     let retryCount = 0;
     let isConnecting = false; // Cerrojo (LOCK) anti-clones paralelos
+    let _stableTimer = null; // Validador de salud de conexión
     const MAX_RETRIES = 10;
     const AUTH_DIR = './auth_info';
 
@@ -413,6 +414,10 @@ const WhatsappBot = (() => {
 
                 if (connection === 'close') {
                     isConnecting = false; // Liberar cerrojo
+                    
+                    // Cancelar validador de salud inmediatamente al desconectar
+                    if (_stableTimer) { clearTimeout(_stableTimer); _stableTimer = null; }
+
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
                     const reason = DisconnectReason;
                     
@@ -440,8 +445,10 @@ const WhatsappBot = (() => {
                             process.exit(1);
                         }
 
-                        const delay440 = 15000; // Retardo más racional (15s) para dar respiro a WhatsApp
-                        console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s...`);
+                        // Retardo racional con desincronización aleatoria (Jitter)
+                        // Evita que dos clones conecten exactamente al mismo milisegundo
+                        const delay440 = 15000 + Math.floor(Math.random() * 15000); 
+                        console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s (Jitter)...`);
                         
                         if (retryCount >= 2) {
                             await softResetAuthInfo();
@@ -469,9 +476,18 @@ const WhatsappBot = (() => {
                         await startSocket();
                     }
                 } else if (connection === 'open') {
-                    retryCount = 0;
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
+                    
+                    // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
+                    // y estable por lo menos 60 segundos consecutivos. Si muere antes, acumulamos
+                    // el reintento para forzar el autokill del proceso fantasma.
+                    if (_stableTimer) clearTimeout(_stableTimer);
+                    _stableTimer = setTimeout(() => {
+                        retryCount = 0;
+                        console.log('💚 [HEALTH] Conexión estable por 60s. Contador de reintentos limpiado.');
+                        _stableTimer = null;
+                    }, 60000);
                 }
             });
 
