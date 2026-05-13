@@ -6,4 +6,9 @@ auth_info/
 # Explicit credentials ignore
 fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json
 /google-services.json
-
+# Credentials and API Keys
+api keys/
+*.txt
+*.jks
+test_*.js
+list_*.js
