@@ -19,14 +19,11 @@ const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
-// Probar modelos en orden — v1beta es lo que soportan las keys de Google AI Studio
+// Modelos estables actuales en Google AI Studio
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 
@@ -37,7 +34,7 @@ async function callGemini(prompt) {
         try {
             const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
                 contents: [{ parts: [{ text: prompt }] }]
-            }, { timeout: 15000 });
+            }, { timeout: 8000 });
             const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
             if (text) {
                 if (!GEMINI_URL) { GEMINI_URL = url; console.log(`✅ Gemini activo: ${url.split('/models/')[1].split(':')[0]}`); }
