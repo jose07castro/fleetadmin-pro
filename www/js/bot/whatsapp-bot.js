@@ -19,11 +19,12 @@ const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
-// Modelos estables actuales en Google AI Studio
+// Modelos estables actuales en Google AI Studio (Dando prioridad absoluta a v1 Estable)
 const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 
