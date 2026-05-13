@@ -104,6 +104,7 @@ if (!admin.apps.length) {
 const WhatsappBot = (() => {
     let sock = null;
     let retryCount = 0;
+    let isConnecting = false; // Cerrojo (LOCK) anti-clones paralelos
     const MAX_RETRIES = 10;
     const AUTH_DIR = './auth_info';
 
@@ -369,6 +370,22 @@ const WhatsappBot = (() => {
     }
 
     async function startSocket() {
+        if (isConnecting) {
+            console.log('🛡️ [LOCK] Bloqueando intento de conexión duplicado en paralelo.');
+            return;
+        }
+        isConnecting = true;
+
+        // Limpieza estricta de memoria: cerrar socket y limpiar listeners viejos si existen
+        if (sock) {
+            console.log('🧹 [LOCK] Destruyendo socket fantasma anterior para liberar listeners.');
+            try { 
+                sock.ev.removeAllListeners(); 
+                sock.end(); 
+            } catch(e) {}
+            sock = null;
+        }
+
         try {
             const { state, saveCreds } = await _firebaseAuthState();
             const { version } = await fetchLatestBaileysVersion();
@@ -395,10 +412,14 @@ const WhatsappBot = (() => {
                 }
 
                 if (connection === 'close') {
+                    isConnecting = false; // Liberar cerrojo
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
                     const reason = DisconnectReason;
                     
                     console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
+                    
+                    // Muy Importante: Borrar listeners del socket muerto para evitar bucles fantasma
+                    try { sock?.ev?.removeAllListeners(); } catch(e) {}
 
                     if (statusCode === reason.loggedOut) {
                         console.log('🔴 Sesión cerrada por el usuario. Limpiando credenciales...');
@@ -411,11 +432,17 @@ const WhatsappBot = (() => {
                         await startSocket();
                     } else if (statusCode === 440 || statusCode === 503) {
                         retryCount++;
-                        // 440 = conflicto de sesión: esperar más tiempo en cada reintento
-                        const delay440 = Math.min(60000 * retryCount, 300000);
+                        
+                        // PROTOCOLO DE SUICIDIO CONTROLADO: Si el conflicto 440 persiste 3 veces, 
+                        // matamos el proceso para que Render recicle limpio y elimine clones fantasmas de RAM
+                        if (retryCount >= 3) {
+                            console.error('💥 [LOCK-FATAL] Conflicto 440 persistente. Matando proceso para autocuración completa en Render...');
+                            process.exit(1);
+                        }
+
+                        const delay440 = 15000; // Retardo más racional (15s) para dar respiro a WhatsApp
                         console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s...`);
                         
-                        // AUTO-HEAL: A partir del segundo fallo, asumimos MAC corrupto por reinicio Render y aplicamos curación rápida (Soft Reset)
                         if (retryCount >= 2) {
                             await softResetAuthInfo();
                         }
@@ -443,6 +470,7 @@ const WhatsappBot = (() => {
                     }
                 } else if (connection === 'open') {
                     retryCount = 0;
+                    isConnecting = false; // Liberar cerrojo al conectar con éxito
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
                 }
             });
