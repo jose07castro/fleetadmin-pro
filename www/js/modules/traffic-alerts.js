@@ -157,7 +157,7 @@ const TrafficAlerts = (() => {
      * Anuncia la alerta por voz usando Web Speech API de manera GLOBAL.
      * Funciona con mapa abierto, cerrado y con la app corriendo de fondo.
      */
-    function speakAlert(type, location) {
+    function speakAlert(type, location, originalText = '') {
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
         if (!window.speechSynthesis || !isVoiceEnabled) return;
 
@@ -176,7 +176,16 @@ const TrafficAlerts = (() => {
 
         const msg = voiceMessages[type] || voiceMessages.warning;
         const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
-        const fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+        
+        let fullText = '';
+        // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó y cumplir el deseo del usuario.
+        if (originalText) {
+            // Limpieza ultraliviana: sacar links HTTP si existieran para evitar deletreos eternos y raros
+            let cleanText = originalText.replace(/https?:\/\/\S+/gi, '').trim();
+            fullText = `Atención: ${cleanText}.`;
+        } else {
+            fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+        }
 
         window.speechSynthesis.cancel();
 
@@ -229,7 +238,7 @@ const TrafficAlerts = (() => {
             }
 
             console.log('🔊 [GLOBAL VOICE] Cantando nueva alerta en vivo:', alert.type, alert.location);
-            speakAlert(alert.type, alert.location);
+            speakAlert(alert.type, alert.location, alert.originalText);
         });
     }
 

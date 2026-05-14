@@ -1004,34 +1004,58 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 // Sin dirección: usar centro de Rosario directamente
                 console.log('⚠️ [GEO] Sin dirección exacta, usando centro de Rosario');
             } else {
-                // Respetar rate limit de Nominatim (1 req/segundo)
-                await new Promise(r => setTimeout(r, 1500));
-                
                 expandedAddress = _expandStreetNames(address);
-                console.log(`🔍 [GEO] Geocodificando: "${expandedAddress}" en Rosario...`);
+                let isResolved = false;
                 
-                // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para que Photon/OpenStreetMap identifique el cruce de calles.
-                // Photon falla si ve la palabra de enlace "y". Con la coma encuentra la intersección central de inmediato.
-                const cleanAddressForGeo = expandedAddress.replace(/\s+[yY]\s+/gi, ', ');
-                const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
-                
-                // Usamos Photon con sesgo espacial forzado al Centro de Rosario (-32.9477, -60.6652) para dar prioridad absoluta a la zona urbana central
-                const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
-                console.log(`🚀 [GEO-V237-OK] Photon-URL: ${url.substring(0,100)}...`);
-                
-                const response = await axios.get(url, { timeout: 10000 });
-                const features = response.data?.features || [];
+                // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
+                // Dado que el usuario ya cuenta con facturación vinculada y clave oficial, habilitamos este canal ultrapreciso.
+                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+                if (googleApiKey) {
+                    try {
+                        console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}"`);
+                        // Buscamos forzando la región y el idioma en Argentina
+                        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(expandedAddress + ', Rosario, Santa Fe, Argentina')}&language=es&region=AR&key=${googleApiKey}`;
+                        const gResponse = await axios.get(gUrl, { timeout: 6000 });
+                        
+                        if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
+                            const loc = gResponse.data.results[0].geometry.location;
+                            lat = parseFloat(loc.lat);
+                            lng = parseFloat(loc.lng);
+                            approximate = false;
+                            isResolved = true;
+                            console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación perfecta detectada! Lat=${lat}, Lng=${lng}`);
+                        } else {
+                            console.warn(`⚠️ [GEO-GOOGLE] Fallo en respuesta (status=${gResponse.data?.status || 'UNKNOWN'}). Procediendo al fallback gratuito...`);
+                        }
+                    } catch (errG) {
+                        console.warn(`⚠️ [GEO-GOOGLE] Error de conexión o autorización: ${errG.message}. Procediendo al fallback gratuito...`);
+                    }
+                }
 
-                console.log(`🌐 [GEO] Respuesta: ${features.length} resultados`);
+                // --- NIVEL 2: PHOTON FALLBACK (En caso de que la API de Google no esté activada en la consola) ---
+                if (!isResolved) {
+                    // Respetar delay básico para evitar rate limits
+                    await new Promise(r => setTimeout(r, 1200));
+                    
+                    console.log(`🔍 [GEO-PHOTON] Ejecutando consulta gratuita de emergencia para: "${expandedAddress}"`);
+                    
+                    // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para Photon/OpenStreetMap
+                    const cleanAddressForGeo = expandedAddress.replace(/\s+[yY]\s+/gi, ', ');
+                    const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
+                    
+                    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
+                    const response = await axios.get(url, { timeout: 8000 });
+                    const features = response.data?.features || [];
 
-                if (features.length > 0 && features[0].geometry?.coordinates) {
-                    // Photon devuelve [lon, lat]
-                    lng = parseFloat(features[0].geometry.coordinates[0]);
-                    lat = parseFloat(features[0].geometry.coordinates[1]);
-                    approximate = false;
-                    console.log(`📍 [GEO] ✅ Ubicación exacta: ${lat}, ${lng}`);
-                } else {
-                    console.log(`⚠️ [GEO] Sin resultados, usando centro de Rosario`);
+                    if (features.length > 0 && features[0].geometry?.coordinates) {
+                        // Photon devuelve [lon, lat]
+                        lng = parseFloat(features[0].geometry.coordinates[0]);
+                        lat = parseFloat(features[0].geometry.coordinates[1]);
+                        approximate = false;
+                        console.log(`📍 [GEO-PHOTON] ✅ Ubicación encontrada (estimada): ${lat}, ${lng}`);
+                    } else {
+                        console.log(`⚠️ [GEO-PHOTON] Sin resultados. Se usará punto central de Rosario con aviso aproximado.`);
+                    }
                 }
             }
         } catch (err) {
