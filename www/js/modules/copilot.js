@@ -108,34 +108,32 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Vocaliza el aviso usando la síntesis de voz nativa del navegador/móvil.
+     * Vocaliza el aviso usando la voz premium KITT (con fallback automático).
      */
     function _speakWarning(radar, distance) {
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
-        if (!window.speechSynthesis || !isVoiceEnabled) return;
+        if (!isVoiceEnabled) return;
 
         // Texto amigable para locución
         const radarName = radar.name.replace(' y ', ' esquina ');
         const text = `Atención. Fotomulta a 300 metros en ${radarName}. Velocidad máxima ${radar.limit} kilómetros por hora.`;
         
-        try {
-            // Cancelar cualquier locución en cola para priorizar la fotomulta de inmediato
-            window.speechSynthesis.cancel();
-
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'es-AR';
-            utter.rate = 0.95; // Ligeramente pausado para máxima comprensión
-            utter.pitch = 1.0;
-            utter.volume = 1.0;
-
-            // Intentar setear voz en español si estuviera disponible en el SO
-            const voices = window.speechSynthesis.getVoices();
-            const esVoice = voices.find(v => v.lang.startsWith('es'));
-            if (esVoice) utter.voice = esVoice;
-
-            window.speechSynthesis.speak(utter);
-        } catch (e) {
-            console.error('Error vocalizando advertencia de copiloto:', e);
+        // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
+        if (typeof KittVoice !== 'undefined') {
+            KittVoice.speak(text, true);
+        } else {
+            // Fallback directo si KittVoice no cargó
+            try {
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    const utter = new SpeechSynthesisUtterance(text);
+                    utter.lang = 'es-AR';
+                    utter.rate = 0.95;
+                    window.speechSynthesis.speak(utter);
+                }
+            } catch (e) {
+                console.error('Error vocalizando advertencia de copiloto:', e);
+            }
         }
         
         // Alerta visual local (Toast)

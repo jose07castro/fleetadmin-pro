@@ -143,6 +143,80 @@ app.get('/api/bot/fleets', async (req, res) => {
     }
 });
 
+// ============================================
+// KITT Voice — ElevenLabs TTS Proxy
+// Protege la API Key en el servidor y cachea audios
+// ============================================
+const _ttsCache = new Map(); // { textHash: { buffer, timestamp } }
+const TTS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
+
+app.get('/api/voice/tts', async (req, res) => {
+    const text = req.query.text;
+    if (!text) return res.status(400).json({ error: 'Missing ?text= parameter' });
+
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    // Voice ID: configurable via env, defaults to a deep male Spanish voice
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // "Sarah" default, user replaces with KITT
+
+    if (!apiKey) {
+        return res.status(503).json({ error: 'ELEVENLABS_API_KEY not configured on server' });
+    }
+
+    // Simple hash for cache key
+    const cacheKey = `${voiceId}_${text}`;
+    const cached = _ttsCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < TTS_CACHE_TTL)) {
+        console.log(`🎙️ [KITT-TTS] Cache HIT for: "${text.substring(0, 40)}..."`);
+        res.set('Content-Type', 'audio/mpeg');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(cached.buffer);
+    }
+
+    try {
+        console.log(`🎙️ [KITT-TTS] Generating: "${text.substring(0, 60)}..."`);
+        const axios = require('axios');
+        const response = await axios({
+            method: 'POST',
+            url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+            headers: {
+                'xi-api-key': apiKey,
+                'Content-Type': 'application/json',
+                'Accept': 'audio/mpeg'
+            },
+            data: {
+                text: text,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: {
+                    stability: 0.75,
+                    similarity_boost: 0.80,
+                    style: 0.45,
+                    use_speaker_boost: true
+                }
+            },
+            responseType: 'arraybuffer',
+            timeout: 15000
+        });
+
+        const audioBuffer = Buffer.from(response.data);
+
+        // Cache the result
+        _ttsCache.set(cacheKey, { buffer: audioBuffer, timestamp: Date.now() });
+
+        // Limit cache size (max 100 entries)
+        if (_ttsCache.size > 100) {
+            const oldest = _ttsCache.keys().next().value;
+            _ttsCache.delete(oldest);
+        }
+
+        res.set('Content-Type', 'audio/mpeg');
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.send(audioBuffer);
+    } catch (e) {
+        console.error('🎙️ [KITT-TTS] ElevenLabs error:', e.response?.status, e.response?.data?.toString?.()?.substring(0, 200) || e.message);
+        res.status(502).json({ error: 'ElevenLabs TTS failed', details: e.message });
+    }
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
