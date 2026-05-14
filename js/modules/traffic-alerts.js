@@ -149,7 +149,9 @@ const TrafficAlerts = (() => {
         return 'warning';
     }
 
-    let _isHistoryLoaded = false;
+    // Registra el milisegundo en que inició la aplicación (con 3s de tolerancia)
+    // para ignorar alertas viejas y cantar únicamente lo que sea de este segundo en adelante.
+    const _appStartTime = Date.now() - 3000;
 
     /**
      * Anuncia la alerta por voz usando Web Speech API de manera GLOBAL.
@@ -198,27 +200,35 @@ const TrafficAlerts = (() => {
     function startGlobalVoiceListener() {
         if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
         const fleetId = Auth.getFleetId();
-        if (!fleetId) return;
+        
+        // AUTO-HEAL: Si la app acaba de arrancar y Firebase Auth no levantó el FleetID, 
+        // reintentar automáticamente cada 3 segundos hasta conectarse de por vida.
+        if (!fleetId) {
+            console.warn('📡 [VOZ-GLOBAL] FleetID ausente en arranque. Reintentando puente de audio en 3s...');
+            setTimeout(startGlobalVoiceListener, 3000);
+            return;
+        }
 
+        console.log(`📡 [VOZ-GLOBAL] Canal de voz conectado para flota: ${fleetId}. Monitoreando alertas...`);
         const alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
 
-        // 1. Carga de historia silenciosa (prevenir reproducir alertas viejas al iniciar)
-        alertRef.once('value', () => {
-            _isHistoryLoaded = true;
-            console.log('📡 TrafficAlerts: Historial cargado. Anunciador de voz global ACTIVO.');
-        });
-
-        // 2. Escucha en tiempo real de eventos nuevos
+        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
         alertRef.on('child_added', (snap) => {
-            if (!_isHistoryLoaded) return;
-
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // Defensa: Si la alerta expiró, no hablar
-            if (alert.expiresAt && alert.expiresAt < Date.now()) return;
+            // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
+            if (alert.timestamp && alert.timestamp < _appStartTime) {
+                return; 
+            }
 
-            console.log('🔊 [GLOBAL VOICE] Anunciando alerta:', alert.type, alert.location);
+            // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
+            if (alert.expiresAt && alert.expiresAt < Date.now()) {
+                return;
+            }
+
+            console.log('🔊 [GLOBAL VOICE] Cantando nueva alerta en vivo:', alert.type, alert.location);
             speakAlert(alert.type, alert.location);
         });
     }
