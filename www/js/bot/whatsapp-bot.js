@@ -1048,11 +1048,25 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                     const features = response.data?.features || [];
 
                     if (features.length > 0 && features[0].geometry?.coordinates) {
-                        // Photon devuelve [lon, lat]
-                        lng = parseFloat(features[0].geometry.coordinates[0]);
-                        lat = parseFloat(features[0].geometry.coordinates[1]);
-                        approximate = false;
-                        console.log(`📍 [GEO-PHOTON] ✅ Ubicación encontrada (estimada): ${lat}, ${lng}`);
+                        const tempLng = parseFloat(features[0].geometry.coordinates[0]);
+                        const tempLat = parseFloat(features[0].geometry.coordinates[1]);
+                        
+                        // --- VALIDACIÓN DE CERCANÍA GEOGRÁFICA (ROSARIO-LOCK) ---
+                        // Si Photon alucina y devuelve algo a más de 50km de Rosario (como Córdoba, España, etc.), rechazarlo.
+                        const rLat = -32.9477, rLng = -60.6652; // Centro geográfico de Rosario
+                        const dLat = (tempLat - rLat) * Math.PI / 180;
+                        const dLon = (tempLng - rLng) * Math.PI / 180;
+                        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(rLat * Math.PI / 180) * Math.cos(tempLat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                        const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        
+                        if (dist < 50) { // Radio de seguridad de 50 kilómetros alrededor de Rosario
+                            lng = tempLng;
+                            lat = tempLat;
+                            approximate = false;
+                            console.log(`📍 [GEO-PHOTON] ✅ Ubicación validada (a ${dist.toFixed(1)}km): ${lat}, ${lng}`);
+                        } else {
+                            console.warn(`⚠️ [GEO-PHOTON] Alucinación detectada: devolvió un punto a ${dist.toFixed(1)}km. Forzando ubicación central en Rosario.`);
+                        }
                     } else {
                         console.log(`⚠️ [GEO-PHOTON] Sin resultados. Se usará punto central de Rosario con aviso aproximado.`);
                     }
