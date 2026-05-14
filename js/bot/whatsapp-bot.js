@@ -628,11 +628,21 @@ const WhatsappBot = (() => {
                         }
                     }
 
+                    // --- EXTRAER CONTEXTO DEL GRUPO ---
+                    let groupName = 'Privado';
+                    if (isGroup) {
+                        try {
+                            const groupInfo = await sock.groupMetadata(jid);
+                            groupName = groupInfo.subject || 'Grupo Desconocido';
+                        } catch(ge) { groupName = 'Grupo Desconocido'; }
+                    }
+
                     // --- ANÁLISIS: GEMINI + FALLBACK POR PALABRAS CLAVE ---
-                    console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..."`);
+                    console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..." [Grupo: ${groupName}]`);
                     
                     try {
-                        let analysis = await _analyzeMessageWithAI(text);
+                        // Pasamos el nombre del grupo como CONTEXTO GEOGRÁFICO a Gemini
+                        let analysis = await _analyzeMessageWithAI(text, groupName);
                         
                         // Si Gemini falla, usar detector de palabras clave
                         if (!analysis) {
@@ -647,14 +657,6 @@ const WhatsappBot = (() => {
                         
                         if (analysis && analysis.isAlert) {
                             console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
-                            
-                            let groupName = 'Privado';
-                            if (isGroup) {
-                                try {
-                                    const groupInfo = await sock.groupMetadata(jid);
-                                    groupName = groupInfo.subject;
-                                } catch(ge) { groupName = 'Grupo Desconocido'; }
-                            }
 
                             // Guardar en Firebase (diagnóstico)
                             if (db) {
@@ -729,11 +731,20 @@ const WhatsappBot = (() => {
     /**
      * Analiza el mensaje con Gemini (HTTP directo) para detectar alertas.
      */
-    async function _analyzeMessageWithAI(text) {
+    async function _analyzeMessageWithAI(text, groupName = '') {
         if (!GEMINI_KEY) return null;
         
-        const prompt = `Analiza este mensaje de un grupo de WhatsApp de choferes de Uber/Didi en la zona de Rosario, Argentina.
-Mensaje: "${text}"
+        const prompt = `Analiza este mensaje de un grupo de WhatsApp de choferes de la zona de Rosario, Argentina.
+        
+CONTEXTO GEOGRÁFICO DE ORIGEN:
+- Nombre del Grupo de WhatsApp: "${groupName}"
+- Mensaje escrito por el chofer: "${text}"
+
+REGLA DE DEDUCCIÓN HUMANA (CRÍTICA):
+Los choferes no siempre dan dos calles exactas. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO.
+1. Si el grupo se llama "operativos arroyo y alrededores" o menciona "arroyo", asume por defecto que cualquier alerta o calle mencionada sin ciudad se refiere a la zona de ARROYO SECO, FIGHIERA o GENERAL LAGOS, usualmente sobre la RUTA PROVINCIAL 21 o la AUTOPISTA ROSARIO-BUENOS AIRES.
+2. Si en ese grupo de Arroyo dicen "la entrada", "el cristo", "el peaje" o "el puente", infiere que es la entrada a Arroyo Seco, el Cristo de la Hermandad en Pueblo Esther (Ruta 21), el Peaje General Lagos, etc.
+3. Utiliza el contexto regional de los pueblos satélite de Rosario (Pueblo Esther, Villa Gobernador Gálvez, Alvear, Arroyo Seco, Funes, Roldán, Pérez) según aplique al nombre del grupo.
 
 ABREVIATURAS COMUNES (IMPORTANTE — resolvé estas SIEMPRE):
 - "vgg" / "VGG" / "v.g.g" = Villa Gobernador Gálvez
