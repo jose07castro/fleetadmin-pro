@@ -363,6 +363,11 @@ const GPSPermissions = (() => {
                     const inShift = localStorage.getItem('active_shift_state') === 'true';
                     if (!inShift) return;
 
+                    // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
+                    if (typeof CopilotModule !== 'undefined') {
+                        CopilotModule.checkProximity(location.latitude, location.longitude);
+                    }
+
                     let batteryLevel = null;
                     if (navigator.getBattery) {
                         try { const b = await navigator.getBattery(); batteryLevel = Math.round(b.level * 100); } catch(e){}
@@ -586,6 +591,11 @@ const GPSPermissions = (() => {
             });
 
             _cachedPosition = pos;
+
+            // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
+            if (typeof CopilotModule !== 'undefined') {
+                CopilotModule.checkProximity(pos.lat, pos.lng);
+            }
 
             await firebaseDB.ref(`driver_positions/${userId}`).set({
                 lat: pos.lat,
