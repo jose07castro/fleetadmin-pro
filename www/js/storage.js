@@ -57,6 +57,58 @@ const StorageUtil = (() => {
     }
 
     /**
+     * DEFENSA NUCLEAR: Comprime recursivamente una imagen hasta que quepa en el límite de caracteres (para DB fallback).
+     */
+    async function compressToFitLimit(dataUrl, maxChars = 4800) {
+        let dimension = 250;
+        let quality = 0.4;
+        
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+
+        while (dimension > 50) {
+            let { width, height } = img;
+            if (width > dimension || height > dimension) {
+                if (width > height) {
+                    height = Math.round(height * (dimension / width));
+                    width = dimension;
+                } else {
+                    width = Math.round(width * (dimension / height));
+                    height = dimension;
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+            if (resultDataUrl.length <= maxChars) {
+                console.log(`🛡️ RESCATE EXITOSO: Imagen comprimida a ${width}x${height} | ${resultDataUrl.length} chars para DB.`);
+                return resultDataUrl;
+            }
+            
+            // Reducir agresivamente
+            dimension -= 50;
+            quality = Math.max(0.1, quality - 0.1);
+        }
+        
+        // Último recurso: retornar lo más chico posible
+        const canvas = document.createElement('canvas');
+        canvas.width = 80;
+        canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 80, 60);
+        return canvas.toDataURL('image/jpeg', 0.1);
+    }
+
+    /**
      * Sube una imagen comprimida a Firebase Storage.
      * @param {string} dataUrl - Data URL (data:image/...).
      * @param {string} path - Ruta en Storage.
@@ -162,28 +214,46 @@ const StorageUtil = (() => {
         try {
             if (frontData) {
                 uploadCount++;
-                // Borrar foto vieja antes de subir la nueva
-                if (user.licenseFrontPhoto) {
+                // Borrar foto vieja si existe una URL de Storage
+                if (user.licenseFrontPhoto && user.licenseFrontPhoto.startsWith('http')) {
                     Components.showToast(`🗑️ Eliminando foto frente anterior...`, 'info');
                     await deleteFile(user.licenseFrontPhoto).catch(() => {});
                 }
-                Components.showToast(`📤 Subiendo foto frente (${uploadCount}/${total})...`, 'info');
-                const frontURL = await uploadLicensePhoto(frontData, user.id, 'front');
-                user.licenseFrontPhoto = frontURL;
-                console.log('✅ Frente subida:', frontURL);
+                
+                try {
+                    Components.showToast(`📤 Subiendo foto frente (${uploadCount}/${total})...`, 'info');
+                    const frontURL = await uploadLicensePhoto(frontData, user.id, 'front');
+                    user.licenseFrontPhoto = frontURL;
+                    console.log('✅ Frente subida a Storage:', frontURL);
+                } catch (storageErr) {
+                    console.warn('⚠️ Storage bloqueado/fallido para FRENTE, activando rescate DB...', storageErr);
+                    Components.showToast(`⚠️ Servidor saturado. Aplicando guardado directo comprimido...`, 'warning');
+                    const fallbackData = await compressToFitLimit(frontData, 4800);
+                    user.licenseFrontPhoto = fallbackData;
+                    console.log('🛡️ Rescate FRENTE completado (DataURI en DB)');
+                }
             }
 
             if (backData) {
                 uploadCount++;
-                // Borrar foto vieja antes de subir la nueva
-                if (user.licenseBackPhoto) {
+                // Borrar foto vieja si existe una URL de Storage
+                if (user.licenseBackPhoto && user.licenseBackPhoto.startsWith('http')) {
                     Components.showToast(`🗑️ Eliminando foto dorso anterior...`, 'info');
                     await deleteFile(user.licenseBackPhoto).catch(() => {});
                 }
-                Components.showToast(`📤 Subiendo foto dorso (${uploadCount}/${total})...`, 'info');
-                const backURL = await uploadLicensePhoto(backData, user.id, 'back');
-                user.licenseBackPhoto = backURL;
-                console.log('✅ Dorso subida:', backURL);
+                
+                try {
+                    Components.showToast(`📤 Subiendo foto dorso (${uploadCount}/${total})...`, 'info');
+                    const backURL = await uploadLicensePhoto(backData, user.id, 'back');
+                    user.licenseBackPhoto = backURL;
+                    console.log('✅ Dorso subida a Storage:', backURL);
+                } catch (storageErr) {
+                    console.warn('⚠️ Storage bloqueado/fallido para DORSO, activando rescate DB...', storageErr);
+                    Components.showToast(`⚠️ Servidor saturado. Aplicando guardado directo comprimido...`, 'warning');
+                    const fallbackData = await compressToFitLimit(backData, 4800);
+                    user.licenseBackPhoto = fallbackData;
+                    console.log('🛡️ Rescate DORSO completado (DataURI en DB)');
+                }
             }
 
             Components.showToast(`✅ ${total} foto(s) subida(s) correctamente`, 'success');

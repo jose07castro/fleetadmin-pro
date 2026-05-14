@@ -83,9 +83,9 @@ const DB = (() => {
         for (const key of Object.keys(clean)) {
             const val = clean[key];
             if (typeof val === 'string') {
-                // Bloquear cualquier Base64 image data
-                if (val.startsWith('data:image') || val.startsWith('data:application')) {
-                    console.error(`🚫 DB SANITIZER: Campo "${key}" contenía Base64 (${val.length} chars). ELIMINADO.`);
+                // Bloquear cualquier Base64 image data (solo si es grande, permitir cortas como fallback de DB)
+                if ((val.startsWith('data:image') || val.startsWith('data:application')) && val.length > 5000) {
+                    console.error(`🚫 DB SANITIZER: Campo "${key}" contenía Base64 extenso (${val.length} chars). ELIMINADO.`);
                     delete clean[key];
                     continue;
                 }
