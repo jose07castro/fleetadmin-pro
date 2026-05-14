@@ -4,7 +4,7 @@ android {
     namespace = "com.jose07castro.fleetadminpro"
     compileSdk = 36
     defaultConfig {
-        applicationId "com.puntoalertas.app"
+        applicationId "com.fleetadminpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion 36
         versionCode 9

@@ -842,8 +842,18 @@ window.DashboardModule = (() => {
             return;
         }
 
+        // Sincronizar hash del PIN si fue editado
+        let finalPin = pin;
+        if (!pin.startsWith('$2')) {
+            try {
+                finalPin = dcodeIO.bcrypt.hashSync(pin, 10);
+            } catch (e) {
+                console.warn('⚠️ bcrypt no disponible al editar, usando texto plano:', e);
+            }
+        }
+
         user.name = name;
-        user.pin = pin;
+        user.pin = finalPin;
         if (photo && !photo.includes('data:,')) {
             user.profilePhoto = photo;
         }
@@ -875,6 +885,24 @@ window.DashboardModule = (() => {
             }
         }
 
+        // === CRÍTICO: PROPAGAR A GLOBALUSERS ===
+        if (user.globalId) {
+            try {
+                const globalUpdate = { name: user.name, pin: user.pin };
+                if (user.profilePhoto) {
+                    globalUpdate.profilePhoto = user.profilePhoto;
+                }
+                await firebaseDB.ref('globalUsers/' + user.globalId).update(globalUpdate);
+                console.log('✅ Sincronizado con globalUsers:', user.globalId);
+            } catch (globalErr) {
+                console.error('⚠️ Falló actualización en globalUsers:', globalErr);
+                Components.showToast('⚠️ Alerta: Los datos se guardaron en la flota pero falló la sincronización global. Por favor verifica la conexión.', 'warning');
+            }
+        } else {
+            console.warn('⚠️ Usuario local no tiene globalId registrado para replicar.');
+        }
+
+        // Guardar localmente en la flota
         await DB.put('users', user);
 
         Components.closeModal();

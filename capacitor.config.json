@@ -1,5 +1,5 @@
 {
-  "appId": "com.jose07castro.fleetadminpro",
+  "appId": "com.fleetadminpro.app",
   "appName": "FleetAdmin",
   "webDir": "www",
   "bundledWebRuntime": false,
