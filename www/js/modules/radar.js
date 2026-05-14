@@ -14,13 +14,97 @@ const RadarModule = (() => {
     let _firebaseRef = null;
     let _alertRef = null;
     let _isOpen = false;
-    let _markers = {};       // { driverId: L.marker }
-    let _alertMarkers = {};  // { alertId: L.marker }
+    let _markers = {};       // { driverId: HTMLMapMarker }
+    let _alertMarkers = {};  // { alertId: {marker, infoWindow} }
     let _trackingInterval = null;
     let _watchId = null;
     let _voiceEnabled = localStorage.getItem('radarVoice') !== 'off'; // ON por defecto
-    let _tileLayer = null;
     let _mapStyle = localStorage.getItem('radarMapStyle') || 'dark'; // Estilo por defecto
+
+    // JSON STYLES PARA GOOGLE MAPS API
+    const GOOGLE_MAP_DARK_STYLE = [
+        { "elementType": "geometry", "stylers": [{ "color": "#1d2d44" }] },
+        { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
+        { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
+        { "featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{ "color": "#d59563" }] },
+        { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
+        { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9ca5b3" }] },
+        { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#746855" }] },
+        { "featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{ "color": "#f3d19c" }] },
+        { "featureType": "transit", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] }
+    ];
+
+    const GOOGLE_MAP_LIGHT_STYLE = [
+        { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "transit", "stylers": [{ "visibility": "simplified" }] }
+    ];
+
+    let _HTMLMapMarkerClass = null;
+    function _getHTMLMapMarkerClass() {
+        if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
+        
+        _HTMLMapMarkerClass = class extends google.maps.OverlayView {
+            constructor(latlng, html, popupHtml) {
+                super();
+                this.latlng = latlng;
+                this.html = html;
+                this.popupHtml = popupHtml;
+                this.div = null;
+            }
+            onAdd() {
+                this.div = document.createElement('div');
+                this.div.style.position = 'absolute';
+                this.div.style.cursor = 'pointer';
+                this.div.style.zIndex = '10';
+                this.div.innerHTML = this.html;
+                
+                if (this.popupHtml) {
+                    this.div.addEventListener('click', () => {
+                        if (window._activeInfoWindow) window._activeInfoWindow.close();
+                        const iw = new google.maps.InfoWindow({
+                            content: this.popupHtml,
+                            pixelOffset: new google.maps.Size(0, -25)
+                        });
+                        iw.setPosition(this.latlng);
+                        iw.open(this.getMap());
+                        window._activeInfoWindow = iw;
+                    });
+                }
+                this.getPanes().overlayMouseTarget.appendChild(this.div);
+            }
+            draw() {
+                if (!this.div) return;
+                const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
+                if (pos) {
+                    this.div.style.left = (pos.x - 30) + 'px';
+                    this.div.style.top = (pos.y - 30) + 'px';
+                }
+            }
+            onRemove() {
+                if (this.div) {
+                    this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+            }
+            setPosition(latlng) {
+                this.latlng = latlng;
+                this.draw();
+            }
+            setHtml(html) {
+                this.html = html;
+                if (this.div) this.div.innerHTML = html;
+            }
+            setPopupContent(content) {
+                this.popupHtml = content;
+            }
+            getPosition() {
+                return this.latlng;
+            }
+        };
+        return _HTMLMapMarkerClass;
+    }
 
     // ============ RENDER BUTTON IN DASHBOARD ============
 
@@ -104,7 +188,6 @@ const RadarModule = (() => {
 
         // Destroy map
         if (_map) {
-            _map.remove();
             _map = null;
         }
         _markers = {};
@@ -120,37 +203,24 @@ const RadarModule = (() => {
         }
     }
 
-    // ============ LEAFLET MAP INIT ============
+    // ============ GOOGLE MAP INIT ============
 
     function _initMap() {
         // Default center: Rosario, Argentina (approximate fleet location)
         const defaultLat = -33.0232;
         const defaultLng = -60.6389;
 
-        _map = L.map('radarMap', {
-            center: [defaultLat, defaultLng],
+        const activeStyle = _mapStyle === 'light' ? GOOGLE_MAP_LIGHT_STYLE : GOOGLE_MAP_DARK_STYLE;
+
+        _map = new google.maps.Map(document.getElementById('radarMap'), {
+            center: { lat: defaultLat, lng: defaultLng },
             zoom: 13,
+            styles: activeStyle,
             zoomControl: true,
-            attributionControl: false
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false
         });
-
-        // Seleccionar URL del tile provider según preferencia persistida
-        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        const activeUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
-
-        _tileLayer = L.tileLayer(activeUrl, {
-            maxZoom: 20,
-            subdomains: 'abcd',
-            detectRetina: true,
-            attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-        }).addTo(_map);
-
-
-        // Fix map sizing
-        setTimeout(() => {
-            _map.invalidateSize();
-        }, 100);
     }
 
     // ============ CREATE CAR MARKER ============
@@ -255,22 +325,16 @@ const RadarModule = (() => {
 
         const carSvg = generateDetailedCarSVG(viewAngle, theme, isTaxi);
 
-        return L.divIcon({
-            className: 'radar-car-marker',
-            html: `
-                <div class="radar-car-container">
-                    <div class="radar-car-label ${statusClass}">${displayName}</div>
-                    <div class="radar-car-icon-wrapper ${statusClass}">
-                        <div class="radar-car-internal">
-                            ${carSvg}
-                        </div>
+        return `
+            <div class="radar-car-container">
+                <div class="radar-car-label ${statusClass}">${displayName}</div>
+                <div class="radar-car-icon-wrapper ${statusClass}">
+                    <div class="radar-car-internal">
+                        ${carSvg}
                     </div>
                 </div>
-            `,
-            iconSize: [60, 60],
-            iconAnchor: [30, 30],
-            popupAnchor: [0, -30]
-        });
+            </div>
+        `;
     }
 
     function _updateMarker(driverId, data, shift, vehicle) {
@@ -357,17 +421,19 @@ const RadarModule = (() => {
 
         const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
 
+        const latlng = new google.maps.LatLng(lat, lng);
+        const html = _createCarIcon(heading, displayName, statusClass, carColor);
+
         if (_markers[driverId]) {
             // Update existing marker
-            _markers[driverId].setLatLng([lat, lng]);
-            _markers[driverId].setIcon(_createCarIcon(heading, displayName, statusClass, carColor));
-            _markers[driverId].getPopup().setContent(popupContent);
+            _markers[driverId].setPosition(latlng);
+            _markers[driverId].setHtml(html);
+            _markers[driverId].setPopupContent(popupContent);
         } else {
             // Create new marker
-            const marker = L.marker([lat, lng], {
-                icon: _createCarIcon(heading, displayName, statusClass, carColor)
-            }).addTo(_map);
-            marker.bindPopup(popupContent);
+            const MarkerClass = _getHTMLMapMarkerClass();
+            const marker = new MarkerClass(latlng, html, popupContent);
+            marker.setMap(_map);
             _markers[driverId] = marker;
         }
 
@@ -376,7 +442,7 @@ const RadarModule = (() => {
 
     function _removeMarker(driverId) {
         if (_markers[driverId]) {
-            _map.removeLayer(_markers[driverId]);
+            _markers[driverId].setMap(null);
             delete _markers[driverId];
         }
     }
@@ -479,14 +545,16 @@ const RadarModule = (() => {
     let _hasUserPanned = false;
 
     function _fitBounds() {
-        const positions = Object.values(_markers).map(m => m.getLatLng());
+        const positions = Object.values(_markers).map(m => m.getPosition());
         if (positions.length === 0) return;
 
         if (positions.length === 1) {
-            _map.setView(positions[0], 15);
+            _map.setCenter(positions[0]);
+            _map.setZoom(15);
         } else {
-            const bounds = L.latLngBounds(positions);
-            _map.fitBounds(bounds, { padding: [50, 50] });
+            const bounds = new google.maps.LatLngBounds();
+            positions.forEach(p => bounds.extend(p));
+            _map.fitBounds(bounds);
         }
 
         // After first auto-fit, don't auto-fit again (let user pan freely)
@@ -579,25 +647,43 @@ const RadarModule = (() => {
             </div>
         `;
 
+        const latlng = { lat, lng };
+
         if (_alertMarkers[id]) {
-            // Alerta existente: solo actualizar posición y popup (sin voz)
-            _alertMarkers[id].setLatLng([lat, lng]);
-            _alertMarkers[id].getPopup().setContent(popupContent);
+            // Alerta existente: solo actualizar posición y popup
+            _alertMarkers[id].marker.setPosition(latlng);
+            _alertMarkers[id].infoWindow.setContent(popupContent);
         } else {
-            // Alerta NUEVA: mostrar en mapa y anunciar por voz
-            const marker = L.marker([lat, lng], {
-                icon: _createAlertIcon(type)
-            }).addTo(_map);
-            marker.bindPopup(popupContent);
-            _alertMarkers[id] = marker;
+            // Alerta NUEVA: mostrar en mapa
+            const iconUrl = _getAlertIconUrl(type);
+            
+            const marker = new google.maps.Marker({
+                position: latlng,
+                map: _map,
+                icon: {
+                    url: iconUrl,
+                    scaledSize: new google.maps.Size(44, 44),
+                    anchor: new google.maps.Point(22, 22)
+                }
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                content: popupContent
+            });
+
+            marker.addListener('click', () => {
+                if (window._activeInfoWindow) window._activeInfoWindow.close();
+                infoWindow.open(_map, marker);
+                window._activeInfoWindow = infoWindow;
+            });
+
+            _alertMarkers[id] = { marker, infoWindow };
             
             // Auto-enfocar el mapa en la nueva alerta con una animación suave
             if (_map) {
-                _map.flyTo([lat, lng], 14, { animate: true, duration: 1.5 });
+                _map.panTo(latlng);
+                _map.setZoom(14);
             }
-
-            // La voz ahora se maneja 100% a nivel GLOBAL por TrafficAlerts
-            // para que suene con el mapa abierto, cerrado o en segundo plano.
         }
     }
 
@@ -616,12 +702,12 @@ const RadarModule = (() => {
 
     function _removeAlertMarker(id) {
         if (_alertMarkers[id]) {
-            _map.removeLayer(_alertMarkers[id]);
+            _alertMarkers[id].marker.setMap(null);
             delete _alertMarkers[id];
         }
     }
 
-    function _createAlertIcon(type) {
+    function _getAlertIconUrl(type) {
         const iconMap = {
             police:     '/assets/alert-icons/police.png',
             checkpoint: '/assets/alert-icons/police.png',
@@ -634,14 +720,7 @@ const RadarModule = (() => {
             traffic:    '/assets/alert-icons/accident.png',
             warning:    '/assets/alert-icons/accident.png',
         };
-        const iconUrl = iconMap[type] || iconMap.warning;
-
-        return L.icon({
-            iconUrl,
-            iconSize:   [44, 44],
-            iconAnchor: [22, 22],
-            popupAnchor:[0, -22]
-        });
+        return iconMap[type] || iconMap.warning;
     }
 
     // ============ FEEDBACK LOGIC ============
@@ -693,17 +772,15 @@ const RadarModule = (() => {
     // ============ TOGGLE MAP STYLE ============
 
     function toggleMapStyle() {
-        if (!_map || !_tileLayer) return;
+        if (!_map) return;
         
         _mapStyle = _mapStyle === 'dark' ? 'light' : 'dark';
         localStorage.setItem('radarMapStyle', _mapStyle);
         
-        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        const targetUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+        const activeStyle = _mapStyle === 'light' ? GOOGLE_MAP_LIGHT_STYLE : GOOGLE_MAP_DARK_STYLE;
         
-        // Cambiar URL suavemente sin recrear el mapa
-        _tileLayer.setUrl(targetUrl);
+        // Cambiar estilos suavemente sin recrear el mapa
+        _map.setOptions({ styles: activeStyle });
         
         // Cambiar look del botón flotante
         const btn = document.getElementById('radarMapStyleBtn');

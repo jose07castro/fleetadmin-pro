@@ -24,14 +24,7 @@ const GPSModule = (() => {
             .sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt))
             .slice(0, 30);
 
-        // Inyectar Leaflet CSS si no está
-        if (!document.getElementById('leaflet-css')) {
-            const link = document.createElement('link');
-            link.id = 'leaflet-css';
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            document.head.appendChild(link);
-        }
+        // v125: Leaflet dependencies replaced by Google Maps global SDK
 
         // Inicializar mapa después del render
         setTimeout(() => _initMap(), 100);
@@ -109,14 +102,7 @@ const GPSModule = (() => {
     // VISTA PARA CONDUCTORES: Mapa en Vivo y Alertas
     // =============================================
     function _renderDriverMap() {
-        // Inyectar Leaflet CSS si no está
-        if (!document.getElementById('leaflet-css')) {
-            const link = document.createElement('link');
-            link.id = 'leaflet-css';
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            document.head.appendChild(link);
-        }
+        // v125: Leaflet dependencies replaced by Google Maps global SDK
 
         // Cargar Leaflet JS e inicializar
         setTimeout(() => _initMap(), 100);
@@ -157,39 +143,114 @@ const GPSModule = (() => {
     }
 
     let map = null;
-    let _tileLayer = null;
     let _mapStyle = localStorage.getItem('gpsMapStyle') || 'dark';
     let markers = {};
     let userMarker = null;
 
-    async function _initMap() {
-        if (typeof L === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.onload = () => _initMap();
-            document.body.appendChild(script);
-            return;
-        }
+    // JSON STYLES PARA GOOGLE MAPS API
+    const GOOGLE_MAP_DARK_STYLE = [
+        { "elementType": "geometry", "stylers": [{ "color": "#1d2d44" }] },
+        { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
+        { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
+        { "featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{ "color": "#d59563" }] },
+        { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
+        { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9ca5b3" }] },
+        { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#746855" }] },
+        { "featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{ "color": "#f3d19c" }] },
+        { "featureType": "transit", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] }
+    ];
 
+    const GOOGLE_MAP_LIGHT_STYLE = [
+        { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+        { "featureType": "transit", "stylers": [{ "visibility": "simplified" }] }
+    ];
+
+    let _HTMLMapMarkerClass = null;
+    function _getHTMLMapMarkerClass() {
+        if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
+        
+        _HTMLMapMarkerClass = class extends google.maps.OverlayView {
+            constructor(latlng, html, popupHtml, offset = 30) {
+                super();
+                this.latlng = latlng;
+                this.html = html;
+                this.popupHtml = popupHtml;
+                this.offset = offset;
+                this.div = null;
+            }
+            onAdd() {
+                this.div = document.createElement('div');
+                this.div.style.position = 'absolute';
+                this.div.style.cursor = 'pointer';
+                this.div.style.zIndex = '10';
+                this.div.innerHTML = this.html;
+                
+                if (this.popupHtml) {
+                    this.div.addEventListener('click', () => {
+                        if (window._activeInfoWindow) window._activeInfoWindow.close();
+                        const iw = new google.maps.InfoWindow({
+                            content: this.popupHtml,
+                            pixelOffset: new google.maps.Size(0, -this.offset)
+                        });
+                        iw.setPosition(this.latlng);
+                        iw.open(this.getMap());
+                        window._activeInfoWindow = iw;
+                    });
+                }
+                this.getPanes().overlayMouseTarget.appendChild(this.div);
+            }
+            draw() {
+                if (!this.div) return;
+                const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
+                if (pos) {
+                    this.div.style.left = (pos.x - this.offset) + 'px';
+                    this.div.style.top = (pos.y - this.offset) + 'px';
+                }
+            }
+            onRemove() {
+                if (this.div) {
+                    this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+            }
+            setPosition(latlng) {
+                this.latlng = latlng;
+                this.draw();
+            }
+            setHtml(html) {
+                this.html = html;
+                if (this.div) this.div.innerHTML = html;
+            }
+            getPosition() {
+                return this.latlng;
+            }
+        };
+        return _HTMLMapMarkerClass;
+    }
+
+    async function _initMap() {
         const loader = document.getElementById('map-loader');
         
         // Rosario por defecto
-        const defaultCenter = [-32.9468, -60.6393];
+        const defaultLat = -32.9468;
+        const defaultLng = -60.6393;
+
+        const activeStyle = _mapStyle === 'light' ? GOOGLE_MAP_LIGHT_STYLE : GOOGLE_MAP_DARK_STYLE;
         
-        map = L.map('live-map', {
-            zoomControl: false
-        }).setView(defaultCenter, 13);
-
-        // Seleccionar URL según preferencia persistida
-        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        const activeUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
-
-        _tileLayer = L.tileLayer(activeUrl, {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-
-        L.control.zoom({ position: 'topright' }).addTo(map);
+        map = new google.maps.Map(document.getElementById('live-map'), {
+            center: { lat: defaultLat, lng: defaultLng },
+            zoom: 13,
+            styles: activeStyle,
+            zoomControl: true,
+            zoomControlOptions: {
+                position: google.maps.ControlPosition.RIGHT_TOP
+            },
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false
+        });
 
         if (loader) loader.style.display = 'none';
 
@@ -218,16 +279,17 @@ const GPSModule = (() => {
                     badge.className = 'badge badge-success';
                 }
 
+                const latlng = new google.maps.LatLng(latitude, longitude);
+
                 if (!userMarker) {
-                    const carIcon = L.divIcon({
-                        html: '<div style="background:var(--accent-primary); width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 0 15px var(--accent-primary);"></div>',
-                        className: '',
-                        iconSize: [16, 16]
-                    });
-                    userMarker = L.marker([latitude, longitude], { icon: carIcon }).addTo(map);
-                    map.panTo([latitude, longitude]);
+                    const MarkerClass = _getHTMLMapMarkerClass();
+                    const html = '<div style="background:var(--accent-primary); width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 0 15px var(--accent-primary);"></div>';
+                    userMarker = new MarkerClass(latlng, html, null, 8);
+                    userMarker.setMap(map);
+                    
+                    map.panTo(latlng);
                 } else {
-                    userMarker.setLatLng([latitude, longitude]);
+                    userMarker.setPosition(latlng);
                 }
             },
             (err) => {
@@ -258,7 +320,7 @@ const GPSModule = (() => {
         // Limpiar markers que ya no están en Firebase
         Object.keys(markers).forEach(id => {
             if (!alerts[id]) {
-                map.removeLayer(markers[id]);
+                markers[id].setMap(null);
                 delete markers[id];
             }
         });
@@ -268,31 +330,30 @@ const GPSModule = (() => {
             const alert = alerts[id];
             if (alert.type === 'police' || alert.type === 'checkpoint') pCount++; else tCount++;
 
+            const latlng = new google.maps.LatLng(alert.lat, alert.lng);
+
             if (markers[id]) {
-                markers[id].setLatLng([alert.lat, alert.lng]);
+                markers[id].setPosition(latlng);
             } else {
                 const isOperativo = alert.type === 'police' || alert.type === 'checkpoint';
                 const iconHtml = isOperativo 
                     ? '<div style="font-size:24px; filter: drop-shadow(0 0 5px blue);">👮‍♂️</div>' 
                     : '<div style="font-size:24px; filter: drop-shadow(0 0 5px orange);">⚠️</div>';
 
-                const icon = L.divIcon({
-                    html: iconHtml,
-                    className: 'map-alert-icon',
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 15]
-                });
-
                 const popupLabel = isOperativo ? '🚔 Operativo Detectado' : '⚠️ Alerta de Tránsito';
-                markers[id] = L.marker([alert.lat, alert.lng], { icon })
-                    .addTo(map)
-                    .bindPopup(`
-                        <div style="text-align:center; padding:5px;">
-                            <strong style="display:block; margin-bottom:5px;">${popupLabel}</strong>
-                            <p style="margin:0; font-size:12px;">${alert.location}</p>
-                            <span style="font-size:10px; color:gray;">Detectado por Bot WhatsApp</span>
-                        </div>
-                    `);
+                
+                const popupContent = `
+                    <div style="text-align:center; padding:5px; font-family:Inter,sans-serif;">
+                        <strong style="display:block; margin-bottom:5px;">${popupLabel}</strong>
+                        <p style="margin:0; font-size:12px;">${alert.location}</p>
+                        <span style="font-size:10px; color:gray;">Detectado por Bot WhatsApp</span>
+                    </div>
+                `;
+
+                const MarkerClass = _getHTMLMapMarkerClass();
+                const marker = new MarkerClass(latlng, iconHtml, popupContent, 15);
+                marker.setMap(map);
+                markers[id] = marker;
             }
         });
 
@@ -362,17 +423,15 @@ const GPSModule = (() => {
 
     // ============ TOGGLE MAP STYLE ============
     function toggleMapStyle() {
-        if (!map || !_tileLayer) return;
+        if (!map) return;
         
         _mapStyle = _mapStyle === 'dark' ? 'light' : 'dark';
         localStorage.setItem('gpsMapStyle', _mapStyle);
         
-        const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-        const lightUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-        const targetUrl = _mapStyle === 'light' ? lightUrl : darkUrl;
+        const activeStyle = _mapStyle === 'light' ? GOOGLE_MAP_LIGHT_STYLE : GOOGLE_MAP_DARK_STYLE;
         
-        // Cambiar URL suavemente
-        _tileLayer.setUrl(targetUrl);
+        // Cambiar estilos suavemente
+        map.setOptions({ styles: activeStyle });
         
         // Cambiar aspecto del botón
         const btn = document.getElementById('gpsMapStyleBtn');
