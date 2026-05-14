@@ -337,7 +337,7 @@ const RadarModule = (() => {
         `;
     }
 
-    function _updateMarker(driverId, data, shift, vehicle) {
+    async function _updateMarker(driverId, data, shift, vehicle) {
         if (!_map || !data || !data.lat || !data.lng) return;
 
         // v119: Filtro de autorretrato - Ocultar mi propio marcador en el mapa
@@ -384,12 +384,57 @@ const RadarModule = (() => {
 
         const batteryText = (data.battery !== undefined && data.battery !== null) ? `${data.battery}%` : 'N/A';
 
+        let maintenanceHtml = '';
+        if (vehicle && typeof Alerts !== 'undefined' && typeof Units !== 'undefined') {
+            try {
+                const belt = await Alerts.getBeltStatus(vehicle);
+                const oil = Alerts.getOilChangeStatus(vehicle);
+                
+                const alerts = [];
+                // 60,000 km Timing Belt alert check
+                if (belt && (belt.level === 'danger' || belt.level === 'warning')) {
+                    const isDanger = belt.level === 'danger';
+                    const label = isDanger ? '🔴 Correa Vencida' : '🟡 Correa Próxima';
+                    alerts.push(`
+                        <div style="display:flex; align-items:center; gap:6px; font-size:0.8rem; margin-top:4px; color:${isDanger ? '#ef4444' : '#f59e0b'}; font-weight:600; background:rgba(${isDanger ? '239,68,68' : '245,158,11'},0.1); padding:4px 8px; border-radius:6px; border:1px solid rgba(${isDanger ? '239,68,68' : '245,158,11'},0.2);">
+                            <span>⚙️</span>
+                            <span>${label} (${Units.formatDistance(belt.remainingKm)})</span>
+                        </div>
+                    `);
+                }
+                // Oil Change alert check
+                if (oil && (oil.level === 'danger' || oil.level === 'warning')) {
+                    const isDanger = oil.level === 'danger';
+                    const label = isDanger ? '🔴 Aceite Vencido' : '🟡 Aceite Próximo';
+                    alerts.push(`
+                        <div style="display:flex; align-items:center; gap:6px; font-size:0.8rem; margin-top:4px; color:${isDanger ? '#ef4444' : '#f59e0b'}; font-weight:600; background:rgba(${isDanger ? '239,68,68' : '245,158,11'},0.1); padding:4px 8px; border-radius:6px; border:1px solid rgba(${isDanger ? '239,68,68' : '245,158,11'},0.2);">
+                            <span>🛢️</span>
+                            <span>${label} (${Units.formatDistance(oil.remainingKm)})</span>
+                        </div>
+                    `);
+                }
+
+                if (alerts.length > 0) {
+                    maintenanceHtml = `
+                        <div style="margin-top:10px; padding-top:8px; border-top:1px dashed rgba(0,0,0,0.15);">
+                            <div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:4px;">
+                                ⚠️ Mantenimiento Crítico
+                            </div>
+                            ${alerts.join('')}
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.warn('Error al verificar alertas en Radar popup:', e);
+            }
+        }
+
         const popupContent = `
-            <div style="font-family:Inter,sans-serif; min-width:200px;">
+            <div style="font-family:Inter,sans-serif; min-width:210px;">
                 <div class="radar-popup-header">
                     <div class="radar-popup-avatar">👤</div>
                     <div>
-                        <div class="radar-popup-title">${name}</div>
+                        <div class="radar-popup-title">${firstName}</div>
                         <div class="radar-popup-subtitle">${shift ? (shift.shiftType === 'day' ? '🌅 Turno Día' : '🌙 Turno Noche') : 'Off-Duty'}</div>
                     </div>
                 </div>
@@ -416,6 +461,7 @@ const RadarModule = (() => {
                     <span><span class="radar-popup-icon">🕐</span> Actividad:</span>
                     <span>${timeAgo}</span>
                 </div>
+                ${maintenanceHtml}
             </div>
         `;
 
@@ -516,7 +562,7 @@ const RadarModule = (() => {
                 if (data && data.lat && data.lng) {
                     const shift = driverShiftMap[driverId];
                     const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
-                    const isAlive = _updateMarker(driverId, data, shift, vehicle);
+                    const isAlive = await _updateMarker(driverId, data, shift, vehicle);
                     if (isAlive) {
                         activeCount++;
                     }
