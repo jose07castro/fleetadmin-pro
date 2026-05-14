@@ -837,7 +837,7 @@ const SettingsModule = (() => {
 
     async function renderCompleteProfile() {
         const user = Auth.getUser();
-        const fullUser = user ? await DB.get('users', user.id) : null;
+        const fullUser = user ? await Auth.getFleetUserRecord() : null;
 
         return `
             <div style="max-width:500px; margin:0 auto; padding:var(--space-6) var(--space-4);">
