@@ -744,7 +744,13 @@ ABREVIATURAS COMUNES (IMPORTANTE — resolvé estas SIEMPRE):
 - "cba" = Córdoba (la calle, no la provincia)
 - "pcia" = Provincia
 - "muni" = Municipal
-- "oño" / "oroño" = Oroño
+- "oño" / "oroño" = Boulevard Oroño
+- "arijon" / "arijón" = Arijón (NUNCA alucinar con "Arizona", eso es un error fonético grave)
+
+¡¡¡ATENCIÓN EXTREMA!!!:
+En Rosario, Oroño SIEMPRE es "Boulevard", NUNCA "Avenida". Escribe siempre "Boulevard Oroño".
+NUNCA inventes nombres de calles en inglés o parecidos. Si el chofer escribe "arijon", es estrictamente "Arijón", jamás "Arizona".
+
 
 LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
 - "cancha de Central" / "Arroyito" / "estadio de Central" → "Avenida Gorriti 2001"
@@ -944,10 +950,31 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         });
 
         const result = expanded.join(separator);
-        if (result.toLowerCase() !== address.toLowerCase()) {
-            console.log(`📝 [ALIAS] "${address}" → "${result}"`);
+        
+        // CORRECCIÓN MATEMÁTICA ULTRA-ROBUSTA (HARDENING):
+        // Evitamos de raíz que fallos de la IA o typos dejen "Avenida Oroño" o "Arizona"
+        let hardened = result;
+        
+        if (/oroño|orono/i.test(hardened)) {
+            // Reemplazar "Avenida Oroño" o "Av. Oroño" por "Boulevard Oroño"
+            hardened = hardened.replace(/avenida\s+oro[ñn]o/gi, 'Boulevard Oroño')
+                               .replace(/\bav\.?\s+oro[ñn]o/gi, 'Boulevard Oroño');
+            
+            // Si dice "Oroño" a secas, anteponer "Boulevard " si no tiene prefijo
+            if (!/boulevard|bvar|bv\.?/i.test(hardened)) {
+                hardened = hardened.replace(/\boro[ñn]o\b/gi, 'Boulevard Oroño');
+            }
         }
-        return result;
+
+        // Evitar la alucinación "Arizona" -> "Arijón"
+        if (/arizona/i.test(hardened)) {
+            hardened = hardened.replace(/\barizona\b/gi, 'Arijón');
+        }
+
+        if (hardened.toLowerCase() !== address.toLowerCase()) {
+            console.log(`🏷️ [ALIAS] "${address}" -> "${hardened}"`);
+        }
+        return hardened;
     }
 
     /**
@@ -990,7 +1017,7 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
                 
                 // Usamos Photon con sesgo espacial forzado al Centro de Rosario (-32.9477, -60.6652) para dar prioridad absoluta a la zona urbana central
                 const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
-                console.log(`🌐 [GEO] URL Photon: ${url.substring(0,100)}...`);
+                console.log(`🚀 [GEO-V237-OK] Photon-URL: ${url.substring(0,100)}...`);
                 
                 const response = await axios.get(url, { timeout: 10000 });
                 const features = response.data?.features || [];
