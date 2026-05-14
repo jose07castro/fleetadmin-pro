@@ -102,10 +102,43 @@ const DB = (() => {
         return clean;
     }
 
+    // --- PARIDAD NATIVO <-> WEB: Normalización de Campos de Usuario ---
+    function _normalizeUser(u) {
+        if (!u || typeof u !== 'object') return u;
+        
+        // Clonar para evitar mutaciones colaterales no deseadas
+        const res = { ...u };
+
+        // 1. De español (Android/Capacitor) a inglés (Web)
+        if (res.nro_licencia && !res.licenseNumber) res.licenseNumber = res.nro_licencia;
+        if (res.fecha_otorgamiento && !res.licenseIssueDate) res.licenseIssueDate = res.fecha_otorgamiento;
+        if (res.fecha_vencimiento && !res.licenseExpiryDate) res.licenseExpiryDate = res.fecha_vencimiento;
+        if (res.domicilio && !res.address) res.address = res.domicilio;
+        if (res.telefono && !res.whatsapp) res.whatsapp = res.telefono;
+        if (res.licencia_frente && !res.licenseFrontPhoto) res.licenseFrontPhoto = res.licencia_frente;
+        if (res.foto_frente && !res.licenseFrontPhoto) res.licenseFrontPhoto = res.foto_frente;
+        if (res.licencia_dorso && !res.licenseBackPhoto) res.licenseBackPhoto = res.licencia_dorso;
+        if (res.foto_dorso && !res.licenseBackPhoto) res.licenseBackPhoto = res.foto_dorso;
+
+        // 2. De inglés (Web) a español (Android/Capacitor)
+        if (res.licenseNumber && !res.nro_licencia) res.nro_licencia = res.licenseNumber;
+        if (res.licenseIssueDate && !res.fecha_otorgamiento) res.fecha_otorgamiento = res.licenseIssueDate;
+        if (res.licenseExpiryDate && !res.fecha_vencimiento) res.fecha_vencimiento = res.licenseExpiryDate;
+        if (res.address && !res.domicilio) res.domicilio = res.address;
+        if (res.whatsapp && !res.telefono) res.telefono = res.whatsapp;
+        if (res.licenseFrontPhoto && !res.licencia_frente) res.licencia_frente = res.licenseFrontPhoto;
+        if (res.licenseFrontPhoto && !res.foto_frente) res.foto_frente = res.licenseFrontPhoto;
+        if (res.licenseBackPhoto && !res.licencia_dorso) res.licencia_dorso = res.licenseBackPhoto;
+        if (res.licenseBackPhoto && !res.foto_dorso) res.foto_dorso = res.licenseBackPhoto;
+
+        return res;
+    }
+
     // --- Operaciones CRUD genéricas (dentro de la flota activa) ---
     async function add(storeName, data) {
         const ref = db.ref(fleetPath(storeName)).push();
-        const sanitized = _sanitizeForFirebase(data);
+        let sanitized = _sanitizeForFirebase(data);
+        if (storeName === 'users') sanitized = _normalizeUser(sanitized);
         const newItem = {
             ...sanitized,
             id: ref.key,
@@ -128,7 +161,8 @@ const DB = (() => {
 
     async function put(storeName, data) {
         if (!data.id) throw new Error('put() requiere un ID');
-        const sanitized = _sanitizeForFirebase(data);
+        let sanitized = _sanitizeForFirebase(data);
+        if (storeName === 'users') sanitized = _normalizeUser(sanitized);
         const updated = {
             ...sanitized,
             updatedAt: new Date().toISOString()
@@ -141,13 +175,16 @@ const DB = (() => {
         const path = `${fleetPath(storeName)}/${id}`;
         try {
             const snap = await fetchWithTimeout(db.ref(path), 5000);
-            const val = snap.val() || undefined;
+            let val = snap.val() || undefined;
+            if (storeName === 'users' && val) val = _normalizeUser(val);
             try { if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val)); } catch(ce) { /* quota */ }
             return val;
         } catch (e) {
             console.warn(`Fallback caché (offline): get(${storeName}, ${id})`);
             const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_${id}`);
-            return cached ? JSON.parse(cached) : undefined;
+            let val = cached ? JSON.parse(cached) : undefined;
+            if (storeName === 'users' && val) val = _normalizeUser(val);
+            return val;
         }
     }
 
@@ -156,13 +193,16 @@ const DB = (() => {
         try {
             const snap = await fetchWithTimeout(db.ref(path), 7000);
             const val = snap.val();
-            const data = val ? Object.values(val) : [];
+            let data = val ? Object.values(val) : [];
+            if (storeName === 'users') data = data.map(_normalizeUser);
             try { localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(data)); } catch(ce) { /* quota */ }
             return data;
         } catch (e) {
             console.warn(`Fallback caché (offline): getAll(${storeName})`);
             const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_all`);
-            return cached ? JSON.parse(cached) : [];
+            let data = cached ? JSON.parse(cached) : [];
+            if (storeName === 'users') data = data.map(_normalizeUser);
+            return data;
         }
     }
 

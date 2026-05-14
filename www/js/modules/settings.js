@@ -979,6 +979,12 @@ const SettingsModule = (() => {
             user.licenseIssueDate = issueDate;
             user.licenseExpiryDate = expiryDate;
 
+            // Asegurar asociación con el ID global del usuario para prevenir guardados 'anónimos'
+            const globalUser = Auth.getUser();
+            if (globalUser && globalUser.id) {
+                user.globalId = globalUser.id;
+            }
+
             // Subir fotos a Firebase Storage (si hay nuevas)
             if (newFront || newBack) {
                 console.log('📤 Subiendo fotos a Storage...');

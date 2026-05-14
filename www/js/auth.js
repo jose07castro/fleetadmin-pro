@@ -288,15 +288,32 @@ const Auth = (() => {
         const user = getUser();
         if (!user) return null;
         try {
-            // Intentar primero por ID directo
-            const direct = await DB.get('users', user.id);
-            if (direct && direct.role === user.role) return direct;
-            // Fallback: buscar por nombre y rol en la colección de la flota
+            // 1. Intentar primero por ID directo
+            if (user.id) {
+                const direct = await DB.get('users', user.id);
+                if (direct && (direct.role === user.role || direct.globalId === user.id)) return direct;
+            }
+            
             const allUsers = await DB.getAll('users');
-            return allUsers.find(u =>
+            
+            // 2. CRÍTICO: Buscar por globalId en la colección de la flota
+            let match = allUsers.find(u => u.globalId === user.id);
+            if (match) return match;
+
+            // 3. Fallback: buscar por nombre y rol
+            match = allUsers.find(u =>
                 u.name && u.name.toLowerCase() === user.name.toLowerCase() &&
                 u.role === user.role
-            ) || null;
+            );
+            
+            // Auto-reparación: si lo encontró por nombre pero carece de globalId, vincularlo ya
+            if (match && !match.globalId && user.id) {
+                console.log('🔧 Auth: Auto-reparando vinculación de globalId para', match.name);
+                match.globalId = user.id;
+                await DB.put('users', match).catch(err => console.warn('No se pudo auto-reparar globalId:', err));
+            }
+
+            return match || null;
         } catch (e) {
             return null;
         }

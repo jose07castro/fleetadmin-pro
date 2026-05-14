@@ -65,13 +65,21 @@ const Router = (() => {
             route = defaultRoutes[Auth.getRole()] || 'login';
         }
 
-        // Bloqueo de perfil incompleto para conductores
-        // NOTA: No await — verificación diferida para no bloquear la navegación.
-        // El check principal ocurre en doLogin() y App.init().
-        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'apply' && route !== 'complete-profile') {
+        // Bloqueo/Desbloqueo inteligente de perfil para conductores
+        // Si el perfil está incompleto, fuerza 'complete-profile'. 
+        // Si está completo y el usuario está en 'complete-profile', lo libera al Default Route.
+        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'apply') {
             Auth.isProfileComplete().then(profileOk => {
-                if (!profileOk && Router.getCurrentRoute() !== 'complete-profile') {
-                    Router.navigate('complete-profile');
+                if (!profileOk) {
+                    if (Router.getCurrentRoute() !== 'complete-profile') {
+                        console.log('🚀 Router: Perfil incompleto detected, redireccionando a completar...');
+                        Router.navigate('complete-profile');
+                    }
+                } else {
+                    if (route === 'complete-profile') {
+                        console.log('🚀 Router: Perfil completo detected, rompiendo bucle y redirigiendo...');
+                        Router.navigate(Router.getDefaultRoute());
+                    }
                 }
             }).catch(() => { /* error de red, no bloquear */ });
         }
