@@ -419,10 +419,52 @@ const Components = (() => {
         `);
     }
 
+    // --- Modal de Colaboración Internacional ---
+    function showDonationModal() {
+        const alias = "Punto.alertas";
+        const bodyHTML = `
+            <div style="text-align:center; padding:var(--space-2);">
+                <div style="font-size:3.5rem; margin-bottom:var(--space-3); animation: pulseYellow 2s infinite;">💝</div>
+                <h3 style="font-size:var(--font-size-xl); font-weight:800; margin-bottom:var(--space-2); color:var(--text-primary);">
+                    ¡Apoyá el crecimiento de Punto Alertas!
+                </h3>
+                <p style="font-size:var(--font-size-sm); color:var(--text-secondary); margin-bottom:var(--space-5); line-height:1.5;">
+                    Gracias por apoyar el mantenimiento de Punto Alertas. Tu colaboración ayuda a que el servicio siga creciendo a nivel global.
+                </p>
+
+                <div style="background:rgba(255, 193, 7, 0.08); border:1px dashed rgba(255,193,7,0.4); border-radius:var(--radius-lg); padding:var(--space-4); margin-bottom:var(--space-5);">
+                    <div style="font-size:var(--font-size-xs); color:var(--text-secondary); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">
+                        Alias Personal Pay (Principal)
+                    </div>
+                    <div style="font-size:22px; font-weight:900; color:#ffc107; text-shadow:0 2px 4px rgba(0,0,0,0.2); margin-bottom:var(--space-3); font-family:monospace;">
+                        ${alias}
+                    </div>
+                    <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${alias}').then(() => { Components.showToast('✅ Alias copiado: ¡Gracias por apoyar el mantenimiento de Punto Alertas. Tu colaboración ayuda a que el servicio siga creciendo a nivel global!', 'success'); })" style="background:#ffc107; border-color:#ffc107; color:#000; font-weight:800; width:100%; display:flex; justify-content:center; align-items:center; gap:8px; border-radius:var(--radius-md);">
+                        📋 Copiar Alias
+                    </button>
+                </div>
+
+                <div style="margin-bottom:var(--space-4);">
+                    <div style="font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-3); font-weight:600;">Montos sugeridos</div>
+                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:10px;">
+                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${alias}').then(() => { Components.showToast('✅ Alias copiado por $1.000. ¡Muchas gracias!', 'success'); })" style="font-weight:700; display:flex; justify-content:center; border-radius:var(--radius-md);">$1.000</button>
+                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${alias}').then(() => { Components.showToast('✅ Alias copiado por $3.000. ¡Muchas gracias!', 'success'); })" style="font-weight:700; display:flex; justify-content:center; border-radius:var(--radius-md);">$3.000</button>
+                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('${alias}').then(() => { Components.showToast('✅ Alias copiado por $5.000. ¡Muchas gracias!', 'success'); })" style="font-weight:700; display:flex; justify-content:center; border-radius:var(--radius-md);">$5.000</button>
+                        <button class="btn btn-ghost" onclick="navigator.clipboard.writeText('${alias}').then(() => { Components.showToast('✅ Alias copiado. ¡Muchas gracias por tu aporte libre!', 'success'); })" style="font-weight:700; border:1px solid var(--border-color); display:flex; justify-content:center; border-radius:var(--radius-md);">Monto Libre</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        showModal('🤝 Colaboración Internacional', bodyHTML, `
+            <button class="btn btn-secondary" onclick="Components.closeModal()" style="width:100%; display:flex; justify-content:center; border-radius:var(--radius-md);">Cerrar</button>
+        `);
+    }
+
     return {
         renderLayout, renderSidebar, renderHeader, renderUnitToggles,
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
-        renderEmptyState, confirm, escapeHTML
+        renderEmptyState, confirm, escapeHTML, showDonationModal
     };
 })();

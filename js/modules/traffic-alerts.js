@@ -180,8 +180,18 @@ const TrafficAlerts = (() => {
         let fullText = '';
         // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó
         if (originalText) {
-            let cleanText = originalText.replace(/https?:\/\/\S+/gi, '').trim();
-            fullText = `Atención: ${cleanText}.`;
+            let cleanText = originalText
+                .replace(/https?:\/\/\S+/gi, '') // Quitar enlaces HTTP
+                .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]/g, ' ') // Dejar ÚNICAMENTE letras, acentos, números y espacios. Elimina markdown, emojis y puntuación ruidosa.
+                .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
+                .trim();
+            
+            // Si tras la limpieza quedó algo inteligible, lo cantamos. Si no, usamos el fallback genérico.
+            if (cleanText.length > 2) {
+                fullText = `Atención: ${cleanText}.`;
+            } else {
+                fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+            }
         } else {
             fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
         }

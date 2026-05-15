@@ -9,8 +9,8 @@ const Alerts = (() => {
     // Calcular el estado de la correa de distribución para un vehículo
     async function getBeltStatus(vehicle) {
         const beltChanges = await DB.getAllByIndex('beltChanges', 'vehicleId', vehicle.id);
-        const interval = Units.getBeltIntervalKm(); // 60,000 KM
-        const warning = Units.getBeltWarningKm();   // 5,000 KM
+        const interval = vehicle.beltIntervalKm !== undefined ? vehicle.beltIntervalKm : Units.getBeltIntervalKm();
+        const warning = vehicle.beltWarningKm !== undefined ? vehicle.beltWarningKm : Units.getBeltWarningKm();
 
         // Último cambio de correa (en KM)
         let lastChangeKm = 0;

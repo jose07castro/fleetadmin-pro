@@ -43,7 +43,7 @@ const CommunityModule = (() => {
             name: '🔧 LEO MECÁNICA',
             image: 'assets/sponsor_leo_chevrolet.png?v=2',
             alt: 'LEO MECÁNICA — Chevrolet clásico rojo',
-            location: '📍 Dorrego 330, Villa Gobernador Gálvez',
+            location: '📍 Zona Centro Principal',
             phone: '📞 Tel/WA: 3413650105',
             whatsapp: 'https://wa.me/543413650105?text=Hola%20Leo,%20te%20contacto%20desde%20FleetAdmin%20Pro'
         },
@@ -215,6 +215,18 @@ const CommunityModule = (() => {
                        class="sponsor-ad-cta" style="border-radius:var(--radius-lg); display:inline-block; padding:var(--space-3) var(--space-6);">
                         💬 Unirse al Grupo
                     </a>
+                </div>
+
+                <!-- Donation / Collaboration Card -->
+                <div class="community-sponsor-card" style="margin-top:var(--space-4); padding:var(--space-5); text-align:center; border:1px solid rgba(255,193,7,0.3); background:rgba(255,193,7,0.03);">
+                    <h4 style="margin-bottom:var(--space-3);">🤝 Colaboración</h4>
+                    <p style="font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-4); line-height:1.5;">
+                        Apoyá económicamente el mantenimiento y crecimiento del proyecto a nivel global.
+                    </p>
+                    <button onclick="Components.showDonationModal()"
+                       class="sponsor-ad-cta" style="border-radius:var(--radius-lg); display:inline-flex; align-items:center; justify-content:center; padding:var(--space-3) var(--space-6); background:#ffc107; color:#000; border-color:#ffc107; font-weight:800; width:100%; border:none; cursor:pointer;">
+                        💝 Colaborar con la App
+                    </button>
                 </div>
             </div>
         </div>

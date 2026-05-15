@@ -391,6 +391,30 @@ const VehiclesModule = (() => {
                     </div>
                 </div>
 
+                <!-- Alertas de Mantenimiento Flexibles -->
+                <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
+                        🔧 Alertas de Mantenimiento Flexibles
+                    </div>
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Intervalo Correa (${Units.distanceLabel()}) *</label>
+                            <input type="number" class="form-input" id="vehBeltInterval"
+                                value="${vehicle ? Units.displayDistance(vehicle.beltIntervalKm !== undefined ? vehicle.beltIntervalKm : 60000) : Units.displayDistance(60000)}"
+                                inputmode="numeric">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Advertencia Previa (${Units.distanceLabel()}) *</label>
+                            <input type="number" class="form-input" id="vehBeltWarning"
+                                value="${vehicle ? Units.displayDistance(vehicle.beltWarningKm !== undefined ? vehicle.beltWarningKm : 5000) : Units.displayDistance(5000)}"
+                                inputmode="numeric">
+                        </div>
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:-5px; margin-bottom:var(--space-3);">
+                        Define cuándo generar alertas críticas y preventivas según el kilometraje de este coche en particular.
+                    </div>
+                </div>
+
                 <!-- Zona Base (GPS Geofencing) -->
                 <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
                     <div style="font-weight:600; margin-bottom:var(--space-3); color:var(--color-primary);">
@@ -399,7 +423,7 @@ const VehiclesModule = (() => {
                     <div class="form-group">
                         <label class="form-label">${I18n.t('veh_zone_label')}</label>
                         <input type="text" class="form-input" id="vehZonaBaseLabel"
-                            value="${vehicle?.zonaBaseLabel || ''}" placeholder="Domicilio Chofer - V.G. Gálvez"
+                            value="${vehicle?.zonaBaseLabel || ''}" placeholder="Domicilio Chofer / Zona Base"
                             style="background:#ffffff !important; color:#000000 !important; font-size:14px !important; font-weight:700 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="repair-form-grid">
@@ -480,6 +504,12 @@ const VehiclesModule = (() => {
         if (fechaOtorgamiento) data.fechaOtorgamiento = fechaOtorgamiento;
         if (diaVencimiento !== null) data.diaVencimiento = diaVencimiento;
 
+        // Mantenimiento Flexible
+        const beltInterval = parseFloat(document.getElementById('vehBeltInterval')?.value);
+        const beltWarning = parseFloat(document.getElementById('vehBeltWarning')?.value);
+        data.beltIntervalKm = !isNaN(beltInterval) ? Units.toKm(beltInterval) : 60000;
+        data.beltWarningKm = !isNaN(beltWarning) ? Units.toKm(beltWarning) : 5000;
+
         // Zona Base (GPS Geofencing)
         const zonaBaseLabel = document.getElementById('vehZonaBaseLabel')?.value.trim();
         const zonaBaseLat = parseFloat(document.getElementById('vehZonaBaseLat')?.value);
@@ -505,6 +535,9 @@ const VehiclesModule = (() => {
                 if (isNaN(zonaBaseLat) && existing.zonaBaseLat) data.zonaBaseLat = existing.zonaBaseLat;
                 if (isNaN(zonaBaseLng) && existing.zonaBaseLng) data.zonaBaseLng = existing.zonaBaseLng;
                 if (!data.zonaBaseRadiusM && existing.zonaBaseRadiusM) data.zonaBaseRadiusM = existing.zonaBaseRadiusM;
+                // Preservar parámetros de mantenimiento si no existieran en el post
+                if (data.beltIntervalKm === undefined && existing.beltIntervalKm !== undefined) data.beltIntervalKm = existing.beltIntervalKm;
+                if (data.beltWarningKm === undefined && existing.beltWarningKm !== undefined) data.beltWarningKm = existing.beltWarningKm;
             }
             data.id = vehicleId;
             await DB.put('vehicles', data);

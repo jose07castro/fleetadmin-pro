@@ -159,7 +159,7 @@ const TrafficAlerts = (() => {
      */
     function speakAlert(type, location, originalText = '') {
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
-        if (!window.speechSynthesis || !isVoiceEnabled) return;
+        if (!isVoiceEnabled) return;
 
         const voiceMessages = {
             police:     'Atención. Control de policía',
@@ -178,28 +178,37 @@ const TrafficAlerts = (() => {
         const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
         
         let fullText = '';
-        // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó y cumplir el deseo del usuario.
+        // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó
         if (originalText) {
-            // Limpieza ultraliviana: sacar links HTTP si existieran para evitar deletreos eternos y raros
-            let cleanText = originalText.replace(/https?:\/\/\S+/gi, '').trim();
-            fullText = `Atención: ${cleanText}.`;
+            let cleanText = originalText
+                .replace(/https?:\/\/\S+/gi, '') // Quitar enlaces HTTP
+                .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]/g, ' ') // Dejar ÚNICAMENTE letras, acentos, números y espacios. Elimina markdown, emojis y puntuación ruidosa.
+                .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
+                .trim();
+            
+            // Si tras la limpieza quedó algo inteligible, lo cantamos. Si no, usamos el fallback genérico.
+            if (cleanText.length > 2) {
+                fullText = `Atención: ${cleanText}.`;
+            } else {
+                fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+            }
         } else {
             fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
         }
 
-        window.speechSynthesis.cancel();
-
-        const utter = new SpeechSynthesisUtterance(fullText);
-        utter.lang = 'es-AR';
-        utter.rate = 0.9;
-        utter.pitch = 1.0;
-        utter.volume = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        const esVoice = voices.find(v => v.lang.startsWith('es'));
-        if (esVoice) utter.voice = esVoice;
-
-        window.speechSynthesis.speak(utter);
+        // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
+        if (typeof KittVoice !== 'undefined') {
+            KittVoice.speak(fullText, true);
+        } else {
+            // Fallback directo si KittVoice no cargó
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(fullText);
+                utter.lang = 'es-AR';
+                utter.rate = 0.9;
+                window.speechSynthesis.speak(utter);
+            }
+        }
         console.log(`🔊 [GLOBAL VOZ] "${fullText}"`);
     }
 

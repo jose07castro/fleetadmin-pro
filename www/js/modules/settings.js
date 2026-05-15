@@ -343,7 +343,7 @@ const SettingsModule = (() => {
                     <div style="font-weight:600; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary);">🏠 Datos de Contacto</div>
                     <div class="form-group">
                         <label class="form-label">Domicilio Real y Actual *</label>
-                        <input type="text" class="form-input" id="driverAddress" placeholder="Calle 123, Villa Gobernador Gálvez"
+                        <input type="text" class="form-input" id="driverAddress" placeholder="Calle 123, Ciudad / Región"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
@@ -733,7 +733,7 @@ const SettingsModule = (() => {
                 <div class="form-group">
                     <label class="form-label">Domicilio Real y Actual *</label>
                     <input type="text" class="form-input" id="editDriverAddress" value="${safeAddress}"
-                        placeholder="Calle 123, Villa Gobernador Gálvez"
+                        placeholder="Calle 123, Ciudad / Región"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
@@ -876,7 +876,7 @@ const SettingsModule = (() => {
                     <div class="form-group">
                         <label class="form-label">Domicilio Real y Actual *</label>
                         <input type="text" class="form-input" id="cpAddress" value="${fullUser?.address || ''}"
-                            placeholder="Calle 123, Villa Gobernador Gálvez"
+                            placeholder="Calle 123, Ciudad / Región"
                             style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                     </div>
                     <div class="form-group">
