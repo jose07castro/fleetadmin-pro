@@ -78,6 +78,10 @@ const Components = (() => {
                         </div>` : ''}
                 </nav>
                 <div class="sidebar-footer">
+                    <div class="nav-item" onclick="Components.showDonationModal()" style="margin-bottom: var(--space-3); background: rgba(255, 193, 7, 0.08); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
+                        <span class="nav-icon" style="color: #ffc107; margin-right: 8px;">💝</span>
+                        <span>Colaborar App</span>
+                    </div>
                     <div class="sidebar-user">
                         ${user?.profilePhoto
                 ? `<img src="${user.profilePhoto}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
