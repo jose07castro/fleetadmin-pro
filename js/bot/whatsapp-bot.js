@@ -105,6 +105,7 @@ const WhatsappBot = (() => {
     let sock = null;
     let retryCount = 0;
     let isConnecting = false; // Cerrojo (LOCK) anti-clones paralelos
+    let _isConnectedState = false; // Rastreador de estado para API
     let _stableTimer = null; // Validador de salud de conexión
     const MAX_RETRIES = 10;
     const AUTH_DIR = './auth_info';
@@ -188,9 +189,9 @@ const WhatsappBot = (() => {
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
         console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
         
-        // Esperar 30s al inicio para que el proceso anterior de Render muera
-        console.log('⏳ Esperando 30s para que el proceso anterior libere la sesión...');
-        await new Promise(r => setTimeout(r, 30000));
+        // Esperar 50s al inicio para que el proceso anterior de Render muera
+        console.log('⏳ Esperando 50s para que el proceso anterior libere la sesión...');
+        await new Promise(r => setTimeout(r, 50000));
         console.log('✅ Espera terminada. Conectando a WhatsApp...');
         
         // Auto-ping cada 10 minutos para evitar que Render (free tier) duerma el servicio
@@ -414,6 +415,7 @@ const WhatsappBot = (() => {
 
                 if (connection === 'close') {
                     isConnecting = false; // Liberar cerrojo
+                    _isConnectedState = false;
                     
                     // Cancelar validador de salud inmediatamente al desconectar
                     if (_stableTimer) { clearTimeout(_stableTimer); _stableTimer = null; }
@@ -477,6 +479,7 @@ const WhatsappBot = (() => {
                     }
                 } else if (connection === 'open') {
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
+                    _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
                     
                     // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
@@ -1254,12 +1257,25 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
         setInterval(runCleanup, 12 * 60 * 60 * 1000);
     }
 
+    // Escuchar señales de terminación del SO (evita colisiones 440 Zombies durante redeploys)
+    process.on('SIGTERM', () => {
+        console.log('🛑 [SIGTERM] Solicitud de apagado recibida. Cerrando socket WhatsApp y liberando sesión...');
+        if (sock) { try { sock.end(); } catch(e) {} }
+        setTimeout(() => process.exit(0), 500);
+    });
+    process.on('SIGINT', () => {
+        console.log('🛑 [SIGINT] Cerrando socket y saliendo...');
+        if (sock) { try { sock.end(); } catch(e) {} }
+        setTimeout(() => process.exit(0), 500);
+    });
+
     return { 
         init, 
         resetSession,
         softResetSession,
         getFleetId: _resolveFleetId,
-        getDb: () => db
+        getDb: () => db,
+        isConnected: () => _isConnectedState
     };
 })();
 

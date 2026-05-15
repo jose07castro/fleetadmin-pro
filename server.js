@@ -46,9 +46,14 @@ app.post('/api/whatsapp/webhook', (req, res) => {
 // Bot Management Endpoints
 // ============================================
 app.get('/api/bot/status', (req, res) => {
+    const isConnected = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.isConnected === 'function' 
+        ? WhatsappBot.isConnected() 
+        : false;
+
     res.json({ 
         ok: true, 
         status: 'Bot running',
+        connected: isConnected,
         timestamp: new Date().toISOString()
     });
 });
