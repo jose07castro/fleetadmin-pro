@@ -132,6 +132,22 @@ const SettingsModule = (() => {
                 </div>
                 ` : ''}
             </div>
+            
+            ${(typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) ? `
+            <!-- Blindaje GPS (Anti-Doze) -->
+            <div class="settings-section" style="animation: pulseYellow 2s infinite alternate; border-radius: 16px;">
+                <div class="settings-section-title" style="color:#fde047;">⚡ GPS Inmortal (Anti-Suspensión)</div>
+                <div class="settings-item" style="background: rgba(234,179,8,0.05); border: 1px solid rgba(234,179,8,0.2); border-radius: 12px; padding: 12px; flex-direction: row; align-items: center; justify-content: space-between;">
+                    <div style="flex:1; margin-right:10px;">
+                        <div class="settings-item-label" style="color:var(--text-primary); font-weight:700; font-size: 0.95rem;">Protección contra Cierres</div>
+                        <div class="settings-item-desc" style="color:var(--text-secondary); font-size: 0.75rem;">Evita que Android suspenda el rastreo del auto con la pantalla apagada.</div>
+                    </div>
+                    <button class="btn btn-warning" onclick="AndroidServices.showBatteryExemptionDialog()" style="box-shadow: 0 4px 12px rgba(234,179,8,0.4); font-weight: 700; font-size: 0.85rem; padding: 10px 14px; white-space: nowrap;">
+                        🛡️ Blindar GPS
+                    </button>
+                </div>
+            </div>
+            ` : ''}
 
             <!-- Perfil -->
             <div class="settings-section">
