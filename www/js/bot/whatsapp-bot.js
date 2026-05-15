@@ -156,8 +156,9 @@ const WhatsappBot = (() => {
     process.removeAllListeners('unhandledRejection');
     process.on('unhandledRejection', (reason) => {
         const msg = reason?.message || String(reason);
-        if (msg.includes('MAC') || msg.includes('decrypt') || msg.includes('Bad MAC')) {
-            console.log('⚠️ [MAC] Mensaje no descifrable (normal después de reinicio), ignorado.');
+        // Silenciar errores MAC / Decryption tanto en inglés como sus traducciones literales al español de Baileys
+        if (msg.includes('MAC') || msg.includes('decrypt') || msg.includes('Bad MAC') || msg.includes('autenticar datos') || msg.includes('Estado no admitido')) {
+            console.log('⚠️ [MAC] Mensaje no descifrable o conflicto de sesión (normal después de reinicio/soft-reset), ignorado.');
             return;
         }
         console.error('⚠️ [UNHANDLED]', msg);
@@ -789,82 +790,42 @@ const WhatsappBot = (() => {
     async function _analyzeMessageWithAI(text, groupName = '') {
         if (!GEMINI_KEY) return null;
         
-        const prompt = `Analiza este mensaje de un grupo de WhatsApp de choferes de la zona de Rosario, Argentina.
+        const prompt = `Analiza este mensaje de un grupo de WhatsApp de conductores de flota para detectar incidentes de tránsito y operativos en tiempo real.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Nombre del Grupo de WhatsApp: "${groupName}"
-- Mensaje escrito por el chofer: "${text}"
+- Mensaje escrito por el conductor: "${text}"
 
-REGLA DE DEDUCCIÓN HUMANA (CRÍTICA):
-Los choferes no siempre dan dos calles exactas. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO.
-1. Si el grupo se llama "operativos arroyo y alrededores" o menciona "arroyo", asume por defecto que cualquier alerta o calle mencionada sin ciudad se refiere a la zona de ARROYO SECO, FIGHIERA o GENERAL LAGOS, usualmente sobre la RUTA PROVINCIAL 21 o la AUTOPISTA ROSARIO-BUENOS AIRES.
-2. Si en ese grupo de Arroyo dicen "la entrada", "el cristo", "el peaje" o "el puente", infiere que es la entrada a Arroyo Seco, el Cristo de la Hermandad en Pueblo Esther (Ruta 21), el Peaje General Lagos, etc.
-3. Utiliza el contexto regional de los pueblos satélite de Rosario (Pueblo Esther, Villa Gobernador Gálvez, Alvear, Arroyo Seco, Funes, Roldán, Pérez) según aplique al nombre del grupo.
+REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
+Los conductores raramente escriben la ciudad completa. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO.
+1. Si el nombre del grupo menciona una región, ciudad, autopista o zona específica (ej: "Buenos Aires", "México DF", "São Paulo", "Mendoza", "Ruta 9", "Panamericana"), asume que cualquier calle mencionada sin ciudad se encuentra en ese contexto geográfico o área circundante.
+2. Utiliza el contexto espacial global para inferir el país y la región basados en las expresiones, jerga o nombres de localidades incluidos en el nombre del grupo y en el texto del mensaje.
 
-ABREVIATURAS COMUNES (IMPORTANTE — resolvé estas SIEMPRE):
-- "vgg" / "VGG" / "v.g.g" = Villa Gobernador Gálvez
-- "vgb" = Villa Gobernador Gálvez (variante)  
-- "bv" / "bvard" / "bulevard" = Boulevard
-- "av" = Avenida
+NORMALIZACIÓN DE ABREVIATURAS GLOBALES (IMPORTANTE):
+- "av" / "av." = Avenida
+- "bv" / "bvard" / "blvd" = Boulevard
 - "pte" = Presidente
-- "cba" = Córdoba (la calle, no la provincia)
+- "cba" = Córdoba
 - "pcia" = Provincia
 - "muni" = Municipal
-- "oño" / "oroño" = Boulevard Oroño
-- "arijon" / "arijón" = Arijón (NUNCA alucinar con "Arizona", eso es un error fonético grave)
+- "cruce" = Intersección o Rotonda
+- Corrige errores fonéticos obvios en nombres de calles locales pero JAMÁS alucines con direcciones en otros idiomas o países distantes si no corresponde.
 
-¡¡¡ATENCIÓN EXTREMA!!!:
-En Rosario, Oroño SIEMPRE es "Boulevard", NUNCA "Avenida". Escribe siempre "Boulevard Oroño".
-NUNCA inventes nombres de calles en inglés o parecidos. Si el chofer escribe "arijon", es estrictamente "Arijón", jamás "Arizona".
+REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE):
+1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter"
+2. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial" (o jerga policial local equivalente) → tipo: "police"
+3. Mensajes que mencionen control "municipal", "tránsito", "grúa", "fiscalización", "inspectores" → tipo: "municipal"
+4. Si menciona "GENDARMERÍA" o fuerzas federales similares → tipo: "police"
+5. Si menciona "OPERATIVO" o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
+6. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
+7. "AMBULANCIA", "SAMU", urgencias médicas médicas → tipo: "ambulance"
+8. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
+9. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
+10. Cortes de calle, baches, inundaciones, protestas, tráfico pesado → tipo: "traffic"
 
-
-LUGARES CONOCIDOS DE ROSARIO (usá estas direcciones exactas si se mencionan):
-- "cancha de Central" / "Arroyito" / "estadio de Central" → "Avenida Gorriti 2001"
-- "cancha de Ñuls" / "cancha de Newells" / "el Parque" → "Miguel Lamas y Cafferata"
-- "el monumento" → "Belgrano y Córdoba"
-- "la terminal" / "terminal de ómnibus" → "Cafferata 702"
-- "el HECA" / "hospital de emergencias" → "Pellegrini y Vera Mujica"
-- "el Puerto" / "zona del puerto" → "Avenida Estación del Puerto"
-- "el Parque Independencia" → "Av. Oroño y Pellegrini"
-- "el shopping Alto Rosario" → "Junín 501"
-- "el Portal" / "shopping Portal" → "Av. Presidente Perón 4200"
-- "la Facultad" / "UNR" → "Maipú y Corrientes"
-- "el aeropuerto" → "Av. Vías del Ferrocarril 1000, Fisherton"
-- "Fisherton" → "zona Av. Dante Alighieri, Rosario"
-- "Tablada" → "zona Av. Presidente Perón, Rosario"
-- "Villa Gobernador Gálvez" / "VGG" / "Gálvez" (referido a la ciudad lindera) → "Villa Gobernador Gálvez, Santa Fe"
-- "cementerio" + "vgg" / "Villa Gobernador Gálvez" → "Cementerio, Villa Gobernador Gálvez"
-- "cementerio" + "baigorria" / "Granadero Baigorria" → "Cementerio, Granadero Baigorria"
-- "cementerio" + "san lorenzo" → "Cementerio, San Lorenzo, Santa Fe"
-- "Pueblo Esther" / "ester" / "esterr" → "Pueblo Esther, Santa Fe"
-- "Alvear" → "Alvear, Santa Fe"
-- "Pérez" → "Pérez, Santa Fe"
-- "Funes" → "Funes, Santa Fe"
-- "Roldán" / "roldan" → "Roldán, Santa Fe"
-- "Granadero Baigorria" / "baigorria" → "Granadero Baigorria, Santa Fe"
-- "Capitán Bermúdez" / "bermudez" / "bermudes" → "Capitán Bermúdez, Santa Fe"
-- "San Lorenzo" / "san lorenzo" → "San Lorenzo, Santa Fe"
-- "Arroyo Seco" / "arroyo" → "Arroyo Seco, Santa Fe"
-- "General Lagos" / "lagos" → "General Lagos, Santa Fe"
-- "Fighiera" → "Fighiera, Santa Fe"
-
-REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE - leé con cuidado):
-1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter", address: "Pellegrini y Vera Mujica"
-2. Si el mensaje dice EXPLÍCITAMENTE "policía", "cana", "ratis", "chanchos", "gorra", "patrulla" → tipo: "police"
-3. Si el mensaje dice EXPLÍCITAMENTE "municipal", "tránsito municipal", "grúa municipal", "zorros", "inspectores" → tipo: "municipal"
-4. Si el mensaje dice EXPLÍCITAMENTE "gendarmería" o "gendarme" → tipo: "police" (subtipo gendarmería)
-5. Si el mensaje dice EXPLÍCITAMENTE "prefectura" → tipo: "police" (subtipo prefectura)
-6. Si dice "OPERATIVO" o "CONTROL" de forma GENÉRICA sin especificar qué fuerza → tipo: "checkpoint" (NO asumas que es policía)
-7. "RADAR", "CAMARA", "MULTA FOTO", "FOTO MULTA", "RADAR MOVIL" → tipo: "radar"
-8. "AMBULANCIA", "SAMU", "107" → tipo: "ambulance"
-9. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-10. "ACCIDENTE", "CHOQUE" → tipo: "accident"
-11. Cortes, baches, inundaciones, tráfico pesado → tipo: "traffic"
-
-Responde SOLO JSON válido:
-{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa o null","description":"resumen breve","confidence":0.0}
-Si NO es alerta: {"isAlert":false}
-Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
+Responde ÚNICAMENTE con un objeto JSON válido sin explicaciones ni formato markdown adicional:
+{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad/región inferida o null","description":"resumen muy breve","confidence":0.0}
+Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
 
         try {
             const jsonText = await callGemini(prompt);

@@ -156,8 +156,9 @@ const WhatsappBot = (() => {
     process.removeAllListeners('unhandledRejection');
     process.on('unhandledRejection', (reason) => {
         const msg = reason?.message || String(reason);
-        if (msg.includes('MAC') || msg.includes('decrypt') || msg.includes('Bad MAC')) {
-            console.log('⚠️ [MAC] Mensaje no descifrable (normal después de reinicio), ignorado.');
+        // Silenciar errores MAC / Decryption tanto en inglés como sus traducciones literales al español de Baileys
+        if (msg.includes('MAC') || msg.includes('decrypt') || msg.includes('Bad MAC') || msg.includes('autenticar datos') || msg.includes('Estado no admitido')) {
+            console.log('⚠️ [MAC] Mensaje no descifrable o conflicto de sesión (normal después de reinicio/soft-reset), ignorado.');
             return;
         }
         console.error('⚠️ [UNHANDLED]', msg);
