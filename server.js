@@ -8,7 +8,7 @@ const WhatsappBot = require('./js/bot/whatsapp-bot');
 
 // 1. Dejamos que Express sirva los archivos libremente (JS, CSS, HTML, lo que sea)
 app.use(express.static(__dirname));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Aumentado para soportar base64 de imágenes
 
 // Ruta de Salud rápida para Render (evita el "Port binding timeout")
 app.get('/', (req, res) => {
@@ -145,6 +145,97 @@ app.get('/api/bot/fleets', async (req, res) => {
         res.json({ ok: true, fleets: snap.val() });
     } catch(e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// ============================================
+// Onboarding IA - Validación de Documentos
+// ============================================
+app.post('/api/auth/verify-documents', async (req, res) => {
+    try {
+        const { name, plate, tarjetaVerdeBase64, seguroBase64 } = req.body;
+        const apiKey = process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+            return res.status(503).json({ ok: false, error: 'OPENAI_API_KEY no configurada en el servidor' });
+        }
+        if (!name || !plate || !tarjetaVerdeBase64 || !seguroBase64) {
+            return res.status(400).json({ ok: false, error: 'Faltan datos o imágenes para la validación' });
+        }
+
+        const axios = require('axios');
+
+        const prompt = `Actúa como un estricto validador legal de documentos vehiculares argentinos.
+Se te proveen dos imágenes:
+1. Una Tarjeta Verde (cédula de identificación del vehículo).
+2. Una Póliza o Certificado de Seguro Automotor.
+
+Se te ha provisto la entrada del usuario:
+- Nombre ingresado: "${name}"
+- Patente ingresada: "${plate}"
+
+Debes extraer la siguiente información y validarla:
+1. ¿El nombre ingresado coincide (total o parcialmente, ignorando acentos) con el titular de la Tarjeta Verde y el asegurado del Seguro? (Nota: Tarjetas Azules NO son válidas como titular).
+2. ¿La patente ingresada coincide con la de la Tarjeta Verde y el Seguro?
+3. ¿El seguro está vigente? (Hoy es ${new Date().toLocaleDateString()}).
+
+Devuelve ÚNICAMENTE un objeto JSON con el siguiente formato, sin ningún formato markdown (\`\`\`json) ni texto adicional, solo el objeto JSON puro:
+{
+  "ok": true o false,
+  "errors": ["Motivo específico si ok es false"],
+  "extractedData": {
+    "tarjetaVerde": { "nombre": "...", "patente": "..." },
+    "seguro": { "nombre": "...", "patente": "...", "vencimiento": "..." }
+  }
+}`;
+
+        // Ensure base64 strings have the proper data URI prefix
+        const tvUrl = tarjetaVerdeBase64.startsWith('http') || tarjetaVerdeBase64.startsWith('data:') 
+            ? tarjetaVerdeBase64 
+            : `data:image/jpeg;base64,${tarjetaVerdeBase64}`;
+            
+        const segUrl = seguroBase64.startsWith('http') || seguroBase64.startsWith('data:') 
+            ? seguroBase64 
+            : `data:image/jpeg;base64,${seguroBase64}`;
+
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: prompt },
+                        { type: 'image_url', image_url: { url: tvUrl, detail: 'high' } },
+                        { type: 'image_url', image_url: { url: segUrl, detail: 'high' } }
+                    ]
+                }
+            ],
+            max_tokens: 500,
+            temperature: 0.1
+        }, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 20000 // 20 seconds timeout for image processing
+        });
+
+        let content = response.data.choices[0].message.content.trim();
+        // Fallback for markdown cleanup if GPT ignores instruction
+        if (content.startsWith('\`\`\`json')) {
+            content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        }
+
+        const result = JSON.parse(content);
+        res.json(result);
+
+    } catch (e) {
+        console.error('❌ Error en verify-documents:', e.response?.data || e.message);
+        res.status(500).json({ 
+            ok: false, 
+            error: 'Error procesando las imágenes con IA. Intenta de nuevo.',
+            details: e.message 
+        });
     }
 });
 

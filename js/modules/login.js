@@ -286,15 +286,20 @@ const LoginModule = (() => {
 
     function showRegister() {
         Components.showModal(
-            `💼 ${I18n.t('register_admin')}`,
+            `💼 Registro de Titular Validado por IA`,
             `
                 <p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4); font-size:var(--font-size-sm);">
-                    ${I18n.t('register_admin_subtitle')}
+                    Para dar de alta tu flota, necesitamos validar tus datos vehiculares. Solo el titular directo (según Tarjeta Verde) puede registrarse.
                 </p>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_name')}</label>
+                    <label class="form-label">${I18n.t('login_name')} (Tal cual figura en la Tarjeta Verde)</label>
                     <input type="text" class="form-input" id="regName"
-                        placeholder="${I18n.t('login_name_placeholder')}" autocomplete="off">
+                        placeholder="Ej: Juan Perez" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Patente / Dominio del Vehículo</label>
+                    <input type="text" class="form-input" id="regPlate"
+                        placeholder="Ej: AE 123 CD" autocomplete="off" style="text-transform: uppercase;">
                 </div>
                 <div class="form-group">
                     <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
@@ -306,24 +311,90 @@ const LoginModule = (() => {
                     <input type="password" class="form-input" id="regPinConfirm"
                         placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric">
                 </div>
+                
+                <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:var(--space-4) 0;">
+                <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:8px;"><strong>Documentación Obligatoria</strong></p>
+                
+                <div class="form-group">
+                    <label class="form-label">📸 Foto de la Tarjeta Verde</label>
+                    <input type="file" id="regTarjetaVerde" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📸 Foto de la Póliza de Seguro</label>
+                    <input type="file" id="regSeguro" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
+
                 <div id="regError" class="form-error" style="text-align:center; margin-bottom:var(--space-2); display:none;"></div>
+                <div id="regLoading" style="display:none; text-align:center; margin-bottom:var(--space-3); color:var(--color-primary); font-weight:600; font-size:0.9rem;">
+                    🤖 Verificando documentos con IA... (puede tardar unos 10 segundos)
+                </div>
             `,
             `
-                <button class="btn btn-secondary" onclick="Components.closeModal()">${I18n.t('cancel')}</button>
-                <button class="btn btn-primary" onclick="LoginModule.doRegister()">${I18n.t('register_btn')}</button>
+                <button class="btn btn-secondary" onclick="Components.closeModal()" id="btnCancelReg">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="LoginModule.doRegister()" id="btnSubmitReg">${I18n.t('register_btn')}</button>
             `
         );
     }
 
-    async function doRegister() {
-        const name = document.getElementById('regName')?.value.trim();
-        const pin = document.getElementById('regPin')?.value.trim();
-        const pinConfirm = document.getElementById('regPinConfirm')?.value.trim();
-        const errorEl = document.getElementById('regError');
+    // Helper: Comprimir imagen a base64
+    function _compressImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1200;
+                    const MAX_HEIGHT = 1200;
+                    let width = img.width;
+                    let height = img.height;
 
-        if (!name || !pin) {
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8)); // 80% quality
+                };
+                img.onerror = reject;
+            };
+            reader.onerror = reject;
+        });
+    }
+
+    async function doRegister() {
+        const plate = document.getElementById('regPlate')?.value.trim().toUpperCase();
+        const fileTv = document.getElementById('regTarjetaVerde')?.files[0];
+        const fileSeg = document.getElementById('regSeguro')?.files[0];
+        
+        const errorEl = document.getElementById('regError');
+        const loadingEl = document.getElementById('regLoading');
+        const btnCancel = document.getElementById('btnCancelReg');
+        const btnSubmit = document.getElementById('btnSubmitReg');
+
+        errorEl.style.display = 'none';
+
+        if (!name || !pin || !plate) {
             errorEl.style.display = 'block';
-            errorEl.textContent = I18n.t('error') + ': ' + I18n.t('required');
+            errorEl.textContent = '❌ Por favor completá todos los campos de texto.';
+            return;
+        }
+
+        if (!fileTv || !fileSeg) {
+            errorEl.style.display = 'block';
+            errorEl.textContent = '❌ Es obligatorio subir ambas fotos (Tarjeta Verde y Seguro).';
             return;
         }
 
@@ -340,10 +411,53 @@ const LoginModule = (() => {
         }
 
         try {
-            // 1. Crear un fleetId nuevo para esta flota
+            // UI Loading state
+            loadingEl.style.display = 'block';
+            btnCancel.disabled = true;
+            btnSubmit.disabled = true;
+
+            // 1. Convertir imágenes a base64 (reducidas)
+            const tvBase64 = await _compressImage(fileTv);
+            const segBase64 = await _compressImage(fileSeg);
+
+            // 2. Llamar al Backend de IA para validación
+            const response = await fetch('/api/auth/verify-documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    plate: plate,
+                    tarjetaVerdeBase64: tvBase64,
+                    seguroBase64: segBase64
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error en la comunicación con el servidor de IA.');
+            }
+
+            const aiResult = await response.json();
+
+            if (!aiResult.ok) {
+                // Rechazo por la IA
+                errorEl.style.display = 'block';
+                const errorMsg = aiResult.errors ? aiResult.errors.join('<br>') : 'Documentos inválidos o no coinciden los datos.';
+                errorEl.innerHTML = `🚫 <strong>Validación rechazada:</strong><br>${errorMsg}`;
+                loadingEl.style.display = 'none';
+                btnCancel.disabled = false;
+                btnSubmit.disabled = false;
+                return;
+            }
+
+            console.log('✅ Validación IA Exitosa:', aiResult.extractedData);
+            loadingEl.textContent = '✅ Validación exitosa. Creando flota...';
+
+            // --- FLUJO DE CREACIÓN ---
+            
+            // 3. Crear un fleetId nuevo para esta flota
             const fleetId = DB.createFleetId();
 
-            // Hash PIN before saving
+            // 4. Hash PIN before saving
             let hashedPin = pin;
             try {
                 hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
@@ -351,7 +465,7 @@ const LoginModule = (() => {
                 console.warn('⚠️ bcrypt no disponible, guardando PIN sin hash:', e);
             }
 
-            // 2. Registrar en globalUsers con su fleetId
+            // 5. Registrar en globalUsers con su fleetId
             const globalId = await DB.addGlobalUser({
                 name,
                 pin: hashedPin,
@@ -359,10 +473,32 @@ const LoginModule = (() => {
                 fleetId
             });
 
-            // 3. Activar la flota nueva
+            // 6. Activar la flota nueva
             DB.setFleet(fleetId);
 
-            // 4. Crear el usuario dentro de la flota
+            // 7. Subir fotos a Firebase Storage
+            loadingEl.textContent = '☁️ Subiendo documentos al archivo en la nube...';
+            const tvUrl = await StorageUtil.uploadImage(tvBase64, `fleets/${fleetId}/documents/tarjeta_verde_${plate}.jpg`);
+            const segUrl = await StorageUtil.uploadImage(segBase64, `fleets/${fleetId}/documents/seguro_${plate}.jpg`);
+
+            // 8. Crear el vehículo validado en la flota
+            const vehicleId = Date.now().toString();
+            await DB.add('vehicles', {
+                id: vehicleId,
+                name: \`\${aiResult.extractedData?.tarjetaVerde?.nombre || 'Vehículo'} (\${plate})\`,
+                plate: plate,
+                status: 'active',
+                currentKm: 0,
+                colorKey: 'taxi',
+                documents: {
+                    tarjetaVerdeUrl: tvUrl || '',
+                    seguroUrl: segUrl || '',
+                    seguroVencimiento: aiResult.extractedData?.seguro?.vencimiento || '',
+                    validatedByAI: true
+                }
+            });
+
+            // 9. Crear el usuario dentro de la flota
             await DB.add('users', {
                 name,
                 pin: hashedPin,
@@ -372,7 +508,7 @@ const LoginModule = (() => {
 
             Components.closeModal();
 
-            // 5. Auto-login directo (NO usar authenticate para evitar match con entradas viejas)
+            // 10. Auto-login directo (NO usar authenticate para evitar match con entradas viejas)
             Auth.login({
                 id: globalId,
                 name,
@@ -387,10 +523,13 @@ const LoginModule = (() => {
 
         } catch (e) {
             errorEl.style.display = 'block';
-            errorEl.textContent = I18n.t('error');
+            errorEl.textContent = '❌ ' + (e.message || I18n.t('error'));
             console.error('Error en registro:', e);
+        } finally {
+            loadingEl.style.display = 'none';
+            btnCancel.disabled = false;
+            btnSubmit.disabled = false;
         }
     }
-
     return { render, selectRole, doLogin, togglePin, showRegister, doRegister };
 })();
