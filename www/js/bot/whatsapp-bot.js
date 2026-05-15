@@ -556,17 +556,45 @@ const WhatsappBot = (() => {
                         console.log(`🐛 [DEBUG] Mensaje sin texto. Claves: [${keys.join(', ')}]`);
                     }
                     
-                    // PTT = nota de voz (mantener micrófono), audioMessage = archivo de audio adjunto
-                    const isAudio = msg.message?.audioMessage || msg.message?.pttMessage;
+                    // RESCATE ABSOLUTO DE AUDIO: Buscar recursivamente audioMessage en cualquier nivel (ephemeral, viewOnce, etc.)
+                    let resolvedAudioMsg = null;
+                    function _recursiveFindAudio(obj) {
+                        if (!obj || typeof obj !== 'object') return null;
+                        if (obj.audioMessage) return obj.audioMessage;
+                        for (const k of Object.keys(obj)) {
+                            const val = obj[k];
+                            if (val && typeof val === 'object') {
+                                if (val.audioMessage) return val.audioMessage;
+                                if (val.message) {
+                                    const res = _recursiveFindAudio(val.message);
+                                    if (res) return res;
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                    
+                    if (m) {
+                        resolvedAudioMsg = _recursiveFindAudio(m);
+                    }
+                    const isAudio = !!resolvedAudioMsg;
+                    const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
 
-                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${!!isAudio} | PTT=${!!msg.message?.pttMessage} | Text="${text.substring(0,80)}"`);
+                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
 
 
                     // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
                     if (isAudio && process.env.OPENAI_API_KEY) {
                         try {
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-                            const buffer = await downloadMediaMessage(msg, 'buffer', {}, { 
+                            
+                            // Reconstruir un envelope limpio para asegurar que Baileys descargue el audio sin importar la envoltura
+                            const cleanMsg = {
+                                key: msg.key,
+                                message: { audioMessage: resolvedAudioMsg }
+                            };
+                            
+                            const buffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, { 
                                 logger: P({ level: 'silent' }),
                                 reuploadRequest: sock.updateMediaMessage 
                             });

@@ -14,9 +14,23 @@ const App = (() => {
     // Listener refs para limpieza
     let realtimeListenersActive = false;
 
+    // Auto-despertar servidor (Keep-Alive) para evitar que Render duerma el servicio
+    function startWebHeartbeat() {
+        const heartbeat = () => {
+            fetch('/api/bot/status')
+                .then(r => console.log('🏓 Keep-alive ping enviado'))
+                .catch(e => console.warn('⚠️ Falló keep-alive:', e));
+        };
+        heartbeat(); // Ejecutar inmediatamente al cargar
+        setInterval(heartbeat, 5 * 60 * 1000); // cada 5 minutos
+    }
+
     // Inicializar la aplicación
     async function init() {
         try {
+            // 0. Iniciar keep-alive del bot (Modo Web)
+            startWebHeartbeat();
+
             // 1. Inicializar sistema de idiomas
             I18n.init();
 
