@@ -150,12 +150,17 @@ public class LocationTrackingService extends Service {
             "📍 Iniciando rastreo GPS..."
         );
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+            Log.i(TAG, "✅ startForeground() ejecutado — notificación persistente activa");
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error startForeground (puede ocurrir si las notificaciones están bloqueadas por el usuario):", e);
+            // No relanzamos para permitir que el servicio siga corriendo (intentando reportar GPS aunque Android restrinja)
         }
-        Log.i(TAG, "✅ startForeground() ejecutado — notificación persistente activa");
 
         // WakeLock
         acquireWakeLock();
@@ -498,9 +503,13 @@ public class LocationTrackingService extends Service {
     }
 
     private void updateNotification(String title, String text) {
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager != null) {
-            manager.notify(NOTIFICATION_ID, buildNotification(title, text));
+        try {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify(NOTIFICATION_ID, buildNotification(title, text));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Falló actualizar notificación persistente: " + e.getMessage());
         }
     }
 }

@@ -104,6 +104,29 @@ const ShiftsModule = (() => {
         try {
             const vehicles = await DB.getAll('vehicles');
             
+            // v122: Banner de Advertencia por Optimización de Batería (Android)
+            let batteryBannerHTML = '';
+            if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+                try {
+                    if (window.NativeServiceBridge.isBatteryOptimized()) {
+                        batteryBannerHTML = `
+                            <div id="batteryOptimizationBanner" style="background:linear-gradient(135deg, #eab308, #ca8a04); color:#ffffff; padding:16px; border-radius:12px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(202,138,4,0.2);">
+                                <div style="display:flex; align-items:flex-start; gap:12px;">
+                                    <span style="font-size:1.8rem; line-height:1;">⚠️</span>
+                                    <div style="flex:1;">
+                                        <div style="font-weight:800; font-size:14px; margin-bottom:4px; letter-spacing:0.5px;">⚠️ BATERÍA OPTIMIZADA</div>
+                                        <div style="font-size:12px; opacity:0.95; line-height:1.4; margin-bottom:12px;">El sistema podría apagar el GPS si bloqueás la pantalla. Activá la exención para garantizar el rastreo continuo de la flota.</div>
+                                        <button onclick="if(window.NativeServiceBridge && window.NativeServiceBridge.requestBatteryExemption) { window.NativeServiceBridge.requestBatteryExemption(); }" style="background:#ffffff; color:#854d0e; font-weight:700; border:none; border-radius:8px; padding:8px 12px; font-size:11px; cursor:pointer; text-transform:uppercase; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                                            🔋 Configurar Ahora
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                } catch(e) { console.warn(e); }
+            }
+
             // 1. Limpiar duplicados automáticamente (ahora rápido, sin cargar todo)
             const activeShift = await cleanupDuplicateShifts(driverId);
             const cachedShiftId = localStorage.getItem('active_shift_id');
@@ -116,7 +139,7 @@ const ShiftsModule = (() => {
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
 
-                container.innerHTML = renderActiveShift(activeShift, vehicles);
+                container.innerHTML = batteryBannerHTML + renderActiveShift(activeShift, vehicles);
                 return;
             }
 
@@ -133,24 +156,24 @@ const ShiftsModule = (() => {
             // Detectar vehículos ocupados por CUALQUIER turno activo
             const allActiveShifts = await DB.getActiveShifts();
             const occupiedVehicleIds = new Set(allActiveShifts.map(s => String(s.vehicleId)));
-        const vehicleDriverMap = {};
-        for (const s of allActiveShifts) {
-            vehicleDriverMap[String(s.vehicleId)] = s.driverName || 'Otro chofer';
-        }
+            const vehicleDriverMap = {};
+            for (const s of allActiveShifts) {
+                vehicleDriverMap[String(s.vehicleId)] = s.driverName || 'Otro chofer';
+            }
 
-        // Solo traemos los últimos 20 completados, sin congelar la pestaña
-        const completed = await DB.getRecentCompletedShifts(20);
-        const myCompleted = completed.filter(s => String(s.driverId) === String(driverId))
-            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+            // Solo traemos los últimos 20 completados, sin congelar la pestaña
+            const completed = await DB.getRecentCompletedShifts(20);
+            const myCompleted = completed.filter(s => String(s.driverId) === String(driverId))
+                .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
-        // Renderizar tabla asíncronamente para no bloquear el hilo
-        const tableHtml = myCompleted.length > 0 ? await renderShiftTable(myCompleted) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
+            // Renderizar tabla asíncronamente para no bloquear el hilo
+            const tableHtml = myCompleted.length > 0 ? await renderShiftTable(myCompleted) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
 
-        container.innerHTML = `
-            <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
-                <div style="font-size:2.5rem; margin-bottom:var(--space-3);">🕐</div>
-                <div style="font-size:var(--font-size-lg); font-weight:600;">${I18n.t('shift_inactive')}</div>
-            </div>
+            container.innerHTML = batteryBannerHTML + `
+                <div class="shift-status" style="justify-content:center; flex-direction:column; text-align:center;">
+                    <div style="font-size:2.5rem; margin-bottom:var(--space-3);">🕐</div>
+                    <div style="font-size:var(--font-size-lg); font-weight:600;">${I18n.t('shift_inactive')}</div>
+                </div>
 
             <!-- Iniciar nuevo turno -->
             <div class="card" style="margin-bottom:var(--space-6);">

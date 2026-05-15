@@ -309,6 +309,52 @@ const GPSPermissions = (() => {
         }
     }
 
+    // ============ BACKGROUND LOCATION PROMPT (v122) ============
+
+    function showBackgroundLocationRequestDialog() {
+        if (typeof Components === 'undefined') return;
+
+        const bodyHTML = `
+            <div style="text-align:center; padding:8px 0;">
+                <div style="font-size:3rem; margin-bottom:12px;">🛡️</div>
+                <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:16px;">
+                    Permiso de Segundo Plano Requerido
+                </div>
+                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:center; padding:0 8px;">
+                    Para que el sistema de radares y reporte del GPS funcione <strong>con la pantalla apagada o si abrís Uber / DiDi</strong>, es obligatorio configurar la ubicación permanente.
+                </div>
+                <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.2); border-radius:12px; text-align:left;">
+                    <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚠️ Pasos obligatorios:</div>
+                    <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
+                        <li>1. Tocá <strong>"Configurar Ahora"</strong>.</li>
+                        <li>2. Seleccioná <strong>"Permisos"</strong> → <strong>"Ubicación"</strong>.</li>
+                        <li>3. Marcá <strong>"Permitir todo el tiempo"</strong> (u "Omitir restricciones").</li>
+                    </ul>
+                </div>
+            </div>
+        `;
+
+        const footerHTML = `
+            <button class="btn btn-ghost" onclick="Components.closeModal()">Después</button>
+            <button class="btn btn-primary" style="min-width:160px;" onclick="Components.closeModal(); GPSPermissions.triggerBackgroundLocationIntent();">
+                🛡️ Configurar Ahora
+            </button>
+        `;
+
+        Components.showModal('🛡️ Ubicación Permanente', bodyHTML, footerHTML);
+    }
+
+    function triggerBackgroundLocationIntent() {
+        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.requestBackgroundLocationPermission === 'function') {
+            window.NativeServiceBridge.requestBackgroundLocationPermission();
+            setTimeout(() => {
+                Components.showToast('⚙️ Buscá Permisos → Ubicación → Permitir todo el tiempo', 'warning');
+            }, 1000);
+        } else {
+            _openAndroidSettings();
+        }
+    }
+
     // ============ CALLBACKS ============
 
     function _onPermissionGranted() {
@@ -324,6 +370,21 @@ const GPSPermissions = (() => {
         
         // Start background GPS tracking automatically
         _startPersistentTracking();
+
+        // v122: Chequear si falta el permiso nativo "Permitir todo el tiempo" en Android
+        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
+            try {
+                const hasBg = window.NativeServiceBridge.isBackgroundLocationGranted();
+                if (!hasBg) {
+                    console.log('📍 GPSPerms: Falta background location! Gatillando diálogo...');
+                    setTimeout(() => {
+                        showBackgroundLocationRequestDialog();
+                    }, 2000); // Demora para no pisar diálogos previos
+                }
+            } catch (e) {
+                console.warn('Error checking bg location via bridge:', e);
+            }
+        }
     }
 
     function _onPermissionDenied() {
@@ -652,6 +713,8 @@ const GPSPermissions = (() => {
         requestWithDialog,
         initForDriver,
         getState: () => _permissionState,
+        showBackgroundLocationRequestDialog,
+        triggerBackgroundLocationIntent,
         // Internal methods exposed for onclick handlers
         _onDialogAccept,
         _onDialogCancel,

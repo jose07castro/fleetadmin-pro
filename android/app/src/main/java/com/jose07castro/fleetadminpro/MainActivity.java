@@ -134,5 +134,33 @@ public class MainActivity extends BridgeActivity {
                 return true;
             }
         }
+
+        @JavascriptInterface
+        public boolean isBackgroundLocationGranted() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                return checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestBackgroundLocationPermission() {
+            Log.i(TAG, "📱 JS → requestBackgroundLocationPermission()");
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    if (Build.VERSION.SDK_INT >= 30) { // Android 11+
+                        // En Android 11+ no se puede solicitar el permiso directamente via Popup de Runtime
+                        // Se DEBE enviar al usuario directamente a los Ajustes de la Aplicación -> Permisos de Ubicación
+                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } else { // Android 10
+                        requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7002);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error requesting background location permission:", e);
+            }
+        }
     }
 }
