@@ -219,7 +219,8 @@ const ShiftsModule = (() => {
         _activeVehicleName = vehicle ? `${vehicle.name} — ${vehicle.plate}` : '';
 
         const startTime = new Date(shift.startTime);
-        const shiftDuration = 12 * 60 * 60 * 1000; // 12 horas en ms
+        const extensionMs = (shift.extendedHours || 0) * 60 * 60 * 1000;
+        const shiftDuration = (12 * 60 * 60 * 1000) + extensionMs; // 12 horas + extensión dinámica
         const endTime = new Date(startTime.getTime() + shiftDuration);
         const now = Date.now();
         const remaining = Math.max(0, endTime - now);
@@ -263,8 +264,14 @@ const ShiftsModule = (() => {
                     <div class="progress-fill ${progress > 90 ? 'danger' : progress > 75 ? 'warning' : ''}"
                         style="width:${progress}%"></div>
                 </div>
-                <div style="font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:var(--space-2);">
-                    ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(shift.startOdometer)}
+                <div style="margin-top:var(--space-4); display:flex; gap:var(--space-2); align-items:center; justify-content:space-between; flex-wrap:wrap;">
+                    <div style="font-size:var(--font-size-xs); color:var(--text-tertiary); text-align:left;">
+                        ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(shift.startOdometer)}
+                        ${shift.extendedHours ? `<br><strong style="color:#10b981; font-size:11px;">⚡ Extendido +${shift.extendedHours}hs</strong>` : ''}
+                    </div>
+                    <button class="btn btn-outline" onclick="ShiftsModule.extendActiveShift('${shift.id}')" style="padding:var(--space-2) var(--space-3); font-size:var(--font-size-sm); display:inline-flex; align-items:center; gap:6px; border-color:rgba(16,185,129,0.4); color:#10b981; font-weight:600; min-height:unset; height:auto;">
+                        ➕ Extender 2hs
+                    </button>
                 </div>
             </div>
 
@@ -800,7 +807,8 @@ const ShiftsModule = (() => {
         if (shiftTimer) clearInterval(shiftTimer);
 
         const startTime = new Date(shift.startTime).getTime();
-        const shiftDuration = 12 * 60 * 60 * 1000; // 12 horas en ms
+        const extensionMs = (shift.extendedHours || 0) * 60 * 60 * 1000;
+        const shiftDuration = (12 * 60 * 60 * 1000) + extensionMs; // 12 horas + extensión
         const endTime = startTime + shiftDuration;
 
         shiftTimer = setInterval(() => {
@@ -829,11 +837,36 @@ const ShiftsModule = (() => {
                 progressFill.className = `progress-fill ${progress > 90 ? 'danger' : progress > 75 ? 'warning' : ''}`;
             }
 
-            // Si se terminó, detener
+            // Si se terminó, detener y ofrecer extender turno
             if (remaining <= 0) {
                 clearInterval(shiftTimer);
                 display.textContent = '00:00:00';
-                Components.showToast(I18n.t('alert_shift_ending', { minutes: '0' }), 'warning');
+                
+                // Evitar abrir duplicados si ya hay un disparador activo
+                if (!document.getElementById('shiftExtendModalSentinel')) {
+                    const sent = document.createElement('div');
+                    sent.id = 'shiftExtendModalSentinel';
+                    document.body.appendChild(sent);
+                    
+                    const modalTitle = '⏰ ¡Turno Finalizado!';
+                    const modalBody = `
+                        <div style="text-align:center; padding:var(--space-4) var(--space-2);">
+                            <div style="font-size:3.5rem; margin-bottom:var(--space-3);">⏳</div>
+                            <h3 style="margin-bottom:var(--space-2); color:var(--text-primary);">Tu jornada llegó a su fin</h3>
+                            <p style="color:var(--text-secondary); line-height:1.5;">¿Querés extender tu turno 2 horas más para seguir acumulando o preferís finalizarlo y entregar el vehículo ahora?</p>
+                        </div>
+                    `;
+                    const modalFooter = `
+                        <div style="display:flex; width:100%; gap:var(--space-3);">
+                            <button class="btn btn-ghost" style="flex:1;" onclick="Components.closeModal(); document.getElementById('shiftExtendModalSentinel')?.remove();">Cerrar</button>
+                            <button class="btn" style="flex:1; background:linear-gradient(135deg,#10b981,#059669); border:none; color:white; font-weight:700;" 
+                                onclick="Components.closeModal(); document.getElementById('shiftExtendModalSentinel')?.remove(); ShiftsModule.extendActiveShift('${shift.id}')">
+                                ⚡ Extender 2 hs
+                            </button>
+                        </div>
+                    `;
+                    Components.showModal(modalTitle, modalBody, modalFooter);
+                }
             }
         }, 1000);
     }
@@ -1068,6 +1101,31 @@ const ShiftsModule = (() => {
         }
     }
 
+    // --- Extender turno activo 2 horas ---
+    async function extendActiveShift(shiftId) {
+        if (!shiftId) return;
+        try {
+            Components.showToast('⏳ Procesando extensión de jornada...', 'info');
+            const shift = await DB.get('shifts', shiftId);
+            if (!shift) {
+                Components.showToast('❌ Error: Turno no encontrado en la base de datos.', 'danger');
+                return;
+            }
+            
+            // Acumular +2 horas
+            shift.extendedHours = (shift.extendedHours || 0) + 2;
+            
+            await DB.put('shifts', shift);
+            Components.showToast('⚡ ¡Tu turno se ha extendido 2 horas con éxito!', 'success');
+            
+            // Forzar refresco de la interfaz para recalcular los temporizadores con la nueva duración
+            Router.navigate('shifts');
+        } catch (e) {
+            console.error('Error al extender jornada:', e);
+            Components.showToast('❌ Falló la extensión: ' + e.message, 'danger');
+        }
+    }
+
     // --- Hidratación pública: restaurar estado del turno al volver del background ---
     // Llamada desde App._restoreSessionOnResume() para conductores.
     // Si hay turno activo, fuerza la navegación a la vista de turnos.
@@ -1083,6 +1141,6 @@ const ShiftsModule = (() => {
 
     return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
         getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName }),
-        checkActiveShift, hydrateActiveShift
+        checkActiveShift, hydrateActiveShift, extendActiveShift
     };
 })();
