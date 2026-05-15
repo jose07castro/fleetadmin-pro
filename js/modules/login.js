@@ -5,7 +5,7 @@
    ============================================ */
 
 const LoginModule = (() => {
-    let selectedRole = 'owner';
+    let selectedRole = 'titular';
 
     function render() {
         return `
@@ -26,7 +26,11 @@ const LoginModule = (() => {
                         </p>
 
                         <div class="role-selector" id="roleSelector">
-                            <button class="role-option selected" data-role="owner" onclick="LoginModule.selectRole('owner')">
+                            <button class="role-option selected" data-role="titular" onclick="LoginModule.selectRole('titular')">
+                                <span class="role-icon">💼</span>
+                                <span class="role-label">${I18n.t('role_titular')}</span>
+                            </button>
+                            <button class="role-option" data-role="owner" onclick="LoginModule.selectRole('owner')">
                                 <span class="role-icon">👑</span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
@@ -72,7 +76,7 @@ const LoginModule = (() => {
                         <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
                             <button class="btn btn-block" onclick="LoginModule.showRegister()"
                                 style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3);">
-                                👑 ${I18n.t('register_admin')}
+                                💼 ${I18n.t('register_admin')}
                             </button>
                             <button class="btn btn-secondary block w-full" onclick="Router.navigate('apply')"
                                 style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(16, 185, 129, 0.1); border:2px solid #10b981; color:#059669; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display:flex !important; justify-content:center; align-items:center; gap:8px; z-index:99999 !important; position:relative; overflow:visible !important; width:100% !important;">
@@ -282,7 +286,7 @@ const LoginModule = (() => {
 
     function showRegister() {
         Components.showModal(
-            `👑 ${I18n.t('register_admin')}`,
+            `💼 ${I18n.t('register_admin')}`,
             `
                 <p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4); font-size:var(--font-size-sm);">
                     ${I18n.t('register_admin_subtitle')}
@@ -351,7 +355,7 @@ const LoginModule = (() => {
             const globalId = await DB.addGlobalUser({
                 name,
                 pin: hashedPin,
-                role: 'owner',
+                role: 'titular',
                 fleetId
             });
 
@@ -362,7 +366,7 @@ const LoginModule = (() => {
             await DB.add('users', {
                 name,
                 pin: hashedPin,
-                role: 'owner',
+                role: 'titular',
                 globalId
             });
 
@@ -373,7 +377,7 @@ const LoginModule = (() => {
                 id: globalId,
                 name,
                 pin: hashedPin,
-                role: 'owner',
+                role: 'titular',
                 fleetId
             });
             App.startRealtimeSync();

@@ -202,7 +202,8 @@ const Auth = (() => {
     }
 
     function isOwner() {
-        return getRole() === 'owner';
+        const role = getRole();
+        return role === 'owner' || role === 'titular';
     }
 
     function isDriver() {
@@ -254,6 +255,7 @@ const Auth = (() => {
 
         const permissions = {
             owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants'],
+            titular: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants'],
             driver: ['shifts', 'oil', 'settings', 'community', 'gps'],
             mechanic: ['maintenance', 'settings']
         };

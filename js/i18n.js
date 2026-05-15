@@ -46,6 +46,7 @@ const I18n = (() => {
 
             // Roles
             role_owner: 'Administrador',
+            role_titular: 'Titular',
             role_driver: 'Conductor',
             role_mechanic: 'Mecánico',
 
@@ -234,8 +235,8 @@ const I18n = (() => {
             location_not_configured: 'No configurada',
 
             // Registro
-            register_admin: 'Registrarse como Administrador',
-            register_admin_subtitle: 'Crea una nueva cuenta de administrador para gestionar tu flota',
+            register_admin: 'Registrarse como Titular',
+            register_admin_subtitle: 'Crea una nueva cuenta de titular para gestionar tu flota',
             register_btn: 'Registrarse',
             register_confirm_pin: 'Confirmar PIN',
             register_pin_mismatch: 'Los PIN no coinciden',
@@ -366,6 +367,7 @@ const I18n = (() => {
             login_error: 'Invalid credentials',
 
             role_owner: 'Administrator',
+            role_titular: 'Owner (Titular)',
             role_driver: 'Driver',
             role_mechanic: 'Mechanic',
 
@@ -545,8 +547,8 @@ const I18n = (() => {
             location_not_configured: 'Not configured',
 
             // Registration
-            register_admin: 'Register as Administrator',
-            register_admin_subtitle: 'Create a new administrator account to manage your fleet',
+            register_admin: 'Register as Owner',
+            register_admin_subtitle: 'Create a new owner account to manage your fleet',
             register_btn: 'Register',
             register_confirm_pin: 'Confirm PIN',
             register_pin_mismatch: 'PINs do not match',
@@ -676,6 +678,7 @@ const I18n = (() => {
             login_error: 'Credenciais incorretas',
 
             role_owner: 'Administrador',
+            role_titular: 'Titular',
             role_driver: 'Motorista',
             role_mechanic: 'Mecânico',
 
@@ -854,8 +857,8 @@ const I18n = (() => {
             location_not_configured: 'Não configurado',
 
             // Registro
-            register_admin: 'Registrar-se como Administrador',
-            register_admin_subtitle: 'Crie uma nova conta de administrador para gerenciar sua frota',
+            register_admin: 'Registrar-se como Titular',
+            register_admin_subtitle: 'Crie uma nova conta de titular para gerenciar sua frota',
             register_btn: 'Registrar',
             register_confirm_pin: 'Confirmar PIN',
             register_pin_mismatch: 'Os PINs não coincidem',
