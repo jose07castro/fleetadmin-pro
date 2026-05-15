@@ -823,8 +823,11 @@ REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE):
 9. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
 10. Cortes de calle, baches, inundaciones, protestas, tráfico pesado → tipo: "traffic"
 
+FORMATO DE DIRECCIÓN REQUERIDO:
+En el campo "address", DEBES incluir siempre la Ciudad, la Provincia y el País para evitar errores de GPS. Si el texto no menciona la ciudad, asume que es Rosario, Santa Fe, Argentina (o la ciudad inferida por el grupo). Ejemplo: "Ruta 21 y Peroni, Pueblo Esther, Santa Fe, Argentina".
+
 Responde ÚNICAMENTE con un objeto JSON válido sin explicaciones ni formato markdown adicional:
-{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad/región inferida o null","description":"resumen muy breve","confidence":0.0}
+{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad, provincia y país o null","description":"resumen muy breve","confidence":0.0}
 Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
 
         try {
@@ -1053,8 +1056,8 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 if (googleApiKey) {
                     try {
                         console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}"`);
-                        // Buscamos forzando la región y el idioma en Argentina
-                        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(expandedAddress + ', Rosario, Santa Fe, Argentina')}&language=es&region=AR&key=${googleApiKey}`;
+                        // Pasamos la dirección exacta devuelta por la IA sin agregar concatenaciones duras que confunden a Google
+                        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(expandedAddress)}&language=es&region=AR&key=${googleApiKey}`;
                         const gResponse = await axios.get(gUrl, { timeout: 6000 });
                         
                         if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
@@ -1081,9 +1084,8 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     
                     // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para Photon/OpenStreetMap
                     const cleanAddressForGeo = expandedAddress.replace(/\s+[yY]\s+/gi, ', ');
-                    const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
                     
-                    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
+                    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanAddressForGeo)}&limit=1&lat=-32.9477&lon=-60.6652`;
                     const response = await axios.get(url, { timeout: 8000 });
                     const features = response.data?.features || [];
 
