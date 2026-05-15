@@ -509,10 +509,21 @@ const WhatsappBot = (() => {
 
             sock.ev.on('messages.upsert', async ({ messages, type }) => {
                 console.log(`📨 [UPSERT] type=${type}, count=${messages.length}`);
-                if (type !== 'notify') return;
+                if (type !== 'notify' && type !== 'append') return; // Sincronizar tanto live como pendientes
 
                 for (const msg of messages) {
                     try {
+                    // VALIDACIÓN DE FRESCURA: Ignorar mensajes más viejos de 20 minutos 
+                    // para evitar procesar toneladas de alertas fantasma viejas tras una caída.
+                    const msgSec = Number(msg.messageTimestamp) || 0;
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const ageSec = nowSec - msgSec;
+                    
+                    if (msgSec > 0 && ageSec > 1200) { // 20 minutos (1200 seg)
+                        console.log(`⏭️ [SKIP] Mensaje antiguo de buffer saltado (${ageSec}s de antigüedad).`);
+                        continue;
+                    }
+
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
                     
@@ -710,8 +721,8 @@ const WhatsappBot = (() => {
                                 });
                             }
 
-                            // Procesar la alerta
-                            await _processAlert(analysis.address, text, groupName, analysis.type);
+                            // Procesar la alerta pasando el message ID único para asegurar idempotencia 
+                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id);
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -1045,9 +1056,12 @@ Si CODIGO ROJO: address="Pellegrini y Vera Mujica"`;
     /**
      * Geocodifica y guarda en Firebase.
      */
-    async function _processAlert(address, originalText, sourceGroup, aiType = null) {
+     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null) {
         const fleetId = await _resolveFleetId();
-        const alertId = `bot_${Date.now()}`;
+        // Generar una clave determinista basada en el ID de WhatsApp si existe.
+        // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
+        const safeMsgId = messageId ? `wsp_${messageId.replace(/[^a-zA-Z0-9_]/g, '_')}` : `bot_${Date.now()}`;
+        const alertId = safeMsgId;
         
         // Determinar tipo
         let type = aiType || (/gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText) ? 'police' : 'warning');
