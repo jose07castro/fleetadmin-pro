@@ -31,6 +31,9 @@ const App = (() => {
             // 0. Iniciar keep-alive del bot (Modo Web)
             startWebHeartbeat();
 
+            // 0.5. Configurar Pull-To-Refresh visual (v122)
+            setupPullToRefresh();
+
             // 1. Inicializar sistema de idiomas
             I18n.init();
 
@@ -454,6 +457,138 @@ const App = (() => {
                 Components.showToast('📡 Reconectando al servidor...', 'warning');
             }
         }
+    }
+
+    // --- Pull To Refresh Web Simulation (v122) ---
+    function setupPullToRefresh() {
+        let startY = 0;
+        let currentY = 0;
+        let pulling = false;
+        const THRESHOLD = 80; // Distancia mínima para gatillar
+        const RESISTANCE = 0.4;
+
+        // Crear contenedor e inyectar en Body
+        let container = document.getElementById('pull-refresh-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'pull-refresh-container';
+            container.innerHTML = `
+                <div id="pull-refresh-circle" style="width:42px; height:42px; background:#ffffff; border-radius:50%; box-shadow:0 4px 12px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; transition: transform 0.1s ease, opacity 0.1s ease; transform: translateY(-40px) scale(0); opacity:0; transform-origin: center; pointer-events: none;">
+                    <svg viewBox="0 0 24 24" style="width:22px; height:22px; fill:none; stroke:#6366f1; stroke-width:3.5; stroke-linecap:round; transition: transform 0.1s linear;" id="pull-refresh-svg">
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73"/>
+                    </svg>
+                </div>
+            `;
+            Object.assign(container.style, {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+                zIndex: '999999',
+                paddingTop: '12px'
+            });
+            document.body.appendChild(container);
+        }
+
+        const circle = document.getElementById('pull-refresh-circle');
+        const svg = document.getElementById('pull-refresh-svg');
+
+        window.addEventListener('touchstart', (e) => {
+            // Sólo permitir arrastrar si la pantalla está al inicio absoluto del scroll
+            if (window.scrollY === 0 && document.documentElement.scrollTop === 0) {
+                startY = e.touches[0].clientY;
+                pulling = true;
+            } else {
+                pulling = false;
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!pulling) return;
+            currentY = e.touches[0].clientY;
+            const diff = currentY - startY;
+
+            if (diff > 0) {
+                // Calculamos distancia con factor de amortiguación
+                const pullDist = Math.min(diff * RESISTANCE, 120);
+                
+                circle.style.transform = `translateY(${pullDist}px) scale(${Math.min(pullDist / 50, 1)})`;
+                circle.style.opacity = `${Math.min(pullDist / 35, 1)}`;
+                
+                // Rotamos dinámicamente el icono
+                svg.style.transform = `rotate(${pullDist * 3.5}deg)`;
+                
+                // Modificar el color del borde cuando se supera el límite de activación
+                if (pullDist >= THRESHOLD) {
+                    svg.style.stroke = '#10b981'; // Verde éxito
+                    circle.style.background = '#ffffff';
+                } else {
+                    svg.style.stroke = '#6366f1'; // Violeta estándar
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (!pulling) return;
+            const diff = currentY - startY;
+            const pullDist = diff * RESISTANCE;
+
+            if (pullDist >= THRESHOLD) {
+                // Gatillar refresco
+                circle.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                circle.style.transform = `translateY(${THRESHOLD}px) scale(1)`;
+                svg.style.animation = 'pullSpinFast 0.7s linear infinite';
+                
+                // CSS in-line para la animación del spinner
+                if (!document.getElementById('pull-spin-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'pull-spin-style';
+                    style.textContent = `@keyframes pullSpinFast { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+                    document.head.appendChild(style);
+                }
+
+                // Breve delay para feedback visual, luego refrescar vista o recarga total
+                setTimeout(() => {
+                    const currentRoute = (typeof Router !== 'undefined') ? Router.getCurrentRoute() : null;
+                    if (currentRoute && currentRoute !== 'login') {
+                        console.log('🔄 Pull-To-Refresh: Recargando ruta ' + currentRoute);
+                        Router.navigate(currentRoute);
+                        if (typeof Components !== 'undefined' && Components.showToast) {
+                            Components.showToast('🔄 Datos actualizados', 'success');
+                        }
+                    } else {
+                        console.log('🔄 Pull-To-Refresh: Forzando reload de página completo.');
+                        window.location.reload();
+                    }
+                    
+                    // Contraer y ocultar después de completar
+                    setTimeout(() => {
+                        circle.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                        circle.style.transform = `translateY(-40px) scale(0)`;
+                        circle.style.opacity = '0';
+                        setTimeout(() => {
+                            svg.style.animation = 'none';
+                            circle.style.transition = 'none';
+                        }, 450);
+                    }, 400);
+                }, 600);
+            } else {
+                // Cancelado, colapsar inmediatamente
+                circle.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                circle.style.transform = `translateY(-40px) scale(0)`;
+                circle.style.opacity = '0';
+                setTimeout(() => {
+                    circle.style.transition = 'none';
+                }, 300);
+            }
+
+            pulling = false;
+            startY = 0;
+            currentY = 0;
+        });
     }
 
     return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme };
