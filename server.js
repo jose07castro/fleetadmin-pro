@@ -160,8 +160,8 @@ app.get('/api/voice/tts', async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Missing ?text= parameter' });
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    // Voice ID: configurable via env, defaults to a deep male Spanish voice
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // "Sarah" default, user replaces with KITT
+    // Voice ID: configurable via env, defaults to the hyper-premium deep "Adam" voice (perfect for KITT)
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgmoE1GGz11j';
 
     if (!apiKey) {
         return res.status(503).json({ error: 'ELEVENLABS_API_KEY not configured on server' });
