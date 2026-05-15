@@ -16,9 +16,11 @@ import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.Process;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -76,6 +78,10 @@ public class LocationTrackingService extends Service {
     private Runnable watchdogRunnable;
     private boolean isTracking = false;
 
+    // Background Thread
+    private HandlerThread serviceThread;
+    private Handler serviceHandler;
+
     // Firebase Direct
     private DatabaseReference dbRef;
     private String userId;
@@ -95,8 +101,13 @@ public class LocationTrackingService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.i(TAG, "🚀 LocationTrackingService.onCreate() — v4.0 Firebase Direct");
+        Log.i(TAG, "🚀 LocationTrackingService.onCreate() — v4.0 Firebase Direct (Background Thread)");
         createNotificationChannel();
+
+        // Inicializar hilo de fondo (evita que Doze suspenda el hilo principal)
+        serviceThread = new HandlerThread("FleetGPSThread", Process.THREAD_PRIORITY_BACKGROUND);
+        serviceThread.start();
+        serviceHandler = new Handler(serviceThread.getLooper());
 
         // Inicializar Firebase Database
         try {
@@ -191,6 +202,10 @@ public class LocationTrackingService extends Service {
             watchdogHandler.removeCallbacks(watchdogRunnable);
         }
 
+        if (serviceThread != null) {
+            serviceThread.quitSafely();
+        }
+
         releaseWakeLock();
         super.onDestroy();
     }
@@ -220,7 +235,7 @@ public class LocationTrackingService extends Service {
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
                     MIN_TIME_MS, MIN_DISTANCE_M,
-                    gpsListener, Looper.getMainLooper()
+                    gpsListener, serviceHandler.getLooper()
                 );
                 Log.i(TAG, "✅ GPS_PROVIDER registrado (heartbeat: " + MIN_TIME_MS + "ms)");
             }
@@ -229,7 +244,7 @@ public class LocationTrackingService extends Service {
                 locationManager.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER,
                     MIN_TIME_MS, MIN_DISTANCE_M,
-                    networkListener, Looper.getMainLooper()
+                    networkListener, serviceHandler.getLooper()
                 );
                 Log.i(TAG, "✅ NETWORK_PROVIDER registrado como fallback");
             }
@@ -372,7 +387,7 @@ public class LocationTrackingService extends Service {
             watchdogHandler.removeCallbacks(watchdogRunnable);
         }
 
-        watchdogHandler = new Handler(Looper.getMainLooper());
+        watchdogHandler = serviceHandler;
         watchdogRunnable = new Runnable() {
             @Override
             public void run() {
@@ -383,6 +398,11 @@ public class LocationTrackingService extends Service {
                     Log.w(TAG, "⚠️ WATCHDOG: GPS silencioso " + (silenceMs / 1000) + "s — re-registrando");
                     stopLocationUpdates();
                     startLocationUpdates();
+                } else {
+                    // Forzar a Firebase a mantenerse online por si la red se durmió
+                    try {
+                        FirebaseDatabase.getInstance().goOnline();
+                    } catch (Exception e) {}
                 }
 
                 watchdogHandler.postDelayed(this, 15000);
