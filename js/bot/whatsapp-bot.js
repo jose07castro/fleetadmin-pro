@@ -377,6 +377,15 @@ const WhatsappBot = (() => {
             return;
         }
         isConnecting = true;
+        
+        // WATCHDOG SANITARIO DE CERROJO: Si tras 90 segundos no hay éxito ni fallo definitivo, 
+        // forzamos liberación para evitar congelamiento absoluto en la RAM de Render.
+        const lockWatchdog = setTimeout(() => {
+            if (isConnecting && !_isConnectedState) {
+                console.warn('🚨 [WATCHDOG] Desbloqueando cerrojo por tiempo excedido (90s) para autorrecuperación.');
+                isConnecting = false;
+            }
+        }, 90000);
 
         // Limpieza estricta de memoria: cerrar socket y limpiar listeners viejos si existen
         if (sock) {
@@ -414,6 +423,7 @@ const WhatsappBot = (() => {
                 }
 
                 if (connection === 'close') {
+                    clearTimeout(lockWatchdog); // Detener watchdog al finalizar el intento
                     isConnecting = false; // Liberar cerrojo
                     _isConnectedState = false;
                     
@@ -478,6 +488,7 @@ const WhatsappBot = (() => {
                         await startSocket();
                     }
                 } else if (connection === 'open') {
+                    clearTimeout(lockWatchdog); // Éxito total, matar watchdog de cerrojo
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
@@ -733,6 +744,8 @@ const WhatsappBot = (() => {
             });
 
         } catch (err) {
+            clearTimeout(lockWatchdog); // Matar watchdog en caso de error síncrono del constructor
+            isConnecting = false; // 🔓 [DESBLOQUEO CRÍTICO] Liberar cerrojo para evitar deadlock permanente en reintentos
             console.error('❌ Error fatal en startSocket:', err.message);
             retryCount++;
             const delay = Math.min(10000 * retryCount, 60000);
