@@ -59,6 +59,13 @@ const KittVoice = (() => {
         _processQueue();
     }
 
+    function _getApiBaseUrl() {
+        const isLocalOrNative = window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:';
+        return isLocalOrNative ? 'https://fleetadmin-pro-1.onrender.com' : window.location.origin;
+    }
+
     /**
      * Intenta reproducir el texto usando ElevenLabs via el proxy del servidor.
      * @returns {Promise<boolean>} true si el audio se reprodujo correctamente.
@@ -67,7 +74,8 @@ const KittVoice = (() => {
         return new Promise((resolve) => {
             try {
                 const encodedText = encodeURIComponent(text);
-                const url = `/api/voice/tts?text=${encodedText}`;
+                const baseUrl = _getApiBaseUrl();
+                const url = `${baseUrl}/api/voice/tts?text=${encodedText}`;
 
                 const audio = new Audio(url);
                 _currentAudio = audio;
@@ -120,12 +128,20 @@ const KittVoice = (() => {
 
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = 'es-AR';
-            utter.rate = 0.9;
-            utter.pitch = 1.0;
+            utter.rate = 0.95; 
+            utter.pitch = 0.85; // Tono más grave y masculino/robótico al estilo KITT
             utter.volume = 1.0;
 
             const voices = window.speechSynthesis.getVoices();
-            const esVoice = voices.find(v => v.lang.startsWith('es'));
+            // Priorizar una voz en español que contenga indicios de ser masculina en el sistema
+            let esVoice = voices.find(v => v.lang.startsWith('es') && 
+                (v.name.toLowerCase().includes('male') || 
+                 v.name.toLowerCase().includes('hombre') || 
+                 v.name.toLowerCase().includes('masculino') || 
+                 v.name.toLowerCase().includes('mexico') || 
+                 v.name.toLowerCase().includes('googlees'))); 
+            
+            if (!esVoice) esVoice = voices.find(v => v.lang.startsWith('es'));
             if (esVoice) utter.voice = esVoice;
 
             utter.onend = () => resolve();
