@@ -511,9 +511,9 @@ const GPSPermissions = (() => {
             return;
         }
 
-        // Intervalo Dinámico (3.5s normal, 10s si batería baja) 
+        // Intervalo Dinámico (2s normal, 10s si batería baja) 
         const evaluateAndSend = async () => {
-            let limitMs = 3500; // 3.5 segundos por defecto (agresivo)
+            let limitMs = 2000; // 2 segundos (v126: más agresivo para radar fluido)
             if (navigator.getBattery) {
                 try {
                     const b = await navigator.getBattery();

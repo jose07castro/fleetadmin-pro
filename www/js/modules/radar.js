@@ -58,6 +58,7 @@ const RadarModule = (() => {
                 this.div.style.position = 'absolute';
                 this.div.style.cursor = 'pointer';
                 this.div.style.zIndex = '10';
+                this.div.style.transition = 'left 2s linear, top 2s linear'; // v126: Movimiento fluido
                 this.div.innerHTML = this.html;
                 
                 if (this.popupHtml) {
@@ -78,8 +79,8 @@ const RadarModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
-                    this.div.style.left = (pos.x - 30) + 'px';
-                    this.div.style.top = (pos.y - 30) + 'px';
+                    this.div.style.left = (pos.x - 15) + 'px';
+                    this.div.style.top = (pos.y - 15) + 'px';
                 }
             }
             onRemove() {
@@ -157,7 +158,7 @@ const RadarModule = (() => {
             </button>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
-                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (3.5s)</strong></span>
+                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (2s)</strong></span>
             </div>
         `;
 
@@ -258,7 +259,7 @@ const RadarModule = (() => {
             const baseStyle = `style="display:block; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5)); transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); margin: -10px;"`;
             
             return `
-            <svg viewBox="0 0 60 110" width="50" height="90" ${baseStyle}>
+            <svg viewBox="0 0 60 110" width="25" height="45" ${baseStyle}>
                 <defs>
                     <linearGradient id="bodyGrad_${theme.body.replace('#','')}" x1="0%" y1="0%" x2="100%" y2="0%">
                         <stop offset="0%" stop-color="${theme.side}" />
