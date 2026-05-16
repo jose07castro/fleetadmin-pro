@@ -8,6 +8,7 @@ const Router = (() => {
 
     // Mapa de rutas a archivos para Lazy Loading
     const modulePaths = {
+        radar: 'js/modules/radar-v126.js',
         login: 'js/modules/login.js',
         dashboard: 'js/modules/dashboard.js',
         vehicles: 'js/modules/vehicles.js',
@@ -27,7 +28,7 @@ const Router = (() => {
                 return resolve(); // Ya estaba inyectado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=120`; // versión
+            script.src = `${path}?v=126`; // versión v126
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
