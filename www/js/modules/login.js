@@ -13,7 +13,7 @@ const LoginModule = (() => {
                 <div class="login-container">
                     <div class="login-logo">
                         <div class="login-logo-icon" style="background:transparent; box-shadow:none; border:none;">
-                            <img src="assets/logo-3d.png?v=129" style="width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4));" alt="Logo">
+                            <img src="assets/logo-3d.png?v=133" style="width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4));" alt="Logo">
                         </div>
                         <h1>${I18n.t('app_name')}</h1>
                         <p>${I18n.t('app_subtitle')}</p>
