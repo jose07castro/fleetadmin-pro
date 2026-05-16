@@ -185,17 +185,12 @@ const LoginModule = (() => {
 
                 // Verificaciones diferidas (fire-and-forget, no bloquean la UI):
 
-                // 1. Perfil incompleto y permisos (conductores) — se redirige después si falta
+                // 1. Perfil incompleto (conductores) — se redirige después si falta
                 if (Auth.isDriver()) {
                     Auth.isProfileComplete().then(profileOk => {
                         if (!profileOk) {
                             console.log('🚫 Perfil incompleto — redirigiendo a completar perfil');
                             Router.navigate('complete-profile');
-                        } else if (AndroidServices.isNativeAndroid()) {
-                            // Si el perfil está OK, verificar permisos de ubicación en 2do plano
-                            setTimeout(() => {
-                                AndroidServices.showBackgroundLocationDialog();
-                            }, 1000);
                         }
                     }).catch(e => console.warn('⚠️ Error verificando perfil (no bloquea):', e));
                 }
@@ -318,10 +313,16 @@ const LoginModule = (() => {
                 </div>
                 
                 <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:var(--space-4) 0;">
-                <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:8px;"><strong>Documentación Obligatoria (Titular Directo)</strong></p>
+                <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:8px;"><strong>Documentación Obligatoria</strong></p>
                 
-                ${Components.renderPhotoCapture('regTarjetaVerde', '📸 Foto de la Tarjeta Verde')}
-                ${Components.renderPhotoCapture('regSeguro', '📸 Foto de la Póliza de Seguro (Vigente)')}
+                <div class="form-group">
+                    <label class="form-label">📸 Foto de la Tarjeta Verde</label>
+                    <input type="file" id="regTarjetaVerde" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📸 Foto de la Póliza de Seguro</label>
+                    <input type="file" id="regSeguro" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
 
                 <div id="regError" class="form-error" style="text-align:center; margin-bottom:var(--space-2); display:none;"></div>
                 <div id="regLoading" style="display:none; text-align:center; margin-bottom:var(--space-3); color:var(--color-primary); font-weight:600; font-size:0.9rem;">
@@ -335,16 +336,48 @@ const LoginModule = (() => {
         );
     }
 
+    // Helper: Comprimir imagen a base64
+    function _compressImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1200;
+                    const MAX_HEIGHT = 1200;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8)); // 80% quality
+                };
+                img.onerror = reject;
+            };
+            reader.onerror = reject;
+        });
+    }
 
     async function doRegister() {
-        const name = document.getElementById('regName')?.value.trim();
-        const pin = document.getElementById('regPin')?.value;
-        const pinConfirm = document.getElementById('regPinConfirm')?.value;
         const plate = document.getElementById('regPlate')?.value.trim().toUpperCase();
-        
-        // v106: Usar Components.getPhotoData para compatibilidad con el nuevo sistema de fotos
-        const fileTv = await Components.getPhotoData('regTarjetaVerde');
-        const fileSeg = await Components.getPhotoData('regSeguro');
+        const fileTv = document.getElementById('regTarjetaVerde')?.files[0];
+        const fileSeg = document.getElementById('regSeguro')?.files[0];
         
         const errorEl = document.getElementById('regError');
         const loadingEl = document.getElementById('regLoading');
@@ -384,8 +417,8 @@ const LoginModule = (() => {
             btnSubmit.disabled = true;
 
             // 1. Convertir imágenes a base64 (reducidas)
-            const tvBase64 = await StorageUtil.compressImage(fileTv, 1200, 1200, 0.7);
-            const segBase64 = await StorageUtil.compressImage(fileSeg, 1200, 1200, 0.7);
+            const tvBase64 = await _compressImage(fileTv);
+            const segBase64 = await _compressImage(fileSeg);
 
             // 2. Llamar al Backend de IA para validación
             const response = await fetch('/api/auth/verify-documents', {
@@ -452,7 +485,7 @@ const LoginModule = (() => {
             const vehicleId = Date.now().toString();
             await DB.add('vehicles', {
                 id: vehicleId,
-                name: \`\${aiResult.extractedData?.tarjetaVerde?.nombre || 'Vehículo'} (\${plate})\`,
+                name: `${aiResult.extractedData?.tarjetaVerde?.nombre || 'Vehículo'} (${plate})`,
                 plate: plate,
                 status: 'active',
                 currentKm: 0,

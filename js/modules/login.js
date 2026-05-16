@@ -485,7 +485,7 @@ const LoginModule = (() => {
             const vehicleId = Date.now().toString();
             await DB.add('vehicles', {
                 id: vehicleId,
-                name: \`\${aiResult.extractedData?.tarjetaVerde?.nombre || 'Vehículo'} (\${plate})\`,
+                name: `${aiResult.extractedData?.tarjetaVerde?.nombre || 'Vehículo'} (${plate})`,
                 plate: plate,
                 status: 'active',
                 currentKm: 0,
