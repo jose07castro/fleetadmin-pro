@@ -49,26 +49,30 @@ window.DashboardModule = (() => {
 
             // NUEVO: Accesos Rápidos Dashboard (Botonera VIP)
             const quickActionsHTML = `
-            <div class="dashboard-section" style="margin-bottom:var(--space-5);">
+            <div class="dashboard-section animate-in" style="margin-bottom:var(--space-5); animation-delay: 0.1s;">
                 <div class="dashboard-section-title" style="font-size:0.85rem; opacity:0.8; margin-bottom:var(--space-2); letter-spacing:0.5px; text-transform:uppercase;">⚡ Accesos Rápidos</div>
-                <div class="quick-actions-scroll-container" style="display:flex; gap:var(--space-3); overflow-x:auto; padding:var(--space-1) var(--space-1) var(--space-3) var(--space-1); margin:0 -4px; scrollbar-width:none; -ms-overflow-style:none; -webkit-overflow-scrolling:touch;">
-                    <style> .quick-actions-scroll-container::-webkit-scrollbar { display: none; } .q-btn:active { transform: scale(0.96); opacity: 0.9; } </style>
+                <div class="quick-actions-scroll-container glass-card" style="display:flex; gap:var(--space-3); overflow-x:auto; padding:var(--space-4); margin:0 -4px; border-radius: 20px; scrollbar-width:none; -ms-overflow-style:none; -webkit-overflow-scrolling:touch;">
+                    <style> 
+                        .quick-actions-scroll-container::-webkit-scrollbar { display: none; } 
+                        .q-btn:active { transform: scale(0.96); opacity: 0.9; }
+                        .q-btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+                    </style>
                     
-                    <button class="q-btn" onclick="Router.navigate('oil')" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(217,119,6,0.25); cursor:pointer; transition:all 0.2s;">
+                    <button class="q-btn" onclick="Router.navigate('oil')" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(217,119,6,0.3); filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4)); cursor:pointer; transition:all 0.2s;">
                         <span style="font-size:1.5rem;">🛢️</span> Cargar Aceite
                     </button>
                     
                     ${Auth.isOwner() ? `
-                    <button class="q-btn" onclick="Router.navigate('maintenance')" style="background:linear-gradient(135deg, #ef4444, #b91c1c); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(185,28,28,0.25); cursor:pointer; transition:all 0.2s;">
+                    <button class="q-btn" onclick="Router.navigate('maintenance')" style="background:linear-gradient(135deg, #ef4444, #b91c1c); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(185,28,28,0.3); filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4)); cursor:pointer; transition:all 0.2s;">
                         <span style="font-size:1.5rem;">🔧</span> Reparaciones
                     </button>
                     ` : ''}
                     
-                    <button class="q-btn" onclick="Router.navigate('shifts')" style="background:linear-gradient(135deg, #10b981, #059669); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(16,185,129,0.25); cursor:pointer; transition:all 0.2s;">
+                    <button class="q-btn" onclick="Router.navigate('shifts')" style="background:linear-gradient(135deg, #10b981, #059669); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(16,185,129,0.3); filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4)); cursor:pointer; transition:all 0.2s;">
                         <span style="font-size:1.5rem;">⏱️</span> Iniciar Turno
                     </button>
                     
-                    <button class="q-btn" onclick="Router.navigate('vehicles')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 6px 12px rgba(59,130,246,0.25); cursor:pointer; transition:all 0.2s;">
+                    <button class="q-btn" onclick="Router.navigate('vehicles')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(59,130,246,0.3); filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4)); cursor:pointer; transition:all 0.2s;">
                         <span style="font-size:1.5rem;">🚗</span> Ver Flota
                     </button>
                 </div>
@@ -153,10 +157,14 @@ window.DashboardModule = (() => {
 
             return `
             ${globalStatsHTML}
-            <div class="dashboard-welcome" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap;">
+            <div class="dashboard-welcome animate-in" style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); flex-wrap:wrap; padding: var(--space-4); background: linear-gradient(90deg, rgba(99, 102, 241, 0.1), transparent); border-radius: var(--radius-lg); border-left: 4px solid var(--color-primary); margin-bottom: var(--space-6);">
                 <div>
-                    <h2>${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
-                    <p>${I18n.t('dash_summary')}</p>
+                    <h2 style="font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px;">${I18n.t('dash_welcome')} ${Auth.getUserName()}! 👋</h2>
+                    <div style="display:flex; align-items:center; gap:var(--space-2); margin-bottom: var(--space-2);">
+                        <span class="live-indicator"></span>
+                        <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--color-success); text-transform: uppercase; letter-spacing: 1px;">Monitor de Flota en Vivo</span>
+                    </div>
+                    <p style="opacity: 0.8;">${I18n.t('dash_summary')}</p>
                     ${locationBadge}
                 </div>
                 ${Auth.isOwner() ? `
@@ -191,12 +199,12 @@ window.DashboardModule = (() => {
                 ${(() => {
                     const dragAttr = Auth.getUserName() === 'OwnerAdmin' ? 'draggable="true"' : '';
                     const statCardsDict = {
-                        'card-vehicles': '<div class="stat-card" ' + dragAttr + ' data-id="card-vehicles"><div class="stat-icon primary" style="pointer-events:none;">🚗</div><div style="pointer-events:none;"><div class="stat-value">' + vehicles.length + '</div><div class="stat-label">' + I18n.t("dash_vehicles") + '</div></div></div>',
-                        'card-shifts': '<div class="stat-card" ' + dragAttr + ' data-id="card-shifts"><div class="stat-icon info" style="pointer-events:none;">⏱️</div><div style="pointer-events:none;"><div class="stat-value">' + activeShifts.length + '</div><div class="stat-label">' + I18n.t("dash_active_shifts") + '</div></div></div>',
-                        'card-earnings': '<div class="stat-card" ' + dragAttr + ' data-id="card-earnings"><div class="stat-icon success" style="pointer-events:none;">💰</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalEarnings.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_total_earnings") + '</div></div></div>',
-                        'card-profit': '<div class="stat-card" ' + dragAttr + ' data-id="card-profit"><div class="stat-icon ' + (netProfit >= 0 ? "success" : "danger") + '" style="pointer-events:none;">📈</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + netProfit.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_net_profit") + '</div></div></div>',
-                        'card-expenses': '<div class="stat-card" ' + dragAttr + ' data-id="card-expenses"><div class="stat-icon warning" style="pointer-events:none;">💸</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalRepairCost.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_expenses") + ' (' + I18n.t("maint_repairs") + ')</div></div></div>',
-                        'card-users': '<div class="stat-card" ' + dragAttr + ' data-id="card-users" style="cursor:pointer;" onclick="DashboardModule.showUsers()"><div class="stat-icon primary" style="pointer-events:none;">👥</div><div style="pointer-events:none;"><div class="stat-value">' + users.length + '</div><div class="stat-label">' + I18n.t("nav_users") + ' — ' + I18n.t("user_manage") + ' →</div></div></div>'
+                        'card-vehicles': '<div class="stat-card glass-card neon-glow-primary animate-in" ' + dragAttr + ' data-id="card-vehicles" style="animation-delay:0.2s;"><div class="stat-icon primary" style="pointer-events:none;">🚗</div><div style="pointer-events:none;"><div class="stat-value">' + vehicles.length + '</div><div class="stat-label">' + I18n.t("dash_vehicles") + '</div></div></div>',
+                        'card-shifts': '<div class="stat-card glass-card neon-glow-info animate-in" ' + dragAttr + ' data-id="card-shifts" style="animation-delay:0.3s;"><div class="stat-icon info" style="pointer-events:none;">⏱️</div><div style="pointer-events:none;"><div class="stat-value">' + activeShifts.length + '</div><div class="stat-label">' + I18n.t("dash_active_shifts") + '</div></div></div>',
+                        'card-earnings': '<div class="stat-card glass-card neon-glow-success animate-in" ' + dragAttr + ' data-id="card-earnings" style="animation-delay:0.4s;"><div class="stat-icon success" style="pointer-events:none;">💰</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalEarnings.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_total_earnings") + '</div></div></div>',
+                        'card-profit': '<div class="stat-card glass-card ' + (netProfit >= 0 ? "neon-glow-success" : "neon-glow-warning") + ' animate-in" ' + dragAttr + ' data-id="card-profit" style="animation-delay:0.5s;"><div class="stat-icon ' + (netProfit >= 0 ? "success" : "danger") + '" style="pointer-events:none;">📈</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + netProfit.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_net_profit") + '</div></div></div>',
+                        'card-expenses': '<div class="stat-card glass-card neon-glow-warning animate-in" ' + dragAttr + ' data-id="card-expenses" style="animation-delay:0.6s;"><div class="stat-icon warning" style="pointer-events:none;">💸</div><div style="pointer-events:none;"><div class="stat-value">' + I18n.t("unit_currency") + totalRepairCost.toLocaleString() + '</div><div class="stat-label">' + I18n.t("dash_expenses") + ' (' + I18n.t("maint_repairs") + ')</div></div></div>',
+                        'card-users': '<div class="stat-card glass-card neon-glow-primary animate-in" ' + dragAttr + ' data-id="card-users" style="cursor:pointer; animation-delay:0.7s;" onclick="DashboardModule.showUsers()"><div class="stat-icon primary" style="pointer-events:none;">👥</div><div style="pointer-events:none;"><div class="stat-value">' + users.length + '</div><div class="stat-label">' + I18n.t("nav_users") + ' — ' + I18n.t("user_manage") + ' →</div></div></div>'
                     };
                     const allKeys = ['card-vehicles', 'card-shifts', 'card-earnings', 'card-profit', 'card-expenses', 'card-users'];
                     const sk = savedOrder && savedOrder.length === 6 ? savedOrder : allKeys;
@@ -270,12 +278,12 @@ window.DashboardModule = (() => {
                 </div>
             </div>
 
-            <div class="dashboard-section">
+            <div class="dashboard-section animate-in" style="animation-delay: 0.8s;">
                 <div class="dashboard-section-title">🚗 ${I18n.t('dash_fleet_overview')}</div>
                 ${fleetHTML}
             </div>
 
-            <div class="dashboard-section">
+            <div class="dashboard-section animate-in" style="animation-delay: 0.9s;">
                 <div class="dashboard-section-title">📋 ${I18n.t('dash_recent_activity')}</div>
                 ${activityHTML}
             </div>`;
