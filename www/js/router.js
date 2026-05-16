@@ -8,6 +8,7 @@ const Router = (() => {
 
     // Mapa de rutas a archivos para Lazy Loading
     const modulePaths = {
+        radar: 'js/modules/radar-v126.js',
         login: 'js/modules/login.js',
         dashboard: 'js/modules/dashboard.js',
         vehicles: 'js/modules/vehicles.js',
