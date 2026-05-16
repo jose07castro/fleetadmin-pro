@@ -283,13 +283,75 @@ const GPSModule = (() => {
 
                 if (!userMarker) {
                     const MarkerClass = _getHTMLMapMarkerClass();
-                    const html = '<div style="background:var(--accent-primary); width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 0 15px var(--accent-primary);"></div>';
-                    userMarker = new MarkerClass(latlng, html, null, 8);
+                    
+                    // v126: Icono de auto premium (Paridad con Radar)
+                    const heading = pos.coords.heading || 0;
+                    const hours = new Date().getHours();
+                    const isNight = hours >= 19 || hours < 7;
+                    const carColor = '#3b82f6'; // Azul por defecto para el "yo"
+
+                    const html = `
+                        <div style="transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s ease-out;">
+                            <svg viewBox="0 0 60 110" width="22" height="40" style="display:block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
+                                <defs>
+                                    <linearGradient id="bodyGrad_user" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stop-color="#1e40af" />
+                                        <stop offset="25%" stop-color="#3b82f6" />
+                                        <stop offset="75%" stop-color="#3b82f6" />
+                                        <stop offset="100%" stop-color="#1e40af" />
+                                    </linearGradient>
+                                    <radialGradient id="headlightBeam" cx="50%" cy="50%" r="50%">
+                                        <stop offset="0%" stop-color="rgba(255,255,255,0.4)" />
+                                        <stop offset="100%" stop-color="rgba(255,255,255,0)" />
+                                    </radialGradient>
+                                </defs>
+                                
+                                ${isNight ? `
+                                    <path d="M 15 15 L -10 -40 L 30 -40 Z" fill="url(#headlightBeam)" filter="blur(5px)" />
+                                    <path d="M 45 15 L 70 -40 L 30 -40 Z" fill="url(#headlightBeam)" filter="blur(5px)" />
+                                ` : ''}
+
+                                <path d="M 12 10 Q 30 -5 48 10 L 52 90 Q 30 115 8 90 Z" fill="rgba(0,0,0,0.3)" filter="blur(2px)" />
+                                <path d="M 14 12 Q 30 -2 46 12 L 50 92 Q 30 110 10 92 Z" fill="url(#bodyGrad_user)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                                <path d="M 18 30 Q 30 20 42 30 L 44 70 Q 30 80 16 70 Z" fill="#020617" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                                
+                                <!-- Luces -->
+                                <path d="M 15 15 L 23 11 L 21 16 Z" fill="#fff" filter="drop-shadow(0 0 ${isNight ? '8px' : '3px'} #fff)" />
+                                <path d="M 45 15 L 37 11 L 39 16 Z" fill="#fff" filter="drop-shadow(0 0 ${isNight ? '8px' : '3px'} #fff)" />
+                                <path d="M 12 91 Q 30 96 48 91 L 46 89 Q 30 93 14 89 Z" fill="#ef4444" filter="drop-shadow(0 0 ${isNight ? '10px' : '4px'} #ef4444)" />
+                            </svg>
+                        </div>
+                    `;
+
+                    userMarker = new MarkerClass(latlng, html, null, 15);
                     userMarker.setMap(map);
                     
                     map.panTo(latlng);
                 } else {
+                    const heading = pos.coords.heading || 0;
+                    const hours = new Date().getHours();
+                    const isNight = hours >= 19 || hours < 7;
+                    
+                    // Actualizar posición y rotación
                     userMarker.setPosition(latlng);
+                    userMarker.setHtml(`
+                        <div style="transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s ease-out;">
+                            <svg viewBox="0 0 60 110" width="22" height="40" style="display:block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
+                                <defs>
+                                    <linearGradient id="bodyGrad_user" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stop-color="#1e40af" />
+                                        <stop offset="25%" stop-color="#3b82f6" />
+                                        <stop offset="75%" stop-color="#3b82f6" />
+                                        <stop offset="100%" stop-color="#1e40af" />
+                                    </linearGradient>
+                                </defs>
+                                ${isNight ? '<path d="M 15 15 L -10 -40 L 30 -40 Z" fill="rgba(255,255,255,0.2)" filter="blur(5px)" /><path d="M 45 15 L 70 -40 L 30 -40 Z" fill="rgba(255,255,255,0.2)" filter="blur(5px)" />' : ''}
+                                <path d="M 14 12 Q 30 -2 46 12 L 50 92 Q 30 110 10 92 Z" fill="url(#bodyGrad_user)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                                <path d="M 18 30 Q 30 20 42 30 L 44 70 Q 30 80 16 70 Z" fill="#020617" />
+                                <path d="M 12 91 Q 30 96 48 91 L 46 89 Q 30 93 14 89 Z" fill="#ef4444" filter="drop-shadow(0 0 ${isNight ? '10px' : '4px'} #ef4444)" />
+                            </svg>
+                        </div>
+                    `);
                 }
             },
             (err) => {
