@@ -165,7 +165,7 @@ html {
 body {
     font-family: var(--font-family);
     background: var(--bg-primary);
-    background-image: linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.45)), url('../assets/wallpaper-v136.png');
+    background-image: linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.45)), url('../assets/wallpaper-v137.png');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;

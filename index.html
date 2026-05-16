@@ -17,7 +17,7 @@
 
         // FORCE CACHE PURGE v126 — Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 136;
+            var REQUIRED_VERSION = 137;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
                 console.log('🔥 PURGE v126: Forzando limpieza total...');
@@ -165,7 +165,7 @@
                     @keyframes scaleInModal { from { opacity: 0; transform: scale(0.85) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
                     @keyframes pulseBtn { 0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5); } 50% { box-shadow: 0 0 0 12px rgba(99,102,241,0); } }
                     #sw-update-overlay { position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; animation:fadeInOverlay .3s ease; }
-                    #sw-update-card { background-image: linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.45)), url('../assets/wallpaper-v136.png'); border:1px solid rgba(129,140,248,0.3); border-radius:20px; padding:32px 28px; max-width:380px; width:90%; text-align:center; animation:scaleInModal .4s ease; box-shadow:0 25px 60px rgba(0,0,0,0.5); }
+                    #sw-update-card { background-image: linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.45)), url('../assets/wallpaper-v137.png'); border:1px solid rgba(129,140,248,0.3); border-radius:20px; padding:32px 28px; max-width:380px; width:90%; text-align:center; animation:scaleInModal .4s ease; box-shadow:0 25px 60px rgba(0,0,0,0.5); }
                     #sw-update-card .update-icon { font-size:52px; margin-bottom:12px; }
                     #sw-update-card h2 { color:#e0e7ff; font-family:'Inter',sans-serif; font-size:20px; font-weight:700; margin:0 0 8px; }
                     #sw-update-card p { color:#a5b4fc; font-family:'Inter',sans-serif; font-size:14px; margin:0 0 24px; line-height:1.5; }
