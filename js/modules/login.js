@@ -5,7 +5,7 @@
    ============================================ */
 
 const LoginModule = (() => {
-    let selectedRole = 'titular';
+    let selectedRole = 'owner';
 
     function render() {
         return `
@@ -26,21 +26,21 @@ const LoginModule = (() => {
                         </p>
 
                         <div class="role-selector" id="roleSelector">
-                            <button class="role-option selected" data-role="titular" onclick="LoginModule.selectRole('titular')">
-                                <span class="role-icon">💼</span>
-                                <span class="role-label">${I18n.t('role_titular')}</span>
-                            </button>
-                            <button class="role-option" data-role="owner" onclick="LoginModule.selectRole('owner')">
+                            <button class="role-option selected" data-role="owner" onclick="LoginModule.selectRole('owner')">
                                 <span class="role-icon">👑</span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
-                            <button class="role-option" data-role="driver" onclick="LoginModule.selectRole('driver')">
-                                <span class="role-icon">🚗</span>
-                                <span class="role-label">${I18n.t('role_driver')}</span>
+                            <button class="role-option" data-role="titular" onclick="LoginModule.selectRole('titular')">
+                                <span class="role-icon">💼</span>
+                                <span class="role-label">${I18n.t('role_titular')}</span>
                             </button>
                             <button class="role-option" data-role="mechanic" onclick="LoginModule.selectRole('mechanic')">
                                 <span class="role-icon">🔧</span>
                                 <span class="role-label">${I18n.t('role_mechanic')}</span>
+                            </button>
+                            <button class="role-option" data-role="driver" onclick="LoginModule.selectRole('driver')">
+                                <span class="role-icon">🚗</span>
+                                <span class="role-label">${I18n.t('role_driver')}</span>
                             </button>
                         </div>
 
