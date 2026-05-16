@@ -15,12 +15,12 @@
             } catch(e) { console.warn('v120 IndexedDB cleanup error:', e); }
         })();
 
-        // FORCE CACHE PURGE v120 — Ejecutar ANTES de que el SW intercepte
+        // FORCE CACHE PURGE v126 — Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 120;
+            var REQUIRED_VERSION = 126;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
-                console.log('🔥 PURGE v120: Forzando limpieza total...');
+                console.log('🔥 PURGE v126: Forzando limpieza total...');
                 localStorage.setItem('fa_cache_ver', String(REQUIRED_VERSION));
 
                 caches.keys().then(function(names) {
