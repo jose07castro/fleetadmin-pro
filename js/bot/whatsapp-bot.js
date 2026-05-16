@@ -190,6 +190,22 @@ const WhatsappBot = (() => {
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
         console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
         
+        // Manejo de apagado elegante (SIGTERM) para liberar la sesión rápido en Render
+        process.on('SIGTERM', async () => {
+            console.log('🛑 [SIGTERM] Solicitud de apagado recibida. Cerrando socket WhatsApp...');
+            if (sock) {
+                try { await sock.end(); } catch(e) {}
+            }
+            process.exit(0);
+        });
+        process.on('SIGINT', async () => {
+            console.log('🛑 [SIGINT] Cerrando socket WhatsApp...');
+            if (sock) {
+                try { await sock.end(); } catch(e) {}
+            }
+            process.exit(0);
+        });
+
         // Esperar 50s al inicio para que el proceso anterior de Render muera
         console.log('⏳ Esperando 50s para que el proceso anterior libere la sesión...');
         await new Promise(r => setTimeout(r, 50000));
