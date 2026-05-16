@@ -25,7 +25,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Permite solicitar al usuario "Sin restricciones de batería" -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Permite mostrar alertas críticas sobre otras apps (flotantes) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Mantener vivo tras reboot (futuro: auto-start) -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

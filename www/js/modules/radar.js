@@ -372,7 +372,7 @@ const RadarModule = (() => {
                 const oil = Alerts.getOilChangeStatus(vehicle);
                 
                 const alerts = [];
-                // 60,000 km Timing Belt alert check
+                // Alertas de Mantenimiento (Timing Belt) alert check
                 if (belt && (belt.level === 'danger' || belt.level === 'warning')) {
                     const isDanger = belt.level === 'danger';
                     const label = isDanger ? '🔴 Correa Vencida' : '🟡 Correa Próxima';

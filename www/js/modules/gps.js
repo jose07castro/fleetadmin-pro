@@ -233,9 +233,9 @@ const GPSModule = (() => {
     async function _initMap() {
         const loader = document.getElementById('map-loader');
         
-        // Rosario por defecto
-        const defaultLat = -32.9468;
-        const defaultLng = -60.6393;
+        // Punto central por defecto (se actualizará al localizar al usuario o por configuración de flota)
+        const defaultLat = 0;
+        const defaultLng = 0;
 
         const activeStyle = _mapStyle === 'light' ? GOOGLE_MAP_LIGHT_STYLE : GOOGLE_MAP_DARK_STYLE;
         

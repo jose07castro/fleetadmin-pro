@@ -392,15 +392,7 @@ const Components = (() => {
         const inputCam = document.getElementById(`${id}InputCamera`);
         const inputGal = document.getElementById(`${id}InputGallery`);
         const file = (inputCam && inputCam.files[0]) || (inputGal && inputGal.files[0]);
-        if (file) {
-            // Devolver como data URL solo si es estrictamente necesario (legacy compat)
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target.result);
-                reader.readAsDataURL(file);
-            });
-        }
-        return null;
+        return file || null;
     }
 
     // --- Estado vacío ---

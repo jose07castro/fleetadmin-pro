@@ -174,20 +174,24 @@ Se te ha provisto la entrada del usuario:
 - Nombre ingresado: "${name}"
 - Patente ingresada: "${plate}"
 
-Debes extraer la siguiente información y validarla:
-1. ¿El nombre ingresado coincide (total o parcialmente, ignorando acentos) con el titular de la Tarjeta Verde y el asegurado del Seguro? (Nota: Tarjetas Azules NO son válidas como titular).
+Debes extraer la siguiente información y validarla con rigor empresarial:
+1. ¿El nombre ingresado coincide exactamente (ignorando acentos/minúsculas) con el Titular Registral de la Tarjeta Verde y el asegurado del Seguro?
+   IMPORTANTE: Las Tarjetas Azules (Cédula para autorizado a conducir) NO son válidas para el alta de titular. Debe ser el dueño directo.
 2. ¿La patente ingresada coincide con la de la Tarjeta Verde y el Seguro?
-3. ¿El seguro está vigente? (Hoy es ${new Date().toLocaleDateString()}).
+3. ¿Los datos del vehículo (Marca, Modelo) coinciden en ambos documentos?
+4. ¿El seguro está vigente? (Hoy es ${new Date().toLocaleDateString()}).
+   Nota: Si la póliza venció, marcar ok: false.
 
 Devuelve ÚNICAMENTE un objeto JSON con el siguiente formato, sin ningún formato markdown (\`\`\`json) ni texto adicional, solo el objeto JSON puro:
 {
   "ok": true o false,
-  "errors": ["Motivo específico si ok es false"],
+  "errors": ["Motivo específico si ok es false. Ej: 'El nombre en la Tarjeta Verde no coincide con el registrado'"],
   "extractedData": {
-    "tarjetaVerde": { "nombre": "...", "patente": "..." },
-    "seguro": { "nombre": "...", "patente": "...", "vencimiento": "..." }
+    "tarjetaVerde": { "nombre": "...", "patente": "...", "esTitularDirecto": true/false },
+    "seguro": { "nombre": "...", "patente": "...", "vencimiento": "...", "marcaModelo": "..." }
   }
-}`;
+}
+Si no es titular directo (Tarjeta Azul detectada), ok debe ser false con el error correspondiente.`;
 
         // Ensure base64 strings have the proper data URI prefix
         const tvUrl = tarjetaVerdeBase64.startsWith('http') || tarjetaVerdeBase64.startsWith('data:') 

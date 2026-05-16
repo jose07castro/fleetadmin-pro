@@ -1,6 +1,6 @@
 /* ============================================
    FleetAdmin Pro — Sistema de Alertas de Mantenimiento
-   Correa de distribución: alerta roja cada 60,000 KM
+   Alertas de Mantenimiento: notificación de servicios preventivos
    Alerta preventiva 5,000 KM antes
    ============================================ */
 

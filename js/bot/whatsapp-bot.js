@@ -1044,8 +1044,8 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 expandedAddress = "Pellegrini y Vera Mujica";
                 console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
             } else if (!address || address === 'null') {
-                // Sin dirección: usar centro de Rosario directamente
-                console.log('⚠️ [GEO] Sin dirección exacta, usando centro de Rosario');
+                // Sin dirección: usar ubicación neutra
+                console.log('⚠️ [GEO] Sin dirección exacta.');
             } else {
                 expandedAddress = _expandStreetNames(address);
                 let isResolved = false;
@@ -1093,24 +1093,13 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         const tempLng = parseFloat(features[0].geometry.coordinates[0]);
                         const tempLat = parseFloat(features[0].geometry.coordinates[1]);
                         
-                        // --- VALIDACIÓN DE CERCANÍA GEOGRÁFICA (ROSARIO-LOCK) ---
-                        // Si Photon alucina y devuelve algo a más de 50km de Rosario (como Córdoba, España, etc.), rechazarlo.
-                        const rLat = -32.9477, rLng = -60.6652; // Centro geográfico de Rosario
-                        const dLat = (tempLat - rLat) * Math.PI / 180;
-                        const dLon = (tempLng - rLng) * Math.PI / 180;
-                        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(rLat * Math.PI / 180) * Math.cos(tempLat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-                        const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                        
-                        if (dist < 50) { // Radio de seguridad de 50 kilómetros alrededor de Rosario
-                            lng = tempLng;
-                            lat = tempLat;
-                            approximate = false;
-                            console.log(`📍 [GEO-PHOTON] ✅ Ubicación validada (a ${dist.toFixed(1)}km): ${lat}, ${lng}`);
-                        } else {
-                            console.warn(`⚠️ [GEO-PHOTON] Alucinación detectada: devolvió un punto a ${dist.toFixed(1)}km. Forzando ubicación central en Rosario.`);
-                        }
+                        // Sin validación de cercanía geocodificada obligatoria (Modo Internacional)
+                        lng = tempLng;
+                        lat = tempLat;
+                        approximate = false;
+                        console.log(`📍 [GEO-PHOTON] ✅ Ubicación detectada: ${lat}, ${lng}`);
                     } else {
-                        console.log(`⚠️ [GEO-PHOTON] Sin resultados. Se usará punto central de Rosario con aviso aproximado.`);
+                        console.log(`⚠️ [GEO-PHOTON] Sin resultados.`);
                     }
                 }
             }
@@ -1121,7 +1110,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         const alertData = {
             id: alertId,
             type: type,
-            location: expandedAddress || "Rosario (ubicación aprox.)",
+            location: expandedAddress || "Ubicación desconocida",
             lat: lat,
             lng: lng,
             timestamp: Date.now(),
