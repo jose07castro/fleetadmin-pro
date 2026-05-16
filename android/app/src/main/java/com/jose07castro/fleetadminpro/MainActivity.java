@@ -58,12 +58,13 @@ public class MainActivity extends BridgeActivity {
          * Llamado desde JS: window.NativeServiceBridge.startTracking(userId, driverName)
          */
         @JavascriptInterface
-        public void startTracking(String userId, String driverName) {
-            Log.i(TAG, "📱 JS → startTracking('" + userId + "', '" + driverName + "')");
+        public void startTracking(String userId, String driverName, String fleetId) {
+            Log.i(TAG, "📱 JS → startTracking('" + userId + "', '" + driverName + "', '" + fleetId + "')");
             
             Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
             serviceIntent.putExtra("userId", userId);
             serviceIntent.putExtra("driverName", driverName);
+            serviceIntent.putExtra("fleetId", fleetId);
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent);
@@ -83,9 +84,10 @@ public class MainActivity extends BridgeActivity {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             String savedUserId = prefs.getString("userId", null);
             String savedDriverName = prefs.getString("driverName", "Chofer");
+            String savedFleetId = prefs.getString("fleetId", null);
             
             if (savedUserId != null) {
-                startTracking(savedUserId, savedDriverName);
+                startTracking(savedUserId, savedDriverName, savedFleetId);
             } else {
                 // Arrancar de todas formas (GPS corre pero no sube a Firebase hasta recibir userId)
                 Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
