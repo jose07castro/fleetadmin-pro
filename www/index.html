@@ -17,7 +17,7 @@
 
         // FORCE CACHE PURGE v126 — Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 126;
+            var REQUIRED_VERSION = 129;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
                 console.log('🔥 PURGE v126: Forzando limpieza total...');
