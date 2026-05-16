@@ -12,8 +12,8 @@ const LoginModule = (() => {
             <div class="login-screen">
                 <div class="login-container">
                     <div class="login-logo">
-                        <div class="login-logo-icon">
-                            <img src="assets/logo-3d-marker.svg" style="width:65%; height:65%; object-fit:contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));" alt="Logo">
+                        <div class="login-logo-icon" style="background:transparent; box-shadow:none; border:none;">
+                            <img src="assets/logo-3d.jpg" style="width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.4));" alt="Logo">
                         </div>
                         <h1>${I18n.t('app_name')}</h1>
                         <p>${I18n.t('app_subtitle')}</p>
