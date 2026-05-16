@@ -375,6 +375,9 @@ const LoginModule = (() => {
     }
 
     async function doRegister() {
+        const name = document.getElementById('regName')?.value.trim();
+        const pin = document.getElementById('regPin')?.value.trim();
+        const pinConfirm = document.getElementById('regPinConfirm')?.value.trim();
         const plate = document.getElementById('regPlate')?.value.trim().toUpperCase();
         const fileTv = document.getElementById('regTarjetaVerde')?.files[0];
         const fileSeg = document.getElementById('regSeguro')?.files[0];
