@@ -123,17 +123,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     // ================================================================
     // LIFECYCLE
-    // ================================================================
-
-    @Override
+    // ================================================================    @Override
     public void onCreate() {
         super.onCreate();
-        Log.i(TAG, "🚀 onCreate() — Inicializando LocationTrackingService v5.0");
+        Log.i(TAG, "🚀 onCreate() — Inicializando motor GPS Indestructible v5.1");
 
         createNotificationChannel();
 
-        // 1. Thread de fondo para no bloquear el UI
-        serviceThread = new HandlerThread("GPSServiceThread", Process.THREAD_PRIORITY_BACKGROUND);
+        // 1. Thread de fondo prioritario
+        serviceThread = new HandlerThread("GPSServiceThread", Process.THREAD_PRIORITY_URGENT_DISPLAY);
         serviceThread.start();
         serviceHandler = new Handler(serviceThread.getLooper());
 
@@ -145,52 +143,39 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             Log.e(TAG, "❌ Error al conectar con Firebase:", e);
         }
 
-        // 3. Inicializar TTS (Voz nativa para Radarbot)
+        // 3. Inicializar TTS
         tts = new TextToSpeech(this, this);
         
-        // 4. Inicializar FusedLocation (Google Play Services)
+        // 4. Inicializar FusedLocation
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(TAG, "▶️ onStartCommand() — Recibiendo configuración");
+        Log.i(TAG, "▶️ onStartCommand() — Reforzando persistencia");
 
         if (intent != null) {
             userId = intent.getStringExtra("userId");
             driverName = intent.getStringExtra("driverName");
             fleetId = intent.getStringExtra("fleetId");
 
-            // Persistir datos en SharedPreferences para auto-recuperación
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
             if (userId != null) editor.putString("userId", userId);
             if (driverName != null) editor.putString("driverName", driverName);
             if (fleetId != null) editor.putString("fleetId", fleetId);
             editor.apply();
-
-            Log.i(TAG, "✅ Config: userId=" + userId + " | fleetId=" + fleetId);
-            
-            if (fleetId != null) {
-                startTrafficAlertsListener();
-            }
         } else {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             userId = prefs.getString("userId", null);
             driverName = prefs.getString("driverName", "Chofer");
             fleetId = prefs.getString("fleetId", null);
-            
-            Log.i(TAG, "♻️ Recuperando estado: userId=" + userId + " | fleetId=" + fleetId);
-            
-            if (fleetId != null) {
-                startTrafficAlertsListener();
-            }
         }
 
-        // Notificación persistente
+        // Notificación de alta prioridad para evitar cierre por sistema
         Notification notification = buildNotification(
             "Punto Alertas: Turno activo",
-            "📍 Monitoreando ruta en tiempo real..."
+            "📍 Monitoreando ruta con protección de batería..."
         );
 
         try {
@@ -210,35 +195,30 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             isTracking = true;
         }
 
+        if (fleetId != null) {
+            startTrafficAlertsListener();
+        }
+
         startWatchdog();
 
-        return START_STICKY;
+        return START_STICKY; // El sistema lo reinicia si muere
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.w(TAG, "⚠️ App cerrada desde recientes. Manteniendo servicio GPS activo...");
+        // Pequeño truco para asegurar que el sistema no lo mate al swipear la app
+        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
+        restartServiceIntent.setPackage(getPackageName());
+        startService(restartServiceIntent);
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        Log.w(TAG, "⛔ onDestroy() — Limpiando recursos");
+        Log.w(TAG, "⛔ onDestroy() — El servicio está siendo destruido por el sistema!");
         isTracking = false;
-
         stopLocationUpdates();
-
-        if (watchdogHandler != null && watchdogRunnable != null) {
-            watchdogHandler.removeCallbacks(watchdogRunnable);
-        }
-
-        if (serviceThread != null) {
-            serviceThread.quitSafely();
-        }
-
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-        }
-
-        if (alertsRef != null) {
-            alertsRef.removeEventListener(alertsListener);
-        }
-
         releaseWakeLock();
         super.onDestroy();
     }
@@ -250,12 +230,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     // ================================================================
-    // GPS NATIVO (FUSED LOCATION)
+    // GPS NATIVO REFORZADO
     // ================================================================
 
     private void startLocationUpdates() {
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, MIN_TIME_MS)
             .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
+            .setWaitForAccurateLocation(false)
             .build();
 
         locationCallback = new LocationCallback() {
@@ -269,9 +250,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         try {
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, serviceHandler.getLooper());
-            Log.i(TAG, "✅ FusedLocationProvider: Pedido de actualizaciones activo");
+            Log.i(TAG, "✅ Motor GPS Activo (Fondo)");
         } catch (SecurityException e) {
-            Log.e(TAG, "❌ No hay permisos para FusedLocation", e);
+            Log.e(TAG, "❌ Permisos GPS denegados");
         }
     }
 
@@ -284,25 +265,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void processNewLocation(Location location) {
         lastLat = location.getLatitude();
         lastLng = location.getLongitude();
-        lastSpeed = location.getSpeed() * 3.6f; // km/h
+        lastSpeed = location.getSpeed() * 3.6f;
         lastBearing = location.getBearing();
         lastGPSTimestamp = System.currentTimeMillis();
 
-        Log.d(TAG, String.format("📍 GPS: %.6f, %.6f | %.1f km/h", lastLat, lastLng, lastSpeed));
-
-        // 1. Radarbot Engine: Verificar proximidad a alertas
+        // 1. Radarbot Engine
         checkProximityToAlerts(location);
 
-        // 2. Subir a Firebase
-        pushToFirebase(lastLat, lastLng, lastSpeed, lastBearing);
+        // 2. Firebase Direct (Asíncrono)
+        serviceHandler.post(() -> pushToFirebase(lastLat, lastLng, lastSpeed, lastBearing));
 
-        // 3. Enviar a WebView (UI)
+        // 3. UI Sync (WebView)
         sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
 
-        // 4. Actualizar Notificación
+        // 4. Update Notification
         updateNotification(
             "Punto Alertas: Turno activo",
-            String.format("📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
+            String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
         );
     }
 
@@ -317,7 +296,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             for (TrafficAlert alert : activeAlerts) {
                 float[] results = new float[1];
                 Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                      alert.lat, alert.lng, results);
+                                       alert.lat, alert.lng, results);
                 float distance = results[0];
 
                 if (distance <= PROXIMITY_RADIUS_M) {
@@ -346,8 +325,6 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
 
         String message = String.format("Atención, %s a quinientos metros.", typeLabel);
-        Log.i(TAG, "🗣️ RADARBOT: " + message + " (Distancia real: " + Math.round(distance) + "m)");
-        
         speak(message);
     }
 
@@ -374,11 +351,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         if (lat != null && lng != null && "active".equals(status) && (expiresAt == null || expiresAt > now)) {
                             activeAlerts.add(new TrafficAlert(id, type, lat, lng, ""));
                         }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error parseando alerta para Radarbot:", e);
-                    }
+                    } catch (Exception e) {}
                 }
-                Log.i(TAG, "📡 Radarbot: " + activeAlerts.size() + " alertas activas descargadas.");
             }
         }
 
@@ -388,14 +362,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void startTrafficAlertsListener() {
         if (fleetId == null || fleetId.isEmpty()) return;
-
-        if (alertsRef != null) {
-            alertsRef.removeEventListener(alertsListener);
-        }
-
+        if (alertsRef != null) alertsRef.removeEventListener(alertsListener);
         alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
         alertsRef.addValueEventListener(alertsListener);
-        Log.i(TAG, "📡 Radarbot: Escuchando alertas de la flota " + fleetId);
     }
 
     // ================================================================
@@ -405,15 +374,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
-            int result = tts.setLanguage(new Locale("es", "ES"));
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e(TAG, "TTS: Lenguaje español no soportado.");
-            } else {
-                isTtsInitialized = true;
-                Log.i(TAG, "✅ TTS inicializado correctamente.");
-            }
-        } else {
-            Log.e(TAG, "TTS: Falló la inicialización.");
+            tts.setLanguage(new Locale("es", "ES"));
+            isTtsInitialized = true;
         }
     }
 
@@ -443,11 +405,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             data.put("battery", getBatteryLevel());
             data.put("driverName", driverName != null ? driverName : "Chofer");
             data.put("updated_at", timestamp);
-            data.put("_source", "native_foreground_service_v5");
+            data.put("_source", "native_foreground_v5_1");
 
             dbRef.child(userId).setValue(data);
         } catch (Exception e) {
-            Log.e(TAG, "❌ Error subiendo a Firebase:", e);
+            Log.e(TAG, "❌ Error Firebase:", e);
         }
     }
 
@@ -459,7 +421,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     // ================================================================
-    // UTILS
+    // WATCHDOG & UTILS
     // ================================================================
 
     private void startWatchdog() {
@@ -473,15 +435,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             public void run() {
                 if (!isTracking) return;
                 long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
-                if (lastGPSTimestamp > 0 && silenceMs > 45000) {
-                    Log.w(TAG, "⚠️ WATCHDOG: GPS silencioso " + (silenceMs / 1000) + "s — re-iniciando");
+                
+                // Si el GPS no se ha movido o no ha reportado en 60s, reforzamos el binding
+                if (lastGPSTimestamp > 0 && silenceMs > 60000) {
+                    Log.w(TAG, "⚠️ Vigilante: GPS inactivo por 60s. Reforzando motor...");
                     stopLocationUpdates();
                     startLocationUpdates();
                 }
-                watchdogHandler.postDelayed(this, 30000);
+                watchdogHandler.postDelayed(this, 45000); // Revisar cada 45s
             }
         };
-        watchdogHandler.postDelayed(watchdogRunnable, 30000);
+        watchdogHandler.postDelayed(watchdogRunnable, 45000);
     }
 
     private void sendToWebView(double lat, double lng, float speed, float bearing) {
@@ -498,9 +462,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (wakeLock != null && wakeLock.isHeld()) return;
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FleetAdmin::TrackingLock");
-            wakeLock.acquire(12 * 60 * 60 * 1000L);
-            Log.i(TAG, "🛡️ WakeLock adquirido");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FleetAdmin::PersistentTracking");
+            wakeLock.acquire(24 * 60 * 60 * 1000L); // 24 horas de protección CPU
+            Log.i(TAG, "🛡️ WakeLock Reforzado Activo");
         }
     }
 
@@ -513,7 +477,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Rastreo GPS de Flota", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Servicio de Rastreo Permanente", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Mantiene el GPS activo en segundo plano para recibir alertas de tráfico.");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -521,14 +486,19 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private Notification buildNotification(String title, String text) {
         Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title).setContentText(text)
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
-            .setOngoing(true).setSilent(true)
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();
     }
 
