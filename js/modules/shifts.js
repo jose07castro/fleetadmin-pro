@@ -539,7 +539,8 @@ const ShiftsModule = (() => {
 
         const vehicleId = document.getElementById('shiftVehicle')?.value;
         const odoStart = parseFloat(document.getElementById('shiftOdometerStart')?.value);
-        const photo = Components.getPhotoData('shiftOdoStart');
+        const photoRaw = Components.getPhotoData('shiftOdoStart');
+        const photo = photoRaw ? await StorageUtil.compressImage(photoRaw, 1024, 1024, 0.7) : null;
 
         if (!vehicleId || vehicleId === '' || !odoStart) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
@@ -648,17 +649,18 @@ const ShiftsModule = (() => {
 
             // Gatillar permisos GPS post-inicio (v113)
             setTimeout(() => {
-                if (typeof GPSPermissions !== 'undefined' && typeof Auth !== 'undefined' && !Auth.isOwner()) {
+                if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) {
+                    // Primero Background Location (crítico para Google Play)
+                    AndroidServices.showBackgroundLocationDialog(() => {
+                        // Después Battery Exemption (para Inmortalidad)
+                        setTimeout(() => {
+                            AndroidServices.showBatteryExemptionDialog();
+                        }, 2000);
+                    });
+                } else if (typeof GPSPermissions !== 'undefined' && typeof Auth !== 'undefined' && !Auth.isOwner()) {
                     GPSPermissions.requestWithDialog();
                 }
             }, 800);
-
-            // Solicitar exención de batería 3s después (no saturar al usuario con diálogos)
-            setTimeout(() => {
-                if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) {
-                    AndroidServices.showBatteryExemptionDialog();
-                }
-            }, 3500);
 
         } catch (shiftError) {
             console.error('🔴 Fallo en Iniciar Turno: ', shiftError);
@@ -715,8 +717,11 @@ const ShiftsModule = (() => {
 
         const odoEnd = parseFloat(document.getElementById('shiftOdometerEnd')?.value);
         const earnings = parseFloat(document.getElementById('shiftEarnings')?.value) || 0;
-        const odoPhoto = Components.getPhotoData('shiftOdoEnd');
-        const earningsPhoto = Components.getPhotoData('shiftEarningsPhoto');
+        const odoEndRaw = Components.getPhotoData('shiftOdoEnd');
+        const earningsPhotoRaw = Components.getPhotoData('shiftEarningsPhoto');
+        
+        const odoPhoto = odoEndRaw ? await StorageUtil.compressImage(odoEndRaw, 1024, 1024, 0.7) : null;
+        const earningsPhoto = earningsPhotoRaw ? await StorageUtil.compressImage(earningsPhotoRaw, 1024, 1024, 0.7) : null;
 
         if (!odoEnd) {
             Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');

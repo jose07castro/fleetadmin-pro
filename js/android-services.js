@@ -325,6 +325,76 @@ const AndroidServices = (() => {
     }
 
     /**
+     * Pide permiso de UBICACIÓN EN SEGUNDO PLANO (Background Location)
+     * Requerido para Android 10+ para que el GPS no se corte.
+     */
+    async function requestBackgroundLocationPermission() {
+        if (!isNativeAndroid()) return true;
+
+        try {
+            // v10: NativeServiceBridge.requestBackgroundLocation()
+            // Llama al Intent nativo de Android 10+ (Allow all the time)
+            if (_hasNativeBridge() && window.NativeServiceBridge.requestBackgroundLocation) {
+                console.log('📱 AndroidServices: Solicitando permiso Background Location via Bridge');
+                window.NativeServiceBridge.requestBackgroundLocation();
+                return true;
+            }
+            
+            // Fallback: abrir configuración de la app
+            if (Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
+                await Capacitor.Plugins.App.openAppSettings();
+                return true;
+            }
+        } catch (e) {
+            console.error('📱 AndroidServices: Error pidiendo background location:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Muestra un diálogo explicativo de por qué necesitamos la ubicación "Todo el tiempo".
+     * Exigido por las políticas de Google Play.
+     */
+    function showBackgroundLocationDialog(onConfirm) {
+        if (!isNativeAndroid()) {
+            if (onConfirm) onConfirm();
+            return;
+        }
+
+        const bodyHTML = `
+            <div style="text-align:center; padding:var(--space-2);">
+                <div style="font-size:3.5rem; margin-bottom:var(--space-4);">📍</div>
+                <h3 style="font-size:var(--font-size-xl); font-weight:800; margin-bottom:var(--space-3); color:var(--text-primary);">
+                    Ubicación en Segundo Plano
+                </h3>
+                <p style="font-size:var(--font-size-sm); color:var(--text-secondary); margin-bottom:var(--space-4); line-height:1.6;">
+                    Punto Alertas recopila datos de ubicación para permitir el <strong>seguimiento en tiempo real de tu vehículo</strong> y el <strong>envío de alertas de seguridad</strong> incluso cuando la aplicación está cerrada o no está en uso.
+                </p>
+                <div style="background:rgba(59,130,246,0.1); border-radius:var(--radius-lg); padding:var(--space-4); text-align:left; border:1px solid rgba(59,130,246,0.2);">
+                    <div style="font-weight:700; color:#3b82f6; margin-bottom:var(--space-2); font-size:var(--font-size-sm);">
+                        💡 Instrucción para el siguiente paso:
+                    </div>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
+                        Seleccioná la opción <strong>"Permitir todo el tiempo"</strong> (o "Allow all the time") para asegurar que el sistema de SOS y Radar funcione correctamente mientras conducís.
+                    </p>
+                </div>
+            </div>
+        `;
+
+        Components.showModal(
+            '📍 Permiso de Ubicación',
+            bodyHTML,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()">Después</button>
+                <button class="btn btn-primary" style="min-width:180px;" onclick="Components.closeModal(); AndroidServices.requestBackgroundLocationPermission(); if(${!!onConfirm}) { (${onConfirm.toString()})() }">
+                    Configurar Ahora
+                </button>
+            `,
+            { staticBackdrop: true }
+        );
+    }
+
+    /**
      * Muestra un modal explicativo ANTES de pedir la exención.
      * Los usuarios tienden a rechazar diálogos del sistema sin leerlos.
      */
@@ -465,6 +535,8 @@ const AndroidServices = (() => {
         isNativeGPSAlive,
         
         // Batería
+        requestBackgroundLocationPermission,
+        showBackgroundLocationDialog,
         requestBatteryExemption,
         showBatteryExemptionDialog,
         

@@ -57,7 +57,7 @@ const I18n = (() => {
             nav_maintenance: 'Mantenimiento / Reparaciones',
             nav_mechanic: 'Mecánico',
             nav_oil: 'Control de Aceite',
-            nav_gps: 'Desplegar GPS',
+            nav_gps: 'GPS & Alertas',
             nav_settings: 'Configuración',
             nav_community: 'Comunidad',
             nav_logout: 'Cerrar Sesión',
@@ -147,7 +147,7 @@ const I18n = (() => {
 
             // Mantenimiento
             maint_title: 'Mantenimiento / Reparaciones',
-            maint_timing_belt: 'Correa de Distribución',
+            maint_timing_belt: 'Alertas de Mantenimiento',
             maint_oil: 'Control de Aceite',
             maint_repairs: 'Reparaciones',
             maint_belt_alert: '¡ALERTA! Cambio de correa de distribución necesario',
@@ -377,7 +377,7 @@ const I18n = (() => {
             nav_maintenance: 'Maintenance / Repairs',
             nav_mechanic: 'Mechanic',
             nav_oil: 'Oil Control',
-            nav_gps: 'GPS & Geofencing',
+            nav_gps: 'GPS & Alerts',
             nav_settings: 'Settings',
             nav_community: 'Community',
             nav_logout: 'Sign Out',
@@ -463,7 +463,7 @@ const I18n = (() => {
             shift_night: '🌙 Night (18:00 - 06:00)',
 
             maint_title: 'Maintenance / Repairs',
-            maint_timing_belt: 'Timing Belt',
+            maint_timing_belt: 'Maintenance Alerts',
             maint_oil: 'Oil Control',
             maint_repairs: 'Repairs',
             maint_belt_alert: '⚠️ ALERT! Timing belt change needed',
@@ -688,7 +688,7 @@ const I18n = (() => {
             nav_maintenance: 'Manutenção / Reparações',
             nav_mechanic: 'Mecânico',
             nav_oil: 'Controle de Óleo',
-            nav_gps: 'GPS & Geofencing',
+            nav_gps: 'GPS & Alerts',
             nav_settings: 'Configurações',
             nav_community: 'Comunidade',
             nav_logout: 'Sair',
@@ -773,7 +773,7 @@ const I18n = (() => {
             shift_night: '🌙 Noite (18:00 - 06:00)',
 
             maint_title: 'Manutenção / Reparações',
-            maint_timing_belt: 'Correia Dentada',
+            maint_timing_belt: 'Alertas de Manutenção',
             maint_oil: 'Controle de Óleo',
             maint_repairs: 'Reparações',
             maint_belt_alert: '⚠️ ALERTA! Troca da correia dentada necessária',

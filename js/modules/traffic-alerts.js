@@ -4,7 +4,7 @@
    de operativos en tiempo real.
    ============================================ */
 
-const TrafficAlerts = (() => {
+    const TrafficAlerts = (() => {
     // Diccionario de lunfardo y palabras clave
     const KEYWORDS = [
         'gorra', 'operativo', 'control', 'zorros', 'palo', 
@@ -12,7 +12,7 @@ const TrafficAlerts = (() => {
     ];
 
     const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
-    const ROSARIO_BOUNDS = 'viewbox=-60.7845,-32.8596,-60.5960,-33.0573&bounded=1';
+    const DEFAULT_BOUNDS = ''; // Se define dinámicamente o se deja abierto para internacionalización
     
     let _geocodeCache = {}; // { query: { lat, lng, timestamp } }
     let _isProcessing = false;
@@ -69,19 +69,7 @@ const TrafficAlerts = (() => {
      * Convierte una dirección/intersección en coordenadas usando Nominatim.
      */
     async function geocodeIntersection(query) {
-        const fullQuery = `${query}, Rosario, Santa Fe, Argentina`;
-        
-        // Check cache (válido por 24hs para ubicaciones estáticas)
-        if (_geocodeCache[fullQuery] && (Date.now() - _geocodeCache[fullQuery].timestamp < 86400000)) {
-            return _geocodeCache[fullQuery].coords;
-        }
-
-        try {
-            // Rate limiting preventivo: esperar 1.5s entre peticiones si se procesan ráfagas
-            if (_isProcessing) await new Promise(r => setTimeout(r, 1500));
-            _isProcessing = true;
-
-            const url = `${NOMINATIM_BASE}?format=json&q=${encodeURIComponent(fullQuery)}&${ROSARIO_BOUNDS}`;
+            const url = `${NOMINATIM_BASE}?format=json&q=${encodeURIComponent(query)}&${DEFAULT_BOUNDS}`;
             const response = await fetch(url, {
                 headers: { 'Accept-Language': 'es' }
             });
