@@ -103,6 +103,9 @@ const Components = (() => {
 
     // --- Items de navegación según el rol ---
     function getNavItems(role) {
+        // v122: Normalizar rol
+        const normalizedRole = (role === 'titular') ? 'owner' : role;
+
         const items = {
             owner: [
                 { icon: '📊', label: 'nav_dashboard', route: 'dashboard', section: 'ops' },
@@ -127,20 +130,24 @@ const Components = (() => {
                 { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' }
             ]
         };
-        return items[role] || [];
+        return items[normalizedRole] || [];
     }
 
     // --- Mobile bottom navigation bar ---
     function renderMobileBottomNav(activeRoute, role) {
+        // v122: Normalizar rol para que 'titular' use los mismos items que 'owner'
+        const normalizedRole = (role === 'titular') ? 'owner' : role;
+        
         const mobileItems = {
             owner: [
                 { icon: '📊', label: 'Panel', route: 'dashboard' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
+                { icon: '📡', label: 'Radar', route: 'gps' }, // Agregado como 4to botón
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ],
             driver: [
-                { icon: '📡', label: 'Desplegar GPS', route: 'gps' },
+                { icon: '📡', label: 'Radar', route: 'gps' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
                 { icon: '🛢️', label: 'Aceite', route: 'oil' },
@@ -153,7 +160,7 @@ const Components = (() => {
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ]
         };
-        const items = mobileItems[role] || [];
+        const items = mobileItems[normalizedRole] || [];
 
         return `
             <nav class="mobile-bottom-nav">

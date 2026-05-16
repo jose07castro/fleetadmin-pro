@@ -497,8 +497,10 @@ const App = (() => {
         const svg = document.getElementById('pull-refresh-svg');
 
         window.addEventListener('touchstart', (e) => {
-            // Sólo permitir arrastrar si la pantalla está al inicio absoluto del scroll
-            if (window.scrollY === 0 && document.documentElement.scrollTop === 0) {
+            // v122: Mejorar detección de scroll al tope para pull-to-refresh
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            
+            if (scrollTop <= 1) { // Pequeño margen para compensar redondeos
                 startY = e.touches[0].clientY;
                 pulling = true;
             } else {
