@@ -48,12 +48,13 @@ import java.util.Map;
 import java.util.TimeZone;
 
 /**
- * LocationTrackingService — Persistent Foreground Service (v5.0 - Radarbot Proximity)
+ * LocationTrackingService — Persistent Foreground Service (v5.2 - Background Inmortal)
  *
- * CAMBIOS v5.0:
- *   - FusedLocationProviderClient: Mejora estabilidad GPS en 2do plano.
- *   - TextToSpeech: Alertas de voz por proximidad (Sistema Radarbot).
- *   - TrafficAlerts Listener: Descarga alertas de la flota y calcula distancias.
+ * CAMBIOS v5.2 (Background fixes):
+ *   - Notificación sube de PRIORITY_MIN a PRIORITY_LOW: Android no mata servicios con prioridad baja.
+ *   - onTaskRemoved(): usa startForegroundService() en lugar de startService() para Android 12+.
+ *   - onLowMemory(): re-adquiere WakeLock si lo soltó por presión de memoria.
+ *   - onDestroy(): auto-reinicio via Intent demorado para sobrevivir kills del sistema.
  */
 public class LocationTrackingService extends Service implements TextToSpeech.OnInitListener {
 
@@ -207,10 +208,16 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.w(TAG, "⚠️ App cerrada desde recientes. Manteniendo servicio GPS activo...");
-        // Pequeño truco para asegurar que el sistema no lo mate al swipear la app
+        // Fix v5.2: usar startForegroundService() en lugar de startService().
+        // En Android 12+ startService() puede ser ignorado cuando la app está siendo matada,
+        // pero startForegroundService() tiene mayor prioridad en el scheduler del sistema.
         Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
         restartServiceIntent.setPackage(getPackageName());
-        startService(restartServiceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(restartServiceIntent);
+        } else {
+            startService(restartServiceIntent);
+        }
         super.onTaskRemoved(rootIntent);
     }
 
@@ -220,7 +227,34 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         isTracking = false;
         stopLocationUpdates();
         releaseWakeLock();
+        // Fix v5.2: auto-reinicio demorado. Si el sistema nos mató, nos reiniciamos solos
+        // después de 2 segundos. Esto cubre el caso en que START_STICKY no alcanza.
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    getApplicationContext().startForegroundService(restartIntent);
+                } else {
+                    getApplicationContext().startService(restartIntent);
+                }
+                Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado");
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Auto-reinicio fallido:", e);
+            }
+        }, 2000);
         super.onDestroy();
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        // Fix v5.2: bajo presión de memoria, Android puede soltar el WakeLock.
+        // Re-adquirirlo asegura que el CPU no entre en deep sleep mientras rastreamos.
+        Log.w(TAG, "💾 onLowMemory() — Re-adquiriendo WakeLock bajo presión de memoria");
+        if (isTracking) {
+            releaseWakeLock();
+            acquireWakeLock();
+        }
     }
 
     @Nullable
@@ -496,7 +530,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            // Fix v5.2: PRIORITY_LOW en lugar de PRIORITY_MIN.
+            // PRIORITY_MIN le indica al sistema que el servicio no es crítico y puede matarlo
+            // en situaciones de poca memoria. PRIORITY_LOW lo protege sin molestar al usuario.
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();

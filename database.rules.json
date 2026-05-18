@@ -1,0 +1,32 @@
+{
+  "rules": {
+    // ⚠️ IMPORTANTE: Estas son las reglas de Firebase Realtime Database.
+    // Reemplazá las reglas existentes en la consola Firebase con este contenido:
+    // https://console.firebase.google.com → Realtime Database → Rules
+
+    "globalUsers": {
+      // Índice en 'name' para que findGlobalUser() pueda filtrar del lado del servidor
+      // sin descargar TODA la colección. Mejora performance de login significativamente.
+      ".indexOn": ["name", "role"],
+      ".read": true,
+      ".write": true
+    },
+
+    "fleets": {
+      "$fleetId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+
+    "applicants": {
+      ".read": true,
+      ".write": true
+    },
+
+    "veraz_reports": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

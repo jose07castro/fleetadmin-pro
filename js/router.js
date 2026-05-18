@@ -6,6 +6,19 @@
 const Router = (() => {
     let currentRoute = null;
 
+    // Bug #6 Fix: caché en memoria para isProfileComplete().
+    // Antes: hacía DB.getAll('users') en CADA navigate() — descarga Firebase innecesaria.
+    // Ahora: se cachea el resultado 5 minutos. Si el perfil se completa, el cache se invalida.
+    let _profileCompleteCache = null;   // true | false | null
+    let _profileCacheTime = 0;          // timestamp del último check
+    const PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutos en ms
+
+    // Llamar esto después de guardar el perfil para forzar re-verificación
+    function invalidateProfileCache() {
+        _profileCompleteCache = null;
+        _profileCacheTime = 0;
+    }
+
     // Mapa de rutas a archivos para Lazy Loading
     const modulePaths = {
         radar: 'js/modules/radar-v126.js',
@@ -66,23 +79,37 @@ const Router = (() => {
             route = defaultRoutes[Auth.getRole()] || 'login';
         }
 
-        // Bloqueo/Desbloqueo inteligente de perfil para conductores
-        // Si el perfil está incompleto, fuerza 'complete-profile'. 
-        // Si está completo y el usuario está en 'complete-profile', lo libera al Default Route.
+        // Bug #6 Fix: verificación de perfil con caché TTL.
+        // Sólo hace la query Firebase si el caché expiró o es la primera vez.
         if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'apply') {
-            Auth.isProfileComplete().then(profileOk => {
-                if (!profileOk) {
-                    if (Router.getCurrentRoute() !== 'complete-profile') {
-                        console.log('🚀 Router: Perfil incompleto detected, redireccionando a completar...');
-                        Router.navigate('complete-profile');
-                    }
-                } else {
-                    if (route === 'complete-profile') {
-                        console.log('🚀 Router: Perfil completo detected, rompiendo bucle y redirigiendo...');
-                        Router.navigate(Router.getDefaultRoute());
-                    }
+            const now = Date.now();
+            const cacheValid = _profileCompleteCache !== null && (now - _profileCacheTime) < PROFILE_CACHE_TTL;
+
+            if (cacheValid) {
+                // Usar resultado cacheado — sin query Firebase
+                if (!_profileCompleteCache && Router.getCurrentRoute() !== 'complete-profile') {
+                    Router.navigate('complete-profile');
+                } else if (_profileCompleteCache && route === 'complete-profile') {
+                    Router.navigate(Router.getDefaultRoute());
                 }
-            }).catch(() => { /* error de red, no bloquear */ });
+            } else {
+                // Cache expirado o primer check — hacer la query
+                Auth.isProfileComplete().then(profileOk => {
+                    _profileCompleteCache = profileOk;
+                    _profileCacheTime = Date.now();
+                    if (!profileOk) {
+                        if (Router.getCurrentRoute() !== 'complete-profile') {
+                            console.log('🚀 Router: Perfil incompleto detected, redireccionando a completar...');
+                            Router.navigate('complete-profile');
+                        }
+                    } else {
+                        if (route === 'complete-profile') {
+                            console.log('🚀 Router: Perfil completo detected, rompiendo bucle y redirigiendo...');
+                            Router.navigate(Router.getDefaultRoute());
+                        }
+                    }
+                }).catch(() => { /* error de red, no bloquear */ });
+            }
         }
 
         // Cleanup previous module if needed
@@ -161,5 +188,5 @@ const Router = (() => {
         }
     }
 
-    return { navigate, getCurrentRoute, getDefaultRoute };
+    return { navigate, getCurrentRoute, getDefaultRoute, invalidateProfileCache };
 })();

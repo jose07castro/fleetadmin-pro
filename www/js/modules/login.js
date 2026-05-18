@@ -113,12 +113,51 @@ const LoginModule = (() => {
             return;
         }
 
+        // Bug #7 Fix: verificar disponibilidad de bcrypt ANTES de intentar el login.
+        // Si el CDN no cargó (conexión lenta al iniciar), los PINs hasheados no se pueden comparar
+        // y el login fallaría silenciosamente devolviendo "credenciales incorrectas".
+        // Detectamos esto y ofrecemos un mensaje claro con botón de reintento.
+        const bcryptAvailable = typeof dcodeIO !== 'undefined' && dcodeIO?.bcrypt;
+        if (!bcryptAvailable) {
+            // Intentar cargar el script de bcrypt dinámicamente
+            try {
+                errorEl.style.display = 'block';
+                errorEl.innerHTML = '⏳ <strong>Cargando módulo de seguridad...</strong><br><small>Aguardá unos segundos.</small>';
+                errorEl.style.background = 'rgba(99,102,241,0.1)';
+                errorEl.style.borderColor = '#6366f1';
+                errorEl.style.color = '#818cf8';
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js';
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.body.appendChild(script);
+                });
+                // Resetear mensaje de error si cargó bien
+                errorEl.style.display = 'none';
+                errorEl.style.background = '';
+                errorEl.style.borderColor = '';
+                errorEl.style.color = '';
+                console.log('🔐 LOGIN: bcrypt cargado dinámicamente ✅');
+            } catch (bcryptLoadErr) {
+                // bcrypt no disponible y no pudo cargarse — mostrar error con instrucción
+                errorEl.style.display = 'block';
+                errorEl.innerHTML = '🔒 <strong>Módulo de seguridad no disponible.</strong><br>' +
+                    'Verificá tu conexión a internet y <a href="javascript:location.reload()" style="color:inherit;font-weight:700;">recargá la página</a>.';
+                errorEl.style.background = 'rgba(239,68,68,0.1)';
+                errorEl.style.borderColor = '#ef4444';
+                errorEl.style.color = '#fca5a5';
+                console.error('🔐 LOGIN: ❌ bcrypt no pudo cargarse. Login bloqueado para evitar falla silenciosa.');
+                return;
+            }
+        }
+
         // --- Loading state ---
         errorEl.style.display = 'none';
         if (loginBtn) {
             loginBtn.disabled = true;
             loginBtn._originalText = loginBtn.textContent;
-            loginBtn.textContent = '⏳ Conectando al servidor... (puede tardar un minuto)';
+            loginBtn.textContent = '⏳ Conectando al servidor...';
             loginBtn.style.opacity = '0.7';
         }
 

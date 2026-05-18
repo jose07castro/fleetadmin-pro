@@ -62,7 +62,9 @@ const App = (() => {
             setupReconnectionHandler();
 
             // 4. Navegar a la ruta correcta
-            // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
+            // Bug #5 Fix: eliminado el setTimeout de 800ms artificial.
+            // Firebase ya conectó en el paso anterior, no hay razón para esperar.
+            // Se usa setTimeout(0) para ceder el hilo y dejar que el splash se renderice.
             setTimeout(async () => {
                 try {
                     const splashStatus = document.getElementById('splashStatus');
@@ -126,7 +128,7 @@ const App = (() => {
                     _hideSplash();
                     _showConnectionError(navError);
                 }
-            }, 800);
+            }, 0); // Bug #5: era 800ms artificial, ahora 0ms — corre en el próximo tick
 
         } catch (error) {
             console.error('Error al inicializar la aplicación:', error);
