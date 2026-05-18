@@ -156,21 +156,38 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         Log.i(TAG, "▶️ onStartCommand() — Reforzando persistencia");
 
         if (intent != null) {
-            userId = intent.getStringExtra("userId");
-            driverName = intent.getStringExtra("driverName");
-            fleetId = intent.getStringExtra("fleetId");
+            String intentUserId = intent.getStringExtra("userId");
+            String intentDriverName = intent.getStringExtra("driverName");
+            String intentFleetId = intent.getStringExtra("fleetId");
 
-            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            SharedPreferences.Editor editor = prefs.edit();
-            if (userId != null) editor.putString("userId", userId);
-            if (driverName != null) editor.putString("driverName", driverName);
-            if (fleetId != null) editor.putString("fleetId", fleetId);
-            editor.apply();
+            if (intentUserId != null && !intentUserId.isEmpty()) {
+                // Arranque NORMAL desde la app — guardar en SharedPreferences
+                userId = intentUserId;
+                driverName = intentDriverName;
+                fleetId = intentFleetId;
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                SharedPreferences.Editor editor = prefs.edit();
+                editor.putString("userId", userId);
+                if (driverName != null) editor.putString("driverName", driverName);
+                if (fleetId != null) editor.putString("fleetId", fleetId);
+                editor.apply();
+                Log.i(TAG, "✅ Credenciales recibidas — userId: " + userId);
+            } else {
+                // Reinicio del sistema con Intent vacío (onTaskRemoved / onDestroy / START_STICKY)
+                // El Intent no es null pero tampoco trae userId → restaurar desde SharedPreferences
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                userId = prefs.getString("userId", userId); // mantener en memoria si ya lo tiene
+                driverName = prefs.getString("driverName", driverName != null ? driverName : "Chofer");
+                fleetId = prefs.getString("fleetId", fleetId);
+                Log.i(TAG, "🔁 Reinicio — userId restaurado desde prefs: " + userId);
+            }
         } else {
+            // START_STICKY con intent=null — restaurar desde SharedPreferences
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             userId = prefs.getString("userId", null);
             driverName = prefs.getString("driverName", "Chofer");
             fleetId = prefs.getString("fleetId", null);
+            Log.i(TAG, "🔁 START_STICKY — userId restaurado: " + userId);
         }
 
         // Notificación de alta prioridad para evitar cierre por sistema
@@ -208,11 +225,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.w(TAG, "⚠️ App cerrada desde recientes. Manteniendo servicio GPS activo...");
-        // Fix v5.2: usar startForegroundService() en lugar de startService().
-        // En Android 12+ startService() puede ser ignorado cuando la app está siendo matada,
-        // pero startForegroundService() tiene mayor prioridad en el scheduler del sistema.
         Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
         restartServiceIntent.setPackage(getPackageName());
+        // Bug fix v5.3: pasar userId/driverName/fleetId en el Intent de reinicio.
+        // Sin esto, onStartCommand recibía Intent vacío → userId=null → GPS no escribía nada.
+        if (userId != null) restartServiceIntent.putExtra("userId", userId);
+        if (driverName != null) restartServiceIntent.putExtra("driverName", driverName);
+        if (fleetId != null) restartServiceIntent.putExtra("fleetId", fleetId);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(restartServiceIntent);
         } else {
@@ -227,17 +246,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         isTracking = false;
         stopLocationUpdates();
         releaseWakeLock();
-        // Fix v5.2: auto-reinicio demorado. Si el sistema nos mató, nos reiniciamos solos
-        // después de 2 segundos. Esto cubre el caso en que START_STICKY no alcanza.
+        // Bug fix v5.3: pasar credenciales en el Intent de auto-reinicio.
+        final String savedUserId = userId;
+        final String savedDriverName = driverName;
+        final String savedFleetId = fleetId;
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
                 Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
+                if (savedUserId != null) restartIntent.putExtra("userId", savedUserId);
+                if (savedDriverName != null) restartIntent.putExtra("driverName", savedDriverName);
+                if (savedFleetId != null) restartIntent.putExtra("fleetId", savedFleetId);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     getApplicationContext().startForegroundService(restartIntent);
                 } else {
                     getApplicationContext().startService(restartIntent);
                 }
-                Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado");
+                Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado con userId: " + savedUserId);
             } catch (Exception e) {
                 Log.e(TAG, "❌ Auto-reinicio fallido:", e);
             }
