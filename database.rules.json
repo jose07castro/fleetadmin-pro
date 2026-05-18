@@ -7,7 +7,7 @@
     "globalUsers": {
       // Índice en 'name' para que findGlobalUser() pueda filtrar del lado del servidor
       // sin descargar TODA la colección. Mejora performance de login significativamente.
-      ".indexOn": ["name", "role"],
+      ".indexOn": ["name", "nameLower", "role"],
       ".read": true,
       ".write": true
     },

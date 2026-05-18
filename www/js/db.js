@@ -419,18 +419,52 @@ const DB = (() => {
                 // Ahora: orderByChild('name').equalTo(name) → Firebase filtra del lado del servidor.
                 // IMPORTANTE: Requiere que el índice 'name' esté configurado en Firebase Rules:
                 // { "rules": { "globalUsers": { ".indexOn": ["name"] } } }
-                const queryRef = db.ref('globalUsers')
-                    .orderByChild('name')
-                    .equalTo(name);
+                // Bug #2b Fix: La query .equalTo() es CASE-SENSITIVE en Firebase RTDB.
+                // Si el conductor guarda su nombre como "Juan" pero tipea "juan", la query
+                // no devuelve nada y el login falla silenciosamente o espera los 3 reintentos.
+                // Solución: normalizar a lowercase y buscar en un campo auxiliar 'nameLower'.
+                // Fallback: si no hay resultados (usuarios sin nameLower), hacer scan completo.
+                const nameLower = name.toLowerCase().trim();
 
-                const snap = await fetchWithTimeout(queryRef, timeout);
-                const val = snap.val();
+                // Intento 1: query optimizada por nameLower (requires index .indexOn: ["nameLower"])
+                let queryRef = db.ref('globalUsers')
+                    .orderByChild('nameLower')
+                    .equalTo(nameLower);
+
+                let snap = await fetchWithTimeout(queryRef, timeout);
+                let val = snap.val();
+
+                // Fallback: si nameLower no existe en la DB (usuarios viejos sin ese campo),
+                // hacer query por 'name' exacto y si tampoco, descargar todo para comparar local.
+                if (!val) {
+                    // Intento 2: query por name exacto (legacy, case-sensitive)
+                    const snapExact = await fetchWithTimeout(
+                        db.ref('globalUsers').orderByChild('name').equalTo(name),
+                        timeout
+                    );
+                    val = snapExact.val();
+                }
 
                 if (!val) {
-                    // El usuario con ese nombre no existe. No es error de conexión.
-                    console.warn('🔐 LOGIN: No se encontró usuario con nombre:', name);
-                    // Actualizar caché con los últimos globalUsers conocidos (si hay caché previa no la borramos)
-                    return null;
+                    // Intento 3: full scan con comparación local case-insensitive
+                    // Solo se ejecuta si los intentos 1 y 2 fallaron (usuarios muy viejos)
+                    console.warn('🔐 LOGIN: Query filtrada sin resultados, haciendo full scan case-insensitive...');
+                    const snapAll = await fetchWithTimeout(db.ref('globalUsers'), timeout);
+                    const allVal = snapAll.val();
+                    if (!allVal) {
+                        console.warn('🔐 LOGIN: No se encontró usuario con nombre:', name);
+                        return null;
+                    }
+                    // Filtrar localmente con toLowerCase
+                    const allUsers = Object.values(allVal);
+                    const matchByName = allUsers.filter(u => (u.name || '').toLowerCase().trim() === nameLower);
+                    if (matchByName.length === 0) {
+                        console.warn('🔐 LOGIN: No se encontró usuario con nombre:', name);
+                        return null;
+                    }
+                    // Construir val como si hubiera venido de Firebase
+                    val = {};
+                    matchByName.forEach(u => { val[u.id || u.name] = u; });
                 }
 
                 const users = Object.values(val);
@@ -457,8 +491,6 @@ const DB = (() => {
                 if (found) {
                     console.log(`🔐 LOGIN: ✅ Usuario encontrado: ${found.name} (${found.role}) fleetId: ${found.fleetId}`);
                     // Bug #3 Fix: Auto-migrate PIN a bcrypt hash de forma ASYNC (fire-and-forget).
-                    // Antes: bcrypt.hashSync() bloqueaba el hilo principal ~200-500ms.
-                    // Ahora: se ejecuta en background sin bloquear la navegación post-login.
                     if (found.pin && !found.pin.startsWith('$2')) {
                         setTimeout(async () => {
                             try {
@@ -469,14 +501,26 @@ const DB = (() => {
                                         )
                                     );
                                     await db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
+                                    // Bug #2b Fix: También escribir nameLower para futuros logins
+                                    if (!found.nameLower) {
+                                        await db.ref(`globalUsers/${found.id}/nameLower`).set((found.name || '').toLowerCase().trim());
+                                        console.log('🔐 LOGIN: ✅ nameLower escrito para futuros logins optimizados');
+                                    }
                                     console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash (async, no bloqueante)');
                                 }
                             } catch (hashErr) {
                                 console.warn('🔐 LOGIN: ⚠️ No se pudo migrar PIN (no crítico):', hashErr);
                             }
                         }, 0);
+                    } else if (found && !found.nameLower) {
+                        // Si el PIN ya está hasheado pero falta nameLower, escribirlo igual
+                        setTimeout(async () => {
+                            try {
+                                await db.ref(`globalUsers/${found.id}/nameLower`).set((found.name || '').toLowerCase().trim());
+                                console.log('🔐 LOGIN: ✅ nameLower escrito (sin migración de PIN)');
+                            } catch(e) { /* ignorar */ }
+                        }, 0);
                     }
-                } else {
                     console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (pin/rol incorrecto)`);
                 }
                 return found; // SUCCESS — either found or legitimately not found
