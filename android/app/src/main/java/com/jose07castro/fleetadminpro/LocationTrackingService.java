@@ -21,6 +21,9 @@ import android.os.PowerManager;
 import android.os.Process;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
+import android.net.wifi.WifiManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -75,6 +78,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
+    private LocationDbHelper dbHelper;
     private Handler watchdogHandler;
     private Runnable watchdogRunnable;
     private boolean isTracking = false;
@@ -135,6 +140,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         serviceThread = new HandlerThread("GPSServiceThread", Process.THREAD_PRIORITY_URGENT_DISPLAY);
         serviceThread.start();
         serviceHandler = new Handler(serviceThread.getLooper());
+
+        // Inicializar SQLite
+        dbHelper = new LocationDbHelper(this);
 
         // 2. Firebase Database Ref
         try {
@@ -197,7 +205,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         );
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
             } else {
                 startForeground(NOTIFICATION_ID, notification);
@@ -227,16 +235,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         Log.w(TAG, "⚠️ App cerrada desde recientes. Manteniendo servicio GPS activo...");
         Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
         restartServiceIntent.setPackage(getPackageName());
-        // Bug fix v5.3: pasar userId/driverName/fleetId en el Intent de reinicio.
-        // Sin esto, onStartCommand recibía Intent vacío → userId=null → GPS no escribía nada.
         if (userId != null) restartServiceIntent.putExtra("userId", userId);
         if (driverName != null) restartServiceIntent.putExtra("driverName", driverName);
         if (fleetId != null) restartServiceIntent.putExtra("fleetId", fleetId);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(restartServiceIntent);
-        } else {
-            startService(restartServiceIntent);
-        }
+        androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartServiceIntent);
         super.onTaskRemoved(rootIntent);
     }
 
@@ -246,7 +248,6 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         isTracking = false;
         stopLocationUpdates();
         releaseWakeLock();
-        // Bug fix v5.3: pasar credenciales en el Intent de auto-reinicio.
         final String savedUserId = userId;
         final String savedDriverName = driverName;
         final String savedFleetId = fleetId;
@@ -256,11 +257,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 if (savedUserId != null) restartIntent.putExtra("userId", savedUserId);
                 if (savedDriverName != null) restartIntent.putExtra("driverName", savedDriverName);
                 if (savedFleetId != null) restartIntent.putExtra("fleetId", savedFleetId);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    getApplicationContext().startForegroundService(restartIntent);
-                } else {
-                    getApplicationContext().startService(restartIntent);
-                }
+                androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartIntent);
                 Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado con userId: " + savedUserId);
             } catch (Exception e) {
                 Log.e(TAG, "❌ Auto-reinicio fallido:", e);
@@ -292,7 +289,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void startLocationUpdates() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, MIN_TIME_MS)
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
+            .setMinUpdateIntervalMillis(2000)
             .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
             .setWaitForAccurateLocation(false)
             .build();
@@ -330,17 +328,42 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         // 1. Radarbot Engine
         checkProximityToAlerts(location);
 
-        // 2. Firebase Direct (Asíncrono)
-        serviceHandler.post(() -> pushToFirebase(lastLat, lastLng, lastSpeed, lastBearing));
+        // 2. Firebase Direct / SQLite Queue (Asíncrono en serviceHandler)
+        serviceHandler.post(() -> {
+            int battery = getBatteryLevel();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String timestamp = sdf.format(new Date());
 
-        // 3. UI Sync (WebView)
-        sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
+            if (isNetworkAvailable()) {
+                sendQueuedLocations();
+                boolean success = pushSingleToFirebase(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp, "native_foreground_v5_1");
+                if (!success) {
+                    dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp);
+                    Log.i(TAG, "💾 Firebase falló. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
+                }
+            } else {
+                dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp);
+                Log.i(TAG, "💾 Sin red. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
+            }
 
-        // 4. Update Notification
-        updateNotification(
-            "Punto Alertas: Turno activo",
-            String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
-        );
+            // 3. UI Sync (WebView)
+            sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
+
+            // 4. Update Notification
+            int queueSize = dbHelper.getQueueSize();
+            if (queueSize > 0) {
+                updateNotification(
+                    "Punto Alertas: Fuera de línea",
+                    String.format(Locale.US, "📍 Cola: %d puntos retenidos", queueSize)
+                );
+            } else {
+                updateNotification(
+                    "Punto Alertas: Turno activo",
+                    String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
+                );
+            }
+        });
     }
 
     // ================================================================
@@ -447,27 +470,74 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // FIREBASE SYNC
     // ================================================================
 
-    private void pushToFirebase(double lat, double lng, float speed, float bearing) {
-        if (dbRef == null || userId == null || userId.isEmpty()) return;
+    private boolean pushSingleToFirebase(double lat, double lng, float speed, float bearing, int battery, String timestamp, String source) {
+        if (dbRef == null || userId == null || userId.isEmpty()) return false;
 
-        try {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String timestamp = sdf.format(new Date());
+        final boolean[] success = {true};
+        final Object lock = new Object();
 
-            Map<String, Object> data = new HashMap<>();
-            data.put("lat", lat);
-            data.put("lng", lng);
-            data.put("heading", (double) bearing);
-            data.put("speed", (double) speed);
-            data.put("battery", getBatteryLevel());
-            data.put("driverName", driverName != null ? driverName : "Chofer");
-            data.put("updated_at", timestamp);
-            data.put("_source", "native_foreground_v5_1");
+        Map<String, Object> data = new HashMap<>();
+        data.put("lat", lat);
+        data.put("lng", lng);
+        data.put("heading", (double) bearing);
+        data.put("speed", (double) speed);
+        data.put("battery", battery);
+        data.put("driverName", driverName != null ? driverName : "Chofer");
+        data.put("updated_at", timestamp);
+        data.put("_source", source);
 
-            dbRef.child(userId).setValue(data);
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Error Firebase:", e);
+        synchronized (lock) {
+            dbRef.child(userId).setValue(data, (error, ref) -> {
+                synchronized (lock) {
+                    success[0] = (error == null);
+                    lock.notify();
+                }
+            });
+            try {
+                lock.wait(5000); // Esperar hasta 5 segundos para confirmación de guardado en Firebase
+            } catch (InterruptedException e) {
+                success[0] = false;
+            }
+        }
+        return success[0];
+    }
+
+    private void sendQueuedLocations() {
+        int size = dbHelper.getQueueSize();
+        if (size == 0) return;
+
+        Log.i(TAG, "📤 Sincronizando " + size + " ubicaciones locales retenidas...");
+        List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
+        for (LocationDbHelper.QueuedLocation ql : list) {
+            if (!isNetworkAvailable()) {
+                Log.w(TAG, "⚠️ Conexión perdida al procesar la cola.");
+                break;
+            }
+            boolean success = pushSingleToFirebase(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native");
+            if (success) {
+                dbHelper.deleteLocation(ql.id);
+            } else {
+                Log.w(TAG, "❌ Error al enviar punto local encolado. Abortando sincronización.");
+                break;
+            }
+            try { Thread.sleep(200); } catch (InterruptedException e) {}
+        }
+    }
+
+    private boolean isNetworkAvailable() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.net.Network network = cm.getActiveNetwork();
+            if (network == null) return false;
+            NetworkCapabilities capabilities = cm.getNetworkCapabilities(network);
+            return capabilities != null && (
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
+        } else {
+            android.net.NetworkInfo activeNetworkInfo = cm.getActiveNetworkInfo();
+            return activeNetworkInfo != null && activeNetworkInfo.isConnected();
         }
     }
 
@@ -517,12 +587,29 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void acquireWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) return;
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FleetAdmin::PersistentTracking");
-            wakeLock.acquire(24 * 60 * 60 * 1000L); // 24 horas de protección CPU
-            Log.i(TAG, "🛡️ WakeLock Reforzado Activo");
+        if (wakeLock == null || !wakeLock.isHeld()) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PuntoAlertas::CpuWakeLock");
+                wakeLock.acquire();
+                Log.i(TAG, "🛡️ WakeLock Reforzado Activo (PuntoAlertas::CpuWakeLock)");
+            }
+        }
+        acquireWifiLock();
+    }
+
+    private void acquireWifiLock() {
+        if (wifiLock == null || !wifiLock.isHeld()) {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PuntoAlertas::WifiLock");
+                } else {
+                    wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "PuntoAlertas::WifiLock");
+                }
+                wifiLock.acquire();
+                Log.i(TAG, "🛡️ WifiLock Activo");
+            }
         }
     }
 
@@ -530,6 +617,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
             wakeLock = null;
+        }
+        if (wifiLock != null && wifiLock.isHeld()) {
+            wifiLock.release();
+            wifiLock = null;
         }
     }
 

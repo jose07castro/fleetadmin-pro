@@ -33,6 +33,16 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Solicitar permisos de ubicación en primer plano de manera limpia al iniciar la app
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                }, 7001);
+            }
+        }
+
         // Capturar referencia al WebView
         this.bridge.getWebView().post(() -> {
             webView = this.bridge.getWebView();
@@ -66,11 +76,7 @@ public class MainActivity extends BridgeActivity {
             serviceIntent.putExtra("driverName", driverName);
             serviceIntent.putExtra("fleetId", fleetId);
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
+            androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
         }
 
         /**
@@ -91,11 +97,7 @@ public class MainActivity extends BridgeActivity {
             } else {
                 // Arrancar de todas formas (GPS corre pero no sube a Firebase hasta recibir userId)
                 Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent);
-                } else {
-                    startService(serviceIntent);
-                }
+                androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
             }
         }
 
@@ -150,18 +152,28 @@ public class MainActivity extends BridgeActivity {
             Log.i(TAG, "📱 JS → requestBackgroundLocationPermission()");
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    if (Build.VERSION.SDK_INT >= 30) { // Android 11+
-                        // En Android 11+ no se puede solicitar el permiso directamente via Popup de Runtime
-                        // Se DEBE enviar al usuario directamente a los Ajustes de la Aplicación -> Permisos de Ubicación
-                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                        intent.setData(Uri.parse("package:" + getPackageName()));
-                        startActivity(intent);
-                    } else { // Android 10
+                    // Verificamos primero si tenemos permiso de primer plano.
+                    if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        // En Android 10+ (Q+), solicitar ACCESS_BACKGROUND_LOCATION
+                        // redirigirá al usuario directamente al panel de opciones de ubicación de la app en la configuración del sistema.
                         requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7002);
+                    } else {
+                        // Si no tiene primer plano, pedirlo primero
+                        requestPermissions(new String[]{
+                            android.Manifest.permission.ACCESS_FINE_LOCATION,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        }, 7001);
                     }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "❌ Error requesting background location permission:", e);
+                Log.e(TAG, "❌ Error requesting background location permission, falling back to app details:", e);
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception ex) {
+                    Log.e(TAG, "❌ Fallback intent failed:", ex);
+                }
             }
         }
     }
