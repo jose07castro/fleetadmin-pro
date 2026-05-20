@@ -600,3 +600,14 @@ const App = (() => {
 
 // --- Iniciar la aplicación cuando cargue la página ---
 document.addEventListener('DOMContentLoaded', App.init);
+
+// Evitar cierre accidental cuando el turno está activo
+window.addEventListener('beforeunload', (e) => {
+    const inShift = localStorage.getItem('active_shift_state') === 'true';
+    if (inShift) {
+        e.preventDefault();
+        e.returnValue = 'Tenés un turno activo. Si cerrás la pestaña, se detendrá el rastreo GPS. ¿Seguro que querés salir?';
+        return e.returnValue;
+    }
+});
+

@@ -443,7 +443,8 @@ const GPSPermissions = (() => {
                             battery: batteryLevel,
                             driverName: Auth.getUserName() || userId,
                             updated_at: new Date().toISOString(),
-                            _native: true // Marca nativa de calidad paridad
+                            _native: true, // Marca nativa de calidad paridad
+                            _source: 'web_pwa_native'
                         });
                         _lastPositionPushTime = Date.now();
                     } catch(e) {}
@@ -511,9 +512,9 @@ const GPSPermissions = (() => {
             return;
         }
 
-        // Intervalo Dinámico (2s normal, 10s si batería baja) 
+        // Intervalo Dinámico (5s normal, 10s si batería baja) 
         const evaluateAndSend = async () => {
-            let limitMs = 2000; // 2 segundos (v126: más agresivo para radar fluido)
+            let limitMs = 5000; // 5 segundos para paridad y persistencia
             if (navigator.getBattery) {
                 try {
                     const b = await navigator.getBattery();
@@ -665,7 +666,8 @@ const GPSPermissions = (() => {
                 speed: pos.speed,
                 battery: batteryLevel,
                 driverName: Auth.getUserName() || userId,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                _source: 'web_pwa'
             });
             _lastPositionPushTime = Date.now();
         } catch (e) {
