@@ -197,6 +197,23 @@ const Auth = (() => {
         return recovered !== null;
     }
 
+    /**
+     * ensureSession — Guard async para acciones críticas (turnos, SOS, etc.)
+     * Intenta recuperar la sesión desde IndexedDB si localStorage fue limpiado.
+     * Retorna true si hay sesión, false si realmente no hay.
+     * USAR ESTO en lugar de isLoggedIn() en funciones async.
+     */
+    async function ensureSession() {
+        if (getUser()) return true;
+        // Android mató la memoria — intentar IndexedDB
+        const recovered = await recoverSession();
+        if (recovered) {
+            console.log('🔐 ensureSession: ✅ Sesión recuperada desde IndexedDB — evitando deslogueo fantasma');
+            return true;
+        }
+        return false;
+    }
+
     function getRole() {
         return getUser()?.role || null;
     }
@@ -325,6 +342,6 @@ const Auth = (() => {
         login, logout, getUser, isLoggedIn, isLoggedInAsync, getRole,
         isOwner, isDriver, isMechanic,
         getUserName, getUserId, getFleetId, authenticate, canAccess,
-        isProfileComplete, getFleetUserRecord, recoverSession
+        isProfileComplete, getFleetUserRecord, recoverSession, ensureSession
     };
 })();

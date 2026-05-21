@@ -151,11 +151,15 @@ public class MainActivity extends BridgeActivity {
         public void requestBackgroundLocationPermission() {
             Log.i(TAG, "📱 JS → requestBackgroundLocationPermission()");
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // En Android 11+ (API 30+), redirigir directamente a Ajustes para permitir al usuario seleccionar "Permitir todo el tiempo"
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     // Verificamos primero si tenemos permiso de primer plano.
                     if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        // En Android 10+ (Q+), solicitar ACCESS_BACKGROUND_LOCATION
-                        // redirigirá al usuario directamente al panel de opciones de ubicación de la app en la configuración del sistema.
+                        // En Android 10 (API 29), solicitar ACCESS_BACKGROUND_LOCATION
                         requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7002);
                     } else {
                         // Si no tiene primer plano, pedirlo primero

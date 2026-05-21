@@ -62,9 +62,7 @@ const App = (() => {
             setupReconnectionHandler();
 
             // 4. Navegar a la ruta correcta
-            // Bug #5 Fix: eliminado el setTimeout de 800ms artificial.
-            // Firebase ya conectó en el paso anterior, no hay razón para esperar.
-            // Se usa setTimeout(0) para ceder el hilo y dejar que el splash se renderice.
+            // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
                 try {
                     const splashStatus = document.getElementById('splashStatus');
@@ -128,7 +126,7 @@ const App = (() => {
                     _hideSplash();
                     _showConnectionError(navError);
                 }
-            }, 0); // Bug #5: era 800ms artificial, ahora 0ms — corre en el próximo tick
+            }, 800);
 
         } catch (error) {
             console.error('Error al inicializar la aplicación:', error);
@@ -369,9 +367,28 @@ const App = (() => {
         _lastResumeTime = now;
 
         try {
-            // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB)
-            const user = await Auth.recoverSession();
+            // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB) con reintentos
+            let user = null;
+            let attempts = 3;
+            for (let i = 0; i < attempts; i++) {
+                try {
+                    user = await Auth.recoverSession();
+                    if (user) break;
+                } catch (e) {
+                    console.warn(`📱 Error intentando recuperar sesión (intento ${i + 1}/${attempts}):`, e);
+                }
+                if (i < attempts - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Esperar 500ms
+                }
+            }
+
             if (!user) {
+                // Si la sesión no se recuperó, pero la ruta actual no es login/apply, evitar redirección forzada
+                const currentRoute = Router.getCurrentRoute();
+                if (currentRoute && currentRoute !== 'login' && currentRoute !== 'apply') {
+                    console.warn('📱 No se pudo recuperar la sesión del almacenamiento, pero el usuario está en una ruta activa:', currentRoute, '. Conservando la vista.');
+                    return;
+                }
                 // Las 3 capas de almacenamiento están vacías — esto SÍ es un logout real
                 console.warn('📱 No hay sesión en ninguna capa de almacenamiento — redirigir a login');
                 Router.navigate('login');

@@ -7,7 +7,7 @@ self.onmessage = function (e) {
             // Para forzar la evaluación agresiva (3.5s normal o 10s ecosistema).
             intervalId = setInterval(() => {
                  self.postMessage('ping');
-             }, 5000);
+             }, 1000);
         }
     } else if (e.data === 'stop') {
         if (intervalId) {

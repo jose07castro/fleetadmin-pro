@@ -451,11 +451,11 @@ const WhatsappBot = (() => {
                     } else if (statusCode === 440 || statusCode === 503) {
                         retryCount++;
                         
-                        // PROTOCOLO DE SUICIDIO CONTROLADO: Si el conflicto 440 persiste 3 veces, 
-                        // matamos el proceso para que Render recicle limpio y elimine clones fantasmas de RAM
+                        // Evitamos matar el proceso para que Render complete el despliegue del nuevo contenedor.
+                        // Una vez desplegado, Render apagará el contenedor viejo liberando la sesión de WhatsApp.
                         if (retryCount >= 3) {
-                            console.error('💥 [LOCK-FATAL] Conflicto 440 persistente. Matando proceso para autocuración completa en Render...');
-                            process.exit(1);
+                            console.warn('💥 [LOCK-WARNING] Conflicto 440 persistente. Continuando intentos en segundo plano...');
+                            retryCount = 0;
                         }
 
                         // Retardo racional con desincronización aleatoria (Jitter)

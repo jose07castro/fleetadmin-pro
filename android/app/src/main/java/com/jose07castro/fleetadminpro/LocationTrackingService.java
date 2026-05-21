@@ -67,7 +67,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final String PREFS_NAME = "fleet_gps_prefs";
 
     // GPS Config
-    private static final long MIN_TIME_MS = 5000;   // 5 segundos
+    private static final long MIN_TIME_MS = 1000;   // 1 segundo (agresivo para evitar suspension del GPS)
     private static final float MIN_DISTANCE_M = 0f;
 
     // Proximity Config (Radarbot)
@@ -83,6 +83,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private Handler watchdogHandler;
     private Runnable watchdogRunnable;
     private boolean isTracking = false;
+    private boolean isSendingQueue = false;
 
     // Text To Speech (Radarbot Voice)
     private TextToSpeech tts;
@@ -289,8 +290,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void startLocationUpdates() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-            .setMinUpdateIntervalMillis(2000)
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
+            .setMinUpdateIntervalMillis(1000)
+            .setMaxUpdateDelayMillis(0)  // Sin batching — entrega inmediata de cada punto GPS
             .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
             .setWaitForAccurateLocation(false)
             .build();
@@ -337,11 +339,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
             if (isNetworkAvailable()) {
                 sendQueuedLocations();
-                boolean success = pushSingleToFirebase(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp, "native_foreground_v5_1");
-                if (!success) {
-                    dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp);
-                    Log.i(TAG, "💾 Firebase falló. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
-                }
+                pushSingleToFirebaseAsync(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp, "native_foreground_v5_1", (error, ref) -> {
+                    if (error != null) {
+                        serviceHandler.post(() -> {
+                            dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp);
+                            Log.i(TAG, "💾 Firebase falló. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
+                            updateStatusNotification();
+                        });
+                    }
+                });
             } else {
                 dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, lastBearing, battery, timestamp);
                 Log.i(TAG, "💾 Sin red. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
@@ -351,18 +357,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
 
             // 4. Update Notification
-            int queueSize = dbHelper.getQueueSize();
-            if (queueSize > 0) {
-                updateNotification(
-                    "Punto Alertas: Fuera de línea",
-                    String.format(Locale.US, "📍 Cola: %d puntos retenidos", queueSize)
-                );
-            } else {
-                updateNotification(
-                    "Punto Alertas: Turno activo",
-                    String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
-                );
-            }
+            updateStatusNotification();
         });
     }
 
@@ -470,11 +465,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // FIREBASE SYNC
     // ================================================================
 
-    private boolean pushSingleToFirebase(double lat, double lng, float speed, float bearing, int battery, String timestamp, String source) {
-        if (dbRef == null || userId == null || userId.isEmpty()) return false;
-
-        final boolean[] success = {true};
-        final Object lock = new Object();
+    private void pushSingleToFirebaseAsync(double lat, double lng, float speed, float bearing, int battery, String timestamp, String source, com.google.firebase.database.DatabaseReference.CompletionListener listener) {
+        if (dbRef == null || userId == null || userId.isEmpty()) {
+            if (listener != null) {
+                listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("No user ID or db reference")), null);
+            }
+            return;
+        }
 
         Map<String, Object> data = new HashMap<>();
         data.put("lat", lat);
@@ -486,42 +483,39 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         data.put("updated_at", timestamp);
         data.put("_source", source);
 
-        synchronized (lock) {
-            dbRef.child(userId).setValue(data, (error, ref) -> {
-                synchronized (lock) {
-                    success[0] = (error == null);
-                    lock.notify();
-                }
-            });
-            try {
-                lock.wait(5000); // Esperar hasta 5 segundos para confirmación de guardado en Firebase
-            } catch (InterruptedException e) {
-                success[0] = false;
-            }
-        }
-        return success[0];
+        dbRef.child(userId).setValue(data, listener);
     }
 
     private void sendQueuedLocations() {
-        int size = dbHelper.getQueueSize();
-        if (size == 0) return;
+        if (isSendingQueue) return;
+        isSendingQueue = true;
 
-        Log.i(TAG, "📤 Sincronizando " + size + " ubicaciones locales retenidas...");
-        List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
-        for (LocationDbHelper.QueuedLocation ql : list) {
-            if (!isNetworkAvailable()) {
-                Log.w(TAG, "⚠️ Conexión perdida al procesar la cola.");
-                break;
+        serviceHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
+                if (list.isEmpty() || !isNetworkAvailable()) {
+                    isSendingQueue = false;
+                    updateStatusNotification();
+                    return;
+                }
+
+                LocationDbHelper.QueuedLocation ql = list.get(0);
+                pushSingleToFirebaseAsync(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native", (error, ref) -> {
+                    serviceHandler.post(() -> {
+                        if (error == null) {
+                            dbHelper.deleteLocation(ql.id);
+                            // Process next item with a tiny delay to not hog the thread
+                            serviceHandler.postDelayed(this, 100);
+                        } else {
+                            Log.w(TAG, "❌ Error al enviar punto local encolado: " + error.getMessage());
+                            isSendingQueue = false;
+                            updateStatusNotification();
+                        }
+                    });
+                });
             }
-            boolean success = pushSingleToFirebase(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native");
-            if (success) {
-                dbHelper.deleteLocation(ql.id);
-            } else {
-                Log.w(TAG, "❌ Error al enviar punto local encolado. Abortando sincronización.");
-                break;
-            }
-            try { Thread.sleep(200); } catch (InterruptedException e) {}
-        }
+        });
     }
 
     private boolean isNetworkAvailable() {
@@ -659,5 +653,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) manager.notify(NOTIFICATION_ID, buildNotification(title, text));
         } catch (Exception e) {}
+    }
+
+    private void updateStatusNotification() {
+        int queueSize = dbHelper.getQueueSize();
+        if (queueSize > 0) {
+            updateNotification(
+                "Punto Alertas: Fuera de línea",
+                String.format(Locale.US, "📍 Cola: %d puntos retenidos", queueSize)
+            );
+        } else {
+            updateNotification(
+                "Punto Alertas: Turno activo",
+                String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
+            );
+        }
     }
 }

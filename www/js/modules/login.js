@@ -44,18 +44,21 @@ const LoginModule = (() => {
                             </button>
                         </div>
 
+                        <form id="loginForm" method="post" action="#" autocomplete="on"
+                            onsubmit="event.preventDefault(); LoginModule.doLogin();">
+
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_name')}</label>
-                            <input type="text" class="form-input" id="loginName"
-                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="off">
+                            <input type="text" class="form-input" id="loginName" name="username"
+                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="username">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
                             <div style="position:relative;">
-                                <input type="password" class="form-input" id="loginPin"
+                                <input type="password" class="form-input" id="loginPin" name="password"
                                     placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric"
-                                    onkeydown="if(event.key==='Enter') LoginModule.doLogin()"
+                                    autocomplete="current-password"
                                     style="padding-right:3rem;">
                                 <button type="button" onclick="LoginModule.togglePin()" id="pinToggleBtn"
                                     style="position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.2rem; padding:0.25rem; opacity:0.6; transition:opacity 0.2s;"
@@ -69,9 +72,11 @@ const LoginModule = (() => {
                             ${I18n.t('login_error')}
                         </div>
 
-                        <button class="btn btn-primary btn-block btn-lg" onclick="LoginModule.doLogin()">
+                        <button type="submit" class="btn btn-primary btn-block btn-lg">
                             ${I18n.t('login_enter')}
                         </button>
+
+                        </form>
 
                         <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
                             <button class="btn btn-block" onclick="LoginModule.showRegister()"
@@ -113,51 +118,12 @@ const LoginModule = (() => {
             return;
         }
 
-        // Bug #7 Fix: verificar disponibilidad de bcrypt ANTES de intentar el login.
-        // Si el CDN no cargó (conexión lenta al iniciar), los PINs hasheados no se pueden comparar
-        // y el login fallaría silenciosamente devolviendo "credenciales incorrectas".
-        // Detectamos esto y ofrecemos un mensaje claro con botón de reintento.
-        const bcryptAvailable = typeof dcodeIO !== 'undefined' && dcodeIO?.bcrypt;
-        if (!bcryptAvailable) {
-            // Intentar cargar el script de bcrypt dinámicamente
-            try {
-                errorEl.style.display = 'block';
-                errorEl.innerHTML = '⏳ <strong>Cargando módulo de seguridad...</strong><br><small>Aguardá unos segundos.</small>';
-                errorEl.style.background = 'rgba(99,102,241,0.1)';
-                errorEl.style.borderColor = '#6366f1';
-                errorEl.style.color = '#818cf8';
-                await new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js';
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.body.appendChild(script);
-                });
-                // Resetear mensaje de error si cargó bien
-                errorEl.style.display = 'none';
-                errorEl.style.background = '';
-                errorEl.style.borderColor = '';
-                errorEl.style.color = '';
-                console.log('🔐 LOGIN: bcrypt cargado dinámicamente ✅');
-            } catch (bcryptLoadErr) {
-                // bcrypt no disponible y no pudo cargarse — mostrar error con instrucción
-                errorEl.style.display = 'block';
-                errorEl.innerHTML = '🔒 <strong>Módulo de seguridad no disponible.</strong><br>' +
-                    'Verificá tu conexión a internet y <a href="javascript:location.reload()" style="color:inherit;font-weight:700;">recargá la página</a>.';
-                errorEl.style.background = 'rgba(239,68,68,0.1)';
-                errorEl.style.borderColor = '#ef4444';
-                errorEl.style.color = '#fca5a5';
-                console.error('🔐 LOGIN: ❌ bcrypt no pudo cargarse. Login bloqueado para evitar falla silenciosa.');
-                return;
-            }
-        }
-
         // --- Loading state ---
         errorEl.style.display = 'none';
         if (loginBtn) {
             loginBtn.disabled = true;
             loginBtn._originalText = loginBtn.textContent;
-            loginBtn.textContent = '⏳ Conectando al servidor...';
+            loginBtn.textContent = '⏳ Conectando al servidor... (puede tardar un minuto)';
             loginBtn.style.opacity = '0.7';
         }
 

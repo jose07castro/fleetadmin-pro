@@ -514,7 +514,7 @@ const GPSPermissions = (() => {
 
         // Intervalo Dinámico (5s normal, 10s si batería baja) 
         const evaluateAndSend = async () => {
-            let limitMs = 5000; // 5 segundos para paridad y persistencia
+            let limitMs = 1000; // 1 segundo para coincidir con el servicio nativo
             if (navigator.getBattery) {
                 try {
                     const b = await navigator.getBattery();

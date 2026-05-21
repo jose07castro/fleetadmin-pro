@@ -158,7 +158,7 @@ const RadarModule = (() => {
             </button>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
-                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (2s)</strong></span>
+                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (1s)</strong></span>
             </div>
         `;
 
