@@ -118,6 +118,11 @@ const Router = (() => {
                 CommunityModule.cleanup();
             }
         }
+        if (currentRoute === 'settings' && route !== 'settings') {
+            if (typeof SettingsModule !== 'undefined' && typeof SettingsModule.cleanup === 'function') {
+                SettingsModule.cleanup();
+            }
+        }
 
         currentRoute = route;
 

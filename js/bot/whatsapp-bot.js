@@ -421,6 +421,13 @@ const WhatsappBot = (() => {
 
                 if (qr) {
                     console.log(`📱 QR generado: https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`);
+                    if (db) {
+                        db.ref('bot_status').set({
+                            connected: false,
+                            qr: `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`,
+                            timestamp: Date.now()
+                        }).catch(e => console.error('❌ [Firebase] Error guardando QR:', e.message));
+                    }
                 }
 
                 if (connection === 'close') {
@@ -435,6 +442,10 @@ const WhatsappBot = (() => {
                     const reason = DisconnectReason;
                     
                     console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
+                    
+                    if (db) {
+                        db.ref('bot_status/connected').set(false).catch(e => {});
+                    }
                     
                     // Muy Importante: Borrar listeners del socket muerto para evitar bucles fantasma
                     try { sock?.ev?.removeAllListeners(); } catch(e) {}
@@ -493,6 +504,13 @@ const WhatsappBot = (() => {
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
+                    
+                    if (db) {
+                        db.ref('bot_status').set({
+                            connected: true,
+                            timestamp: Date.now()
+                        }).catch(e => console.error('❌ [Firebase] Error guardando conexión:', e.message));
+                    }
                     
                     // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
                     // y estable por lo menos 60 segundos consecutivos. Si muere antes, acumulamos
