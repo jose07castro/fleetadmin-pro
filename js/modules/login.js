@@ -42,6 +42,10 @@ const LoginModule = (() => {
                                 <span class="role-icon">🚗</span>
                                 <span class="role-label">${I18n.t('role_driver')}</span>
                             </button>
+                            <button class="role-option" data-role="passenger" onclick="LoginModule.selectRole('passenger')">
+                                <span class="role-icon">🙋</span>
+                                <span class="role-label">${I18n.t('role_passenger')}</span>
+                            </button>
                         </div>
 
                         <div class="form-group">

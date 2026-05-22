@@ -214,6 +214,10 @@ const Auth = (() => {
         return getRole() === 'mechanic';
     }
 
+    function isPassenger() {
+        return getRole() === 'passenger';
+    }
+
     function getUserName() {
         // FUENTE PRIMARIA: Firebase Auth
         try {
@@ -257,7 +261,8 @@ const Auth = (() => {
             owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants'],
             titular: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants'],
             driver: ['shifts', 'oil', 'settings', 'community', 'gps'],
-            mechanic: ['maintenance', 'settings']
+            mechanic: ['maintenance', 'settings'],
+            passenger: ['gps', 'settings']
         };
 
         return permissions[role]?.includes(route) || false;
@@ -323,7 +328,7 @@ const Auth = (() => {
 
     return {
         login, logout, getUser, isLoggedIn, isLoggedInAsync, getRole,
-        isOwner, isDriver, isMechanic,
+        isOwner, isDriver, isMechanic, isPassenger,
         getUserName, getUserId, getFleetId, authenticate, canAccess,
         isProfileComplete, getFleetUserRecord, recoverSession
     };

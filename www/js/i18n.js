@@ -49,6 +49,7 @@ const I18n = (() => {
             role_titular: 'Titular',
             role_driver: 'Conductor',
             role_mechanic: 'Mecánico',
+            role_passenger: 'Pasajero',
 
             // Navegación
             nav_dashboard: 'Panel Principal',
@@ -370,6 +371,7 @@ const I18n = (() => {
             role_titular: 'Owner (Titular)',
             role_driver: 'Driver',
             role_mechanic: 'Mechanic',
+            role_passenger: 'Passenger',
 
             nav_dashboard: 'Dashboard',
             nav_vehicles: 'Vehicles',
@@ -681,6 +683,7 @@ const I18n = (() => {
             role_titular: 'Titular',
             role_driver: 'Motorista',
             role_mechanic: 'Mecânico',
+            role_passenger: 'Passageiro',
 
             nav_dashboard: 'Painel',
             nav_vehicles: 'Veículos',

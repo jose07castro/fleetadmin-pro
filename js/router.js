@@ -61,7 +61,8 @@ const Router = (() => {
             const defaultRoutes = {
                 owner: 'dashboard',
                 driver: 'shifts',
-                mechanic: 'maintenance'
+                mechanic: 'maintenance',
+                passenger: 'gps'
             };
             route = defaultRoutes[Auth.getRole()] || 'login';
         }
@@ -146,7 +147,8 @@ const Router = (() => {
         const defaults = {
             owner: 'dashboard',
             driver: 'shifts',
-            mechanic: 'maintenance'
+            mechanic: 'maintenance',
+            passenger: 'gps'
         };
         return defaults[role] || 'login';
     }

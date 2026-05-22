@@ -128,6 +128,10 @@ const Components = (() => {
                 { icon: '🔧', label: 'nav_maintenance', route: 'maintenance', section: 'ops' },
                 { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
                 { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' }
+            ],
+            passenger: [
+                { icon: '📡', label: 'nav_gps', route: 'gps', section: 'ops' },
+                { icon: '⚙️', label: 'nav_settings', route: 'settings', section: 'mgmt' }
             ]
         };
         return items[normalizedRole] || [];
@@ -157,6 +161,11 @@ const Components = (() => {
                 { icon: '🔧', label: 'Taller', route: 'maintenance' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
                 { icon: '🪪', label: 'Postular', route: 'apply' },
+                { icon: '🚪', label: 'Salir', route: '__logout__' }
+            ],
+            passenger: [
+                { icon: '📡', label: 'Radar', route: 'gps' },
+                { icon: '⚙️', label: 'Ajustes', route: 'settings' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ]
         };
