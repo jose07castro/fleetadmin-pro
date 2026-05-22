@@ -4,15 +4,14 @@
    ============================================ */
 
 const SettingsModule = (() => {
-    let botStatusListener = null;
 
     async function render() {
         const distUnit = Units.getDistanceUnit();
         const volUnit = Units.getVolumeUnit();
         const location = await DB.getSetting('location');
 
-        // Wiring post-mount: call afterRender for initialization
-        setTimeout(() => { afterRender(); }, 100);
+        // Wiring post-mount: load user list for owners
+        setTimeout(() => { if (Auth.isOwner()) loadUserList(); }, 100);
 
         return `
             <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
@@ -231,17 +230,6 @@ const SettingsModule = (() => {
                             </button>
                         </div>
                         <div id="fcmStatus" style="font-size:var(--font-size-xs);"></div>
-                    </div>
-                </div>
-
-                <!-- Bot de WhatsApp (solo dueño) -->
-                <div class="settings-section">
-                    <div class="settings-section-title">🤖 Bot de WhatsApp (Alertas en tiempo real)</div>
-                    <div id="botStatusSection" style="padding: 0 var(--space-3) var(--space-3) var(--space-3);">
-                        <div style="color:var(--text-secondary); text-align:center; padding:var(--space-4); display:flex; align-items:center; justify-content:center; gap:8px;">
-                            <span class="spinner" style="border: 2px solid var(--border-color); border-top: 2px solid var(--color-primary); border-radius: 50%; width: 16px; height: 16px; display: inline-block; animation: spin 1s linear infinite;"></span>
-                            Cargando estado del bot...
-                        </div>
                     </div>
                 </div>
 
@@ -1339,207 +1327,6 @@ const SettingsModule = (() => {
     function afterRender() {
         if (Auth.isOwner()) {
             loadUserList();
-            initBotStatusListener();
-        }
-    }
-
-    function initBotStatusListener() {
-        const container = document.getElementById('botStatusSection');
-        if (!container) return;
-
-        // Limpiar listener anterior
-        cleanup();
-
-        const botStatusRef = firebaseDB.ref('bot_status');
-        botStatusListener = botStatusRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            renderBotStatus(data);
-        }, (error) => {
-            console.error('Error listening to bot status:', error);
-            if (container) {
-                container.innerHTML = `
-                    <div style="color:var(--color-danger); padding:var(--space-2); text-align:center;">
-                        ⚠️ Error de conexión con Firebase: ${error.message}
-                    </div>
-                `;
-            }
-        });
-    }
-
-    function renderBotStatus(data) {
-        const container = document.getElementById('botStatusSection');
-        if (!container) {
-            console.warn('⚠️ Contenedor botStatusSection no encontrado en el DOM.');
-            return;
-        }
-
-        if (!data) {
-            container.innerHTML = `
-                <div class="settings-item" style="flex-direction:column; align-items:center; justify-content:center; padding:var(--space-6); text-align:center; background:rgba(255,255,255,0.02); border-radius:12px; border:1px dashed var(--border-color); gap: var(--space-2);">
-                    <span class="spinner" style="border: 2px solid var(--border-color); border-top: 2px solid var(--color-primary); border-radius: 50%; width: 24px; height: 24px; display: inline-block; animation: spin 1s linear infinite;"></span>
-                    <div style="font-weight:600; color:var(--text-secondary);">Iniciando canal de comunicación...</div>
-                    <div style="font-size:12px; color:var(--text-tertiary);">Esperando señal del servidor del Bot de WhatsApp</div>
-                </div>
-            `;
-            return;
-        }
-
-        const { connected, qr, timestamp } = data;
-        const formattedTime = timestamp ? new Date(timestamp).toLocaleTimeString() : 'Desconocida';
-
-        if (connected) {
-            container.innerHTML = `
-                <div style="background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 16px; padding: var(--space-4); margin-top: var(--space-2);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">
-                        <div style="display:flex; align-items:center; gap:var(--space-2);">
-                            <span style="font-size:1.5rem;">✅</span>
-                            <div>
-                                <div style="font-weight:700; color:#22c55e; font-size:0.95rem;">Bot Conectado y Activo</div>
-                                <div style="font-size:11px; color:var(--text-secondary);">Transmitiendo alertas en tiempo real</div>
-                            </div>
-                        </div>
-                        <span class="badge" style="background:#22c55e; color:white; font-weight:700; font-size:0.75rem; padding:4px 10px; border-radius:12px;">ONLINE</span>
-                    </div>
-                    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:var(--space-4); border-top:1px solid rgba(255,255,255,0.05); padding-top:var(--space-2);">
-                        📅 <b>Última actualización:</b> ${formattedTime}
-                    </div>
-                    <div style="display:flex; gap:var(--space-2); justify-content:flex-end;">
-                        <button class="btn btn-secondary btn-sm" onclick="SettingsModule.softResetBotSession()" style="font-weight:600; font-size:0.8rem; padding: 6px 12px;">
-                            🔄 Soft Reset
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="SettingsModule.resetBotSession()" style="font-weight:600; font-size:0.8rem; background:#dc2626; border:none; padding: 6px 12px;">
-                            ⚠️ Forzar QR Nuevo
-                        </button>
-                    </div>
-                </div>
-            `;
-        } else {
-            if (qr) {
-                container.innerHTML = `
-                    <div style="background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); border-radius: 16px; padding: var(--space-4); margin-top: var(--space-2);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">
-                            <div style="display:flex; align-items:center; gap:var(--space-2);">
-                                <span style="font-size:1.5rem;">📲</span>
-                                <div>
-                                    <div style="font-weight:700; color:#eab308; font-size:0.95rem;">Vincular WhatsApp</div>
-                                    <div style="font-size:11px; color:var(--text-secondary);">Escaneá el código QR con tu WhatsApp</div>
-                                </div>
-                            </div>
-                            <span class="badge" style="background:#eab308; color:black; font-weight:700; font-size:0.75rem; padding:4px 10px; border-radius:12px;">ESPERANDO QR</span>
-                        </div>
-                        
-                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; background:white; padding:var(--space-3); border-radius:12px; margin:var(--space-3) 0; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-width:220px; margin-left:auto; margin-right:auto;">
-                            <img src="${qr}" alt="Código QR WhatsApp" style="width:180px; height:180px; display:block;" />
-                        </div>
-                        
-                        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:var(--space-4); border-top:1px solid rgba(255,255,255,0.05); padding-top:var(--space-2);">
-                            📌 <b>Pasos:</b><br/>
-                            1. Abrí WhatsApp en tu teléfono.<br/>
-                            2. Ve a Menú ⚙️ / Dispositivos vinculados.<br/>
-                            3. Tocá en <b>Vincular un dispositivo</b> y escaneá este QR.<br/>
-                            <span style="font-size:11px; color:var(--text-tertiary); display:block; margin-top:6px;">🕒 QR generado a las: ${formattedTime}</span>
-                        </div>
-                        
-                        <div style="display:flex; gap:var(--space-2); justify-content:flex-end;">
-                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.softResetBotSession()" style="font-weight:600; font-size:0.8rem; padding: 6px 12px;">
-                                🔄 Soft Reset
-                            </button>
-                            <button class="btn btn-danger btn-sm" onclick="SettingsModule.resetBotSession()" style="font-weight:600; font-size:0.8rem; background:#dc2626; border:none; padding: 6px 12px;">
-                                ⚠️ Generar Otro QR
-                            </button>
-                        </div>
-                    </div>
-                `;
-            } else {
-                container.innerHTML = `
-                    <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 16px; padding: var(--space-4); margin-top: var(--space-2);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3);">
-                            <div style="display:flex; align-items:center; gap:var(--space-2);">
-                                <span style="font-size:1.5rem;">🔴</span>
-                                <div>
-                                    <div style="font-weight:700; color:#ef4444; font-size:0.95rem;">Bot Desconectado</div>
-                                    <div style="font-size:11px; color:var(--text-secondary);">Generando nuevo canal de vinculación...</div>
-                                </div>
-                            </div>
-                            <span class="badge" style="background:#ef4444; color:white; font-weight:700; font-size:0.75rem; padding:4px 10px; border-radius:12px;">DESCONECTADO</span>
-                        </div>
-                        
-                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:var(--space-6); text-align:center; gap: var(--space-2);">
-                            <span class="spinner" style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid #ef4444; border-radius: 50%; width: 24px; height: 24px; display: inline-block; animation: spin 1s linear infinite;"></span>
-                            <div style="font-weight:600; color:var(--text-secondary);">Esperando código QR de WhatsApp...</div>
-                            <div style="font-size:11px; color:var(--text-tertiary);">El servidor está iniciando la sesión. Esto puede tardar unos segundos.</div>
-                        </div>
-                        
-                        <div style="display:flex; gap:var(--space-2); justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05); padding-top:var(--space-3);">
-                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.softResetBotSession()" style="font-weight:600; font-size:0.8rem; padding: 6px 12px;">
-                                🔄 Soft Reset
-                            </button>
-                            <button class="btn btn-danger btn-sm" onclick="SettingsModule.resetBotSession()" style="font-weight:600; font-size:0.8rem; background:#dc2626; border:none; padding: 6px 12px;">
-                                ⚠️ Forzar Inicialización
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-    }
-
-    async function resetBotSession() {
-        Components.confirm(
-            '¿Estás seguro de que querés forzar un reset completo del bot? Se cerrará la sesión actual y se generará un código QR nuevo para escanear.',
-            async () => {
-                try {
-                    Components.showToast('⏳ Reseteando sesión del bot...', 'info');
-                    const response = await fetch('/api/bot/reset-session', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const res = await response.json();
-                    if (res.ok) {
-                        Components.showToast('✅ ' + res.message, 'success');
-                    } else {
-                        Components.showToast('❌ Error: ' + (res.error || 'No se pudo resetear la sesión'), 'danger');
-                    }
-                } catch (e) {
-                    console.error('Error in resetBotSession:', e);
-                    Components.showToast('❌ Error de red al solicitar reset', 'danger');
-                }
-            }
-        );
-    }
-
-    async function softResetBotSession() {
-        try {
-            Components.showToast('⏳ Iniciando curación rápida (Soft Reset)...', 'info');
-            const response = await fetch('/api/bot/soft-reset', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const res = await response.json();
-            if (res.ok) {
-                Components.showToast('✅ ' + res.message, 'success');
-            } else {
-                Components.showToast('❌ Error: ' + (res.error || 'No se pudo realizar el soft-reset'), 'danger');
-            }
-        } catch (e) {
-            console.error('Error in softResetBotSession:', e);
-            Components.showToast('❌ Error de red al solicitar soft-reset', 'danger');
-        }
-    }
-
-    function cleanup() {
-        if (botStatusListener) {
-            console.log('🔌 Desconectando listener de estado del bot de WhatsApp...');
-            try {
-                firebaseDB.ref('bot_status').off('value', botStatusListener);
-            } catch (err) {
-                console.warn('⚠️ Error al apagar listener de estado del bot:', err);
-            }
-            botStatusListener = null;
         }
     }
 
@@ -1719,8 +1506,6 @@ const SettingsModule = (() => {
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
         showReportModal, submitReport, toggleReportDriverType,
         saveVapidKey, toggleVoice,
-        startVoiceEnrollment, recordSample,
-        // Bot status control
-        cleanup, resetBotSession, softResetBotSession
+        startVoiceEnrollment, recordSample
     };
 })();

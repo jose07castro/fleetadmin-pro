@@ -401,15 +401,14 @@ const SOSModule = (() => {
     // =============================================
     let _pendingSOSContext = null; // { shiftId, vehicleId, vehicleName }
 
-    async function triggerSOS(shiftId, vehicleId, vehicleName) {
+    function triggerSOS(shiftId, vehicleId, vehicleName) {
         console.log('🚨 ========================');
         console.log('🚨 SOS [Paso 1]: BOTÓN SOS PRESIONADO — abriendo selector de motivo');
         console.log('🚨 SOS [Paso 1]: shiftId:', shiftId, '| vehicleId:', vehicleId, '| vehicleName:', vehicleName);
         console.log('🚨 ========================');
 
-        // Session guard (async — recupera desde IndexedDB si Android mató la memoria)
-        const hasSession = await Auth.ensureSession();
-        if (!hasSession) {
+        // Session guard
+        if (!Auth.isLoggedIn()) {
             console.error('🚨 SOS: ❌ Sesión no encontrada');
             alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
             Router.navigate('login');

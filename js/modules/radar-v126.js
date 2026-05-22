@@ -158,7 +158,7 @@ const RadarModule = (() => {
             </button>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
-                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (1s)</strong></span>
+                <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (2s)</strong></span>
             </div>
         `;
 
@@ -226,8 +226,9 @@ const RadarModule = (() => {
 
     // ============ CREATE CAR MARKER ============
 
-    function _createCarIcon(heading, displayName, statusClass, carColor) {
+    function _createCarIcon(heading, displayName, statusClass, carColor, speed) {
         const rotation = heading || 0;
+        const currentSpeed = speed || 0;
         
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
         const colors = {
@@ -333,7 +334,10 @@ const RadarModule = (() => {
 
         return `
             <div class="radar-car-container">
-                <div class="radar-car-label ${statusClass}">${displayName}</div>
+                <div class="radar-car-label ${statusClass}">
+                    <div class="radar-car-info">${displayName}</div>
+                    <div class="radar-car-speed">${currentSpeed.toFixed(0)} km/h</div>
+                </div>
                 <div class="radar-car-icon-wrapper ${statusClass}">
                     <div class="radar-car-internal">
                         ${carSvg}
@@ -474,7 +478,7 @@ const RadarModule = (() => {
         const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
 
         const latlng = new google.maps.LatLng(lat, lng);
-        const html = _createCarIcon(heading, displayName, statusClass, carColor);
+        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed);
 
         if (_markers[driverId]) {
             // Update existing marker

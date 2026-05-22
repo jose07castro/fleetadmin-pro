@@ -529,9 +529,8 @@ const ShiftsModule = (() => {
             }
         };
 
-        // Guard: verificar sesión activa (async — recupera desde IndexedDB si Android mató la memoria)
-        const hasSession = await Auth.ensureSession();
-        if (!hasSession) {
+        // Guard: verificar sesión activa
+        if (!Auth.isLoggedIn()) {
             alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
             Router.navigate('login');
             restoreBtn();
@@ -708,9 +707,8 @@ const ShiftsModule = (() => {
             }
         };
 
-        // Guard: verificar sesión activa (async — recupera desde IndexedDB si Android mató la memoria)
-        const hasSession = await Auth.ensureSession();
-        if (!hasSession) {
+        // Guard: verificar sesión activa
+        if (!Auth.isLoggedIn()) {
             alert('Error: Sesión no encontrada. Por favor iniciá sesión nuevamente.');
             Router.navigate('login');
             restoreBtn();

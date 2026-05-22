@@ -17,7 +17,7 @@
 
         // FORCE CACHE PURGE v126 — Ejecutar ANTES de que el SW intercepte
         (function() {
-            var REQUIRED_VERSION = 137;
+            var REQUIRED_VERSION = 138;
             var lastPurge = parseInt(localStorage.getItem('fa_cache_ver') || '0');
             if (lastPurge < REQUIRED_VERSION && 'serviceWorker' in navigator) {
                 console.log('🔥 PURGE v126: Forzando limpieza total...');
@@ -59,7 +59,7 @@
     <!-- Google Maps API -->
     <link rel="stylesheet" href="css/index.css?v=126">
     <link rel="stylesheet" href="css/components.css?v=126">
-    <link rel="stylesheet" href="css/modules.css?v=126">
+    <link rel="stylesheet" href="css/modules.css?v=127">
 </head>
 
 <body>
@@ -101,7 +101,7 @@
     <script src="js/router.js?v=135"></script>
     <!-- Se han eliminado los scripts de módulos mediante Patrón Lazy Loading en el Router -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE&libraries=places"></script>
-    <script src="js/modules/radar-v126.js?v=135"></script>
+    <script src="js/modules/radar-v126.js?v=136"></script>
     <script src="js/modules/kitt-voice.js?v=135"></script>
     <script src="js/modules/traffic-alerts.js?v=135"></script>
     <script src="js/modules/copilot.js?v=135"></script>

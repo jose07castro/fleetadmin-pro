@@ -44,21 +44,18 @@ const LoginModule = (() => {
                             </button>
                         </div>
 
-                        <form id="loginForm" method="post" action="#" autocomplete="on"
-                            onsubmit="event.preventDefault(); LoginModule.doLogin();">
-
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_name')}</label>
-                            <input type="text" class="form-input" id="loginName" name="username"
-                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="username">
+                            <input type="text" class="form-input" id="loginName"
+                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="off">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
                             <div style="position:relative;">
-                                <input type="password" class="form-input" id="loginPin" name="password"
+                                <input type="password" class="form-input" id="loginPin"
                                     placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric"
-                                    autocomplete="current-password"
+                                    onkeydown="if(event.key==='Enter') LoginModule.doLogin()"
                                     style="padding-right:3rem;">
                                 <button type="button" onclick="LoginModule.togglePin()" id="pinToggleBtn"
                                     style="position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.2rem; padding:0.25rem; opacity:0.6; transition:opacity 0.2s;"
@@ -72,11 +69,9 @@ const LoginModule = (() => {
                             ${I18n.t('login_error')}
                         </div>
 
-                        <button type="submit" class="btn btn-primary btn-block btn-lg">
+                        <button class="btn btn-primary btn-block btn-lg" onclick="LoginModule.doLogin()">
                             ${I18n.t('login_enter')}
                         </button>
-
-                        </form>
 
                         <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
                             <button class="btn btn-block" onclick="LoginModule.showRegister()"

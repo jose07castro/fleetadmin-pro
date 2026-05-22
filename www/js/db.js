@@ -58,11 +58,10 @@ const DB = (() => {
     async function open() {
         return new Promise((resolve) => {
             const connRef = firebase.database().ref('.info/connected');
-            // Bug #4 Fix: reducido de 5000ms a 3000ms — Firebase RTDB responde en <1s si hay conexión
             const timeout = setTimeout(() => {
                 console.warn('Firebase: timeout de conexión, continuando...');
                 resolve(true);
-            }, 3000);
+            }, 5000);
 
             connRef.once('value', (snap) => {
                 clearTimeout(timeout);
@@ -355,10 +354,7 @@ const DB = (() => {
     // THROWS on connection failure — caller must handle
     async function findGlobalUser(name, pin, role) {
         const MAX_RETRIES = 3;
-        // Bug #1 Fix: reducidos de [15000, 25000, 35000] a [6000, 10000, 15000]
-        // Firebase RTDB responde en <2s con conexión. 6s ya cubre cold start de Render.
-        // Los timeouts acumulados anteriores podían sumar hasta 75 segundos bloqueando al conductor.
-        const TIMEOUTS = [6000, 10000, 15000];
+        const TIMEOUTS = [15000, 25000, 35000]; // Generoso para cold starts (Render Free Tier ~50s)
         const CACHE_KEY = 'fleetadmin_cache_globalUsers';
 
         console.log(`🔐 LOGIN: Buscando usuario global: "${name}" rol:${role} (max ${MAX_RETRIES} intentos)`);
@@ -411,117 +407,46 @@ const DB = (() => {
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const timeout = TIMEOUTS[attempt - 1] || 15000;
+                const timeout = TIMEOUTS[attempt - 1] || 20000;
                 console.log(`🔐 LOGIN: Intento ${attempt}/${MAX_RETRIES} (timeout: ${timeout}ms)...`);
 
-                // Bug #2 Fix: usar query filtrada por nombre en lugar de descargar TODOS los usuarios.
-                // Antes: db.ref('globalUsers') → descargaba toda la colección sin importar el tamaño.
-                // Ahora: orderByChild('name').equalTo(name) → Firebase filtra del lado del servidor.
-                // IMPORTANTE: Requiere que el índice 'name' esté configurado en Firebase Rules:
-                // { "rules": { "globalUsers": { ".indexOn": ["name"] } } }
-                // Bug #2b Fix: La query .equalTo() es CASE-SENSITIVE en Firebase RTDB.
-                // Si el conductor guarda su nombre como "Juan" pero tipea "juan", la query
-                // no devuelve nada y el login falla silenciosamente o espera los 3 reintentos.
-                // Solución: normalizar a lowercase y buscar en un campo auxiliar 'nameLower'.
-                // Fallback: si no hay resultados (usuarios sin nameLower), hacer scan completo.
-                const nameLower = name.toLowerCase().trim();
-
-                // Intento 1: query optimizada por nameLower (requires index .indexOn: ["nameLower"])
-                let queryRef = db.ref('globalUsers')
-                    .orderByChild('nameLower')
-                    .equalTo(nameLower);
-
-                let snap = await fetchWithTimeout(queryRef, timeout);
-                let val = snap.val();
-
-                // Fallback: si nameLower no existe en la DB (usuarios viejos sin ese campo),
-                // hacer query por 'name' exacto y si tampoco, descargar todo para comparar local.
-                if (!val) {
-                    // Intento 2: query por name exacto (legacy, case-sensitive)
-                    const snapExact = await fetchWithTimeout(
-                        db.ref('globalUsers').orderByChild('name').equalTo(name),
-                        timeout
-                    );
-                    val = snapExact.val();
-                }
+                const snap = await fetchWithTimeout(db.ref('globalUsers'), timeout);
+                const val = snap.val();
 
                 if (!val) {
-                    // Intento 3: full scan con comparación local case-insensitive
-                    // Solo se ejecuta si los intentos 1 y 2 fallaron (usuarios muy viejos)
-                    console.warn('🔐 LOGIN: Query filtrada sin resultados, haciendo full scan case-insensitive...');
-                    const snapAll = await fetchWithTimeout(db.ref('globalUsers'), timeout);
-                    const allVal = snapAll.val();
-                    if (!allVal) {
-                        console.warn('🔐 LOGIN: No se encontró usuario con nombre:', name);
-                        return null;
-                    }
-                    // Filtrar localmente con toLowerCase
-                    const allUsers = Object.values(allVal);
-                    const matchByName = allUsers.filter(u => (u.name || '').toLowerCase().trim() === nameLower);
-                    if (matchByName.length === 0) {
-                        console.warn('🔐 LOGIN: No se encontró usuario con nombre:', name);
-                        return null;
-                    }
-                    // Construir val como si hubiera venido de Firebase
-                    val = {};
-                    matchByName.forEach(u => { val[u.id || u.name] = u; });
+                    console.warn('🔐 LOGIN: globalUsers está vacío en Firebase');
+                    return null; // Legitimate "no users" — not a connection error
                 }
 
                 const users = Object.values(val);
-                console.log(`🔐 LOGIN: ✅ ${users.length} usuario(s) con nombre "${name}" encontrado(s)`);
+                console.log(`🔐 LOGIN: ✅ ${users.length} usuarios globales cargados`);
 
-                // Actualizar caché para fallback offline (solo los resultados de esta búsqueda)
-                // Nota: la caché completa se mantiene del lado de intentos anteriores si existía
-                try {
-                    const cached = localStorage.getItem(CACHE_KEY);
-                    const allCached = cached ? JSON.parse(cached) : [];
-                    // Merge: reemplazar los que ya estén y agregar los nuevos
-                    const mergedMap = {};
-                    allCached.forEach(u => { if (u.id) mergedMap[u.id] = u; });
-                    users.forEach(u => { if (u.id) mergedMap[u.id] = u; });
-                    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.values(mergedMap)));
-                } catch(ce) { /* quota */ }
+                // Guardar en caché para fallback
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify(users)); } catch(ce) { /* quota */ }
 
                 const found = users.find(u => {
-                    // El nombre ya coincide por la query, verificamos rol y PIN
+                    if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
                     if (u.role !== role) return false;
                     return _matchPin(u.pin, pin);
                 }) || null;
 
                 if (found) {
                     console.log(`🔐 LOGIN: ✅ Usuario encontrado: ${found.name} (${found.role}) fleetId: ${found.fleetId}`);
-                    // Bug #3 Fix: Auto-migrate PIN a bcrypt hash de forma ASYNC (fire-and-forget).
+                    // Auto-migrate: hash plain-text PIN for future security
                     if (found.pin && !found.pin.startsWith('$2')) {
-                        setTimeout(async () => {
-                            try {
-                                if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) {
-                                    const hashedPin = await new Promise((res, rej) =>
-                                        dcodeIO.bcrypt.hash(pin, 10, (err, hash) =>
-                                            err ? rej(err) : res(hash)
-                                        )
-                                    );
-                                    await db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
-                                    // Bug #2b Fix: También escribir nameLower para futuros logins
-                                    if (!found.nameLower) {
-                                        await db.ref(`globalUsers/${found.id}/nameLower`).set((found.name || '').toLowerCase().trim());
-                                        console.log('🔐 LOGIN: ✅ nameLower escrito para futuros logins optimizados');
-                                    }
-                                    console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash (async, no bloqueante)');
-                                }
-                            } catch (hashErr) {
-                                console.warn('🔐 LOGIN: ⚠️ No se pudo migrar PIN (no crítico):', hashErr);
+                        try {
+                            if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) {
+                                const hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+                                db.ref(`globalUsers/${found.id}/pin`).set(hashedPin);
+                                found.pin = hashedPin;
+                                console.log('🔐 LOGIN: 🔄 PIN migrado a bcrypt hash');
                             }
-                        }, 0);
-                    } else if (found && !found.nameLower) {
-                        // Si el PIN ya está hasheado pero falta nameLower, escribirlo igual
-                        setTimeout(async () => {
-                            try {
-                                await db.ref(`globalUsers/${found.id}/nameLower`).set((found.name || '').toLowerCase().trim());
-                                console.log('🔐 LOGIN: ✅ nameLower escrito (sin migración de PIN)');
-                            } catch(e) { /* ignorar */ }
-                        }, 0);
+                        } catch (hashErr) {
+                            console.warn('🔐 LOGIN: ⚠️ No se pudo migrar PIN:', hashErr);
+                        }
                     }
-                    console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (pin/rol incorrecto)`);
+                } else {
+                    console.log(`🔐 LOGIN: ❌ Credenciales no coinciden (nombre/pin/rol incorrecto)`);
                 }
                 return found; // SUCCESS — either found or legitimately not found
 
@@ -540,7 +465,6 @@ const DB = (() => {
             const cached = localStorage.getItem(CACHE_KEY);
             if (cached) {
                 const users = JSON.parse(cached);
-                // Bug #2 complement: filtrar también por nombre en la caché offline
                 const found = users.find(u => {
                     if (!u.name || u.name.toLowerCase() !== name.toLowerCase()) return false;
                     if (u.role !== role) return false;

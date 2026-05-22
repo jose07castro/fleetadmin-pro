@@ -367,28 +367,9 @@ const App = (() => {
         _lastResumeTime = now;
 
         try {
-            // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB) con reintentos
-            let user = null;
-            let attempts = 3;
-            for (let i = 0; i < attempts; i++) {
-                try {
-                    user = await Auth.recoverSession();
-                    if (user) break;
-                } catch (e) {
-                    console.warn(`📱 Error intentando recuperar sesión (intento ${i + 1}/${attempts}):`, e);
-                }
-                if (i < attempts - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 500)); // Esperar 500ms
-                }
-            }
-
+            // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB)
+            const user = await Auth.recoverSession();
             if (!user) {
-                // Si la sesión no se recuperó, pero la ruta actual no es login/apply, evitar redirección forzada
-                const currentRoute = Router.getCurrentRoute();
-                if (currentRoute && currentRoute !== 'login' && currentRoute !== 'apply') {
-                    console.warn('📱 No se pudo recuperar la sesión del almacenamiento, pero el usuario está en una ruta activa:', currentRoute, '. Conservando la vista.');
-                    return;
-                }
                 // Las 3 capas de almacenamiento están vacías — esto SÍ es un logout real
                 console.warn('📱 No hay sesión en ninguna capa de almacenamiento — redirigir a login');
                 Router.navigate('login');
@@ -617,14 +598,3 @@ const App = (() => {
 
 // --- Iniciar la aplicación cuando cargue la página ---
 document.addEventListener('DOMContentLoaded', App.init);
-
-// Evitar cierre accidental cuando el turno está activo
-window.addEventListener('beforeunload', (e) => {
-    const inShift = localStorage.getItem('active_shift_state') === 'true';
-    if (inShift) {
-        e.preventDefault();
-        e.returnValue = 'Tenés un turno activo. Si cerrás la pestaña, se detendrá el rastreo GPS. ¿Seguro que querés salir?';
-        return e.returnValue;
-    }
-});
-

@@ -1,11 +1,11 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v126';
+const CACHE_NAME = 'fleetadmin-pro-v127';
 const ASSETS = [
     './',
-    './index.html?v=126',
+    './index.html?v=127',
     './css/index.css?v=126',
     './css/components.css?v=126',
-    './css/modules.css?v=126',
+    './css/modules.css?v=127',
     './js/i18n.js?v=126',
     './js/firebase-config.js?v=126',
     './js/db.js?v=126',
@@ -30,7 +30,7 @@ const ASSETS = [
     './js/notifications.js?v=126',
     './js/pwa-install.js?v=126',
     './js/ui-settings.js?v=126',
-    './js/modules/radar-v126.js?v=126',
+    './js/modules/radar-v126.js?v=127',
     './js/gps-permissions.js?v=126',
     './js/app.js?v=126',
     './manifest.json?v=126',

@@ -421,13 +421,6 @@ const WhatsappBot = (() => {
 
                 if (qr) {
                     console.log(`📱 QR generado: https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`);
-                    if (db) {
-                        db.ref('bot_status').set({
-                            connected: false,
-                            qr: `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`,
-                            timestamp: Date.now()
-                        }).catch(e => console.error('❌ [Firebase] Error guardando QR:', e.message));
-                    }
                 }
 
                 if (connection === 'close') {
@@ -442,10 +435,6 @@ const WhatsappBot = (() => {
                     const reason = DisconnectReason;
                     
                     console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
-                    
-                    if (db) {
-                        db.ref('bot_status/connected').set(false).catch(e => {});
-                    }
                     
                     // Muy Importante: Borrar listeners del socket muerto para evitar bucles fantasma
                     try { sock?.ev?.removeAllListeners(); } catch(e) {}
@@ -462,11 +451,11 @@ const WhatsappBot = (() => {
                     } else if (statusCode === 440 || statusCode === 503) {
                         retryCount++;
                         
-                        // Evitamos matar el proceso para que Render complete el despliegue del nuevo contenedor.
-                        // Una vez desplegado, Render apagará el contenedor viejo liberando la sesión de WhatsApp.
+                        // PROTOCOLO DE SUICIDIO CONTROLADO: Si el conflicto 440 persiste 3 veces, 
+                        // matamos el proceso para que Render recicle limpio y elimine clones fantasmas de RAM
                         if (retryCount >= 3) {
-                            console.warn('💥 [LOCK-WARNING] Conflicto 440 persistente. Continuando intentos en segundo plano...');
-                            retryCount = 0;
+                            console.error('💥 [LOCK-FATAL] Conflicto 440 persistente. Matando proceso para autocuración completa en Render...');
+                            process.exit(1);
                         }
 
                         // Retardo racional con desincronización aleatoria (Jitter)
@@ -504,13 +493,6 @@ const WhatsappBot = (() => {
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
-                    
-                    if (db) {
-                        db.ref('bot_status').set({
-                            connected: true,
-                            timestamp: Date.now()
-                        }).catch(e => console.error('❌ [Firebase] Error guardando conexión:', e.message));
-                    }
                     
                     // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
                     // y estable por lo menos 60 segundos consecutivos. Si muere antes, acumulamos
