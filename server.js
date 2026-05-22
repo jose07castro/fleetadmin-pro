@@ -244,6 +244,100 @@ Si no es titular directo (Tarjeta Azul detectada), ok debe ser false con el erro
 });
 
 // ============================================
+// Onboarding IA - Validación de Pasajeros
+// ============================================
+app.post('/api/auth/verify-passenger', async (req, res) => {
+    try {
+        const { name, dni, address, dniFrontBase64, selfieBase64, code } = req.body;
+        const apiKey = process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+            return res.status(503).json({ ok: false, error: 'OPENAI_API_KEY no configurada en el servidor' });
+        }
+        if (!name || !dni || !address || !dniFrontBase64 || !selfieBase64 || !code) {
+            return res.status(400).json({ ok: false, error: 'Faltan datos o imágenes para la validación' });
+        }
+
+        const axios = require('axios');
+
+        const prompt = `Actúa como un estricto oficial de verificación de identidad (KYC) para una aplicación de seguridad en transporte.
+Se te proveen dos imágenes:
+1. Una foto del DNI (frente) del usuario.
+2. Una Selfie del usuario sosteniendo un papel manuscrito con un código dinámico.
+
+Se te han provisto los datos ingresados por el usuario:
+- Nombre y Apellido ingresado: "${name}"
+- Número de DNI ingresado: "${dni}"
+- Código dinámico esperado: "${code}"
+
+Debes verificar estrictamente lo siguiente:
+1. ¿El nombre y apellido ingresado por el usuario coincide con el nombre que figura en la imagen del DNI? (Permite pequeñas diferencias tipográficas o acentos, pero debe ser la misma persona).
+2. ¿El número de DNI ingresado coincide con el que figura en la imagen del DNI?
+3. ¿La persona en la foto del DNI es la misma persona que se tomó la Selfie? Compara rasgos biométricos faciales con rigurosidad (forma de ojos, nariz, boca, distancia interpupilar, cejas).
+4. ¿El usuario sostiene un papel escrito a mano en la Selfie que muestra claramente el código esperado "${code}"?
+5. ¿La Selfie es una foto real tomada a una persona viva (liveness check básico) y no una foto tomada a otra pantalla o papel impreso?
+
+Devuelve ÚNICAMENTE un objeto JSON con el siguiente formato, sin ningún formato markdown (\`\`\`json) ni texto adicional, solo el objeto JSON puro:
+{
+  "ok": true o false,
+  "errors": ["Motivo específico si ok es false. Ej: 'La selfie no contiene el código dinámico esperado', 'El nombre en el DNI no coincide con el ingresado'"],
+  "extractedData": {
+    "dni": { "nombre": "...", "numero": "..." },
+    "selfie": { "codigoDetectado": "...", "coincideRostro": true/false }
+  }
+}`;
+
+        // Ensure base64 strings have the proper data URI prefix
+        const dniUrl = dniFrontBase64.startsWith('http') || dniFrontBase64.startsWith('data:') 
+            ? dniFrontBase64 
+            : `data:image/jpeg;base64,${dniFrontBase64}`;
+            
+        const selfieUrl = selfieBase64.startsWith('http') || selfieBase64.startsWith('data:') 
+            ? selfieBase64 
+            : `data:image/jpeg;base64,${selfieBase64}`;
+
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: prompt },
+                        { type: 'image_url', image_url: { url: dniUrl, detail: 'high' } },
+                        { type: 'image_url', image_url: { url: selfieUrl, detail: 'high' } }
+                    ]
+                }
+            ],
+            max_tokens: 500,
+            temperature: 0.1
+        }, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 25000 // 25 seconds timeout for image processing
+        });
+
+        let content = response.data.choices[0].message.content.trim();
+        // Fallback for markdown cleanup if GPT ignores instruction
+        if (content.startsWith('\`\`\`json')) {
+            content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        }
+
+        const result = JSON.parse(content);
+        res.json(result);
+
+    } catch (e) {
+        console.error('❌ Error en verify-passenger:', e.response?.data || e.message);
+        res.status(500).json({ 
+            ok: false, 
+            error: 'Error procesando las imágenes con IA. Intenta de nuevo.',
+            details: e.message 
+        });
+    }
+});
+
+// ============================================
 // KITT Voice — ElevenLabs TTS Proxy
 // Protege la API Key en el servidor y cachea audios
 // ============================================

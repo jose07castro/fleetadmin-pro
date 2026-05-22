@@ -26,23 +26,23 @@ const LoginModule = (() => {
                         </p>
 
                         <div class="role-selector" id="roleSelector">
-                            <button class="role-option selected" data-role="owner" onclick="LoginModule.selectRole('owner')">
+                            <button class="role-option ${selectedRole === 'owner' ? 'selected' : ''}" data-role="owner" onclick="LoginModule.selectRole('owner')">
                                 <span class="role-icon">👑</span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
-                            <button class="role-option" data-role="titular" onclick="LoginModule.selectRole('titular')">
+                            <button class="role-option ${selectedRole === 'titular' ? 'selected' : ''}" data-role="titular" onclick="LoginModule.selectRole('titular')">
                                 <span class="role-icon">💼</span>
                                 <span class="role-label">${I18n.t('role_titular')}</span>
                             </button>
-                            <button class="role-option" data-role="mechanic" onclick="LoginModule.selectRole('mechanic')">
+                            <button class="role-option ${selectedRole === 'mechanic' ? 'selected' : ''}" data-role="mechanic" onclick="LoginModule.selectRole('mechanic')">
                                 <span class="role-icon">🔧</span>
                                 <span class="role-label">${I18n.t('role_mechanic')}</span>
                             </button>
-                            <button class="role-option" data-role="driver" onclick="LoginModule.selectRole('driver')">
+                            <button class="role-option ${selectedRole === 'driver' ? 'selected' : ''}" data-role="driver" onclick="LoginModule.selectRole('driver')">
                                 <span class="role-icon">🚗</span>
                                 <span class="role-label">${I18n.t('role_driver')}</span>
                             </button>
-                            <button class="role-option" data-role="passenger" onclick="LoginModule.selectRole('passenger')">
+                            <button class="role-option ${selectedRole === 'passenger' ? 'selected' : ''}" data-role="passenger" onclick="LoginModule.selectRole('passenger')">
                                 <span class="role-icon">🙋</span>
                                 <span class="role-label">${I18n.t('role_passenger')}</span>
                             </button>
@@ -78,13 +78,17 @@ const LoginModule = (() => {
                         </button>
 
                         <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
-                            <button class="btn btn-block" onclick="LoginModule.showRegister()"
-                                style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3);">
+                            <button class="btn btn-block" id="btnRegisterOwner" onclick="LoginModule.showRegister()"
+                                style="background:transparent; border:2px solid var(--color-primary); color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3); display: ${(selectedRole === 'owner' || selectedRole === 'titular') ? 'block' : 'none'};">
                                 💼 ${I18n.t('register_admin')}
                             </button>
-                            <button class="btn btn-secondary block w-full" onclick="Router.navigate('apply')"
-                                style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(16, 185, 129, 0.1); border:2px solid #10b981; color:#059669; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display:flex !important; justify-content:center; align-items:center; gap:8px; z-index:99999 !important; position:relative; overflow:visible !important; width:100% !important;">
+                            <button class="btn btn-secondary block w-full" id="btnApplyDriver" onclick="Router.navigate('apply')"
+                                style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(16, 185, 129, 0.1); border:2px solid #10b981; color:#059669; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display: ${selectedRole === 'driver' ? 'flex' : 'none'} !important; justify-content:center; align-items:center; gap:8px; z-index:99999 !important; position:relative; overflow:visible !important; width:100% !important;">
                                 🪪 ${I18n.t('app_apply_btn')}
+                            </button>
+                            <button class="btn btn-secondary block w-full" id="btnRegisterPassenger" onclick="LoginModule.showPassengerRegister()"
+                                style="margin-top:var(--space-4); padding:var(--space-4); background:rgba(59, 130, 246, 0.1); border:2px solid #3b82f6; color:#2563eb; font-weight:700; font-size:1.1rem; border-radius:var(--radius-lg); display: ${selectedRole === 'passenger' ? 'flex' : 'none'} !important; justify-content:center; align-items:center; gap:8px; z-index:99999 !important; position:relative; overflow:visible !important; width:100% !important;">
+                                🙋 ${I18n.t('register_passenger')}
                             </button>
                         </div>
                     </div>
@@ -103,6 +107,22 @@ const LoginModule = (() => {
         document.querySelectorAll('.role-option').forEach(el => {
             el.classList.toggle('selected', el.dataset.role === role);
         });
+
+        const btnOwner = document.getElementById('btnRegisterOwner');
+        const btnDriver = document.getElementById('btnApplyDriver');
+        const btnPassenger = document.getElementById('btnRegisterPassenger');
+
+        if (btnOwner) btnOwner.style.setProperty('display', 'none', 'important');
+        if (btnDriver) btnDriver.style.setProperty('display', 'none', 'important');
+        if (btnPassenger) btnPassenger.style.setProperty('display', 'none', 'important');
+
+        if (role === 'owner' || role === 'titular') {
+            if (btnOwner) btnOwner.style.setProperty('display', 'block', 'important');
+        } else if (role === 'driver') {
+            if (btnDriver) btnDriver.style.setProperty('display', 'flex', 'important');
+        } else if (role === 'passenger') {
+            if (btnPassenger) btnPassenger.style.setProperty('display', 'flex', 'important');
+        }
     }
 
     async function doLogin() {
@@ -538,5 +558,234 @@ const LoginModule = (() => {
             btnSubmit.disabled = false;
         }
     }
-    return { render, selectRole, doLogin, togglePin, showRegister, doRegister };
+    let currentVerificationCode = '';
+
+    function showPassengerRegister() {
+        // Generate a dynamic verification code: PAS- followed by 4 random digits
+        const codeDigits = Math.floor(1000 + Math.random() * 9000);
+        currentVerificationCode = `PAS-${codeDigits}`;
+
+        Components.showModal(
+            `🙋 ${I18n.t('register_passenger')}`,
+            `
+                <p style="text-align:center; color:var(--text-secondary); margin-bottom:var(--space-4); font-size:var(--font-size-sm);">
+                    ${I18n.t('register_passenger_subtitle')}
+                </p>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('login_name')} (Tal cual figura en tu DNI)</label>
+                    <input type="text" class="form-input" id="passName"
+                        placeholder="Ej: Juan Perez" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Número de DNI</label>
+                    <input type="text" class="form-input" id="passDni"
+                        placeholder="Ej: 12345678" autocomplete="off" inputmode="numeric">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('register_passenger_address')}</label>
+                    <input type="text" class="form-input" id="passAddress"
+                        placeholder="Ej: Av. Siempreviva 742" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
+                    <input type="password" class="form-input" id="passPin"
+                        placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('register_confirm_pin')}</label>
+                    <input type="password" class="form-input" id="passPinConfirm"
+                        placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric">
+                </div>
+                
+                <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:var(--space-4) 0;">
+                
+                <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+                    <h4 style="color: #60a5fa; margin-bottom: 4px; font-weight: 600;">${I18n.t('register_passenger_selfie_alert')}</h4>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4; margin: 0;">
+                        ${I18n.t('register_passenger_selfie_desc')}
+                    </p>
+                    <div style="text-align: center; margin-top: var(--space-3); margin-bottom: var(--space-2);">
+                        <span id="passVerificationCode" style="font-family: monospace; font-size: 1.5rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.1); padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); border: 1px dashed rgba(255,255,255,0.3); display: inline-block; letter-spacing: 2px;">
+                            ${currentVerificationCode}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('register_passenger_dni_front')}</label>
+                    <input type="file" id="passDniFront" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">${I18n.t('register_passenger_selfie')}</label>
+                    <input type="file" id="passSelfie" accept="image/*" class="form-input" style="padding:10px;">
+                </div>
+
+                <div id="passError" class="form-error" style="text-align:center; margin-bottom:var(--space-2); display:none;"></div>
+                <div id="passLoading" style="display:none; text-align:center; margin-bottom:var(--space-3); color: #60a5fa; font-weight:600; font-size:0.9rem;">
+                    🤖 Verificando identidad y selfie con IA... (puede tardar unos 15 segundos)
+                </div>
+            `,
+            `
+                <button class="btn btn-secondary" onclick="Components.closeModal()" id="btnCancelPassReg">${I18n.t('cancel')}</button>
+                <button class="btn btn-primary" onclick="LoginModule.doPassengerRegister()" id="btnSubmitPassReg">${I18n.t('register_btn')}</button>
+            `
+        );
+    }
+
+    async function doPassengerRegister() {
+        const name = document.getElementById('passName')?.value.trim();
+        const dni = document.getElementById('passDni')?.value.trim();
+        const address = document.getElementById('passAddress')?.value.trim();
+        const pin = document.getElementById('passPin')?.value.trim();
+        const pinConfirm = document.getElementById('passPinConfirm')?.value.trim();
+        const fileDni = document.getElementById('passDniFront')?.files[0];
+        const fileSelfie = document.getElementById('passSelfie')?.files[0];
+        
+        const errorEl = document.getElementById('passError');
+        const loadingEl = document.getElementById('passLoading');
+        const btnCancel = document.getElementById('btnCancelPassReg');
+        const btnSubmit = document.getElementById('btnSubmitPassReg');
+
+        if (errorEl) errorEl.style.display = 'none';
+
+        if (!name || !dni || !address || !pin || !pinConfirm) {
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = '❌ Por favor completá todos los campos de texto.';
+            }
+            return;
+        }
+
+        if (!fileDni || !fileSelfie) {
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = '❌ Es obligatorio subir ambas fotos (DNI frente y Selfie).';
+            }
+            return;
+        }
+
+        if (pin.length < 4) {
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = I18n.t('register_pin_min');
+            }
+            return;
+        }
+
+        if (pin !== pinConfirm) {
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = I18n.t('register_pin_mismatch');
+            }
+            return;
+        }
+
+        try {
+            // UI Loading state
+            if (loadingEl) loadingEl.style.display = 'block';
+            if (btnCancel) btnCancel.disabled = true;
+            if (btnSubmit) btnSubmit.disabled = true;
+
+            // 1. Convertir imágenes a base64 (reducidas)
+            const dniBase64 = await _compressImage(fileDni);
+            const selfieBase64 = await _compressImage(fileSelfie);
+
+            // 2. Llamar al Backend de IA para validación de pasajero
+            const response = await fetch('/api/auth/verify-passenger', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    dni: dni,
+                    address: address,
+                    dniFrontBase64: dniBase64,
+                    selfieBase64: selfieBase64,
+                    code: currentVerificationCode
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error en la comunicación con el servidor de IA.');
+            }
+
+            const aiResult = await response.json();
+
+            if (!aiResult.ok) {
+                // Rechazo por la IA
+                if (errorEl) {
+                    errorEl.style.display = 'block';
+                    const errorMsg = aiResult.errors ? aiResult.errors.join('<br>') : 'Documento o Selfie inválidos.';
+                    errorEl.innerHTML = `🚫 <strong>Validación rechazada:</strong><br>${errorMsg}`;
+                }
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (btnCancel) btnCancel.disabled = false;
+                if (btnSubmit) btnSubmit.disabled = false;
+                return;
+            }
+
+            console.log('✅ Validación Pasajero IA Exitosa:', aiResult.extractedData);
+            if (loadingEl) loadingEl.textContent = '✅ Validación exitosa. Registrando usuario...';
+
+            // --- FLUJO DE REGISTRO ---
+            
+            // 3. Resolve active fleetId (default to 'jose07' if not set)
+            const fleetId = DB.getFleet() || 'jose07';
+
+            // 4. Hash PIN before saving
+            let hashedPin = pin;
+            try {
+                hashedPin = dcodeIO.bcrypt.hashSync(pin, 10);
+            } catch (e) {
+                console.warn('⚠️ bcrypt no disponible, guardando PIN sin hash:', e);
+            }
+
+            // 5. Registrar en globalUsers con su fleetId
+            const globalId = await DB.addGlobalUser({
+                name,
+                pin: hashedPin,
+                role: 'passenger',
+                fleetId
+            });
+
+            // 6. Activar la flota
+            DB.setFleet(fleetId);
+
+            // 7. Crear el usuario dentro de la flota
+            await DB.add('users', {
+                name,
+                pin: hashedPin,
+                role: 'passenger',
+                globalId,
+                dni,
+                address,
+                verifiedByAI: true
+            });
+
+            Components.closeModal();
+
+            // 8. Auto-login directo
+            Auth.login({
+                id: globalId,
+                name,
+                pin: hashedPin,
+                role: 'passenger',
+                fleetId
+            });
+            App.startRealtimeSync();
+            Router.navigate(Router.getDefaultRoute());
+
+        } catch (e) {
+            if (errorEl) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = '❌ ' + (e.message || I18n.t('error'));
+            }
+            console.error('Error en registro de pasajero:', e);
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (btnCancel) btnCancel.disabled = false;
+            if (btnSubmit) btnSubmit.disabled = false;
+        }
+    }
+
+    return { render, selectRole, doLogin, togglePin, showRegister, doRegister, showPassengerRegister, doPassengerRegister };
 })();
