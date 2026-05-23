@@ -33,13 +33,27 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Solicitar permisos de ubicación en primer plano de manera limpia al iniciar la app
+        // Solicitar permisos de ubicación al iniciar la app si no están ya otorgados
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            boolean hasFine = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasBg = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                hasBg = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+
+            if (!hasFine) {
+                // Si no tiene primer plano, pedir primer plano
                 requestPermissions(new String[]{
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
                 }, 7001);
+            } else if (!hasBg) {
+                // Si tiene primer plano pero no background, pedir background ("Permitir todo el tiempo")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    requestPermissions(new String[]{
+                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    }, 7002);
+                }
             }
         }
 

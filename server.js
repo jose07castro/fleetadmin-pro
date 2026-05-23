@@ -401,14 +401,27 @@ app.post('/api/driver/gps-event', async (req, res) => {
         console.log(`🔌 [GPS EVENT] Driver ${driver_id} reported: ${event}`);
 
         const isEnabled = event === 'gps_activado';
+        const permissionsOk = event !== 'permissions_disabled';
 
         // 1. Update driver status in Firebase RTDB
-        await db.ref(`driver_positions/${driver_id}`).update({
+        const updateData = {
             status: event,
-            gps_status: isEnabled ? 'active' : 'disabled',
             last_heartbeat: eventTime,
             updated_at: new Date(eventTime).toISOString()
-        });
+        };
+
+        if (event === 'gps_activado' || event === 'gps_desactivado') {
+            updateData.gps_status = isEnabled ? 'active' : 'disabled';
+        }
+
+        if (event === 'permissions_disabled' || event === 'permissions_enabled') {
+            updateData.permissions_ok = permissionsOk;
+            if (permissionsOk) {
+                updateData.gps_status = 'active';
+            }
+        }
+
+        await db.ref(`driver_positions/${driver_id}`).update(updateData);
 
         // 2. Log event in fleet logs
         const fid = fleetId || await WhatsappBot.getFleetId();

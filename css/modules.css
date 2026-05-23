@@ -2715,13 +2715,15 @@
     animation: pulseGlowRed 1.5s infinite ease-in-out;
 }
 
-.radar-car-label.status-gps-disabled {
+.radar-car-label.status-gps-disabled,
+.radar-car-label.status-permissions-disabled {
     border-color: #f97316;
     color: #ffedd5;
     background: rgba(15, 23, 42, 0.95);
     animation: pulseBorderOrange 2s infinite;
 }
-.radar-car-icon-wrapper.status-gps-disabled {
+.radar-car-icon-wrapper.status-gps-disabled,
+.radar-car-icon-wrapper.status-permissions-disabled {
     background: radial-gradient(circle, rgba(249,115,22,0.25) 0%, transparent 70%);
     animation: pulseGlowOrange 1.5s infinite ease-in-out;
 }

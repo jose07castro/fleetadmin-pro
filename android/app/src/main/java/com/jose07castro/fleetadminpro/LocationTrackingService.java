@@ -106,6 +106,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private Handler heartbeatHandler;
     private Runnable heartbeatRunnable;
     private android.content.BroadcastReceiver gpsStatusReceiver;
+    private boolean lastPermissionsOk = true;
 
     // Data lists for Proximity
     private final List<TrafficAlert> activeAlerts = new ArrayList<>();
@@ -752,6 +753,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             public void run() {
                 if (!isTracking) return;
                 
+                // Realizar verificación periódica de permisos
+                checkAndReportPermissions();
+
                 long now = System.currentTimeMillis();
                 if (now - lastHeartbeatTime >= 120000) { // 2 minutos
                     Log.i(TAG, "🏓 Enviando ping de latido silencioso (GPS sin cambio)...");
@@ -762,6 +766,56 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         };
         heartbeatHandler.postDelayed(heartbeatRunnable, 60000);
+    }
+
+    private void checkAndReportPermissions() {
+        if (userId == null || userId.isEmpty()) return;
+
+        boolean hasBgLocation = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            hasBgLocation = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } else {
+            hasBgLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        boolean isIgnoringBattery = true;
+        if (pm != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                isIgnoringBattery = pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+        }
+
+        boolean currentPermissionsOk = hasBgLocation && isIgnoringBattery;
+
+        // Si cambia el estado, o si están desactivados (para asegurar sincronización en Firebase)
+        if (currentPermissionsOk != lastPermissionsOk || !currentPermissionsOk) {
+            Log.w(TAG, "🔒 [PERMISSIONS] Check: bgLocation=" + hasBgLocation + " | batteryIgnoring=" + isIgnoringBattery);
+            
+            // Actualizar Firebase RTDB
+            if (dbRef != null) {
+                Map<String, Object> updates = new HashMap<>();
+                updates.put("permissions_ok", currentPermissionsOk);
+                updates.put("bg_location_ok", hasBgLocation);
+                updates.put("battery_optimization_ok", isIgnoringBattery);
+                if (!currentPermissionsOk) {
+                    updates.put("status", "permissions_disabled");
+                } else {
+                    updates.put("status", "active");
+                }
+                updates.put("last_heartbeat", System.currentTimeMillis());
+                dbRef.child(userId).updateChildren(updates);
+            }
+
+            // Enviar evento al servidor via HTTP POST
+            if (!currentPermissionsOk && lastPermissionsOk) {
+                sendEventToServer("permissions_disabled");
+            } else if (currentPermissionsOk && !lastPermissionsOk) {
+                sendEventToServer("permissions_enabled");
+            }
+            
+            lastPermissionsOk = currentPermissionsOk;
+        }
     }
 
     private void sendSilentHeartbeat() {

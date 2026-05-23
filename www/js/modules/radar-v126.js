@@ -390,7 +390,10 @@ const RadarModule = (() => {
         const vehiclePlate = vehicle ? vehicle.plate : 'N/P';
         
         // Formato final "Nombre - Patente"
-        const displayName = `${firstName} - ${vehiclePlate}`;
+        let displayName = `${firstName} - ${vehiclePlate}`;
+        if (data.permissions_ok === false || data.bg_location_ok === false || data.battery_optimization_ok === false) {
+            displayName = `⚠️ ${firstName} - ${vehiclePlate} (Permisos/Batería desactivados)`;
+        }
 
         // v117 - Limpieza TOTAL de fantasmas
         // v126: Extendemos el límite de fantasmas para desconexiones sospechosas y cierres manuales
@@ -400,6 +403,8 @@ const RadarModule = (() => {
         } else if (data.status === 'logout_voluntario') {
             maxSilenceSecs = 300; // 5 minutos
         } else if (data.status === 'gps_desactivado') {
+            maxSilenceSecs = 600; // 10 minutos
+        } else if (data.status === 'permissions_disabled') {
             maxSilenceSecs = 600; // 10 minutos
         }
 
@@ -415,6 +420,8 @@ const RadarModule = (() => {
             carMode = 'suspicious';
         } else if (data.status === 'gps_desactivado') {
             carMode = 'gps-disabled';
+        } else if (data.status === 'permissions_disabled' || data.permissions_ok === false) {
+            carMode = 'permissions-disabled';
         }
         const statusClass = 'status-' + carMode;
         
@@ -429,6 +436,9 @@ const RadarModule = (() => {
             statusColor = '#ef4444'; // Rojo
         } else if (data.status === 'gps_desactivado') {
             statusLabelText = 'GPS Desactivado por el Conductor';
+            statusColor = '#f97316'; // Naranja
+        } else if (data.status === 'permissions_disabled' || data.permissions_ok === false) {
+            statusLabelText = 'Permisos de segundo plano / Batería desactivados';
             statusColor = '#f97316'; // Naranja
         } else if (carMode === 'moving') {
             statusColor = '#22c55e'; // Verde
@@ -501,6 +511,15 @@ const RadarModule = (() => {
                     <span><span class="radar-popup-icon">🚦</span> Estado:</span>
                     <strong style="color: ${statusColor}">${statusLabelText}</strong>
                 </div>
+                ${(data.permissions_ok === false || data.bg_location_ok === false || data.battery_optimization_ok === false) ? `
+                <div class="radar-popup-row" style="color: #f97316; font-weight: bold; background: rgba(249,115,22,0.1); padding: 6px 8px; border-radius: 6px; margin-top: 6px; border: 1px solid rgba(249,115,22,0.2); font-size: 11px;">
+                    <span>⚠️ Alerta Celular:</span>
+                    <span>Desactivado (${[
+                        data.bg_location_ok === false ? 'Ubicación 2° plano' : null,
+                        data.battery_optimization_ok === false ? 'Ahorro batería' : null
+                    ].filter(Boolean).join(', ') || 'Permisos/Batería'})</span>
+                </div>
+                ` : ''}
                 <div class="radar-popup-row">
                     <span><span class="radar-popup-icon">🏎️</span> Velocidad:</span>
                     <strong>${speed.toFixed(0)} km/h</strong>
@@ -641,6 +660,12 @@ const RadarModule = (() => {
                                 KittVoice.speak(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`, true);
                             }
                             showRadarWarning(`Desconexión sospechosa detectada para ${firstName} (Sin señal)`, 'danger');
+                        } else if (newStatus === 'permissions_disabled') {
+                            playWarningBeep();
+                            if (typeof KittVoice !== 'undefined') {
+                                KittVoice.speak(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`, true);
+                            }
+                            showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}`, 'warning');
                         }
                         
                         window._driverStatusCache[driverId] = newStatus;

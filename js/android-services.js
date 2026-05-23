@@ -367,6 +367,19 @@ const AndroidServices = (() => {
             return;
         }
 
+        // Si el permiso ya está otorgado en segundo plano, omitimos el diálogo del todo
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
+            try {
+                if (window.NativeServiceBridge.isBackgroundLocationGranted()) {
+                    console.log('📱 AndroidServices: ✅ Ubicación en segundo plano ya concedida — omitiendo diálogo');
+                    if (onConfirm) onConfirm();
+                    return;
+                }
+            } catch (e) {
+                console.warn('Error al verificar isBackgroundLocationGranted:', e);
+            }
+        }
+
         const bodyHTML = `
             <div style="text-align:center; padding:var(--space-2);">
                 <div style="font-size:3.5rem; margin-bottom:var(--space-4);">📍</div>
