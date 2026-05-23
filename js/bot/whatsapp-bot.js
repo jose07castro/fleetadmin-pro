@@ -1135,6 +1135,22 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 
                 await Promise.all(updatePromises);
                 console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA EN ${updatePromises.length} FLOTAS!!! type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
+
+                // Send push notification to admins
+                const alertTypeNames = {
+                    police: 'Control de Policía 👮',
+                    checkpoint: 'Operativo / Control 🚧',
+                    radar: 'Radar / Fotomulta 📷',
+                    helicopter: 'Helicóptero HECA 🚁',
+                    traffic: 'Alerta de Tráfico 🚦',
+                    warning: 'Alerta de Tránsito ⚠️'
+                };
+                const typeName = alertTypeNames[alertData.type] || 'Alerta de Tránsito ⚠️';
+                sendPushToAdmins(
+                    `🚨 ${typeName}`,
+                    `Ubicación: ${alertData.location}. Reportado en el grupo: ${sourceGroup}`,
+                    { alertId: alertId, type: alertData.type }
+                );
             } catch (e) {
                 console.error('❌ [FIREBASE] Error guardando alerta en flotas:', e.message);
             }
@@ -1142,6 +1158,78 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR');
         }
     }
+
+    async function sendPushToAdmins(title, body, additionalData = {}) {
+        if (!db) {
+            console.log('🔔 [PUSH] DB not ready, cannot send push.');
+            return;
+        }
+        try {
+            const tokensSnap = await db.ref('fcm_tokens').once('value');
+            const tokensVal = tokensSnap.val();
+            if (!tokensVal) {
+                console.log('🔔 [PUSH] No FCM tokens found in DB.');
+                return;
+            }
+
+            const adminTokens = [];
+            for (const [userId, tData] of Object.entries(tokensVal)) {
+                if (tData.token && tData.role === 'admin') {
+                    adminTokens.push(tData.token);
+                }
+            }
+
+            if (adminTokens.length === 0) {
+                console.log('🔔 [PUSH] No admin FCM tokens found.');
+                return;
+            }
+
+            console.log(`🔔 [PUSH] Sending notification to ${adminTokens.length} admin(s): "${title} - ${body}"`);
+
+            const payload = {
+                notification: {
+                    title: title,
+                    body: body
+                },
+                data: {
+                    title: title,
+                    body: body,
+                    url: '/',
+                    ...additionalData
+                }
+            };
+
+            const response = await admin.messaging().sendEachForMulticast({
+                tokens: adminTokens,
+                notification: payload.notification,
+                data: payload.data
+            });
+
+            console.log(`🔔 [PUSH] Multicast sent. Success: ${response.successCount}, Failure: ${response.failureCount}`);
+
+            // Cleanup inactive tokens
+            if (response.responses) {
+                response.responses.forEach(async (resp, idx) => {
+                    if (!resp.success) {
+                        const errCode = resp.error?.code;
+                        if (errCode === 'messaging/registration-token-not-registered' || errCode === 'messaging/invalid-registration-token') {
+                            const tokenToRemove = adminTokens[idx];
+                            for (const [uId, tData] of Object.entries(tokensVal)) {
+                                if (tData.token === tokenToRemove) {
+                                    console.log(`🧹 [PUSH] Removing inactive token for user: ${uId}`);
+                                    await db.ref(`fcm_tokens/${uId}`).remove();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('❌ [PUSH] Error sending push notification:', e.message);
+        }
+    }
+
 
     async function resetSession() {
         console.log('🔄 [RESET] Forzando limpieza de sesión COMPLETA (Requiere QR)...');
@@ -1252,7 +1340,8 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         softResetSession,
         getFleetId: _resolveFleetId,
         getDb: () => db,
-        isConnected: () => _isConnectedState
+        isConnected: () => _isConnectedState,
+        sendPushToAdmins
     };
 })();
 

@@ -358,6 +358,12 @@ app.post('/api/auth/logout-voluntario', async (req, res) => {
         const eventTime = timestamp || Date.now();
         console.log(`🚪 [LOGOUT] Driver ${driver_id} voluntary logout received.`);
 
+        let driverName = req.body.driverName;
+        if (!driverName) {
+            const posSnap = await db.ref(`driver_positions/${driver_id}/driverName`).once('value');
+            driverName = posSnap.val() || 'Chofer';
+        }
+
         // 1. Update driver position status in Firebase RTDB
         await db.ref(`driver_positions/${driver_id}`).update({
             status: 'logout_voluntario',
@@ -372,10 +378,16 @@ app.post('/api/auth/logout-voluntario', async (req, res) => {
             await db.ref(`fleets/${fid}/driver_status_logs`).push({
                 event: 'logout_voluntario',
                 driverId: driver_id,
-                driverName: req.body.driverName || 'Chofer',
+                driverName: driverName,
                 timestamp: eventTime
             });
         }
+
+        // Send push notification to admins
+        WhatsappBot.sendPushToAdmins(
+            `🚪 Chofer Desconectado`,
+            `El chofer ${driverName} ha cerrado sesión voluntariamente.`
+        );
 
         res.json({ ok: true });
     } catch (e) {
@@ -399,6 +411,12 @@ app.post('/api/driver/gps-event', async (req, res) => {
 
         const eventTime = timestamp || Date.now();
         console.log(`🔌 [GPS EVENT] Driver ${driver_id} reported: ${event}`);
+
+        let driverName = req.body.driverName;
+        if (!driverName) {
+            const posSnap = await db.ref(`driver_positions/${driver_id}/driverName`).once('value');
+            driverName = posSnap.val() || 'Chofer';
+        }
 
         const isEnabled = event === 'gps_activado';
         const permissionsOk = event !== 'permissions_disabled';
@@ -429,9 +447,22 @@ app.post('/api/driver/gps-event', async (req, res) => {
             await db.ref(`fleets/${fid}/driver_status_logs`).push({
                 event: event,
                 driverId: driver_id,
-                driverName: req.body.driverName || 'Chofer',
+                driverName: driverName,
                 timestamp: eventTime
             });
+        }
+
+        // Send push notification to admins for critical warnings
+        if (event === 'gps_desactivado') {
+            WhatsappBot.sendPushToAdmins(
+                `🔌 GPS Apagado`,
+                `El chofer ${driverName} desactivó el GPS de su dispositivo.`
+            );
+        } else if (event === 'permissions_disabled') {
+            WhatsappBot.sendPushToAdmins(
+                `🔋 Ahorro de Energía / Permisos`,
+                `El chofer ${driverName} desactivó permisos en segundo plano o activó ahorro de batería.`
+            );
         }
 
         res.json({ ok: true });
@@ -571,7 +602,8 @@ async function checkActiveDriverHeartbeats() {
 
                 const timeDiffMs = now - lastHeartbeat;
                 if (timeDiffMs > 5 * 60 * 1000) { // 5 minutes
-                    console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${posData.driverName || 'Chofer'}) inactive for ${Math.round(timeDiffMs/1000)}s. Marking as suspicious disconnect.`);
+                    const driverName = posData.driverName || 'Chofer';
+                    console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${driverName}) inactive for ${Math.round(timeDiffMs/1000)}s. Marking as suspicious disconnect.`);
                     
                     // Mark in driver_positions
                     await db.ref(`driver_positions/${driverId}`).update({
@@ -583,9 +615,15 @@ async function checkActiveDriverHeartbeats() {
                     await db.ref(`fleets/${fleetId}/driver_status_logs`).push({
                         event: 'suspicious_disconnect',
                         driverId: driverId,
-                        driverName: posData.driverName || 'Chofer',
+                        driverName: driverName,
                         timestamp: now
                     });
+
+                    // Send push notification to admins
+                    WhatsappBot.sendPushToAdmins(
+                        `🚨 Desconexión Sospechosa`,
+                        `El chofer ${driverName} ha dejado de reportar ubicación (sin señal o app cerrada).`
+                    );
                 }
             }
         }

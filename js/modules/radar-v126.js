@@ -644,7 +644,7 @@ const RadarModule = (() => {
                     const newStatus = data.status || 'active';
 
                     if (newStatus !== prevStatus) {
-                        let rawName = data.driverName || 'Chofer';
+                        let rawName = data.driverName || (shift ? shift.driverName : null) || 'Chofer';
                         let firstName = rawName.split(' ')[0];
                         if (firstName.length > 20) firstName = 'Chofer';
 
@@ -666,6 +666,12 @@ const RadarModule = (() => {
                                 KittVoice.speak(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`, true);
                             }
                             showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}`, 'warning');
+                        } else if (newStatus === 'logout_voluntario') {
+                            playWarningBeep();
+                            if (typeof KittVoice !== 'undefined') {
+                                KittVoice.speak(`El conductor ${firstName} ha cerrado sesión voluntariamente.`, true);
+                            }
+                            showRadarWarning(`El conductor ${firstName} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
                         }
                         
                         window._driverStatusCache[driverId] = newStatus;
