@@ -213,7 +213,55 @@ const App = (() => {
         const confirmed = confirm('¿Cerrar sesión?\nSe desconectará de esta cuenta.');
         if (!confirmed) return;
 
+        // Si es chofer, registramos la desconexión voluntaria en el servidor ANTES de limpiar nada
+        if (typeof Auth !== 'undefined' && Auth.isDriver()) {
+            let toastId = null;
+            if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+                toastId = Components.showToast('Registrando desconexión en el servidor...', 'info');
+            }
+
+            const driverId = Auth.getUserId();
+            const fleetId = Auth.getFleetId();
+            const baseUrl = (window.location.hostname === 'localhost' || 
+                             window.location.hostname === '127.0.0.1' ||
+                             window.location.protocol === 'file:') 
+                             ? 'https://fleetadmin-pro-1.onrender.com' 
+                             : window.location.origin;
+
+            try {
+                const response = await fetch(`${baseUrl}/api/auth/logout-voluntario`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        driver_id: driverId,
+                        fleetId: fleetId,
+                        timestamp: Date.now(),
+                        driverName: Auth.getUserName()
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('El servidor retornó código de error: ' + response.status);
+                }
+                console.log('✅ Desconexión voluntaria confirmada por el servidor');
+            } catch (e) {
+                console.error('⚠️ Error al registrar desconexión:', e);
+                alert('Error: No se pudo confirmar el cierre de sesión con el servidor.\nVerificá tu conexión a internet e intentalo de nuevo.');
+                return; // ABORTAR logout para cumplir con el requerimiento estricto
+            }
+        }
+
         try {
+            // Detener el Foreground Service de rastreo GPS en Android
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.disableForegroundService === 'function') {
+                try {
+                    await AndroidServices.disableForegroundService();
+                } catch (e) {
+                    console.warn('Error desactivando foreground service:', e);
+                }
+            }
             // 1. Detener sincronización en tiempo real (Firebase listeners)
             stopRealtimeSync();
 

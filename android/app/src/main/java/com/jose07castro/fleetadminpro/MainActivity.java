@@ -64,17 +64,18 @@ public class MainActivity extends BridgeActivity {
     private class NativeServiceBridge {
 
         /**
-         * Arranca el Foreground Service con userId y driverName.
-         * Llamado desde JS: window.NativeServiceBridge.startTracking(userId, driverName)
+         * Arranca el Foreground Service con userId, driverName, fleetId y serverUrl.
+         * Llamado desde JS: window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl)
          */
         @JavascriptInterface
-        public void startTracking(String userId, String driverName, String fleetId) {
-            Log.i(TAG, "📱 JS → startTracking('" + userId + "', '" + driverName + "', '" + fleetId + "')");
+        public void startTracking(String userId, String driverName, String fleetId, String serverUrl) {
+            Log.i(TAG, "📱 JS → startTracking('" + userId + "', '" + driverName + "', '" + fleetId + "', '" + serverUrl + "')");
             
             Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
             serviceIntent.putExtra("userId", userId);
             serviceIntent.putExtra("driverName", driverName);
             serviceIntent.putExtra("fleetId", fleetId);
+            serviceIntent.putExtra("serverUrl", serverUrl);
             
             androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
         }
@@ -91,9 +92,10 @@ public class MainActivity extends BridgeActivity {
             String savedUserId = prefs.getString("userId", null);
             String savedDriverName = prefs.getString("driverName", "Chofer");
             String savedFleetId = prefs.getString("fleetId", null);
+            String savedServerUrl = prefs.getString("serverUrl", "https://fleetadmin-pro-1.onrender.com");
             
             if (savedUserId != null) {
-                startTracking(savedUserId, savedDriverName, savedFleetId);
+                startTracking(savedUserId, savedDriverName, savedFleetId, savedServerUrl);
             } else {
                 // Arrancar de todas formas (GPS corre pero no sube a Firebase hasta recibir userId)
                 Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);

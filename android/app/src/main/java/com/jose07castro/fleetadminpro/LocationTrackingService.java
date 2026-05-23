@@ -99,6 +99,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private String userId;
     private String driverName;
     private String fleetId;
+    private String serverUrl;
+
+    // Heartbeat monitoring
+    private long lastHeartbeatTime = 0;
+    private Handler heartbeatHandler;
+    private Runnable heartbeatRunnable;
+    private android.content.BroadcastReceiver gpsStatusReceiver;
 
     // Data lists for Proximity
     private final List<TrafficAlert> activeAlerts = new ArrayList<>();
@@ -158,6 +165,29 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         
         // 4. Inicializar FusedLocation
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        // Registrar escuchador de GPS
+        gpsStatusReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (android.location.LocationManager.PROVIDERS_CHANGED_ACTION.equals(intent.getAction())) {
+                    android.location.LocationManager locationManager = (android.location.LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+                    boolean isGpsEnabled = locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER);
+                    Log.i(TAG, "🔌 [RECEIVER] GPS status changed: isGpsEnabled = " + isGpsEnabled);
+                    
+                    String eventType = isGpsEnabled ? "gps_activado" : "gps_desactivado";
+                    
+                    // Update Firebase immediately
+                    updateFirebaseGpsStatus(eventType, isGpsEnabled);
+                    
+                    // Send alert to server
+                    sendEventToServer(eventType);
+                }
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION);
+        registerReceiver(gpsStatusReceiver, filter);
+        Log.i(TAG, "🔌 Registered GPS providers BroadcastReceiver");
     }
 
     @Override
@@ -168,19 +198,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             String intentUserId = intent.getStringExtra("userId");
             String intentDriverName = intent.getStringExtra("driverName");
             String intentFleetId = intent.getStringExtra("fleetId");
+            String intentServerUrl = intent.getStringExtra("serverUrl");
 
             if (intentUserId != null && !intentUserId.isEmpty()) {
                 // Arranque NORMAL desde la app — guardar en SharedPreferences
                 userId = intentUserId;
                 driverName = intentDriverName;
                 fleetId = intentFleetId;
+                serverUrl = intentServerUrl;
                 SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                 SharedPreferences.Editor editor = prefs.edit();
                 editor.putString("userId", userId);
                 if (driverName != null) editor.putString("driverName", driverName);
                 if (fleetId != null) editor.putString("fleetId", fleetId);
+                if (serverUrl != null) editor.putString("serverUrl", serverUrl);
                 editor.apply();
-                Log.i(TAG, "✅ Credenciales recibidas — userId: " + userId);
+                Log.i(TAG, "✅ Credenciales recibidas — userId: " + userId + " | serverUrl: " + serverUrl);
             } else {
                 // Reinicio del sistema con Intent vacío (onTaskRemoved / onDestroy / START_STICKY)
                 // El Intent no es null pero tampoco trae userId → restaurar desde SharedPreferences
@@ -188,6 +221,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 userId = prefs.getString("userId", userId); // mantener en memoria si ya lo tiene
                 driverName = prefs.getString("driverName", driverName != null ? driverName : "Chofer");
                 fleetId = prefs.getString("fleetId", fleetId);
+                serverUrl = prefs.getString("serverUrl", serverUrl);
                 Log.i(TAG, "🔁 Reinicio — userId restaurado desde prefs: " + userId);
             }
         } else {
@@ -196,6 +230,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             userId = prefs.getString("userId", null);
             driverName = prefs.getString("driverName", "Chofer");
             fleetId = prefs.getString("fleetId", null);
+            serverUrl = prefs.getString("serverUrl", null);
             Log.i(TAG, "🔁 START_STICKY — userId restaurado: " + userId);
         }
 
@@ -228,6 +263,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         startWatchdog();
 
+        // Iniciar pings periódicos
+        startHeartbeatTimer();
+
         return START_STICKY; // El sistema lo reinicia si muere
     }
 
@@ -239,31 +277,54 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (userId != null) restartServiceIntent.putExtra("userId", userId);
         if (driverName != null) restartServiceIntent.putExtra("driverName", driverName);
         if (fleetId != null) restartServiceIntent.putExtra("fleetId", fleetId);
+        if (serverUrl != null) restartServiceIntent.putExtra("serverUrl", serverUrl);
         androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartServiceIntent);
         super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        Log.w(TAG, "⛔ onDestroy() — El servicio está siendo destruido por el sistema!");
+        Log.w(TAG, "⛔ onDestroy() — El servicio está siendo destruido");
         isTracking = false;
         stopLocationUpdates();
         releaseWakeLock();
-        final String savedUserId = userId;
-        final String savedDriverName = driverName;
-        final String savedFleetId = fleetId;
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            try {
-                Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
-                if (savedUserId != null) restartIntent.putExtra("userId", savedUserId);
-                if (savedDriverName != null) restartIntent.putExtra("driverName", savedDriverName);
-                if (savedFleetId != null) restartIntent.putExtra("fleetId", savedFleetId);
-                androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartIntent);
-                Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado con userId: " + savedUserId);
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Auto-reinicio fallido:", e);
-            }
-        }, 2000);
+        
+        // Desregistrar receptor GPS
+        try {
+            unregisterReceiver(gpsStatusReceiver);
+        } catch (Exception e) {}
+        
+        // Detener timer de latidos
+        if (heartbeatHandler != null && heartbeatRunnable != null) {
+            heartbeatHandler.removeCallbacks(heartbeatRunnable);
+        }
+        
+        // Auto-reinicio solo si no fue apagado voluntario (se verifica si hay userId en SharedPreferences)
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String savedUserId = prefs.getString("userId", null);
+        
+        if (savedUserId != null) {
+            final String savedDriverName = prefs.getString("driverName", driverName);
+            final String savedFleetId = prefs.getString("fleetId", fleetId);
+            final String savedServerUrl = prefs.getString("serverUrl", serverUrl);
+            
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
+                    restartIntent.putExtra("userId", savedUserId);
+                    if (savedDriverName != null) restartIntent.putExtra("driverName", savedDriverName);
+                    if (savedFleetId != null) restartIntent.putExtra("fleetId", savedFleetId);
+                    if (savedServerUrl != null) restartIntent.putExtra("serverUrl", savedServerUrl);
+                    
+                    androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartIntent);
+                    Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado");
+                } catch (Exception e) {
+                    Log.e(TAG, "❌ Auto-reinicio fallido:", e);
+                }
+            }, 2000);
+        } else {
+            Log.i(TAG, "🛑 Cierre voluntario detectado (sin credenciales en SharedPreferences). No se reiniciará el servicio.");
+        }
         super.onDestroy();
     }
 
@@ -482,8 +543,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         data.put("driverName", driverName != null ? driverName : "Chofer");
         data.put("updated_at", timestamp);
         data.put("_source", source);
+        data.put("last_heartbeat", System.currentTimeMillis());
+        data.put("status", "active");
+        data.put("gps_status", "active");
 
-        dbRef.child(userId).setValue(data, listener);
+        dbRef.child(userId).setValue(data, (error, ref) -> {
+            if (error == null) {
+                lastHeartbeatTime = System.currentTimeMillis();
+            }
+            if (listener != null) {
+                listener.onComplete(error, ref);
+            }
+        });
     }
 
     private void sendQueuedLocations() {
@@ -668,5 +739,118 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
             );
         }
+    }
+
+    // ================================================================
+    // SISTEMA DE MONITOREO DE ESTADO Y DESCONEXIÓN (Heartbeats & GPS)
+    // ================================================================
+
+    private void startHeartbeatTimer() {
+        heartbeatHandler = new Handler(Looper.getMainLooper());
+        heartbeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (!isTracking) return;
+                
+                long now = System.currentTimeMillis();
+                if (now - lastHeartbeatTime >= 120000) { // 2 minutos
+                    Log.i(TAG, "🏓 Enviando ping de latido silencioso (GPS sin cambio)...");
+                    sendSilentHeartbeat();
+                }
+                
+                heartbeatHandler.postDelayed(this, 60000); // Revisar cada minuto
+            }
+        };
+        heartbeatHandler.postDelayed(heartbeatRunnable, 60000);
+    }
+
+    private void sendSilentHeartbeat() {
+        if (dbRef == null || userId == null || userId.isEmpty()) return;
+
+        serviceHandler.post(() -> {
+            Map<String, Object> data = new HashMap<>();
+            data.put("lat", lastLat);
+            data.put("lng", lastLng);
+            data.put("heading", (double) lastBearing);
+            data.put("speed", (double) lastSpeed);
+            data.put("battery", getBatteryLevel());
+            data.put("driverName", driverName != null ? driverName : "Chofer");
+            
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            data.put("updated_at", sdf.format(new Date()));
+            data.put("last_heartbeat", System.currentTimeMillis());
+            data.put("status", "active");
+            data.put("gps_status", "active");
+            data.put("_source", "native_heartbeat_ping");
+
+            dbRef.child(userId).setValue(data, (error, ref) -> {
+                if (error == null) {
+                    lastHeartbeatTime = System.currentTimeMillis();
+                    Log.i(TAG, "🏓 Ping de latido silencioso guardado en Firebase");
+                } else {
+                    Log.w(TAG, "❌ Falló el envío del latido silencioso: " + error.getMessage());
+                }
+            });
+        });
+    }
+
+    private void updateFirebaseGpsStatus(String eventType, boolean isEnabled) {
+        if (dbRef == null || userId == null || userId.isEmpty()) return;
+
+        serviceHandler.post(() -> {
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("gps_status", isEnabled ? "active" : "disabled");
+            updates.put("status", eventType);
+            updates.put("last_heartbeat", System.currentTimeMillis());
+            
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            updates.put("updated_at", sdf.format(new Date()));
+
+            dbRef.child(userId).updateChildren(updates, (error, ref) -> {
+                if (error != null) {
+                    Log.w(TAG, "❌ Firebase update status failed: " + error.getMessage());
+                } else {
+                    Log.i(TAG, "✅ Firebase status updated: " + eventType);
+                }
+            });
+        });
+    }
+
+    private void sendEventToServer(String eventType) {
+        if (serverUrl == null || serverUrl.isEmpty() || userId == null || userId.isEmpty()) {
+            Log.w(TAG, "⚠️ Cannot send event to server: serverUrl or userId is null/empty");
+            return;
+        }
+
+        serviceHandler.post(() -> {
+            try {
+                java.net.URL url = new java.net.URL(serverUrl + "/api/driver/gps-event");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; utf-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+
+                String jsonInputString = String.format(Locale.US,
+                    "{\"driver_id\":\"%s\",\"event\":\"%s\",\"timestamp\":%d,\"fleetId\":\"%s\"}",
+                    userId, eventType, System.currentTimeMillis(), fleetId != null ? fleetId : ""
+                );
+
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    byte[] input = jsonInputString.getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+
+                int code = conn.getResponseCode();
+                Log.i(TAG, "🔌 Event HTTP Sent: " + eventType + ". Response code: " + code);
+                conn.disconnect();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error sending event to server via HTTP: " + e.getMessage());
+            }
+        });
     }
 }

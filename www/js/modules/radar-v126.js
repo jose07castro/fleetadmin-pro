@@ -152,6 +152,7 @@ const RadarModule = (() => {
                 </div>
             </div>
             <div id="radarMap" class="radar-map"></div>
+            <div class="radar-warning-container" id="radarWarningContainer" style="position:absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 90%; max-width: 400px; pointer-events: none;"></div>
             <button id="radarMapStyleBtn" onclick="RadarModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
                 style="position:absolute; bottom: 80px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold; transition: transform 0.1s active;">
                 🗺️
@@ -226,9 +227,18 @@ const RadarModule = (() => {
 
     // ============ CREATE CAR MARKER ============
 
-    function _createCarIcon(heading, displayName, statusClass, carColor, speed) {
+    function _createCarIcon(heading, displayName, statusClass, carColor, speed, status) {
         const rotation = heading || 0;
         const currentSpeed = speed || 0;
+        
+        let speedText = `${currentSpeed.toFixed(0)} km/h`;
+        if (status === 'logout_voluntario') {
+            speedText = 'OFFLINE';
+        } else if (status === 'suspicious_disconnect') {
+            speedText = 'SIN SEÑAL';
+        } else if (status === 'gps_desactivado') {
+            speedText = 'GPS APAGADO';
+        }
         
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
         const colors = {
@@ -250,7 +260,7 @@ const RadarModule = (() => {
             'bordo metalizado': { body: '#991b1b', side: '#450a0a', roof: '#b91c1c', glass: '#fca5a5' }
         };
 
-        const carColorKey = (carColor || 'gray').toLowerCase();
+        const carColorKey = (status === 'logout_voluntario' ? 'gray' : (carColor || 'gray')).toLowerCase();
         const theme = colors[carColorKey] || colors['gray'];
         const isTaxi = carColorKey === 'taxi';
 
@@ -336,7 +346,7 @@ const RadarModule = (() => {
             <div class="radar-car-container">
                 <div class="radar-car-label ${statusClass}">
                     <div class="radar-car-info">${displayName}</div>
-                    <div class="radar-car-speed">${currentSpeed.toFixed(0)} km/h</div>
+                    <div class="radar-car-speed">${speedText}</div>
                 </div>
                 <div class="radar-car-icon-wrapper ${statusClass}">
                     <div class="radar-car-internal">
@@ -383,14 +393,46 @@ const RadarModule = (() => {
         const displayName = `${firstName} - ${vehiclePlate}`;
 
         // v117 - Limpieza TOTAL de fantasmas
-        if (timeAgoSecs > 60) {
+        // v126: Extendemos el límite de fantasmas para desconexiones sospechosas y cierres manuales
+        let maxSilenceSecs = 60;
+        if (data.status === 'suspicious_disconnect') {
+            maxSilenceSecs = 600; // 10 minutos
+        } else if (data.status === 'logout_voluntario') {
+            maxSilenceSecs = 300; // 5 minutos
+        } else if (data.status === 'gps_desactivado') {
+            maxSilenceSecs = 600; // 10 minutos
+        }
+
+        if (timeAgoSecs > maxSilenceSecs) {
             _removeMarker(driverId);
             return false; // Indicamos al caller que el chofer ya no está online
         }
 
         let carMode = (speed > 5) ? 'moving' : 'stopped';
+        if (data.status === 'logout_voluntario') {
+            carMode = 'logout';
+        } else if (data.status === 'suspicious_disconnect') {
+            carMode = 'suspicious';
+        } else if (data.status === 'gps_desactivado') {
+            carMode = 'gps-disabled';
+        }
         const statusClass = 'status-' + carMode;
-        const shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
+        
+        let shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
+        let statusLabelText = shiftStatusText;
+        let statusColor = '#f59e0b';
+        if (data.status === 'logout_voluntario') {
+            statusLabelText = 'Desconectado (Sesión Cerrada)';
+            statusColor = '#94a3b8'; // Gris
+        } else if (data.status === 'suspicious_disconnect') {
+            statusLabelText = 'Desconexión Sospechosa (Sin Señal o Cierre Forzado)';
+            statusColor = '#ef4444'; // Rojo
+        } else if (data.status === 'gps_desactivado') {
+            statusLabelText = 'GPS Desactivado por el Conductor';
+            statusColor = '#f97316'; // Naranja
+        } else if (carMode === 'moving') {
+            statusColor = '#22c55e'; // Verde
+        }
 
         const batteryText = (data.battery !== undefined && data.battery !== null) ? `${data.battery}%` : 'N/A';
 
@@ -457,7 +499,7 @@ const RadarModule = (() => {
                 </div>
                 <div class="radar-popup-row" style="margin-top:8px;">
                     <span><span class="radar-popup-icon">🚦</span> Estado:</span>
-                    <strong style="color: ${carMode === 'moving' ? '#22c55e' : '#f59e0b'}">${shiftStatusText}</strong>
+                    <strong style="color: ${statusColor}">${statusLabelText}</strong>
                 </div>
                 <div class="radar-popup-row">
                     <span><span class="radar-popup-icon">🏎️</span> Velocidad:</span>
@@ -478,7 +520,7 @@ const RadarModule = (() => {
         const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
 
         const latlng = new google.maps.LatLng(lat, lng);
-        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed);
+        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed, data.status);
 
         if (_markers[driverId]) {
             // Update existing marker
@@ -576,6 +618,33 @@ const RadarModule = (() => {
                     if (isAlive) {
                         activeCount++;
                     }
+
+                    // Verificar transiciones de estado para disparar alertas sonoras y visuales
+                    if (!window._driverStatusCache) window._driverStatusCache = {};
+                    const prevStatus = window._driverStatusCache[driverId] || 'active';
+                    const newStatus = data.status || 'active';
+
+                    if (newStatus !== prevStatus) {
+                        let rawName = data.driverName || 'Chofer';
+                        let firstName = rawName.split(' ')[0];
+                        if (firstName.length > 20) firstName = 'Chofer';
+
+                        if (newStatus === 'gps_desactivado') {
+                            playWarningBeep();
+                            if (typeof KittVoice !== 'undefined') {
+                                KittVoice.speak(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`, true);
+                            }
+                            showRadarWarning(`El conductor ${firstName} ha desactivado el GPS de su dispositivo`, 'warning');
+                        } else if (newStatus === 'suspicious_disconnect') {
+                            playWarningBeep();
+                            if (typeof KittVoice !== 'undefined') {
+                                KittVoice.speak(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`, true);
+                            }
+                            showRadarWarning(`Desconexión sospechosa detectada para ${firstName} (Sin señal)`, 'danger');
+                        }
+                        
+                        window._driverStatusCache[driverId] = newStatus;
+                    }
                 }
             }
 
@@ -583,6 +652,7 @@ const RadarModule = (() => {
             for (const existingId of Object.keys(_markers)) {
                 if (!allPositions[existingId]) {
                     _removeMarker(existingId);
+                    if (window._driverStatusCache) delete window._driverStatusCache[existingId];
                 }
             }
 
@@ -818,6 +888,75 @@ const RadarModule = (() => {
         const dotClass = type === 'connected' ? 'radar-status-dot--live' :
                          type === 'error' ? 'radar-status-dot--error' : '';
         el.innerHTML = `<span class="radar-status-dot ${dotClass}"></span> ${text}`;
+    }
+
+    // ============ ALARM & WARNING HACKS ============
+
+    function playWarningBeep() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(880, ctx.currentTime); 
+            osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15); 
+            
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.start();
+            osc.stop(ctx.currentTime + 0.4);
+        } catch (e) {
+            console.warn('Warning beep failed:', e);
+        }
+    }
+
+    function showRadarWarning(message, type = 'danger') {
+        const container = document.getElementById('radarWarningContainer');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `radar-warning-toast ${type}`;
+        toast.style.cssText = `
+            background: ${type === 'danger' ? '#7f1d1d' : '#7c2d12'};
+            color: ${type === 'danger' ? '#fecaca' : '#ffedd5'};
+            border: 2px solid ${type === 'danger' ? '#ef4444' : '#f97316'};
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-family: Inter, sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            pointer-events: auto;
+            margin-bottom: 8px;
+            animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        `;
+        
+        toast.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span>${type === 'danger' ? '🚨' : '⚠️'}</span>
+                <span>${message}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" style="background:none; border:none; color:white; font-size:1.1rem; cursor:pointer; padding: 0 4px;">✕</button>
+        `;
+        
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.style.animation = 'slideUp 0.4s forwards';
+                setTimeout(() => toast.remove(), 400);
+            }
+        }, 10000);
     }
 
     function _updateActiveCount(count) {

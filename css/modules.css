@@ -2692,3 +2692,88 @@
 .veh-header-row:hover { background: rgba(255, 255, 255, 0.03); }
 .vehicle-expandable-row:has(.veh-expanded-body[style*='display: block']) { border-color: var(--color-primary) !important; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15) !important; }
 
+/* --- Driver Real-Time Status Enhancements (v126) --- */
+.radar-car-label.status-logout {
+    border-color: #64748b;
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.9);
+}
+.radar-car-icon-wrapper.status-logout {
+    background: radial-gradient(circle, rgba(100,116,139,0.2) 0%, transparent 70%);
+    border: 1.5px solid rgba(100,116,139,0.3);
+    filter: grayscale(100%) opacity(60%);
+}
+
+.radar-car-label.status-suspicious {
+    border-color: #ef4444;
+    color: #fca5a5;
+    background: rgba(15, 23, 42, 0.95);
+    animation: pulseBorderRed 2s infinite;
+}
+.radar-car-icon-wrapper.status-suspicious {
+    background: radial-gradient(circle, rgba(239,68,68,0.25) 0%, transparent 70%);
+    animation: pulseGlowRed 1.5s infinite ease-in-out;
+}
+
+.radar-car-label.status-gps-disabled {
+    border-color: #f97316;
+    color: #ffedd5;
+    background: rgba(15, 23, 42, 0.95);
+    animation: pulseBorderOrange 2s infinite;
+}
+.radar-car-icon-wrapper.status-gps-disabled {
+    background: radial-gradient(circle, rgba(249,115,22,0.25) 0%, transparent 70%);
+    animation: pulseGlowOrange 1.5s infinite ease-in-out;
+}
+
+@keyframes pulseGlowRed {
+    0%, 100% {
+        background: radial-gradient(circle, rgba(239,68,68,0.2) 0%, transparent 70%);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+        background: radial-gradient(circle, rgba(239,68,68,0.45) 0%, transparent 75%);
+        box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.2);
+    }
+}
+@keyframes pulseBorderRed {
+    0%, 100% { border-color: #ef4444; }
+    50% { border-color: #fca5a5; }
+}
+
+@keyframes pulseGlowOrange {
+    0%, 100% {
+        background: radial-gradient(circle, rgba(249,115,22,0.2) 0%, transparent 70%);
+        box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+    }
+    50% {
+        background: radial-gradient(circle, rgba(249,115,22,0.45) 0%, transparent 75%);
+        box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.2);
+    }
+}
+@keyframes pulseBorderOrange {
+    0%, 100% { border-color: #f97316; }
+    50% { border-color: #ffedd5; }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-20px) scale(0.95);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+@keyframes slideUp {
+    from {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-20px) scale(0.95);
+        opacity: 0;
+    }
+}
+

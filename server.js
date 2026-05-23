@@ -337,6 +337,97 @@ Devuelve ÚNICAMENTE un objeto JSON con el siguiente formato, sin ningún format
     }
 });
 
+
+// ============================================
+// Driver Status Monitoring & Disconnection Alerts
+// ============================================
+
+// 1. Manual Voluntary Logout
+app.post('/api/auth/logout-voluntario', async (req, res) => {
+    try {
+        const { driver_id, fleetId, timestamp } = req.body;
+        if (!driver_id) {
+            return res.status(400).json({ ok: false, error: 'driver_id is required' });
+        }
+
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Database not available' });
+        }
+
+        const eventTime = timestamp || Date.now();
+        console.log(`🚪 [LOGOUT] Driver ${driver_id} voluntary logout received.`);
+
+        // 1. Update driver position status in Firebase RTDB
+        await db.ref(`driver_positions/${driver_id}`).update({
+            status: 'logout_voluntario',
+            gps_status: 'inactive',
+            last_heartbeat: eventTime,
+            updated_at: new Date(eventTime).toISOString()
+        });
+
+        // 2. Log event in fleet logs if fleetId is provided
+        const fid = fleetId || await WhatsappBot.getFleetId();
+        if (fid) {
+            await db.ref(`fleets/${fid}/driver_status_logs`).push({
+                event: 'logout_voluntario',
+                driverId: driver_id,
+                driverName: req.body.driverName || 'Chofer',
+                timestamp: eventTime
+            });
+        }
+
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error processing logout-voluntario:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// 2. GPS Toggle Event
+app.post('/api/driver/gps-event', async (req, res) => {
+    try {
+        const { driver_id, event, timestamp, fleetId } = req.body;
+        if (!driver_id || !event) {
+            return res.status(400).json({ ok: false, error: 'driver_id and event are required' });
+        }
+
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Database not available' });
+        }
+
+        const eventTime = timestamp || Date.now();
+        console.log(`🔌 [GPS EVENT] Driver ${driver_id} reported: ${event}`);
+
+        const isEnabled = event === 'gps_activado';
+
+        // 1. Update driver status in Firebase RTDB
+        await db.ref(`driver_positions/${driver_id}`).update({
+            status: event,
+            gps_status: isEnabled ? 'active' : 'disabled',
+            last_heartbeat: eventTime,
+            updated_at: new Date(eventTime).toISOString()
+        });
+
+        // 2. Log event in fleet logs
+        const fid = fleetId || await WhatsappBot.getFleetId();
+        if (fid) {
+            await db.ref(`fleets/${fid}/driver_status_logs`).push({
+                event: event,
+                driverId: driver_id,
+                driverName: req.body.driverName || 'Chofer',
+                timestamp: eventTime
+            });
+        }
+
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error processing gps-event:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 // ============================================
 // KITT Voice — ElevenLabs TTS Proxy
 // Protege la API Key en el servidor y cachea audios
@@ -422,4 +513,70 @@ app.listen(PORT, () => {
     // Iniciar Bot de WhatsApp de forma asíncrona para no bloquear el puerto
     console.log('⏳ Iniciando componente WhatsApp en segundo plano...');
     WhatsappBot.init();
+
+    // Iniciar el monitoreo en segundo plano de latidos (heartbeats) de choferes
+    console.log('⏳ Iniciando verificador de latidos de choferes cada 60s...');
+    setInterval(checkActiveDriverHeartbeats, 60000);
 });
+
+// Tarea periódica de verificación de latidos
+async function checkActiveDriverHeartbeats() {
+    try {
+        const db = WhatsappBot.getDb();
+        if (!db) return;
+
+        // Fetch positions and fleets
+        const [positionsSnap, fleetsSnap] = await Promise.all([
+            db.ref('driver_positions').once('value'),
+            db.ref('fleets').once('value')
+        ]);
+
+        const positions = positionsSnap.val() || {};
+        const fleets = fleetsSnap.val() || {};
+
+        const now = Date.now();
+
+        for (const [fleetId, fleetData] of Object.entries(fleets)) {
+            const shifts = fleetData.shifts || {};
+            const activeShifts = Object.values(shifts).filter(s => s.status === 'active');
+
+            for (const shift of activeShifts) {
+                const driverId = shift.driverId;
+                if (!driverId) continue;
+
+                const posData = positions[driverId];
+                if (!posData) continue;
+
+                // Skip if voluntarily logged out or already marked as suspicious/gps_desactivado
+                if (posData.status === 'logout_voluntario' || posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') {
+                    continue;
+                }
+
+                // Check heartbeat
+                const lastHeartbeat = posData.last_heartbeat || (posData.updated_at ? new Date(posData.updated_at).getTime() : 0);
+                if (!lastHeartbeat) continue;
+
+                const timeDiffMs = now - lastHeartbeat;
+                if (timeDiffMs > 5 * 60 * 1000) { // 5 minutes
+                    console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${posData.driverName || 'Chofer'}) inactive for ${Math.round(timeDiffMs/1000)}s. Marking as suspicious disconnect.`);
+                    
+                    // Mark in driver_positions
+                    await db.ref(`driver_positions/${driverId}`).update({
+                        status: 'suspicious_disconnect',
+                        last_heartbeat_gap: timeDiffMs
+                    });
+
+                    // Log the event under fleet status logs
+                    await db.ref(`fleets/${fleetId}/driver_status_logs`).push({
+                        event: 'suspicious_disconnect',
+                        driverId: driverId,
+                        driverName: posData.driverName || 'Chofer',
+                        timestamp: now
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.error('❌ Error checking driver heartbeats:', e.message);
+    }
+}

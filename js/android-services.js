@@ -82,11 +82,17 @@ const AndroidServices = (() => {
             try {
                 // ── CAPA 1: Arrancar el Foreground Service Java REAL ──
                 if (_hasNativeBridge()) {
+                    const serverUrl = (window.location.hostname === 'localhost' || 
+                                       window.location.hostname === '127.0.0.1' ||
+                                       window.location.protocol === 'file:') 
+                                       ? 'https://fleetadmin-pro-1.onrender.com' 
+                                       : window.location.origin;
+
                     console.log('📱 AndroidServices: 🔥 CAPA 1 — Arrancando LocationTrackingService via NativeServiceBridge');
-                    console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId}`);
+                    console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId} | serverUrl=${serverUrl}`);
                     
-                    // Pasar userId, driverName y fleetId al Service
-                    window.NativeServiceBridge.startTracking(userId, driverName, fleetId);
+                    // Pasar userId, driverName, fleetId y serverUrl al Service
+                    window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl);
                     
                     _nativeGPSActive = true;
                     console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo + Firebase Direct');
