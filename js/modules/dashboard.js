@@ -716,7 +716,11 @@ window.DashboardModule = (() => {
         // Proteger campos de texto contra null/undefined Y escapar para HTML
         const esc = Components.escapeHTML;
         const safeName = esc(user.name || 'Sin nombre');
-        const safePin = esc(user.pin || '');
+        const pinIsHashed = user.pin && user.pin.startsWith('$2');
+        const displayPin = pinIsHashed ? '' : esc(user.pin || '');
+        const pinLabel = pinIsHashed 
+            ? `${I18n.t('login_pin')} * (${I18n.t('login_pin_hint')} / vacío para mantener actual)` 
+            : `${I18n.t('login_pin')} * (${I18n.t('login_pin_hint')})`;
         const safeAddress = esc(user.address || '');
         const safeWhatsapp = esc(user.whatsapp || '');
         const safeLicenseNumber = esc(user.licenseNumber || '');
@@ -742,8 +746,8 @@ window.DashboardModule = (() => {
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('login_pin')} * (${I18n.t('login_pin_hint')})</label>
-                    <input type="text" class="form-input" id="editUserPin" value="${safePin}" maxlength="15" inputmode="numeric"
+                    <label class="form-label">${pinLabel}</label>
+                    <input type="text" class="form-input" id="editUserPin" value="${displayPin}" maxlength="15" inputmode="numeric"
                         style="background:#ffffff !important; color:#000000 !important; font-size:20px !important; font-weight:900 !important; border:2px solid #000000 !important;">
                 </div>
                 ${Components.renderPhotoCapture('editUserPhoto', I18n.t('user_change_photo'))}
@@ -845,23 +849,32 @@ window.DashboardModule = (() => {
         const pin = document.getElementById('editUserPin')?.value.trim();
         const photo = Components.getPhotoData('editUserPhoto');
 
-        if (!name || !pin || pin.length < 4) {
-            Components.showToast(I18n.t('error') + ': ' + I18n.t('required'), 'danger');
+        if (!name) {
+            Components.showToast(I18n.t('error') + ': Nombre requerido', 'danger');
             return;
         }
 
-        // Sincronizar hash del PIN si fue editado
-        let finalPin = pin;
-        if (!pin.startsWith('$2')) {
-            try {
-                finalPin = dcodeIO.bcrypt.hashSync(pin, 10);
-            } catch (e) {
-                console.warn('⚠️ bcrypt no disponible al editar, usando texto plano:', e);
+        // Si el PIN está vacío y ya está hasheado, no validar largo ni re-hashear
+        const pinIsHashed = user.pin && user.pin.startsWith('$2');
+        if (pinIsHashed && !pin) {
+            // Mantenemos el PIN actual
+        } else {
+            if (!pin || pin.length < 4) {
+                Components.showToast(I18n.t('error') + ': PIN requerido (mínimo 4 dígitos)', 'danger');
+                return;
             }
+            let finalPin = pin;
+            if (!pin.startsWith('$2')) {
+                try {
+                    finalPin = dcodeIO.bcrypt.hashSync(pin, 10);
+                } catch (e) {
+                    console.warn('⚠️ bcrypt no disponible al editar, usando texto plano:', e);
+                }
+            }
+            user.pin = finalPin;
         }
 
         user.name = name;
-        user.pin = finalPin;
         if (photo && !photo.includes('data:,')) {
             user.profilePhoto = photo;
         }
