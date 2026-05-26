@@ -13,6 +13,13 @@ import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
+import com.google.android.play.core.appupdate.AppUpdateInfo;
+import com.google.android.play.core.appupdate.AppUpdateManager;
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory;
+import com.google.android.play.core.install.model.AppUpdateType;
+import com.google.android.play.core.install.model.UpdateAvailability;
+import com.google.android.gms.tasks.Task;
+
 /**
  * MainActivity — Capacitor Bridge + Native Service Launcher (v4.0)
  *
@@ -63,6 +70,71 @@ public class MainActivity extends BridgeActivity {
             webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
             Log.i(TAG, "✅ NativeServiceBridge registrado en el WebView");
         });
+
+        // Verificar actualizaciones al iniciar
+        checkPlayStoreUpdate();
+    }
+
+    private static final int MY_REQUEST_CODE = 9001;
+
+    private void checkPlayStoreUpdate() {
+        try {
+            AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
+            Task<AppUpdateInfo> appUpdateInfoTask = appUpdateManager.getAppUpdateInfo();
+            appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
+                if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                        && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
+                    try {
+                        appUpdateManager.startUpdateFlowForResult(
+                            appUpdateInfo,
+                            AppUpdateType.IMMEDIATE,
+                            this,
+                            MY_REQUEST_CODE
+                        );
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error starting immediate update flow: " + e.getMessage());
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking play store update: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        try {
+            AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
+            appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
+                if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+                    try {
+                        appUpdateManager.startUpdateFlowForResult(
+                            appUpdateInfo,
+                            AppUpdateType.IMMEDIATE,
+                            this,
+                            MY_REQUEST_CODE
+                        );
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error resuming update flow: " + e.getMessage());
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking active update in resume: " + e.getMessage());
+        }
+        checkPlayStoreUpdate();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == MY_REQUEST_CODE) {
+            if (resultCode != RESULT_OK) {
+                Log.e(TAG, "In-app update failed or cancelled by user. Result code: " + resultCode);
+                checkPlayStoreUpdate();
+            }
+        }
     }
 
     @Override
@@ -194,6 +266,30 @@ public class MainActivity extends BridgeActivity {
                 } catch (Exception ex) {
                     Log.e(TAG, "❌ Fallback intent failed:", ex);
                 }
+            }
+        }
+
+        @JavascriptInterface
+        public String getAppVersionName() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting versionName", e);
+                return "1.2.38";
+            }
+        }
+
+        @JavascriptInterface
+        public int getAppVersionCode() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    return (int) getPackageManager().getPackageInfo(getPackageName(), 0).getLongVersionCode();
+                } else {
+                    return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting versionCode", e);
+                return 47;
             }
         }
     }

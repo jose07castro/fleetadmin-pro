@@ -7,8 +7,8 @@ android {
         applicationId "com.fleetadminpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion 36
-        versionCode 46
-        versionName "1.2.37"
+        versionCode 47
+        versionName "1.2.38"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -53,6 +53,9 @@ dependencies {
     
     // Google Play Services Location — para FusedLocationProviderClient (inmortalidad GPS)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
+
+    // Google Play In-App Updates — para actualizaciones forzadas inmediatas
+    implementation 'com.google.android.play:app-update:2.1.0'
     
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

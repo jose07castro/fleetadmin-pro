@@ -83,23 +83,26 @@
     gap: var(--space-2);
     padding: var(--space-4);
     border-radius: var(--radius-xl);
-    border: 2px solid var(--border-color);
+    border: 2px solid rgba(255, 255, 255, 0.1);
     cursor: pointer;
     transition: all var(--transition-fast);
-    background: transparent;
+    background: transparent !important;
     color: var(--text-secondary);
+    box-shadow: none !important;
 }
 
 .role-option:hover {
-    border-color: var(--color-primary);
+    border-color: rgba(99, 102, 241, 0.5);
     color: var(--text-primary);
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 .role-option.selected {
     border-color: var(--color-primary);
-    background: rgba(99, 102, 241, 0.1);
+    background: transparent !important;
     color: var(--color-primary-light);
-    box-shadow: var(--shadow-glow);
+    box-shadow: none !important;
 }
 
 .role-icon {

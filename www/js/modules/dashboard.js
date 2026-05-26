@@ -608,7 +608,10 @@ window.DashboardModule = (() => {
                     <div style="position:absolute;bottom:-2px;right:-2px;background:var(--color-primary);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;border:2px solid var(--bg-secondary);">📷</div>
                 </div>
                 <div style="flex:1;">
-                    <div style="font-weight:600;">${safeName}</div>
+                    <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
+                        ${safeName}
+                        ${u.role === 'driver' && typeof Components !== 'undefined' && Components.getVersionBadge ? Components.getVersionBadge(u.appVersion || 'Desconocida') : ''}
+                    </div>
                     <span class="badge badge-${u.role === 'owner' ? 'primary' : u.role === 'driver' ? 'success' : 'warning'}">
                         ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
                     </span>

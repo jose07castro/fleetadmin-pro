@@ -471,12 +471,49 @@ const Components = (() => {
         showModal('🤝 Colaboración Internacional', bodyHTML, `
             <button class="btn btn-secondary" onclick="Components.closeModal()" style="width:100%; display:flex; justify-content:center; border-radius:var(--radius-md);">Cerrar</button>
         `);
+    function getVersionBadge(version) {
+        if (!version || version === 'Desconocida') {
+            return `<span class="badge" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-weight: 600; font-size: 11px;">⚠️ Sin versión</span>`;
+        }
+        
+        const verClean = version.replace('v', '').trim();
+        const parts = verClean.split('.').map(Number);
+        const major = parts[0] || 0;
+        const minor = parts[1] || 0;
+        const patch = parts[2] || 0;
+        
+        let isOld = false;
+        let isVeryOld = false;
+        
+        if (major < 1) {
+            isVeryOld = true;
+        } else if (major === 1) {
+            if (minor < 2) {
+                isVeryOld = true;
+            } else if (minor === 2) {
+                if (patch < 38) {
+                    isOld = true;
+                }
+                if (patch < 30) {
+                    isVeryOld = true;
+                }
+            }
+        }
+        
+        if (isVeryOld) {
+            return `<span class="badge" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; font-weight: 700; font-size: 11px;" title="Versión crítica — Actualización obligatoria requerida">🔴 ${version}</span>`;
+        } else if (isOld) {
+            return `<span class="badge" style="background: rgba(234, 179, 8, 0.15); border: 1px solid #eab308; color: #facc15; font-weight: 700; font-size: 11px;" title="Versión vieja — Se recomienda actualizar">🟡 ${version}</span>`;
+        } else {
+            return `<span class="badge" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-weight: 700; font-size: 11px;" title="Versión actualizada">🟢 ${version}</span>`;
+        }
     }
 
     return {
         renderLayout, renderSidebar, renderHeader, renderUnitToggles,
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
-        renderEmptyState, confirm, escapeHTML, showDonationModal
+        renderEmptyState, confirm, escapeHTML, showDonationModal,
+        getVersionBadge
     };
 })();

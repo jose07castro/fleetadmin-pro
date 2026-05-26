@@ -149,6 +149,74 @@ app.get('/api/bot/fleets', async (req, res) => {
 });
 
 // ============================================
+// In-App Update: Version Control Endpoints
+// ============================================
+
+// Check minimum required version code/name
+app.get('/api/version-check', async (req, res) => {
+    try {
+        const db = WhatsappBot.getDb();
+        let minVersionCode = 47; // default fallback
+        let minVersionName = "1.2.38";
+        let playStoreUrl = "https://play.google.com/store/apps/details?id=com.fleetadminpro.app";
+
+        if (db) {
+            const snap = await db.ref('global_settings/min_version').once('value');
+            const val = snap.val();
+            if (val) {
+                if (val.minVersionCode) minVersionCode = parseInt(val.minVersionCode);
+                if (val.minVersionName) minVersionName = val.minVersionName;
+                if (val.playStoreUrl) playStoreUrl = val.playStoreUrl;
+            }
+        }
+        res.json({
+            min_required_version_code: minVersionCode,
+            min_required_version_name: minVersionName,
+            play_store_url: playStoreUrl
+        });
+    } catch (e) {
+        console.error('⚠️ Error checking version from DB:', e.message);
+        res.json({
+            min_required_version_code: 47,
+            min_required_version_name: "1.2.38",
+            play_store_url: "https://play.google.com/store/apps/details?id=com.fleetadminpro.app"
+        });
+    }
+});
+
+// Report driver's current app version
+app.post('/api/driver/report-version', async (req, res) => {
+    try {
+        const { driver_id, fleetId, version } = req.body;
+        if (!driver_id || !fleetId || !version) {
+            return res.status(400).json({ ok: false, error: 'driver_id, fleetId, and version are required' });
+        }
+
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Database not available' });
+        }
+
+        console.log(`📱 [VERSION REPORT] Driver ${driver_id} reported version ${version}`);
+
+        // Update in globalUsers
+        await db.ref(`globalUsers/${driver_id}/appVersion`).set(version);
+
+        // Update in fleet users
+        await db.ref(`fleets/${fleetId}/users/${driver_id}/appVersion`).set(version);
+
+        // Update in driver_positions as well (for live tracking indicators)
+        await db.ref(`driver_positions/${driver_id}/appVersion`).set(version);
+
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error processing report-version:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+
+// ============================================
 // Onboarding IA - Validación de Documentos
 // ============================================
 app.post('/api/auth/verify-documents', async (req, res) => {
