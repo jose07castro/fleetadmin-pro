@@ -46,15 +46,15 @@ const ShiftsModule = (() => {
     async function cleanupDuplicateShifts(driverId) {
         const activeShifts = await DB.getActiveShifts();
         const driverActiveShifts = activeShifts.filter(s => String(s.driverId) === String(driverId));
-        
+
         if (driverActiveShifts.length > 1) {
             console.warn(`🚨 MULTIPLES TURNOS ACTIVOS DETECTADOS para chofer ${driverId}. Limpiando clones...`);
             // Ordenar por fecha (el más reciente primero)
             driverActiveShifts.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
-            
+
             const keepShift = driverActiveShifts[0]; // Mantener el más actual
             const duplicates = driverActiveShifts.slice(1);
-            
+
             for (const dup of duplicates) {
                 console.log(`🧹 Eliminando turno clon: ${dup.id}`);
                 await DB.remove('shifts', dup.id);
@@ -70,7 +70,7 @@ const ShiftsModule = (() => {
         setTimeout(() => _hydratedDriverView(driverId), 50);
 
         const cachedShiftId = localStorage.getItem('active_shift_id');
-        
+
         if (cachedShiftId) {
             // Priority 0: Instant Load
             return `
@@ -103,7 +103,7 @@ const ShiftsModule = (() => {
     async function _hydratedDriverView(driverId) {
         try {
             const vehicles = await DB.getAll('vehicles');
-            
+
             // v122: Banner de Advertencia por Optimización de Batería (Android)
             let batteryBannerHTML = '';
             if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
@@ -124,7 +124,7 @@ const ShiftsModule = (() => {
                             </div>
                         `;
                     }
-                } catch(e) { console.warn(e); }
+                } catch (e) { console.warn(e); }
             }
 
             // 1. Limpiar duplicados automáticamente (ahora rápido, sin cargar todo)
@@ -197,13 +197,13 @@ const ShiftsModule = (() => {
                     <label class="form-label">${I18n.t('shift_select_vehicle')}</label>
                     <select class="form-select" id="shiftVehicle">
                         ${vehicles.map(v => {
-                            const isOccupied = occupiedVehicleIds.has(String(v.id));
-                            const usedBy = vehicleDriverMap[String(v.id)] || '';
-                            if (isOccupied) {
-                                return `<option value="${v.id}" disabled style="color:#ef4444; font-weight:600;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
-                            }
-                            return `<option value="${v.id}">✅ ${v.name} — ${v.plate}</option>`;
-                        }).join('')}
+                const isOccupied = occupiedVehicleIds.has(String(v.id));
+                const usedBy = vehicleDriverMap[String(v.id)] || '';
+                if (isOccupied) {
+                    return `<option value="${v.id}" disabled style="color:#ef4444; font-weight:600;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
+                }
+                return `<option value="${v.id}">✅ ${v.name} — ${v.plate}</option>`;
+            }).join('')}
                     </select>
                 </div>
 
@@ -235,7 +235,7 @@ const ShiftsModule = (() => {
     // --- Turno activo ---
     function renderActiveShift(shift, vehicles) {
         const vehicle = vehicles.find(v => v.id === shift.vehicleId);
-        
+
         // Guardar datos del turno activo para el SOS FAB
         _activeShiftId = shift.id;
         _activeVehicleId = shift.vehicleId;
@@ -351,21 +351,21 @@ const ShiftsModule = (() => {
     async function _hydratedOwnerView() {
         try {
             const activeShifts = await DB.getActiveShifts();
-            
+
             // Detectar si hay conductores con múltiples turnos activos y corregirlos silenciosamente
             const activeDrivers = new Set();
             for (const s of activeShifts) {
-                    if (activeDrivers.has(s.driverId)) {
-                        // Duplicado encontrado globalmente: aplicar limpieza
-                        await cleanupDuplicateShifts(s.driverId);
-                    } else {
-                        activeDrivers.add(s.driverId);
-                    }
+                if (activeDrivers.has(s.driverId)) {
+                    // Duplicado encontrado globalmente: aplicar limpieza
+                    await cleanupDuplicateShifts(s.driverId);
+                } else {
+                    activeDrivers.add(s.driverId);
+                }
             }
 
             // Refetch after possible cleanup
             const cleanActiveShifts = await DB.getActiveShifts();
-            
+
             // Cargar solo los últimos 20 completados usando la nueva función optimizada
             const completed = await DB.getRecentCompletedShifts(20);
             completed.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
@@ -408,10 +408,10 @@ const ShiftsModule = (() => {
             const driver = await DB.get('users', s.driverId);
             const vehicle = await DB.get('vehicles', s.vehicleId);
             const driverDisplayName = driver?.name || s.driverName || 'Conductor desconocido';
-            
+
             const appVersion = driver?.appVersion || s.appVersion || 'Desconocida';
-            const versionBadge = typeof Components !== 'undefined' && Components.getVersionBadge 
-                ? Components.getVersionBadge(appVersion) 
+            const versionBadge = typeof Components !== 'undefined' && Components.getVersionBadge
+                ? Components.getVersionBadge(appVersion)
                 : '';
 
             html += `
@@ -433,7 +433,7 @@ const ShiftsModule = (() => {
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div style="font-size:var(--font-size-xs); color:var(--text-secondary);">
                             ${I18n.t('shift_odometer_start')}: ${Units.formatDistance(s.startOdometer)} |
-                            ${new Date(s.startTime).toLocaleString([], { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12: false })}
+                            ${new Date(s.startTime).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
                         </div>
                         ${Auth.isOwner() ? `
                         <div style="display:flex; gap:var(--space-2);">
@@ -461,12 +461,12 @@ const ShiftsModule = (() => {
             const vehicleName = s.vehicleName || (vehicle ? `${vehicle.name} — ${vehicle.plate}` : `#${s.vehicleId}`);
             rows += `
                 <tr>
-                    <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()} ${new Date(s.startTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })}</td>
+                    <td data-label="${I18n.t('date')}">${new Date(s.startTime).toLocaleDateString()} ${new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
                     <td data-label="${I18n.t('mech_vehicle')}">${vehicleName}</td>
                     <td data-label="${I18n.t('shift_type')}">
                         <div style="display:flex; align-items:center; gap:6px;">
                             ${s.shiftType === 'night' ? '🌙' : '🌅'}
-                            <span>${new Date(s.startTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false })} - ${s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12: false }) : '--:--'}</span>
+                            <span>${new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} - ${s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'}</span>
                         </div>
                     </td>
                     <td data-label="${I18n.t('shift_driver')}">${driverName}</td>
@@ -563,7 +563,7 @@ const ShiftsModule = (() => {
         if (driverHasActiveShift) {
             Components.showToast('ℹ️ Tienes un turno en curso. Redirigiendo...', 'info');
             restoreBtn();
-            Router.navigate('shifts'); 
+            Router.navigate('shifts');
             return;
         }
 
@@ -618,13 +618,13 @@ const ShiftsModule = (() => {
             try {
                 localStorage.setItem('active_shift_id', shiftIdRef);
                 localStorage.setItem('active_shift_state', 'true');
-            } catch(lsErr) { console.warn('No se pudo guardar persistencia local', lsErr); }
+            } catch (lsErr) { console.warn('No se pudo guardar persistencia local', lsErr); }
 
             // Guardar foto separada
             if (photo) {
                 try {
                     firebase.database().ref(DB.getFleet() + '/shift_photos/' + shiftIdRef + '/startOdometerPhoto').set(photo);
-                } catch(e) { console.warn('No se pudo guardar la foto de inicio', e); }
+                } catch (e) { console.warn('No se pudo guardar la foto de inicio', e); }
             }
 
             // Reset selector
@@ -725,7 +725,7 @@ const ShiftsModule = (() => {
         const earnings = parseFloat(document.getElementById('shiftEarnings')?.value) || 0;
         const odoEndRaw = Components.getPhotoData('shiftOdoEnd');
         const earningsPhotoRaw = Components.getPhotoData('shiftEarningsPhoto');
-        
+
         const odoPhoto = odoEndRaw ? await StorageUtil.compressImage(odoEndRaw, 1024, 1024, 0.7) : null;
         const earningsPhoto = earningsPhotoRaw ? await StorageUtil.compressImage(earningsPhotoRaw, 1024, 1024, 0.7) : null;
 
@@ -779,7 +779,7 @@ const ShiftsModule = (() => {
                 if (typeof AndroidServices !== 'undefined') {
                     AndroidServices.disableForegroundService();
                 }
-            } catch(lsErr) {}
+            } catch (lsErr) { }
 
             // Guardar fotos separadas para que no alenten el Login
             if (odoPhoto || earningsPhoto) {
@@ -787,7 +787,7 @@ const ShiftsModule = (() => {
                     const photosNode = firebase.database().ref(DB.getFleet() + '/shift_photos/' + shift.id);
                     if (odoPhoto) photosNode.child('endOdometerPhoto').set(odoPhoto);
                     if (earningsPhoto) photosNode.child('earningsPhoto').set(earningsPhoto);
-                } catch(e) { console.warn('Error guardando fotos en background', e); }
+                } catch (e) { console.warn('Error guardando fotos en background', e); }
             }
 
             // Actualizar odómetro del vehículo
@@ -810,7 +810,7 @@ const ShiftsModule = (() => {
                                 nextOilChangeKm: vehicle.nextOilChangeKm
                             })
                         }).catch(e => console.warn('Push maintenance emit fallback', e));
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             }
 
@@ -875,13 +875,13 @@ const ShiftsModule = (() => {
             if (remaining <= 0) {
                 clearInterval(shiftTimer);
                 display.textContent = '00:00:00';
-                
+
                 // Evitar abrir duplicados si ya hay un disparador activo
                 if (!document.getElementById('shiftExtendModalSentinel')) {
                     const sent = document.createElement('div');
                     sent.id = 'shiftExtendModalSentinel';
                     document.body.appendChild(sent);
-                    
+
                     const modalTitle = '⏰ ¡Turno Finalizado!';
                     const modalBody = `
                         <div style="text-align:center; padding:var(--space-4) var(--space-2);">
@@ -1083,14 +1083,14 @@ const ShiftsModule = (() => {
     async function previewPhoto(shiftId) {
         Components.showToast('Cargando imagen...', 'info');
         const shift = await DB.get('shifts', shiftId);
-        
+
         if (!shift || (!shift.earningsPhoto && !shift.startOdometerPhoto && !shift.endOdometerPhoto)) {
             Components.showToast('No hay foto disponible', 'warning');
             return;
         }
 
         let photoB64 = shift.earningsPhoto;
-        
+
         if (photoB64 === 'migrated') {
             photoB64 = await DB.getShiftPhoto(shiftId, 'earningsPhoto');
             if (!photoB64) {
@@ -1145,13 +1145,13 @@ const ShiftsModule = (() => {
                 Components.showToast('❌ Error: Turno no encontrado en la base de datos.', 'danger');
                 return;
             }
-            
+
             // Acumular +2 horas
             shift.extendedHours = (shift.extendedHours || 0) + 2;
-            
+
             await DB.put('shifts', shift);
             Components.showToast('⚡ ¡Tu turno se ha extendido 2 horas con éxito!', 'success');
-            
+
             // Forzar refresco de la interfaz para recalcular los temporizadores con la nueva duración
             Router.navigate('shifts');
         } catch (e) {
@@ -1173,7 +1173,8 @@ const ShiftsModule = (() => {
         return false;
     }
 
-    return { render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
+    return {
+        render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
         getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName }),
         checkActiveShift, hydrateActiveShift, extendActiveShift
     };
