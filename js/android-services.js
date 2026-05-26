@@ -242,18 +242,16 @@ const AndroidServices = (() => {
             // en gps-permissions.js (ruta Web)
             // ══════════════════════════════════════════════
             try {
-                await firebaseDB.ref(`driver_positions/${userId}`).set({
-                    lat: lat,
-                    lng: lng,
-                    heading: bearing || 0,
-                    speed: speed || 0,
-                    battery: batteryLevel,
-                    driverName: (typeof Auth !== 'undefined') ? Auth.getUserName() || userId : userId,
-                    updated_at: new Date().toISOString(),
-                    _source: 'native_foreground_service'
-                });
+                await window.sendLocationToServer(
+                    lat,
+                    lng,
+                    bearing || 0,
+                    speed || 0,
+                    batteryLevel,
+                    'native_foreground_service'
+                );
             } catch (e) {
-                console.warn('📱 _onNativeGPS: Error subiendo a Firebase:', e);
+                console.warn('📱 _onNativeGPS: Error enviando al servidor:', e);
             }
         };
 

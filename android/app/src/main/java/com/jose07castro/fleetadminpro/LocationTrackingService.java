@@ -528,32 +528,60 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void pushSingleToFirebaseAsync(double lat, double lng, float speed, float bearing, int battery, String timestamp, String source, com.google.firebase.database.DatabaseReference.CompletionListener listener) {
-        if (dbRef == null || userId == null || userId.isEmpty()) {
+        if (userId == null || userId.isEmpty() || serverUrl == null || serverUrl.isEmpty()) {
             if (listener != null) {
-                listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("No user ID or db reference")), null);
+                listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("No user ID or server URL")), null);
             }
             return;
         }
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("lat", lat);
-        data.put("lng", lng);
-        data.put("heading", (double) bearing);
-        data.put("speed", (double) speed);
-        data.put("battery", battery);
-        data.put("driverName", driverName != null ? driverName : "Chofer");
-        data.put("updated_at", timestamp);
-        data.put("_source", source);
-        data.put("last_heartbeat", System.currentTimeMillis());
-        data.put("status", "active");
-        data.put("gps_status", "active");
+        serviceHandler.post(() -> {
+            try {
+                java.net.URL url = new java.net.URL(serverUrl + "/api/driver/location");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; utf-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
 
-        dbRef.child(userId).setValue(data, (error, ref) -> {
-            if (error == null) {
-                lastHeartbeatTime = System.currentTimeMillis();
-            }
-            if (listener != null) {
-                listener.onComplete(error, ref);
+                org.json.JSONObject jsonParam = new org.json.JSONObject();
+                jsonParam.put("driver_id", userId);
+                jsonParam.put("lat", lat);
+                jsonParam.put("lng", lng);
+                jsonParam.put("heading", (double) bearing);
+                jsonParam.put("speed", (double) speed);
+                jsonParam.put("battery", battery);
+                jsonParam.put("driverName", driverName != null ? driverName : "Chofer");
+                jsonParam.put("timestamp", timestamp);
+                jsonParam.put("source", source);
+                jsonParam.put("snap", true);
+
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    byte[] input = jsonParam.toString().getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    lastHeartbeatTime = System.currentTimeMillis();
+                    Log.i(TAG, "🔌 Location HTTP Sent: " + source + ". Lat=" + lat + ", Lng=" + lng);
+                    if (listener != null) {
+                        listener.onComplete(null, null);
+                    }
+                } else {
+                    Log.w(TAG, "❌ HTTP response code: " + code);
+                    if (listener != null) {
+                        listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("HTTP error code: " + code)), null);
+                    }
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error sending location via HTTP: " + e.getMessage());
+                if (listener != null) {
+                    listener.onComplete(com.google.firebase.database.DatabaseError.fromException(e), null);
+                }
             }
         });
     }
@@ -819,33 +847,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void sendSilentHeartbeat() {
-        if (dbRef == null || userId == null || userId.isEmpty()) return;
+        if (userId == null || userId.isEmpty()) return;
 
-        serviceHandler.post(() -> {
-            Map<String, Object> data = new HashMap<>();
-            data.put("lat", lastLat);
-            data.put("lng", lastLng);
-            data.put("heading", (double) lastBearing);
-            data.put("speed", (double) lastSpeed);
-            data.put("battery", getBatteryLevel());
-            data.put("driverName", driverName != null ? driverName : "Chofer");
-            
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            data.put("updated_at", sdf.format(new Date()));
-            data.put("last_heartbeat", System.currentTimeMillis());
-            data.put("status", "active");
-            data.put("gps_status", "active");
-            data.put("_source", "native_heartbeat_ping");
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        String timestamp = sdf.format(new Date());
 
-            dbRef.child(userId).setValue(data, (error, ref) -> {
-                if (error == null) {
-                    lastHeartbeatTime = System.currentTimeMillis();
-                    Log.i(TAG, "🏓 Ping de latido silencioso guardado en Firebase");
-                } else {
-                    Log.w(TAG, "❌ Falló el envío del latido silencioso: " + error.getMessage());
-                }
-            });
+        pushSingleToFirebaseAsync(lastLat, lastLng, lastSpeed, lastBearing, getBatteryLevel(), timestamp, "native_heartbeat_ping", (error, ref) -> {
+            if (error == null) {
+                Log.i(TAG, "🏓 Ping de latido silencioso guardado via servidor");
+            } else {
+                Log.w(TAG, "❌ Falló el envío del latido silencioso: " + error.getMessage());
+            }
         });
     }
 

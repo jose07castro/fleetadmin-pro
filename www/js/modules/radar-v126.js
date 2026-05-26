@@ -79,8 +79,8 @@ const RadarModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
-                    this.div.style.left = (pos.x - 15) + 'px';
-                    this.div.style.top = (pos.y - 15) + 'px';
+                    this.div.style.left = (pos.x - 30) + 'px';
+                    this.div.style.top = (pos.y - 40) + 'px';
                 }
             }
             onRemove() {
@@ -972,12 +972,22 @@ const RadarModule = (() => {
             animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         `;
         
+        const now = new Date();
+        const dateStr = now.toLocaleDateString();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const dateTimeStr = `${dateStr} ${timeStr}`;
+
         toast.innerHTML = `
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span>${type === 'danger' ? '🚨' : '⚠️'}</span>
-                <span>${message}</span>
+            <div style="display:flex; flex-direction:column; gap:2px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span>${type === 'danger' ? '🚨' : '⚠️'}</span>
+                    <span>${message}</span>
+                </div>
+                <div style="font-size:0.75rem; opacity:0.8; margin-left:24px; font-weight:normal;">
+                    ${dateTimeStr}
+                </div>
             </div>
-            <button onclick="this.parentElement.remove()" style="background:none; border:none; color:white; font-size:1.1rem; cursor:pointer; padding: 0 4px;">✕</button>
+            <button onclick="this.parentElement.remove()" style="background:none; border:none; color:white; font-size:1.1rem; cursor:pointer; padding: 0 4px; align-self: center; margin-left: 12px;">✕</button>
         `;
         
         container.appendChild(toast);

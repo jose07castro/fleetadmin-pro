@@ -725,11 +725,15 @@ const SOSModule = (() => {
                 );
             });
             _myLastPosition = pos;
-            await firebaseDB.ref(`driver_positions/${userId}`).set({
-                lat: pos.lat,
-                lng: pos.lng,
-                updated_at: new Date().toISOString()
-            });
+            await window.sendLocationToServer(
+                pos.lat,
+                pos.lng,
+                0,
+                0,
+                null,
+                'sos_tracker',
+                false // snap = false para conservar coordenadas crudas en SOS
+            );
             console.log('🚨 SOS POSITION: ✅ Guardada:', pos.lat.toFixed(4), pos.lng.toFixed(4));
         } catch (e) {
             console.warn('🚨 SOS POSITION: Error guardando posición:', e.message || e);

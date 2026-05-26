@@ -435,16 +435,14 @@ const GPSPermissions = (() => {
                     }
 
                     try {
-                        await firebaseDB.ref(`driver_positions/${userId}`).set({
-                            lat: location.latitude,
-                            lng: location.longitude,
-                            heading: location.bearing || 0,
-                            speed: (location.speed || 0) * 3.6, // m/s to km/h
-                            battery: batteryLevel,
-                            driverName: Auth.getUserName() || userId,
-                            updated_at: new Date().toISOString(),
-                            _native: true // Marca nativa de calidad paridad
-                        });
+                        await window.sendLocationToServer(
+                            location.latitude,
+                            location.longitude,
+                            location.bearing || 0,
+                            (location.speed || 0) * 3.6,
+                            batteryLevel,
+                            'native_background_geolocation'
+                        );
                         _lastPositionPushTime = Date.now();
                     } catch(e) {}
                 }
@@ -658,15 +656,14 @@ const GPSPermissions = (() => {
                 CopilotModule.checkProximity(pos.lat, pos.lng);
             }
 
-            await firebaseDB.ref(`driver_positions/${userId}`).set({
-                lat: pos.lat,
-                lng: pos.lng,
-                heading: pos.heading,
-                speed: pos.speed,
-                battery: batteryLevel,
-                driverName: Auth.getUserName() || userId,
-                updated_at: new Date().toISOString()
-            });
+            await window.sendLocationToServer(
+                pos.lat,
+                pos.lng,
+                pos.heading,
+                pos.speed,
+                batteryLevel,
+                'force_send_position'
+            );
             _lastPositionPushTime = Date.now();
         } catch (e) {
             // Si el GPS falla, subir 'ping' de última posición si hay alguna
@@ -723,3 +720,48 @@ const GPSPermissions = (() => {
         _resolveCallback: null
     };
 })();
+
+// ============================================
+// Enviar coordenadas al Servidor (Ajuste a la Calle / Snap to Road)
+// ============================================
+window.sendLocationToServer = async function(lat, lng, heading, speed, battery, source, snap = true) {
+    const userId = (typeof Auth !== 'undefined') ? (Auth.getUserId() || Auth.getUserName()) : null;
+    if (!userId) {
+        console.warn('📡 sendLocationToServer: No userId, skipping report');
+        return;
+    }
+
+    const serverUrl = (window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.protocol === 'file:') 
+                       ? 'https://fleetadmin-pro-1.onrender.com' 
+                       : window.location.origin;
+
+    const body = {
+        driver_id: userId,
+        lat: lat,
+        lng: lng,
+        heading: heading || 0,
+        speed: speed || 0,
+        battery: battery,
+        driverName: (typeof Auth !== 'undefined') ? Auth.getUserName() || userId : userId,
+        timestamp: new Date().toISOString(),
+        source: source,
+        snap: snap
+    };
+
+    try {
+        const response = await fetch(`${serverUrl}/api/driver/location`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.json();
+    } catch (e) {
+        console.error('❌ sendLocationToServer failed:', e);
+        throw e;
+    }
+};

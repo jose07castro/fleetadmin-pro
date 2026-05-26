@@ -473,6 +473,72 @@ app.post('/api/driver/gps-event', async (req, res) => {
 });
 
 // ============================================
+// Driver Location Reporting & Snapping (Road Matching)
+// ============================================
+app.post('/api/driver/location', async (req, res) => {
+    try {
+        const { driver_id, lat, lng, speed, heading, battery, driverName, timestamp, source, snap } = req.body;
+        if (!driver_id || lat === undefined || lng === undefined) {
+            return res.status(400).json({ ok: false, error: 'driver_id, lat, and lng are required' });
+        }
+
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Database not available' });
+        }
+
+        let finalLat = parseFloat(lat);
+        let finalLng = parseFloat(lng);
+        let corrected = false;
+
+        // Snappear a la calle desactivado para evitar desplazamientos a calles paralelas por GPS drift en punto único
+        if (false) {
+            try {
+                const axios = require('axios');
+                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+                const url = `https://roads.googleapis.com/v1/snapToRoads?path=${finalLat},${finalLng}&key=${googleApiKey}`;
+                const response = await axios.get(url, { timeout: 4000 });
+                if (response.data && response.data.snappedPoints && response.data.snappedPoints.length > 0) {
+                    const snappedPoint = response.data.snappedPoints[0].location;
+                    if (snappedPoint.latitude !== undefined && snappedPoint.longitude !== undefined) {
+                        finalLat = snappedPoint.latitude;
+                        finalLng = snappedPoint.longitude;
+                        corrected = true;
+                    }
+                }
+            } catch (e) {
+                console.error(`⚠️ [SNAP] Error snapping location for driver ${driver_id}:`, e.message);
+            }
+        }
+
+        const eventTime = timestamp ? new Date(timestamp).getTime() : Date.now();
+        const updateData = {
+            lat: finalLat,
+            lng: finalLng,
+            lat_raw: parseFloat(lat),
+            lng_raw: parseFloat(lng),
+            corrected: corrected,
+            heading: heading !== undefined ? parseFloat(heading) : 0,
+            speed: speed !== undefined ? parseFloat(speed) : 0,
+            battery: battery !== undefined && battery !== null ? parseInt(battery) : null,
+            driverName: driverName || 'Chofer',
+            updated_at: new Date(eventTime).toISOString(),
+            last_heartbeat: eventTime,
+            status: 'active',
+            gps_status: 'active',
+            _source: source || 'server_api'
+        };
+
+        await db.ref(`driver_positions/${driver_id}`).update(updateData);
+        res.json({ ok: true, lat: finalLat, lng: finalLng, corrected });
+    } catch (e) {
+        console.error('❌ Error updating driver location:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+
+// ============================================
 // KITT Voice — ElevenLabs TTS Proxy
 // Protege la API Key en el servidor y cachea audios
 // ============================================
