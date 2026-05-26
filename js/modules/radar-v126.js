@@ -446,6 +446,43 @@ const RadarModule = (() => {
 
         const batteryText = (data.battery !== undefined && data.battery !== null) ? `${data.battery}%` : 'N/A';
 
+        const appVersion = data.appVersion || 'Desconocida';
+        let versionStyle = 'color: #94a3b8;'; // default gray
+        
+        if (appVersion !== 'Desconocida') {
+            const verClean = appVersion.replace('v', '').trim();
+            const parts = verClean.split('.').map(Number);
+            const major = parts[0] || 0;
+            const minor = parts[1] || 0;
+            const patch = parts[2] || 0;
+            
+            let isOld = false;
+            let isVeryOld = false;
+            
+            if (major < 1) {
+                isVeryOld = true;
+            } else if (major === 1) {
+                if (minor < 2) {
+                    isVeryOld = true;
+                } else if (minor === 2) {
+                    if (patch < 38) {
+                        isOld = true;
+                    }
+                    if (patch < 30) {
+                        isVeryOld = true;
+                    }
+                }
+            }
+            
+            if (isVeryOld) {
+                versionStyle = 'color: #ef4444; font-weight: bold;';
+            } else if (isOld) {
+                versionStyle = 'color: #eab308; font-weight: bold;';
+            } else {
+                versionStyle = 'color: #10b981; font-weight: bold;';
+            }
+        }
+
         let maintenanceHtml = '';
         if (vehicle && typeof Alerts !== 'undefined' && typeof Units !== 'undefined') {
             try {
@@ -520,6 +557,10 @@ const RadarModule = (() => {
                     ].filter(Boolean).join(', ') || 'Permisos/Batería'})</span>
                 </div>
                 ` : ''}
+                <div class="radar-popup-row">
+                    <span><span class="radar-popup-icon">📱</span> Versión App:</span>
+                    <strong style="${versionStyle}">${appVersion}</strong>
+                </div>
                 <div class="radar-popup-row">
                     <span><span class="radar-popup-icon">🏎️</span> Velocidad:</span>
                     <strong>${speed.toFixed(0)} km/h</strong>

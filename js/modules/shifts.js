@@ -408,13 +408,19 @@ const ShiftsModule = (() => {
             const driver = await DB.get('users', s.driverId);
             const vehicle = await DB.get('vehicles', s.vehicleId);
             const driverDisplayName = driver?.name || s.driverName || 'Conductor desconocido';
+            
+            const appVersion = driver?.appVersion || s.appVersion || 'Desconocida';
+            const versionBadge = typeof Components !== 'undefined' && Components.getVersionBadge 
+                ? Components.getVersionBadge(appVersion) 
+                : '';
+
             html += `
                 <div class="card">
                     <div style="display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3);">
                         <div class="stat-icon success">⏱️</div>
                         <div style="flex:1;">
-                            <div style="font-weight:700; font-size:var(--font-size-base); color:var(--color-primary-light);">
-                                👤 ${driverDisplayName}
+                            <div style="font-weight:700; font-size:var(--font-size-base); color:var(--color-primary-light); display:flex; align-items:center; gap:8px;">
+                                👤 ${driverDisplayName} ${versionBadge}
                             </div>
                             <div style="font-size:var(--font-size-xs); color:var(--text-tertiary);">
                                 🚗 ${vehicle?.name || ''} — ${vehicle?.plate || ''}

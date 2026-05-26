@@ -336,11 +336,11 @@ const AndroidServices = (() => {
         if (!isNativeAndroid()) return true;
 
         try {
-            // v10: NativeServiceBridge.requestBackgroundLocationPermission()
+            // v10: NativeServiceBridge.requestBackgroundLocation()
             // Llama al Intent nativo de Android 10+ (Allow all the time)
-            if (_hasNativeBridge() && window.NativeServiceBridge.requestBackgroundLocationPermission) {
+            if (_hasNativeBridge() && window.NativeServiceBridge.requestBackgroundLocation) {
                 console.log('📱 AndroidServices: Solicitando permiso Background Location via Bridge');
-                window.NativeServiceBridge.requestBackgroundLocationPermission();
+                window.NativeServiceBridge.requestBackgroundLocation();
                 return true;
             }
             

@@ -28,6 +28,10 @@ const App = (() => {
     // Inicializar la aplicación
     async function init() {
         try {
+            // 0. Verificar versión de la app (In-App forced update check)
+            const versionOk = await checkAppVersion();
+            if (!versionOk) return; // Detener inicio de la app
+
             // 0. Iniciar keep-alive del bot (Modo Web)
             startWebHeartbeat();
 
@@ -77,6 +81,9 @@ const App = (() => {
                         if (currentUserId) {
                             await applyUserTheme(currentUserId);
                         }
+
+                        // Reportar versión al servidor al recuperar sesión
+                        reportAppVersionToServer();
 
                         // Bloqueo de perfil incompleto al restaurar sesión
                         if (Auth.isDriver()) {
@@ -641,7 +648,120 @@ const App = (() => {
         });
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme };
+    // --- In-App Updates System (Actualizaciones Forzadas) ---
+    async function checkAppVersion() {
+        if (typeof window.NativeServiceBridge === 'undefined') {
+            console.log('🌐 Ejecutándose en modo Web/PWA. Omitiendo verificación de actualización de Play Store.');
+            return true; // Continuar normalmente
+        }
+
+        try {
+            const currentVersionCode = window.NativeServiceBridge.getAppVersionCode();
+            const currentVersionName = window.NativeServiceBridge.getAppVersionName();
+
+            // Leer caché por si no hay conexión
+            let cachedMinCode = parseInt(localStorage.getItem('min_required_version_code') || '0');
+            let cachedMinName = localStorage.getItem('min_required_version_name') || '1.2.38';
+            let cachedPlayStoreUrl = localStorage.getItem('play_store_url') || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+
+            // Si la caché nos dice que ya estamos desactualizados, bloquear de inmediato
+            if (cachedMinCode > 0 && currentVersionCode < cachedMinCode) {
+                showForcedUpdateScreen(currentVersionName, cachedMinName, cachedPlayStoreUrl);
+                return false; // Detener inicio de la app
+            }
+
+            // Consultar al servidor
+            const response = await fetch('/api/version-check');
+            if (response.ok) {
+                const data = await response.json();
+                const minCode = data.min_required_version_code;
+                const minName = data.min_required_version_name;
+                const playStoreUrl = data.play_store_url;
+
+                // Guardar en caché para futuras ejecuciones offline
+                localStorage.setItem('min_required_version_code', String(minCode));
+                localStorage.setItem('min_required_version_name', minName);
+                localStorage.setItem('play_store_url', playStoreUrl);
+
+                if (currentVersionCode < minCode) {
+                    showForcedUpdateScreen(currentVersionName, minName, playStoreUrl);
+                    return false; // Bloquear inicio
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ Error al verificar versión de la app (continuando con caché):', e);
+        }
+        return true;
+    }
+
+    function showForcedUpdateScreen(currentVersion, minVersion, playStoreUrl) {
+        _hideSplash();
+
+        // Limpiar todo el cuerpo de la página e inyectar el bloqueo
+        const appEl = document.getElementById('app');
+        if (!appEl) return;
+
+        // Inyectar estilos para animación
+        const styleId = 'forced-update-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                @keyframes scaleIn {
+                    from { opacity: 0; transform: scale(0.9); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                @keyframes float {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-10px); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        appEl.innerHTML = `
+            <div id="forced-update-overlay" style="position:fixed; inset:0; z-index:9999999; background:linear-gradient(135deg, #0f172a, #1e293b); display:flex; align-items:center; justify-content:center; padding: 24px; font-family:'Inter',sans-serif; color: #f1f5f9;">
+                <div style="max-width:400px; width:100%; text-align:center; padding: 40px 32px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); backdrop-filter: blur(16px); transform: scale(1); animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
+                    <div style="font-size: 64px; margin-bottom: 24px; animation: float 3s ease-in-out infinite; display: inline-block;">🚀</div>
+                    <h2 style="font-size: 24px; font-weight: 800; margin-bottom: 12px; background: linear-gradient(135deg, #a5b4fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Actualización Obligatoria</h2>
+                    <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-bottom: 32px;">Actualización obligatoria requerida para salir a trabajar. Por favor, instala la versión más reciente desde Google Play Store para continuar.</p>
+                    <a href="${playStoreUrl}" target="_blank" rel="noopener noreferrer" style="display: block; width: 100%; padding: 16px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 16px; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4); text-align: center; border: none; outline: none; cursor: pointer; transition: transform 0.2s;">
+                        ⚡ Actualizar en Play Store
+                    </a>
+                    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
+                        Versión actual: ${currentVersion} | Mínima requerida: ${minVersion}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function reportAppVersionToServer() {
+        const user = Auth.getUser();
+        if (!user || user.role !== 'driver') return; // Reportar específicamente para conductores
+
+        let version = 'v1.2.38'; // default
+        if (typeof window.NativeServiceBridge !== 'undefined') {
+            version = 'v' + window.NativeServiceBridge.getAppVersionName();
+        }
+
+        try {
+            await fetch('/api/driver/report-version', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    driver_id: user.id,
+                    fleetId: user.fleetId,
+                    version: version
+                })
+            });
+            console.log(`📱 App version reported to server: ${version}`);
+        } catch (e) {
+            console.warn('⚠️ Error al reportar versión al servidor:', e);
+        }
+    }
+
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---
