@@ -103,7 +103,32 @@
 }
 
 .role-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
     font-size: 1.8rem;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.role-icon svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+    transition: filter 0.3s ease;
+}
+
+.role-option:hover .role-icon {
+    transform: translateY(-4px) scale(1.15);
+}
+
+.role-option.selected .role-icon {
+    transform: scale(1.22);
+}
+
+.role-option.selected .role-icon svg {
+    filter: drop-shadow(0 6px 12px rgba(99, 102, 241, 0.45));
 }
 
 .role-label {

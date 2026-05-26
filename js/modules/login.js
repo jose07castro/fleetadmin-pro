@@ -27,23 +27,222 @@ const LoginModule = (() => {
 
                         <div class="role-selector" id="roleSelector">
                             <button class="role-option ${selectedRole === 'owner' ? 'selected' : ''}" data-role="owner" onclick="LoginModule.selectRole('owner')">
-                                <span class="role-icon">👑</span>
+                                <span class="role-icon">
+                                    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="crownGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFE259"/>
+                                                <stop offset="50%" stop-color="#FFA751"/>
+                                                <stop offset="100%" stop-color="#D48A37"/>
+                                            </linearGradient>
+                                            <linearGradient id="crownGoldDark" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#B8732A"/>
+                                                <stop offset="100%" stop-color="#5C3A15"/>
+                                            </linearGradient>
+                                            <linearGradient id="crownGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+                                                <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+                                            </linearGradient>
+                                            <radialGradient id="gemRed" cx="50%" cy="50%" r="50%">
+                                                <stop offset="0%" stop-color="#FF5E62"/>
+                                                <stop offset="100%" stop-color="#FF1E27"/>
+                                            </radialGradient>
+                                            <radialGradient id="gemBlue" cx="50%" cy="50%" r="50%">
+                                                <stop offset="0%" stop-color="#00C9FF"/>
+                                                <stop offset="100%" stop-color="#92FE9D"/>
+                                            </radialGradient>
+                                            <radialGradient id="gemPurple" cx="50%" cy="50%" r="50%">
+                                                <stop offset="0%" stop-color="#F355FF"/>
+                                                <stop offset="100%" stop-color="#8000FF"/>
+                                            </radialGradient>
+                                        </defs>
+                                        <ellipse cx="32" cy="52" rx="20" ry="5" fill="#000000" opacity="0.3"/>
+                                        <path d="M12 42 C12 47, 52 47, 52 42 L52 46 C52 50, 12 50, 12 46 Z" fill="url(#crownGoldDark)"/>
+                                        <path d="M12 42 C12 47, 52 47, 52 42 C52 38, 12 38, 12 42" fill="url(#crownGold)"/>
+                                        <path d="M12 42 L12 28 L22 36 L32 20 L42 36 L52 28 L52 42 C52 42, 32 45, 12 42 Z" fill="#996020"/>
+                                        <path d="M12 42 L12 28 L22 36 L21 44 Z" fill="url(#crownGold)"/>
+                                        <path d="M21 44 L22 36 L32 20 L42 36 L43 44 C32 46, 21 46, 21 44 Z" fill="url(#crownGold)"/>
+                                        <path d="M43 44 L42 36 L52 28 L52 42 Z" fill="url(#crownGold)"/>
+                                        <path d="M12 42 L12 28 L22 36 L32 20 L42 36 L52 28 L52 42 C52 42, 32 45, 12 42 Z" fill="url(#crownGlow)" opacity="0.4"/>
+                                        <circle cx="12" cy="28" r="3.5" fill="url(#gemPurple)"/>
+                                        <circle cx="32" cy="20" r="5" fill="url(#gemRed)"/>
+                                        <circle cx="52" cy="28" r="3.5" fill="url(#gemPurple)"/>
+                                        <circle cx="20" cy="42.5" r="2" fill="url(#gemBlue)"/>
+                                        <circle cx="32" cy="43.5" r="2.5" fill="url(#gemRed)"/>
+                                        <circle cx="44" cy="42.5" r="2" fill="url(#gemBlue)"/>
+                                        <path d="M32 17 L33 20 L36 21 L33 22 L32 25 L31 22 L28 21 L31 20 Z" fill="#FFFFFF" opacity="0.9"/>
+                                    </svg>
+                                </span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
                             <button class="role-option ${selectedRole === 'titular' ? 'selected' : ''}" data-role="titular" onclick="LoginModule.selectRole('titular')">
-                                <span class="role-icon">💼</span>
+                                <span class="role-icon">
+                                    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="briefcaseBody" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#E27D60"/>
+                                                <stop offset="50%" stop-color="#C35A3E"/>
+                                                <stop offset="100%" stop-color="#8E2D13"/>
+                                            </linearGradient>
+                                            <linearGradient id="briefcaseSide" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#70200C"/>
+                                                <stop offset="100%" stop-color="#3D0F04"/>
+                                            </linearGradient>
+                                            <linearGradient id="briefcaseTop" x1="0%" y1="100%" x2="0%" y2="0%">
+                                                <stop offset="0%" stop-color="#A54028"/>
+                                                <stop offset="100%" stop-color="#F2987E"/>
+                                            </linearGradient>
+                                            <linearGradient id="goldMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFE066"/>
+                                                <stop offset="50%" stop-color="#F5B041"/>
+                                                <stop offset="100%" stop-color="#9A7D0A"/>
+                                            </linearGradient>
+                                            <linearGradient id="chromeMetal" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFFFFF"/>
+                                                <stop offset="30%" stop-color="#BDC3C7"/>
+                                                <stop offset="100%" stop-color="#7F8C8D"/>
+                                            </linearGradient>
+                                        </defs>
+                                        <ellipse cx="34.5" cy="52" rx="22" ry="5" fill="#000000" opacity="0.35"/>
+                                        <path d="M17 28 L22 25 L22 45 L17 48 Z" fill="url(#briefcaseSide)"/>
+                                        <path d="M17 28 L22 25 L52 25 L47 28 Z" fill="url(#briefcaseTop)"/>
+                                        <path d="M17 28 L47 28 L47 48 L17 48 Z" fill="url(#briefcaseBody)"/>
+                                        <path d="M17 28 L47 28 L47 36 C47 36, 40 39, 32 39 C24 39, 17 36, 17 36 Z" fill="#6A1A0A"/>
+                                        <path d="M19 29 L45 29 L45 35 C45 35, 39 38, 32 38 C25 38, 19 35, 19 35 Z" fill="url(#briefcaseBody)" opacity="0.8"/>
+                                        <rect x="23" y="34" width="5" height="7" rx="1" fill="url(#goldMetal)"/>
+                                        <circle cx="25.5" cy="38" r="1" fill="#3D0F04"/>
+                                        <rect x="36" y="34" width="5" height="7" rx="1" fill="url(#goldMetal)"/>
+                                        <circle cx="38.5" cy="38" r="1" fill="#3D0F04"/>
+                                        <path d="M27 25 L27 22 L30 22 L30 25 Z" fill="url(#chromeMetal)"/>
+                                        <path d="M39 25 L39 22 L42 22 L42 25 Z" fill="url(#chromeMetal)"/>
+                                        <path d="M28 22 C28 15, 41 15, 41 22 L38 22 C38 18, 31 18, 31 22 Z" fill="#3D0F04"/>
+                                        <path d="M29 22 C29 16, 40 16, 40 22" stroke="url(#briefcaseTop)" stroke-width="1.5" fill="none"/>
+                                        <path d="M17 44 L21 44 L21 48 L17 48 Z" fill="url(#goldMetal)" opacity="0.9"/>
+                                        <path d="M43 44 L47 44 L47 48 L43 48 Z" fill="url(#goldMetal)" opacity="0.9"/>
+                                    </svg>
+                                </span>
                                 <span class="role-label">${I18n.t('role_titular')}</span>
                             </button>
                             <button class="role-option ${selectedRole === 'mechanic' ? 'selected' : ''}" data-role="mechanic" onclick="LoginModule.selectRole('mechanic')">
-                                <span class="role-icon">🔧</span>
+                                <span class="role-icon">
+                                    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="chromeBody" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFFFFF"/>
+                                                <stop offset="25%" stop-color="#E2E8F0"/>
+                                                <stop offset="50%" stop-color="#94A3B8"/>
+                                                <stop offset="75%" stop-color="#475569"/>
+                                                <stop offset="100%" stop-color="#1E293B"/>
+                                            </linearGradient>
+                                            <linearGradient id="chromeHighlight" x1="0%" y1="100%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.8"/>
+                                                <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0"/>
+                                                <stop offset="100%" stop-color="#00D2FF" stop-opacity="0.3"/>
+                                            </linearGradient>
+                                            <linearGradient id="neonCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#00F2FE"/>
+                                                <stop offset="100%" stop-color="#4FACFE"/>
+                                            </linearGradient>
+                                        </defs>
+                                        <ellipse cx="32" cy="46" rx="24" ry="4" transform="rotate(-25, 32, 46)" fill="#000000" opacity="0.35"/>
+                                        <g transform="translate(0, 3.5) rotate(-30, 32, 32)" fill="#334155">
+                                            <path fill-rule="evenodd" d="M 21 27 L 44 27 C 47 23, 53 23, 56 27 C 60 30, 60 34, 56 37 C 53 41, 47 41, 44 37 L 21 37 C 17 41, 11 41, 8 37 C 5 34, 5 30, 8 27 C 11 23, 17 23, 21 27 Z M 5 30 L 11 30 L 14 32 L 11 34 L 5 34 L 8 32 Z M 50 27 C 47.2 27, 45 29.2, 45 32 C 45 34.8, 47.2 37, 50 37 C 52.8 37, 55 34.8, 55 32 C 55 29.2, 52.8 27, 50 27 Z"/>
+                                        </g>
+                                        <g transform="rotate(-30, 32, 32)">
+                                            <path fill-rule="evenodd" d="M 21 27 L 44 27 C 47 23, 53 23, 56 27 C 60 30, 60 34, 56 37 C 53 41, 47 41, 44 37 L 21 37 C 17 41, 11 41, 8 37 C 5 34, 5 30, 8 27 C 11 23, 17 23, 21 27 Z M 5 30 L 11 30 L 14 32 L 11 34 L 5 34 L 8 32 Z M 50 27 C 47.2 27, 45 29.2, 45 32 C 45 34.8, 47.2 37, 50 37 C 52.8 37, 55 34.8, 55 32 C 55 29.2, 52.8 27, 50 27 Z" fill="url(#chromeBody)"/>
+                                            <rect x="23" y="30.5" width="18" height="3" rx="1" fill="url(#neonCyan)"/>
+                                            <path d="M 21 27 L 44 27 C 45.5 25, 47.5 24, 50 24 L 50 27 Z" fill="url(#chromeHighlight)"/>
+                                        </g>
+                                    </svg>
+                                </span>
                                 <span class="role-label">${I18n.t('role_mechanic')}</span>
                             </button>
                             <button class="role-option ${selectedRole === 'driver' ? 'selected' : ''}" data-role="driver" onclick="LoginModule.selectRole('driver')">
-                                <span class="role-icon">🚗</span>
+                                <span class="role-icon">
+                                    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="carBodyRed" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#FF416C"/>
+                                                <stop offset="100%" stop-color="#9A0F2B"/>
+                                            </linearGradient>
+                                            <linearGradient id="carBodyRedDark" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#9A0F2B"/>
+                                                <stop offset="100%" stop-color="#4A0512"/>
+                                            </linearGradient>
+                                            <linearGradient id="carGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#4A5568"/>
+                                                <stop offset="50%" stop-color="#1A202C"/>
+                                                <stop offset="100%" stop-color="#0F1219"/>
+                                            </linearGradient>
+                                            <linearGradient id="glassShine" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+                                                <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0"/>
+                                            </linearGradient>
+                                            <radialGradient id="headlightGlow" cx="50%" cy="50%" r="50%">
+                                                <stop offset="0%" stop-color="#FFFBD0"/>
+                                                <stop offset="40%" stop-color="#FFEB3B"/>
+                                                <stop offset="100%" stop-color="#FFEB3B" stop-opacity="0"/>
+                                            </radialGradient>
+                                        </defs>
+                                        <ellipse cx="32" cy="50" rx="24" ry="6" fill="#000000" opacity="0.4"/>
+                                        <!-- Front Wheel (left side from viewer, X=18) -->
+                                        <ellipse cx="18" cy="46" rx="6" ry="6" fill="#1A202C"/>
+                                        <ellipse cx="18" cy="46" rx="3" ry="3" fill="#718096"/>
+                                        <!-- Rear Wheel (right side from viewer, X=42) -->
+                                        <ellipse cx="42" cy="46" rx="6" ry="6" fill="#1A202C"/>
+                                        <ellipse cx="42" cy="46" rx="3" ry="3" fill="#718096"/>
+                                        <path d="M12 40 L52 40 L50 44 L14 44 Z" fill="#2D0B11"/>
+                                        <path d="M12 36 C12 36, 15 32, 22 32 C29 32, 45 35, 52 38 L52 42 L12 42 Z" fill="url(#carBodyRedDark)"/>
+                                        <path d="M12 36 L28 32 L44 32 L52 38 L48 42 L12 42 Z" fill="url(#carBodyRed)"/>
+                                        <path d="M20 32 L25 22 L38 22 L45 32 Z" fill="url(#carGlass)"/>
+                                        <path d="M22 32 L26 23 L29 23 L25 32 Z" fill="url(#glassShine)"/>
+                                        <path d="M32 32 L36 23 L37 23 L33 32 Z" fill="url(#glassShine)"/>
+                                        <path d="M25 22 L38 22 C38 22, 36 20, 31 20 C26 20, 25 22, 25 22 Z" fill="#FFA3B1"/>
+                                        <circle cx="15" cy="38" r="3" fill="#FFF"/>
+                                        <circle cx="15" cy="38" r="8" fill="url(#headlightGlow)"/>
+                                        <path d="M48 31 L53 31 L52 33 L47 33 Z" fill="url(#carBodyRedDark)"/>
+                                    </svg>
+                                </span>
                                 <span class="role-label">${I18n.t('role_driver')}</span>
                             </button>
                             <button class="role-option ${selectedRole === 'passenger' ? 'selected' : ''}" data-role="passenger" onclick="LoginModule.selectRole('passenger')">
-                                <span class="role-icon">🙋</span>
+                                <span class="role-icon">
+                                    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                        <defs>
+                                            <linearGradient id="badgeBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#1E293B"/>
+                                                <stop offset="100%" stop-color="#0F172A"/>
+                                            </linearGradient>
+                                            <linearGradient id="neonBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#3B82F6"/>
+                                                <stop offset="50%" stop-color="#60A5FA"/>
+                                                <stop offset="100%" stop-color="#1D4ED8"/>
+                                            </linearGradient>
+                                            <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" stop-color="#E2E8F0"/>
+                                                <stop offset="100%" stop-color="#94A3B8"/>
+                                            </linearGradient>
+                                            <linearGradient id="glassOverlay" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15"/>
+                                                <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.02"/>
+                                            </linearGradient>
+                                        </defs>
+                                        <ellipse cx="32" cy="52" rx="20" ry="5" fill="#000000" opacity="0.35"/>
+                                        <ellipse cx="32" cy="33" rx="22" ry="22" fill="url(#neonBlue)"/>
+                                        <ellipse cx="32" cy="34.5" rx="20" ry="20" fill="#0F172A"/>
+                                        <ellipse cx="32" cy="32" rx="20" ry="20" fill="url(#badgeBg)"/>
+                                        <g>
+                                            <path d="M18 48 C18 41, 23 37, 32 37 C41 37, 46 41, 46 48 Z" fill="url(#avatarGrad)"/>
+                                            <path d="M18 48 C18 41, 23 37, 32 37 C41 37, 46 41, 46 48 Z" fill="url(#neonBlue)" opacity="0.3"/>
+                                            <circle cx="32" cy="28" r="8" fill="url(#avatarGrad)"/>
+                                            <circle cx="30" cy="26" r="6" fill="#FFF" opacity="0.2"/>
+                                        </g>
+                                        <path d="M22 34 L42 28 L46 44 L26 50 Z" fill="url(#glassOverlay)" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="1"/>
+                                        <path d="M22 34 L42 28 L32 39 Z" fill="#FFFFFF" opacity="0.08"/>
+                                        <circle cx="44" cy="42" r="6" fill="#10B981"/>
+                                        <path d="M41 42 L43 44 L47 40" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                                    </svg>
+                                </span>
                                 <span class="role-label">${I18n.t('role_passenger')}</span>
                             </button>
                         </div>
