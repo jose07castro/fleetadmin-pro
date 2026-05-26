@@ -275,7 +275,7 @@ public class MainActivity extends BridgeActivity {
                 return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
             } catch (Exception e) {
                 Log.e(TAG, "Error getting versionName", e);
-                return "1.2.38";
+                return "1.2.41";
             }
         }
 
@@ -289,7 +289,7 @@ public class MainActivity extends BridgeActivity {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error getting versionCode", e);
-                return 47;
+                return 50;
             }
         }
     }
