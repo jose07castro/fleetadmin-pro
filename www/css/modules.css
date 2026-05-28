@@ -141,13 +141,13 @@
 
 @keyframes floatAdminImg {
     0% {
-        transform: translateY(0) rotateY(-10deg);
+        transform: scale(1.2) translateY(0) rotateY(-10deg);
     }
     50% {
-        transform: translateY(-10px) rotateY(10deg);
+        transform: scale(1.2) translateY(-10px) rotateY(10deg);
     }
     100% {
-        transform: translateY(0) rotateY(-10deg);
+        transform: scale(1.2) translateY(0) rotateY(-10deg);
     }
 }
 
