@@ -418,49 +418,57 @@ app.post('/api/auth/logout-voluntario', async (req, res) => {
             return res.status(400).json({ ok: false, error: 'driver_id is required' });
         }
 
-        const db = WhatsappBot.getDb();
-        if (!db) {
-            return res.status(503).json({ ok: false, error: 'Database not available' });
-        }
-
         const eventTime = timestamp || Date.now();
         console.log(`🚪 [LOGOUT] Driver ${driver_id} voluntary logout received.`);
 
-        let driverName = req.body.driverName;
-        if (!driverName) {
-            const posSnap = await db.ref(`driver_positions/${driver_id}/driverName`).once('value');
-            driverName = posSnap.val() || 'Chofer';
+        // Intentar registrar en Firebase (no crítico — si falla, el logout igual procede)
+        try {
+            const db = WhatsappBot.getDb();
+            if (db) {
+                let driverName = req.body.driverName;
+                if (!driverName) {
+                    const posSnap = await db.ref(`driver_positions/${driver_id}/driverName`).once('value');
+                    driverName = posSnap.val() || 'Chofer';
+                }
+
+                // 1. Actualizar estado del chofer en Firebase RTDB
+                await db.ref(`driver_positions/${driver_id}`).update({
+                    status: 'logout_voluntario',
+                    gps_status: 'inactive',
+                    last_heartbeat: eventTime,
+                    updated_at: new Date(eventTime).toISOString()
+                });
+
+                // 2. Loguear evento en fleet logs si hay fleetId
+                const fid = fleetId || await WhatsappBot.getFleetId();
+                if (fid) {
+                    await db.ref(`fleets/${fid}/driver_status_logs`).push({
+                        event: 'logout_voluntario',
+                        driverId: driver_id,
+                        driverName: driverName || req.body.driverName || 'Chofer',
+                        timestamp: eventTime
+                    });
+                }
+
+                // Notificación push a admins
+                WhatsappBot.sendPushToAdmins(
+                    `🚪 Chofer Desconectado`,
+                    `El chofer ${driverName || req.body.driverName || driver_id} ha cerrado sesión voluntariamente.`
+                );
+            } else {
+                console.warn(`⚠️ [LOGOUT] DB no disponible — logout de ${driver_id} confirmado sin registro en Firebase.`);
+            }
+        } catch (dbErr) {
+            // Error de Firebase no crítico: el logout igual se confirma
+            console.error('⚠️ [LOGOUT] Error no crítico al registrar en Firebase:', dbErr.message);
         }
 
-        // 1. Update driver position status in Firebase RTDB
-        await db.ref(`driver_positions/${driver_id}`).update({
-            status: 'logout_voluntario',
-            gps_status: 'inactive',
-            last_heartbeat: eventTime,
-            updated_at: new Date(eventTime).toISOString()
-        });
-
-        // 2. Log event in fleet logs if fleetId is provided
-        const fid = fleetId || await WhatsappBot.getFleetId();
-        if (fid) {
-            await db.ref(`fleets/${fid}/driver_status_logs`).push({
-                event: 'logout_voluntario',
-                driverId: driver_id,
-                driverName: driverName,
-                timestamp: eventTime
-            });
-        }
-
-        // Send push notification to admins
-        WhatsappBot.sendPushToAdmins(
-            `🚪 Chofer Desconectado`,
-            `El chofer ${driverName} ha cerrado sesión voluntariamente.`
-        );
-
+        // Siempre confirmar el logout al cliente
         res.json({ ok: true });
     } catch (e) {
         console.error('❌ Error processing logout-voluntario:', e.message);
-        res.status(500).json({ ok: false, error: e.message });
+        // Incluso ante error general, intentar confirmar el logout
+        res.json({ ok: true, warning: e.message });
     }
 });
 

@@ -254,9 +254,8 @@ const App = (() => {
                 }
                 console.log('✅ Desconexión voluntaria confirmada por el servidor');
             } catch (e) {
-                console.error('⚠️ Error al registrar desconexión:', e);
-                alert('Error: No se pudo confirmar el cierre de sesión con el servidor.\nVerificá tu conexión a internet e intentalo de nuevo.');
-                return; // ABORTAR logout para cumplir con el requerimiento estricto
+                // Error no crítico: el logout local igual procede
+                console.warn('⚠️ No se pudo registrar desconexión en el servidor (el logout local continuará):', e.message);
             }
         }
 
