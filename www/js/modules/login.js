@@ -51,7 +51,7 @@ const LoginModule = (() => {
                             </button>
                             <button class="role-option ${selectedRole === 'driver' ? 'selected' : ''}" data-role="driver" onclick="LoginModule.selectRole('driver')">
                                 <span class="role-icon">
-                                    <img src="assets/auto-conductor.png" style="width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-md);" alt="Driver">
+                                    <img src="assets/auto-conductor2.png" style="width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-md);" alt="Driver">
                                 </span>
                                 <span class="role-label">${I18n.t('role_driver')}</span>
                             </button>
