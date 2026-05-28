@@ -156,8 +156,8 @@ app.get('/api/bot/fleets', async (req, res) => {
 app.get('/api/version-check', async (req, res) => {
     try {
         const db = WhatsappBot.getDb();
-        let minVersionCode = 51; // default fallback
-        let minVersionName = "1.2.42";
+        let minVersionCode = 52; // default fallback
+        let minVersionName = "1.2.43";
         let playStoreUrl = "https://play.google.com/store/apps/details?id=com.fleetadminpro.app";
 
         if (db) {
@@ -177,8 +177,8 @@ app.get('/api/version-check', async (req, res) => {
     } catch (e) {
         console.error('⚠️ Error checking version from DB:', e.message);
         res.json({
-            min_required_version_code: 51,
-            min_required_version_name: "1.2.42",
+            min_required_version_code: 52,
+            min_required_version_name: "1.2.43",
             play_store_url: "https://play.google.com/store/apps/details?id=com.fleetadminpro.app"
         });
     }

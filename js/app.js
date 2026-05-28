@@ -661,7 +661,7 @@ const App = (() => {
 
             // Leer caché por si no hay conexión
             let cachedMinCode = parseInt(localStorage.getItem('min_required_version_code') || '0');
-            let cachedMinName = localStorage.getItem('min_required_version_name') || '1.2.42';
+            let cachedMinName = localStorage.getItem('min_required_version_name') || '1.2.43';
             let cachedPlayStoreUrl = localStorage.getItem('play_store_url') || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
 
             // Si la caché nos dice que ya estamos desactualizados, bloquear de inmediato
@@ -740,7 +740,7 @@ const App = (() => {
         const user = Auth.getUser();
         if (!user || user.role !== 'driver') return; // Reportar específicamente para conductores
 
-        let version = 'v1.2.42'; // default
+        let version = 'v1.2.43'; // default
         if (typeof window.NativeServiceBridge !== 'undefined') {
             version = 'v' + window.NativeServiceBridge.getAppVersionName();
         }
