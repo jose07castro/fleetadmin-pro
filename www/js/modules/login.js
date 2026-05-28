@@ -28,11 +28,7 @@ const LoginModule = (() => {
                         <div class="role-selector" id="roleSelector">
                             <button class="role-option ${selectedRole === 'owner' ? 'selected' : ''}" data-role="owner" onclick="LoginModule.selectRole('owner')">
                                 <span class="role-icon">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" fill="currentColor" fill-opacity="0.08"/>
-                                        <path d="M3 20h18"/>
-                                        <path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/>
-                                    </svg>
+                                    <img src="assets/admin.jpg" style="width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-md);" alt="Admin">
                                 </span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
