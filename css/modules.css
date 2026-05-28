@@ -133,6 +133,24 @@
     transition: filter 0.3s ease;
 }
 
+.role-option[data-role="owner"] .role-icon img {
+    animation: floatAdminImg 4s ease-in-out infinite;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+}
+
+@keyframes floatAdminImg {
+    0% {
+        transform: translateY(0) rotateY(-10deg);
+    }
+    50% {
+        transform: translateY(-10px) rotateY(10deg);
+    }
+    100% {
+        transform: translateY(0) rotateY(-10deg);
+    }
+}
+
 .role-option:hover .role-icon {
     transform: translateY(-4px) scale(1.15);
 }
