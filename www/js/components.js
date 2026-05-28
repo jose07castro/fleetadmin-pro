@@ -471,6 +471,8 @@ const Components = (() => {
         showModal('🤝 Colaboración Internacional', bodyHTML, `
             <button class="btn btn-secondary" onclick="Components.closeModal()" style="width:100%; display:flex; justify-content:center; border-radius:var(--radius-md);">Cerrar</button>
         `);
+    }
+
     function getVersionBadge(version) {
         if (!version || version === 'Desconocida') {
             return `<span class="badge" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-weight: 600; font-size: 11px;">⚠️ Sin versión</span>`;
