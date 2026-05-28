@@ -83,26 +83,29 @@
     gap: var(--space-2);
     padding: var(--space-4);
     border-radius: var(--radius-xl);
-    border: 2px solid rgba(255, 255, 255, 0.1);
+    border: none;
     cursor: pointer;
     transition: all var(--transition-fast);
-    background: transparent !important;
+    background: rgba(30, 41, 59, 0.45) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: var(--text-secondary);
-    box-shadow: none !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
 }
 
 .role-option:hover {
-    border-color: rgba(99, 102, 241, 0.5);
     color: var(--text-primary);
-    background: transparent !important;
-    box-shadow: none !important;
+    background: rgba(30, 41, 59, 0.65) !important;
+    transform: translateY(-6px);
+    box-shadow: 0 12px 32px rgba(99, 102, 241, 0.25) !important;
 }
 
 .role-option.selected {
-    border-color: var(--color-primary);
-    background: transparent !important;
+    background: rgba(99, 102, 241, 0.15) !important;
     color: var(--color-primary-light);
-    box-shadow: none !important;
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 12px 32px rgba(99, 102, 241, 0.45) !important;
+    border: none;
 }
 
 .role-icon {
