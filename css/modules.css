@@ -86,7 +86,7 @@
     border: none;
     cursor: pointer;
     transition: all var(--transition-fast);
-    background: rgba(255, 255, 255, 0.03) !important;
+    background-color: transparent !important;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     color: var(--text-secondary);
