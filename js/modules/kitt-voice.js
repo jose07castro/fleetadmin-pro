@@ -63,7 +63,7 @@ const KittVoice = (() => {
         const isLocalOrNative = window.location.hostname === 'localhost' || 
                                window.location.hostname === '127.0.0.1' ||
                                window.location.protocol === 'file:';
-        return isLocalOrNative ? 'https://fleetadmin-pro-1.onrender.com' : window.location.origin;
+        return isLocalOrNative ? 'https://fleetadmin-web-nueva.onrender.com' : window.location.origin;
     }
 
     /**

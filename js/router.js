@@ -28,7 +28,7 @@ const Router = (() => {
                 return resolve(); // Ya estaba inyectado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=147`; // versión v146
+            script.src = `${path}?v=148`; // versión v146
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);

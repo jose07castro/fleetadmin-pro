@@ -196,7 +196,7 @@ const WhatsappBot = (() => {
         console.log('✅ Espera terminada. Conectando a WhatsApp...');
         
         // Auto-ping cada 10 minutos para evitar que Render (free tier) duerma el servicio
-        const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://fleetadmin-pro-1.onrender.com';
+        const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://fleetadmin-web-nueva.onrender.com';
         setInterval(async () => {
             try {
                 await axios.get(`${selfUrl}/api/bot/status`, { timeout: 10000 });

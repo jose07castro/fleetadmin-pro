@@ -178,7 +178,7 @@ public class MainActivity extends BridgeActivity {
             String savedUserId = prefs.getString("userId", null);
             String savedDriverName = prefs.getString("driverName", "Chofer");
             String savedFleetId = prefs.getString("fleetId", null);
-            String savedServerUrl = prefs.getString("serverUrl", "https://fleetadmin-pro-1.onrender.com");
+            String savedServerUrl = prefs.getString("serverUrl", "https://fleetadmin-web-nueva.onrender.com");
             
             if (savedUserId != null) {
                 startTracking(savedUserId, savedDriverName, savedFleetId, savedServerUrl);
