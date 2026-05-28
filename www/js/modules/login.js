@@ -28,7 +28,7 @@ const LoginModule = (() => {
                         <div class="role-selector" id="roleSelector">
                             <button class="role-option ${selectedRole === 'owner' ? 'selected' : ''}" data-role="owner" onclick="LoginModule.selectRole('owner')">
                                 <span class="role-icon">
-                                    <img src="assets/admin.jpg" style="width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-md); mix-blend-mode: multiply;" alt="Admin">
+                                    <img src="assets/admin.png" style="width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-md);" alt="Admin">
                                 </span>
                                 <span class="role-label">${I18n.t('role_owner')}</span>
                             </button>
