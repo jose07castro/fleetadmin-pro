@@ -151,6 +151,19 @@
     }
 }
 
+.role-option[data-role="driver"] .role-icon img {
+    animation: circleDriverImg 4s linear infinite;
+}
+
+@keyframes circleDriverImg {
+    0% {
+        transform: rotate(0deg) translate(3px) rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg) translate(3px) rotate(-360deg);
+    }
+}
+
 .role-option:hover .role-icon {
     transform: translateY(-4px) scale(1.15);
 }
