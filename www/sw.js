@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v158';
+const CACHE_NAME = 'fleetadmin-pro-v159';
 const ASSETS = [
     './',
     './index.html?v=157',
