@@ -12,3 +12,9 @@ api keys/
 *.jks
 test_*.js
 list_*.js
+
+# Local assets and builds
+Imagenes/
+*.aab
+*.apk
+inspect_*.js
