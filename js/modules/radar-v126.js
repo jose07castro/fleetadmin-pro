@@ -227,7 +227,7 @@ const RadarModule = (() => {
 
     // ============ CREATE CAR MARKER ============
 
-    function _createCarIcon(heading, displayName, statusClass, carColor, speed, status) {
+    function _createCarIcon(heading, displayName, statusClass, carColor, speed, status, driverId) {
         const rotation = heading || 0;
         const currentSpeed = speed || 0;
         
@@ -267,8 +267,16 @@ const RadarModule = (() => {
         // v120: Diseño Top-Down Super Moderno (Premium "4k" feel)
         // Rotación continua 360 grados, sombras dinámicas y gradientes.
         // v126: Diseño Top-Down Super Moderno con Luces Nocturnas Automáticas
-        function generateDetailedCarSVG(heading, theme, isTaxi) {
+        // v127 FIX: IDs de gradientes únicos por conductor para evitar conflictos DOM
+        function generateDetailedCarSVG(heading, theme, isTaxi, uid) {
             const baseStyle = `style="display:block; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5)); transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); margin: -10px;"`;
+            
+            // IDs únicos por marcador para evitar que se pisen entre conductores
+            const safeUid = (uid || 'default').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16);
+            const bodyGradId = `bodyGrad_${safeUid}`;
+            const glassGradId = `glassGrad_${safeUid}`;
+            const hlBeamId = `hlBeam_${safeUid}`;
+            const tlBeamId = `tlBeam_${safeUid}`;
             
             // Determinar si es de noche (v126: 19:00 a 07:00)
             const hours = new Date().getHours();
@@ -277,23 +285,23 @@ const RadarModule = (() => {
             return `
             <svg viewBox="0 0 60 110" width="25" height="45" ${baseStyle}>
                 <defs>
-                    <linearGradient id="bodyGrad_${theme.body.replace('#','')}" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <linearGradient id="${bodyGradId}" x1="0%" y1="0%" x2="100%" y2="0%">
                         <stop offset="0%" stop-color="${theme.side}" />
                         <stop offset="25%" stop-color="${theme.body}" />
                         <stop offset="75%" stop-color="${theme.body}" />
                         <stop offset="100%" stop-color="${theme.side}" />
                     </linearGradient>
-                    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <linearGradient id="${glassGradId}" x1="0%" y1="0%" x2="0%" y2="100%">
                         <stop offset="0%" stop-color="#020617" />
                         <stop offset="50%" stop-color="#1e293b" />
                         <stop offset="100%" stop-color="#020617" />
                     </linearGradient>
                     <!-- Gradientes para proyección de luces -->
-                    <radialGradient id="headlightBeam" cx="50%" cy="50%" r="50%">
+                    <radialGradient id="${hlBeamId}" cx="50%" cy="50%" r="50%">
                         <stop offset="0%" stop-color="rgba(255,255,255,0.4)" />
                         <stop offset="100%" stop-color="rgba(255,255,255,0)" />
                     </radialGradient>
-                    <radialGradient id="taillightBeam" cx="50%" cy="50%" r="50%">
+                    <radialGradient id="${tlBeamId}" cx="50%" cy="50%" r="50%">
                         <stop offset="0%" stop-color="rgba(239,68,68,0.3)" />
                         <stop offset="100%" stop-color="rgba(239,68,68,0)" />
                     </radialGradient>
@@ -302,21 +310,21 @@ const RadarModule = (() => {
                 <!-- PROYECCIÓN DE LUCES (Solo de noche) -->
                 ${isNight ? `
                     <!-- Haz de luz delantera izquierda -->
-                    <path d="M 15 15 L -10 -40 L 30 -40 Z" fill="url(#headlightBeam)" filter="blur(5px)" />
+                    <path d="M 15 15 L -10 -40 L 30 -40 Z" fill="url(#${hlBeamId})" filter="blur(5px)" />
                     <!-- Haz de luz delantera derecha -->
-                    <path d="M 45 15 L 70 -40 L 30 -40 Z" fill="url(#headlightBeam)" filter="blur(5px)" />
+                    <path d="M 45 15 L 70 -40 L 30 -40 Z" fill="url(#${hlBeamId})" filter="blur(5px)" />
                     <!-- Brillo luces traseras -->
-                    <circle cx="30" cy="100" r="25" fill="url(#taillightBeam)" filter="blur(8px)" />
+                    <circle cx="30" cy="100" r="25" fill="url(#${tlBeamId})" filter="blur(8px)" />
                 ` : ''}
 
                 <!-- Sombra base aerodinámica -->
                 <path d="M 12 10 Q 30 -5 48 10 L 52 90 Q 30 115 8 90 Z" fill="rgba(0,0,0,0.4)" filter="blur(3px)" />
 
                 <!-- Carrocería -->
-                <path d="M 14 12 Q 30 -2 46 12 L 50 92 Q 30 110 10 92 Z" fill="url(#bodyGrad_${theme.body.replace('#','')})" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+                <path d="M 14 12 Q 30 -2 46 12 L 50 92 Q 30 110 10 92 Z" fill="url(#${bodyGradId})" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
 
                 <!-- Parabrisas y Techo -->
-                <path d="M 18 30 Q 30 20 42 30 L 44 70 Q 30 80 16 70 Z" fill="url(#glassGrad)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                <path d="M 18 30 Q 30 20 42 30 L 44 70 Q 30 80 16 70 Z" fill="url(#${glassGradId})" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
                 
                 <!-- Reflejo curvo -->
                 <path d="M 22 32 Q 30 26 38 32 L 36 66 Q 30 72 24 66 Z" fill="rgba(255,255,255,0.04)" />
@@ -340,7 +348,7 @@ const RadarModule = (() => {
             </svg>`;
         }
 
-        const carSvg = generateDetailedCarSVG(rotation, theme, isTaxi);
+        const carSvg = generateDetailedCarSVG(rotation, theme, isTaxi, driverId);
 
         return `
             <div class="radar-car-container">
@@ -580,7 +588,7 @@ const RadarModule = (() => {
         const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
 
         const latlng = new google.maps.LatLng(lat, lng);
-        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed, data.status);
+        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed, data.status, driverId);
 
         if (_markers[driverId]) {
             // Update existing marker

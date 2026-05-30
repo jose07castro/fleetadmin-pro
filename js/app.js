@@ -99,6 +99,29 @@ const App = (() => {
                                 // Error de red verificando perfil — NO bloquear, dejar pasar
                                 console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                             }
+
+                            // FIX: Sincronizar turno activo desde Firebase al abrir la app
+                            // Esto garantiza que active_shift_state en localStorage esté actualizado
+                            // aunque el turno haya sido creado por el admin mientras el teléfono estaba cerrado.
+                            try {
+                                if (typeof ShiftsModule !== 'undefined') {
+                                    const activeShift = await DB.getActiveShifts().then(shifts => 
+                                        shifts.find(s => String(s.driverId) === String(Auth.getUserId()))
+                                    );
+                                    if (activeShift) {
+                                        localStorage.setItem('active_shift_id', activeShift.id);
+                                        localStorage.setItem('active_shift_state', 'true');
+                                        console.log('✅ [GPS] Turno activo detectado al inicio → GPS activado:', activeShift.id);
+                                    } else {
+                                        // Si no hay turno activo, limpiar localStorage para evitar GPS zombi
+                                        localStorage.removeItem('active_shift_id');
+                                        localStorage.removeItem('active_shift_state');
+                                        console.log('ℹ️ [GPS] Sin turno activo al inicio → GPS en espera');
+                                    }
+                                }
+                            } catch (shiftErr) {
+                                console.warn('⚠️ Error sincronizando turno al inicio (no crítico):', shiftErr);
+                            }
                         }
                         _hideSplash();
                         Router.navigate(Router.getDefaultRoute());
