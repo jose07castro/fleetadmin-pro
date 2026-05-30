@@ -56,34 +56,78 @@ if (!admin.apps.length) {
     try {
         let credential = null;
 
-        // MÉTODO 1 (RECOMENDADO): JSON completo en base64
-        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-            console.log('🔑 Usando FIREBASE_SERVICE_ACCOUNT (JSON base64)...');
-            const json = JSON.parse(
-                Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8')
-            );
-            credential = admin.credential.cert(json);
-            console.log(`📡 Config: project=${json.project_id}, email=${json.client_email?.substring(0,20)}...`);
-        } 
-        // MÉTODO 2 (FALLBACK): Variables individuales
-        else {
-            console.log('🔑 Usando variables individuales (PROJECT_ID + CLIENT_EMAIL + PRIVATE_KEY)...');
-            const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
-            const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
-            let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
-            
-            if (privateKey) {
-                // Render guarda \n como texto literal
-                privateKey = privateKey.replace(/\\n/g, '\n');
+        // MÉTODO 0 (LOCAL FALLBACK): Archivo físico en el servidor (JSON o Base64)
+        let possiblePaths = [
+            path.join(__dirname, '../../fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
+            path.join(__dirname, '../../../fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
+            path.join(__dirname, './fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json')
+        ];
+
+        let jsonPath = null;
+        let base64Path = null;
+
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                jsonPath = p;
+                break;
             }
-
-            console.log(`📡 Config: ID=${projectId?.substring(0, 5)}..., KeyLength=${privateKey.length}`);
-
-            if (!projectId || !clientEmail || privateKey.length < 100) {
-                throw new Error('Variables de Firebase incompletas o inválidas.');
+            if (fs.existsSync(p + '.base64')) {
+                base64Path = p + '.base64';
+                break;
             }
+        }
 
-            credential = admin.credential.cert({ projectId, clientEmail, privateKey });
+        if (jsonPath) {
+            console.log('🔑 Usando archivo físico de credenciales Firebase JSON...');
+            try {
+                const json = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+                credential = admin.credential.cert(json);
+                console.log(`📡 Config (local): project=${json.project_id}, email=${json.client_email?.substring(0,20)}...`);
+            } catch (jsonErr) {
+                console.warn('⚠️ Error parsing local JSON credentials:', jsonErr.message);
+            }
+        } else if (base64Path) {
+            console.log('🔑 Usando archivo físico de credenciales Firebase Base64...');
+            try {
+                const base64Str = fs.readFileSync(base64Path, 'utf8').trim();
+                const json = JSON.parse(Buffer.from(base64Str, 'base64').toString('utf8'));
+                credential = admin.credential.cert(json);
+                console.log(`📡 Config (local base64): project=${json.project_id}, email=${json.client_email?.substring(0,20)}...`);
+            } catch (jsonErr) {
+                console.warn('⚠️ Error parsing local Base64 credentials:', jsonErr.message);
+            }
+        }
+
+        if (!credential) {
+            // MÉTODO 1 (RECOMENDADO): JSON completo en base64
+            if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+                console.log('🔑 Usando FIREBASE_SERVICE_ACCOUNT (JSON base64)...');
+                const json = JSON.parse(
+                    Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8')
+                );
+                credential = admin.credential.cert(json);
+                console.log(`📡 Config: project=${json.project_id}, email=${json.client_email?.substring(0,20)}...`);
+            } 
+            // MÉTODO 2 (FALLBACK): Variables individuales
+            else {
+                console.log('🔑 Usando variables individuales (PROJECT_ID + CLIENT_EMAIL + PRIVATE_KEY)...');
+                const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^"|"$/g, '');
+                const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
+                let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
+                
+                if (privateKey) {
+                    // Render guarda \n como texto literal
+                    privateKey = privateKey.replace(/\\n/g, '\n');
+                }
+
+                console.log(`📡 Config: ID=${projectId?.substring(0, 5)}..., KeyLength=${privateKey.length}`);
+
+                if (!projectId || !clientEmail || privateKey.length < 100) {
+                    throw new Error('Variables de Firebase incompletas o inválidas.');
+                }
+
+                credential = admin.credential.cert({ projectId, clientEmail, privateKey });
+            }
         }
 
         admin.initializeApp({
