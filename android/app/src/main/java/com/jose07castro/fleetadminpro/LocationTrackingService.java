@@ -542,6 +542,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         serviceHandler.post(() -> {
             try {
+                // Obtener versión de la app nativa dinámicamente para incluirla en la posición
+                String appVersion = "Desconocida";
+                try {
+                    appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting versionName in service", e);
+                }
+
                 Map<String, Object> data = new HashMap<>();
                 data.put("lat", lat);
                 data.put("lng", lng);
@@ -557,8 +565,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 data.put("last_heartbeat", System.currentTimeMillis());
                 data.put("status", "active");
                 data.put("gps_status", "active");
+                data.put("appVersion", appVersion);
 
-                dbRef.child(userId).setValue(data, (error, ref) -> {
+                // FIX: usar updateChildren en lugar de setValue para no borrar appVersion de report-version u otros datos persistidos
+                dbRef.child(userId).updateChildren(data, (error, ref) -> {
                     if (error == null) {
                         lastHeartbeatTime = System.currentTimeMillis();
                         Log.i(TAG, "🔌 Location SDK Sent: " + source + ". Lat=" + lat + ", Lng=" + lng);
@@ -583,6 +593,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         isSendingQueue = true;
 
         serviceHandler.post(new Runnable() {
+            private boolean called = false;
+            private Runnable timeoutRunnable = null;
+
             @Override
             public void run() {
                 List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
@@ -593,14 +606,32 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
 
                 LocationDbHelper.QueuedLocation ql = list.get(0);
+
+                // Timeout de 5s para evitar que la cola se congele indefinidamente si no hay internet pero isNetworkAvailable dio true
+                timeoutRunnable = () -> {
+                    if (!called) {
+                        called = true;
+                        Log.w(TAG, "⏰ Timeout esperando confirmación de Firebase para punto " + ql.id);
+                        isSendingQueue = false;
+                        updateStatusNotification();
+                    }
+                };
+                serviceHandler.postDelayed(timeoutRunnable, 5000);
+
                 pushSingleToFirebaseAsync(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native", (error, ref) -> {
                     serviceHandler.post(() -> {
+                        if (called) return; // Ya se disparó el timeout
+                        called = true;
+                        if (timeoutRunnable != null) {
+                            serviceHandler.removeCallbacks(timeoutRunnable);
+                        }
+
                         if (error == null) {
                             dbHelper.deleteLocation(ql.id);
                             // Process next item with a tiny delay to not hog the thread
                             serviceHandler.postDelayed(this, 100);
                         } else {
-                            Log.w(TAG, "❌ Error al enviar punto local encolado: " + error.getMessage());
+                            Log.w(TAG, "❌ Error al enviar punto local encolado: " + (error != null ? error.getMessage() : "Desconocido"));
                             isSendingQueue = false;
                             updateStatusNotification();
                         }
@@ -780,6 +811,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 if (now - lastHeartbeatTime >= 120000) { // 2 minutos
                     Log.i(TAG, "🏓 Enviando ping de latido silencioso (GPS sin cambio)...");
                     sendSilentHeartbeat();
+                }
+
+                // Intentar vaciar la cola por si quedó bloqueada o el conductor está quieto
+                if (isNetworkAvailable() && dbHelper.getQueueSize() > 0) {
+                    Log.i(TAG, "🔄 Cola activa detectada en latido (" + dbHelper.getQueueSize() + " puntos). Intentando vaciar...");
+                    sendQueuedLocations();
                 }
                 
                 heartbeatHandler.postDelayed(this, 60000); // Revisar cada minuto
