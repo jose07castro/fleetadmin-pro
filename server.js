@@ -58,6 +58,19 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
+app.get('/api/debug/db', (req, res) => {
+    try {
+        const db = WhatsappBot.getDb();
+        res.json({
+            db_exists: !!db,
+            env_keys: Object.keys(process.env).filter(k => k.includes('FIREBASE') || k.includes('PORT') || k.includes('URL')),
+            firebase_apps: require('firebase-admin').apps.map(a => a.name)
+        });
+    } catch(e) {
+        res.json({ error: e.message });
+    }
+});
+
 // Endpoint para resetear la sesión corrompida (MAC malo)
 app.post('/api/bot/reset-session', async (req, res) => {
     try {
