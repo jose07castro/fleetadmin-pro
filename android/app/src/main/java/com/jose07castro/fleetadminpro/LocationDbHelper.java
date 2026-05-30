@@ -75,8 +75,20 @@ public class LocationDbHelper extends SQLiteOpenHelper {
             values.put(COLUMN_BATTERY, battery);
             values.put(COLUMN_TIMESTAMP, timestamp);
             db.insert(TABLE_NAME, null, values);
+
+            // Limit queue size to 500 points to prevent bloat
+            db.execSQL("DELETE FROM " + TABLE_NAME + " WHERE " + COLUMN_ID + " NOT IN (SELECT " + COLUMN_ID + " FROM " + TABLE_NAME + " ORDER BY " + COLUMN_ID + " DESC LIMIT 500)");
         } catch (Exception e) {
             android.util.Log.e("LocationDbHelper", "Error enqueuing location", e);
+        }
+    }
+
+    public synchronized void pruneQueue(int maxCount) {
+        try {
+            SQLiteDatabase db = this.getWritableDatabase();
+            db.execSQL("DELETE FROM " + TABLE_NAME + " WHERE " + COLUMN_ID + " NOT IN (SELECT " + COLUMN_ID + " FROM " + TABLE_NAME + " ORDER BY " + COLUMN_ID + " DESC LIMIT " + maxCount + ")");
+        } catch (Exception e) {
+            android.util.Log.e("LocationDbHelper", "Error pruning queue", e);
         }
     }
 

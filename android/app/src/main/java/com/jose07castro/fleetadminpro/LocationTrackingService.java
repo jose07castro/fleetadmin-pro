@@ -152,6 +152,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         // Inicializar SQLite
         dbHelper = new LocationDbHelper(this);
+        try {
+            dbHelper.pruneQueue(100); // Limitar la cola a los últimos 100 puntos en el arranque para evitar sobrecarga y batería
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error al podar la cola de base de datos:", e);
+        }
 
         // 2. Firebase Database Ref
         try {
@@ -528,57 +533,44 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void pushSingleToFirebaseAsync(double lat, double lng, float speed, float bearing, int battery, String timestamp, String source, com.google.firebase.database.DatabaseReference.CompletionListener listener) {
-        if (userId == null || userId.isEmpty() || serverUrl == null || serverUrl.isEmpty()) {
+        if (dbRef == null || userId == null || userId.isEmpty()) {
             if (listener != null) {
-                listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("No user ID or server URL")), null);
+                listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("No user ID or db reference")), null);
             }
             return;
         }
 
         serviceHandler.post(() -> {
             try {
-                java.net.URL url = new java.net.URL(serverUrl + "/api/driver/location");
-                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; utf-8");
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
+                Map<String, Object> data = new HashMap<>();
+                data.put("lat", lat);
+                data.put("lng", lng);
+                data.put("lat_raw", lat);
+                data.put("lng_raw", lng);
+                data.put("corrected", false);
+                data.put("heading", (double) bearing);
+                data.put("speed", (double) speed);
+                data.put("battery", battery);
+                data.put("driverName", driverName != null ? driverName : "Chofer");
+                data.put("updated_at", timestamp);
+                data.put("_source", source);
+                data.put("last_heartbeat", System.currentTimeMillis());
+                data.put("status", "active");
+                data.put("gps_status", "active");
 
-                org.json.JSONObject jsonParam = new org.json.JSONObject();
-                jsonParam.put("driver_id", userId);
-                jsonParam.put("lat", lat);
-                jsonParam.put("lng", lng);
-                jsonParam.put("heading", (double) bearing);
-                jsonParam.put("speed", (double) speed);
-                jsonParam.put("battery", battery);
-                jsonParam.put("driverName", driverName != null ? driverName : "Chofer");
-                jsonParam.put("timestamp", timestamp);
-                jsonParam.put("source", source);
-                jsonParam.put("snap", true);
-
-                try (java.io.OutputStream os = conn.getOutputStream()) {
-                    byte[] input = jsonParam.toString().getBytes("utf-8");
-                    os.write(input, 0, input.length);
-                }
-
-                int code = conn.getResponseCode();
-                if (code == 200) {
-                    lastHeartbeatTime = System.currentTimeMillis();
-                    Log.i(TAG, "🔌 Location HTTP Sent: " + source + ". Lat=" + lat + ", Lng=" + lng);
-                    if (listener != null) {
-                        listener.onComplete(null, null);
+                dbRef.child(userId).setValue(data, (error, ref) -> {
+                    if (error == null) {
+                        lastHeartbeatTime = System.currentTimeMillis();
+                        Log.i(TAG, "🔌 Location SDK Sent: " + source + ". Lat=" + lat + ", Lng=" + lng);
+                    } else {
+                        Log.w(TAG, "❌ Firebase write failed: " + error.getMessage());
                     }
-                } else {
-                    Log.w(TAG, "❌ HTTP response code: " + code);
                     if (listener != null) {
-                        listener.onComplete(com.google.firebase.database.DatabaseError.fromException(new Exception("HTTP error code: " + code)), null);
+                        listener.onComplete(error, ref);
                     }
-                }
-                conn.disconnect();
+                });
             } catch (Exception e) {
-                Log.e(TAG, "❌ Error sending location via HTTP: " + e.getMessage());
+                Log.e(TAG, "❌ Error sending location via SDK: " + e.getMessage());
                 if (listener != null) {
                     listener.onComplete(com.google.firebase.database.DatabaseError.fromException(e), null);
                 }
