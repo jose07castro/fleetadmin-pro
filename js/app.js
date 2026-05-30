@@ -100,28 +100,8 @@ const App = (() => {
                                 console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                             }
 
-                            // FIX: Sincronizar turno activo desde Firebase al abrir la app
-                            // Esto garantiza que active_shift_state en localStorage esté actualizado
-                            // aunque el turno haya sido creado por el admin mientras el teléfono estaba cerrado.
-                            try {
-                                if (typeof ShiftsModule !== 'undefined') {
-                                    const activeShift = await DB.getActiveShifts().then(shifts => 
-                                        shifts.find(s => String(s.driverId) === String(Auth.getUserId()))
-                                    );
-                                    if (activeShift) {
-                                        localStorage.setItem('active_shift_id', activeShift.id);
-                                        localStorage.setItem('active_shift_state', 'true');
-                                        console.log('✅ [GPS] Turno activo detectado al inicio → GPS activado:', activeShift.id);
-                                    } else {
-                                        // Si no hay turno activo, limpiar localStorage para evitar GPS zombi
-                                        localStorage.removeItem('active_shift_id');
-                                        localStorage.removeItem('active_shift_state');
-                                        console.log('ℹ️ [GPS] Sin turno activo al inicio → GPS en espera');
-                                    }
-                                }
-                            } catch (shiftErr) {
-                                console.warn('⚠️ Error sincronizando turno al inicio (no crítico):', shiftErr);
-                            }
+                            // Sincronizar turno activo/GPS al iniciar la app
+                            await syncActiveShiftGPS();
                         }
                         _hideSplash();
                         Router.navigate(Router.getDefaultRoute());
@@ -209,6 +189,11 @@ const App = (() => {
                 }
 
                 console.log(`🔄 Sync: ${store} actualizado (${items.length} items)`);
+
+                // Sincronizar turno activo/GPS si cambian los turnos
+                if (store === 'shifts' && typeof Auth !== 'undefined' && Auth.isDriver()) {
+                    syncActiveShiftGPS();
+                }
 
                 // Refrescar la vista actual si hay cambios
                 const currentRoute = Router.getCurrentRoute();
@@ -498,6 +483,9 @@ const App = (() => {
                 }
             }
 
+            // Sincronizar turno activo/GPS al volver del background
+            await syncActiveShiftGPS();
+
             // 6. SHIFT HYDRATION: Si es conductor, verificar turno activo ANTES de refrescar
             if (Auth.isDriver() && typeof ShiftsModule !== 'undefined') {
                 console.log('📱 Conductor detectado — verificando turno activo (hydration)...');
@@ -758,6 +746,45 @@ const App = (() => {
         `;
     }
 
+    async function syncActiveShiftGPS() {
+        if (typeof Auth === 'undefined' || !Auth.isDriver()) return;
+        try {
+            const userId = Auth.getUserId();
+            if (!userId) return;
+
+            const activeShifts = await DB.getActiveShifts();
+            const activeShift = activeShifts.find(s => String(s.driverId) === String(userId));
+
+            if (activeShift) {
+                localStorage.setItem('active_shift_id', activeShift.id);
+                localStorage.setItem('active_shift_state', 'true');
+                console.log('✅ [GPS] Sincronización: Turno activo detectado → GPS activado:', activeShift.id);
+
+                if (typeof AndroidServices !== 'undefined') {
+                    const vehicles = await DB.getAll('vehicles');
+                    const vehicle = vehicles.find(v => v.id === activeShift.vehicleId);
+                    const vehiclePlate = vehicle ? vehicle.plate : null;
+                    
+                    console.log('✅ [GPS] Iniciando Foreground Service Nativo...');
+                    AndroidServices.enableForegroundService(activeShift.id, vehiclePlate);
+                }
+            } else {
+                const wasActive = localStorage.getItem('active_shift_state') === 'true';
+                localStorage.removeItem('active_shift_id');
+                localStorage.removeItem('active_shift_state');
+
+                if (wasActive) {
+                    console.log('ℹ️ [GPS] Sincronización: Sin turno activo → Deteniendo GPS');
+                    if (typeof AndroidServices !== 'undefined') {
+                        AndroidServices.disableForegroundService();
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ [GPS] Error en syncActiveShiftGPS:', e);
+        }
+    }
+
     async function reportAppVersionToServer() {
         const user = Auth.getUser();
         if (!user || user.role !== 'driver') return; // Reportar específicamente para conductores
@@ -783,7 +810,7 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer };
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer, syncActiveShiftGPS };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---
