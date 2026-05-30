@@ -58,44 +58,7 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
-app.get('/api/debug/db', (req, res) => {
-    try {
-        const db = WhatsappBot.getDb();
-        const fs = require('fs');
-        const path = require('path');
-        
-        // Check files
-        const pathsToCheck = [
-            path.join(__dirname, 'fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json.base64'),
-            path.join(__dirname, 'js/bot/fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json.base64'),
-            path.join(__dirname, 'www/js/bot/fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json.base64'),
-            path.join(__dirname, 'fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
-            'fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json.base64'
-        ];
-        
-        const filesFound = {};
-        for (const p of pathsToCheck) {
-            filesFound[p] = fs.existsSync(p);
-        }
-        
-        // Also read root files
-        let rootFiles = [];
-        try {
-            rootFiles = fs.readdirSync(__dirname);
-        } catch(re) {}
 
-        res.json({
-            db_exists: !!db,
-            env_keys: Object.keys(process.env).filter(k => k.includes('FIREBASE') || k.includes('PORT') || k.includes('URL')),
-            firebase_apps: require('firebase-admin').apps.map(a => a.name),
-            filesFound,
-            rootFiles,
-            __dirname
-        });
-    } catch(e) {
-        res.json({ error: e.message });
-    }
-});
 
 // Endpoint para resetear la sesión corrompida (MAC malo)
 app.post('/api/bot/reset-session', async (req, res) => {
