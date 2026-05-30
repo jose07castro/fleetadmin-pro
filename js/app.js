@@ -3,6 +3,19 @@
 // ==========================================
 // import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 
+// Interceptor global de fetch para móviles (redirige rutas relativas a la URL de producción)
+if (window.location.hostname === 'localhost' || 
+    window.location.hostname === '127.0.0.1' || 
+    window.location.protocol === 'file:') {
+    const originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+        if (typeof input === 'string' && input.startsWith('/api/')) {
+            input = 'https://fleetadmin-web-nueva.onrender.com' + input;
+        }
+        return originalFetch(input, init);
+    };
+}
+
 /* ============================================
    FleetAdmin Pro — Archivo Principal
    Inicialización de la aplicación PWA
@@ -681,7 +694,13 @@ const App = (() => {
             }
 
             // Consultar al servidor
-            const response = await fetch('/api/version-check');
+            const serverUrl = (window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:') 
+                               ? 'https://fleetadmin-web-nueva.onrender.com' 
+                               : window.location.origin;
+
+            const response = await fetch(`${serverUrl}/api/version-check`);
             if (response.ok) {
                 const data = await response.json();
                 const minCode = data.min_required_version_code;
@@ -795,7 +814,13 @@ const App = (() => {
         }
 
         try {
-            await fetch('/api/driver/report-version', {
+            const serverUrl = (window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:') 
+                               ? 'https://fleetadmin-web-nueva.onrender.com' 
+                               : window.location.origin;
+
+            await fetch(`${serverUrl}/api/driver/report-version`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
