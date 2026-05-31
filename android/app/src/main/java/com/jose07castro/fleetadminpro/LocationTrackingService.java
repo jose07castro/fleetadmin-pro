@@ -111,6 +111,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // Data lists for Proximity
     private final List<TrafficAlert> activeAlerts = new ArrayList<>();
     private final Map<String, Long> lastAlertTimestamps = new HashMap<>();
+    private final List<String> spokenAlertIds = new ArrayList<>();
+    private long serviceStartTime = 0;
 
     // Last data
     private double lastLat = 0;
@@ -126,13 +128,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         double lat;
         double lng;
         String location;
+        String originalText;
+        long timestamp;
 
-        TrafficAlert(String id, String type, double lat, double lng, String location) {
+        TrafficAlert(String id, String type, double lat, double lng, String location, String originalText, long timestamp) {
             this.id = id;
             this.type = type;
             this.lat = lat;
             this.lng = lng;
             this.location = location;
+            this.originalText = originalText;
+            this.timestamp = timestamp;
         }
     }
 
@@ -142,6 +148,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     public void onCreate() {
         super.onCreate();
         Log.i(TAG, "🚀 onCreate() — Inicializando motor GPS Indestructible v5.1");
+        serviceStartTime = System.currentTimeMillis();
 
         createNotificationChannel();
 
@@ -475,39 +482,118 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // TRAFFIC ALERTS LISTENER (Firebase)
     // ================================================================
 
+    private Double getDoubleValue(DataSnapshot snapshot) {
+        Object val = snapshot.getValue();
+        if (val == null) return null;
+        if (val instanceof Number) {
+            return ((Number) val).doubleValue();
+        }
+        if (val instanceof String) {
+            try {
+                return Double.parseDouble((String) val);
+            } catch (NumberFormatException e) {
+                Log.w(TAG, "⚠️ Failed to parse double from string: " + val);
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Long getLongValue(DataSnapshot snapshot) {
+        Object val = snapshot.getValue();
+        if (val == null) return null;
+        if (val instanceof Number) {
+            return ((Number) val).longValue();
+        }
+        if (val instanceof String) {
+            try {
+                return Long.parseLong((String) val);
+            } catch (NumberFormatException e) {
+                Log.w(TAG, "⚠️ Failed to parse long from string: " + val);
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String getStringValue(DataSnapshot snapshot) {
+        Object val = snapshot.getValue();
+        if (val == null) return null;
+        return val.toString();
+    }
+
     private final ValueEventListener alertsListener = new ValueEventListener() {
         @Override
         public void onDataChange(@NonNull DataSnapshot snapshot) {
+            Log.i(TAG, "🔔 [ALERTS] onDataChange: snapshot.getChildrenCount() = " + snapshot.getChildrenCount());
             synchronized (activeAlerts) {
                 activeAlerts.clear();
                 long now = System.currentTimeMillis();
+                int loadedCount = 0;
 
                 for (DataSnapshot child : snapshot.getChildren()) {
                     try {
                         String id = child.getKey();
-                        String type = child.child("type").getValue(String.class);
-                        Double lat = child.child("lat").getValue(Double.class);
-                        Double lng = child.child("lng").getValue(Double.class);
-                        String status = child.child("status").getValue(String.class);
-                        Long expiresAt = child.child("expiresAt").getValue(Long.class);
+                        String type = getStringValue(child.child("type"));
+                        Double lat = getDoubleValue(child.child("lat"));
+                        Double lng = getDoubleValue(child.child("lng"));
+                        String location = getStringValue(child.child("location"));
+                        String originalText = getStringValue(child.child("originalText"));
+                        Long timestamp = getLongValue(child.child("timestamp"));
+                        String status = getStringValue(child.child("status"));
+                        Long expiresAt = getLongValue(child.child("expiresAt"));
+
+                        Log.d(TAG, "🔔 [ALERTS] parsing alert id=" + id + ", type=" + type + ", lat=" + lat + ", lng=" + lng + ", status=" + status + ", expiresAt=" + expiresAt);
 
                         if (lat != null && lng != null && "active".equals(status) && (expiresAt == null || expiresAt > now)) {
-                            activeAlerts.add(new TrafficAlert(id, type, lat, lng, ""));
+                            TrafficAlert alert = new TrafficAlert(
+                                id, 
+                                type, 
+                                lat, 
+                                lng, 
+                                location != null ? location : "", 
+                                originalText != null ? originalText : "", 
+                                timestamp != null ? timestamp : 0L
+                            );
+                            activeAlerts.add(alert);
+                            loadedCount++;
+
+                            // Immediate announcement check
+                            if (alert.timestamp >= serviceStartTime - 5000 && !spokenAlertIds.contains(id)) {
+                                speakImmediateAlert(alert);
+                                spokenAlertIds.add(id);
+                                if (spokenAlertIds.size() > 200) {
+                                    spokenAlertIds.remove(0);
+                                }
+                            }
                         }
-                    } catch (Exception e) {}
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ [ALERTS] Error parsing alert child: " + child.getKey(), e);
+                    }
                 }
+                Log.i(TAG, "🔔 [ALERTS] Successfully parsed " + loadedCount + " active alerts. Total loaded in memory: " + activeAlerts.size());
             }
         }
 
         @Override
-        public void onCancelled(@NonNull DatabaseError error) {}
+        public void onCancelled(@NonNull DatabaseError error) {
+            Log.w(TAG, "📡 [ALERTS] Listener cancelled: " + error.getMessage());
+        }
     };
 
     private void startTrafficAlertsListener() {
-        if (fleetId == null || fleetId.isEmpty()) return;
-        if (alertsRef != null) alertsRef.removeEventListener(alertsListener);
+        Log.i(TAG, "📡 [ALERTS] startTrafficAlertsListener. fleetId: " + fleetId);
+        if (fleetId == null || fleetId.isEmpty()) {
+            Log.w(TAG, "⚠️ [ALERTS] Cannot start traffic alerts listener: fleetId is null or empty!");
+            return;
+        }
+        if (alertsRef != null) {
+            Log.i(TAG, "📡 [ALERTS] Removing previous database listener");
+            alertsRef.removeEventListener(alertsListener);
+        }
         alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
         alertsRef.addValueEventListener(alertsListener);
+        Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
     }
 
     // ================================================================
@@ -517,15 +603,79 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
-            tts.setLanguage(new Locale("es", "ES"));
+            Locale spanish = new Locale("es", "ES");
+            int result = tts.setLanguage(spanish);
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w(TAG, "⚠️ TTS: es_ES not supported. Trying generic 'es' locale...");
+                result = tts.setLanguage(new Locale("es"));
+            }
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w(TAG, "⚠️ TTS: 'es' not supported. Using default system locale.");
+                tts.setLanguage(Locale.getDefault());
+            }
             isTtsInitialized = true;
+            Log.i(TAG, "🔊 TTS: TextToSpeech Initialized successfully");
+        } else {
+            Log.e(TAG, "❌ TTS: TextToSpeech Initialization failed with status: " + status);
         }
     }
 
     private void speak(String text) {
+        Log.i(TAG, "🔊 [TTS] speak: \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
-            tts.speak(text, TextToSpeech.QUEUE_ADD, null, "alert_" + System.currentTimeMillis());
+            int result = tts.speak(text, TextToSpeech.QUEUE_ADD, null, "alert_" + System.currentTimeMillis());
+            if (result == TextToSpeech.ERROR) {
+                Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
+            }
+        } else {
+            Log.w(TAG, "⚠️ [TTS] TTS not initialized or null: isTtsInitialized=" + isTtsInitialized);
         }
+    }
+
+    private void speakImmediateAlert(TrafficAlert alert) {
+        String msg = "Atención. Alerta de tráfico";
+        if (alert.type != null) {
+            switch (alert.type) {
+                case "police": case "checkpoint": msg = "Atención. Control de policía"; break;
+                case "radar": msg = "Cuidado. Radar de velocidad"; break;
+                case "helicopter": msg = "Alerta. Helicóptero sanitario en zona"; break;
+                case "ambulance": msg = "Precaución. Ambulancia en la vía"; break;
+                case "firetruck": msg = "Atención. Bomberos en la vía"; break;
+                case "municipal": msg = "Cuidado. Control municipal de tránsito"; break;
+                case "accident": msg = "Atención. Accidente vial reportado"; break;
+                case "traffic": msg = "Aviso. Tráfico lento reportado"; break;
+                case "warning": msg = "Atención. Alerta de tráfico"; break;
+            }
+        }
+
+        String loc = alert.location;
+        if (loc != null) {
+            loc = loc.replace(" (ubicación aprox.)", "")
+                     .replace(" (ubicación aproximada)", "")
+                     .replace(" y ", " esquina ");
+        } else {
+            loc = "";
+        }
+
+        String fullText = "";
+        if (alert.originalText != null && !alert.originalText.isEmpty()) {
+            String cleanText = alert.originalText
+                .replaceAll("https?://\\S+", "") // Remove URL
+                .replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]", " ") // Leave alphanumeric
+                .replaceAll("\\s+", " ") // Normalize spaces
+                .trim();
+
+            if (cleanText.length() > 2) {
+                fullText = "Atención: " + cleanText + ".";
+            } else {
+                fullText = !loc.isEmpty() ? msg + " en " + loc + ". Precaución." : msg + ". Precaución.";
+            }
+        } else {
+            fullText = !loc.isEmpty() ? msg + " en " + loc + ". Precaución." : msg + ". Precaución.";
+        }
+
+        Log.i(TAG, "🔊 [IMMEDIATE ALERTS] Speaking new alert: " + fullText);
+        speak(fullText);
     }
 
     // ================================================================

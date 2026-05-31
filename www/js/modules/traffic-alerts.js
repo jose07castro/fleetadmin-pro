@@ -223,6 +223,13 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
+            // Si estamos en Android nativo y el rastreo está activo, el servicio nativo de Java se encarga.
+            // Omitimos el anuncio desde JS para evitar doble voz superpuesta.
+            if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid() && AndroidServices.isTrackingActive()) {
+                console.log('📡 [VOZ-GLOBAL] Omitiendo anuncio en JS en Android (el servicio nativo se encarga)');
+                return;
+            }
+
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
             // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
             if (alert.timestamp && alert.timestamp < _appStartTime) {

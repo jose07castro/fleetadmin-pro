@@ -268,6 +268,10 @@ const AndroidServices = (() => {
         return (Date.now() - _lastNativeGPSTime) < 15000;
     }
 
+    function isTrackingActive() {
+        return _nativeGPSActive;
+    }
+
     // =============================================
     // 3. SOLICITUD DE EXENCIÓN DE BATERÍA
     //
@@ -547,6 +551,7 @@ const AndroidServices = (() => {
         // Foreground Service
         enableForegroundService,
         disableForegroundService,
+        isTrackingActive,
         
         // GPS nativo
         isNativeGPSAlive,
