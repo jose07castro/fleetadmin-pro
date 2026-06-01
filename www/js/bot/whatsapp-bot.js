@@ -496,10 +496,16 @@ const WhatsappBot = (() => {
                         retryCount++;
                         
                         // PROTOCOLO DE SUICIDIO CONTROLADO: Si el conflicto 440 persiste 3 veces, 
-                        // matamos el proceso para que Render recicle limpio y elimine clones fantasmas de RAM
+                        // matamos el proceso para que Render recicle limpio y elimine clones fantasmas de RAM.
+                        // Omitido durante los primeros 5 minutos de arranque (warmup) para evitar fallos de despliegue.
                         if (retryCount >= 3) {
-                            console.error('💥 [LOCK-FATAL] Conflicto 440 persistente. Matando proceso para autocuración completa en Render...');
-                            process.exit(1);
+                            if (process.uptime() > 300) {
+                                console.error('💥 [LOCK-FATAL] Conflicto 440 persistente. Matando proceso para autocuración completa en Render...');
+                                process.exit(1);
+                            } else {
+                                console.warn('⚠️ [LOCK-WARMUP] Conflicto 440 durante el arranque. Ignorando suicidio por calentamiento (uptime < 5min)...');
+                                retryCount = 0; // Resetear para seguir intentando
+                            }
                         }
 
                         // Retardo racional con desincronización aleatoria (Jitter)
