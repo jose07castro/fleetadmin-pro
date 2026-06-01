@@ -241,8 +241,28 @@
                 return;
             }
 
-            console.log('🔊 [GLOBAL VOICE] Cantando nueva alerta en vivo:', alert.type, alert.location);
-            speakAlert(alert.type, alert.location, alert.originalText);
+            console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
+
+            // Si la alerta tiene un audio original de WhatsApp, reproducirlo tal cual (sin TTS)
+            if (alert.audioUrl) {
+                const fullAudioUrl = alert.audioUrl.startsWith('http') 
+                    ? alert.audioUrl 
+                    : `${window.location.origin}${alert.audioUrl}`;
+                console.log(`🎵 [AUDIO-ORIGINAL] Reproduciendo audio de WhatsApp: ${fullAudioUrl}`);
+                try {
+                    const audio = new Audio(fullAudioUrl);
+                    audio.volume = 1.0;
+                    audio.play().catch(audioErr => {
+                        console.warn('⚠️ [AUDIO-ORIGINAL] Fallo al reproducir, usando voz sintetizada:', audioErr.message);
+                        speakAlert(alert.type, alert.location, alert.originalText);
+                    });
+                } catch (audioEx) {
+                    console.warn('⚠️ [AUDIO-ORIGINAL] Error de Audio API, usando voz sintetizada:', audioEx.message);
+                    speakAlert(alert.type, alert.location, alert.originalText);
+                }
+            } else {
+                speakAlert(alert.type, alert.location, alert.originalText);
+            }
         });
     }
 
