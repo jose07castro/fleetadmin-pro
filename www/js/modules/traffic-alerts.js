@@ -69,6 +69,7 @@
      * Convierte una dirección/intersección en coordenadas usando Nominatim.
      */
     async function geocodeIntersection(query) {
+        try {
             const url = `${NOMINATIM_BASE}?format=json&q=${encodeURIComponent(query)}&${DEFAULT_BOUNDS}`;
             const response = await fetch(url, {
                 headers: { 'Accept-Language': 'es' }
@@ -81,7 +82,7 @@
                     lat: parseFloat(data[0].lat),
                     lng: parseFloat(data[0].lon)
                 };
-                _geocodeCache[fullQuery] = { coords: result, timestamp: Date.now() };
+                _geocodeCache[query] = { coords: result, timestamp: Date.now() };
                 return result;
             }
         } catch (e) {
