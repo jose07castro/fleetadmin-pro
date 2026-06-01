@@ -224,22 +224,20 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // Si estamos en Android nativo y el rastreo está activo, el servicio nativo de Java se encarga.
-            // Omitimos el anuncio desde JS para evitar doble voz superpuesta.
-            if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid() && AndroidServices.isTrackingActive()) {
-                console.log('📡 [VOZ-GLOBAL] Omitiendo anuncio en JS en Android (el servicio nativo se encarga)');
-                return;
-            }
+            // NOTA: NO saltamos el anuncio en Android nativo — el servicio Java solo maneja GPS
+            // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
 
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 15 segundos.
-            const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 15000;
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 30 segundos.
+            const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 30000;
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
+                console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 return; 
             }
 
             // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
+                console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
                 return;
             }
 

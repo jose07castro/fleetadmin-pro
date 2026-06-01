@@ -659,10 +659,10 @@ const WhatsappBot = (() => {
                     console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
 
 
-                    // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
+                    // 1. PROCESAR AUDIO (Speech-to-Text: OpenAI Whisper si disponible, sino Gemini nativo)
                     let audioBuffer = null;
                     let audioUrl = null;
-                    if (isAudio && process.env.OPENAI_API_KEY) {
+                    if (isAudio) {
                         try {
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
                             
@@ -676,26 +676,81 @@ const WhatsappBot = (() => {
                                 logger: P({ level: 'silent' }),
                                 reuploadRequest: sock.updateMediaMessage 
                             });
+                            console.log(`🎙️ [AUDIO] Descargado ${audioBuffer.length} bytes de audio`);
 
-                            const tmpPath = path.join(__dirname, `tmp_${Date.now()}.ogg`);
-                            fs.writeFileSync(tmpPath, audioBuffer);
+                            if (process.env.OPENAI_API_KEY) {
+                                // === OPCIÓN A: OpenAI Whisper (mayor precisión si disponible) ===
+                                try {
+                                    const tmpPath = path.join(__dirname, `tmp_${Date.now()}.ogg`);
+                                    fs.writeFileSync(tmpPath, audioBuffer);
 
-                            const FormData = require('form-data');
-                            const form = new FormData();
-                            form.append('file', fs.createReadStream(tmpPath), { filename: 'audio.ogg', contentType: 'audio/ogg' });
-                            form.append('model', 'whisper-1');
-                            form.append('language', 'es');
+                                    const FormData = require('form-data');
+                                    const form = new FormData();
+                                    form.append('file', fs.createReadStream(tmpPath), { filename: 'audio.ogg', contentType: 'audio/ogg' });
+                                    form.append('model', 'whisper-1');
+                                    form.append('language', 'es');
 
-                            const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
-                                headers: { ...form.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
-                            });
+                                    const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+                                        headers: { ...form.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
+                                    });
 
-                            fs.unlinkSync(tmpPath);
-                            if (whisperRes.data?.text) {
-                                text = whisperRes.data.text;
-                                console.log(`🎙️ Audio transcrito: "${text}"`);
+                                    fs.unlinkSync(tmpPath);
+                                    if (whisperRes.data?.text) {
+                                        text = whisperRes.data.text;
+                                        console.log(`🎙️ [WHISPER] Transcripción: "${text}"`);
+                                    }
+                                } catch (whisperErr) {
+                                    console.warn(`⚠️ [WHISPER] Falló (${whisperErr.message}), intentando Gemini...`);
+                                }
                             }
-                        } catch (err) { console.error('❌ Error audio:', err.message); }
+                            
+                            // === OPCIÓN B: Gemini nativo con audio inline (gratuito, sin clave extra) ===
+                            // Se usa como fallback si Whisper no está disponible o falla.
+                            if (!text && GEMINI_KEY) {
+                                try {
+                                    const audioBase64 = audioBuffer.toString('base64');
+                                    // Determinar MIME type según el codec del audio
+                                    const mimeType = resolvedAudioMsg.mimetype || 'audio/ogg; codecs=opus';
+                                    
+                                    const urls = GEMINI_URL ? [GEMINI_URL] : GEMINI_MODELS;
+                                    for (const url of urls) {
+                                        try {
+                                            const geminiAudioRes = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                                                contents: [{
+                                                    parts: [
+                                                        {
+                                                            inline_data: {
+                                                                mime_type: mimeType,
+                                                                data: audioBase64
+                                                            }
+                                                        },
+                                                        {
+                                                            text: 'Transcribe exactamente lo que se dice en este audio de WhatsApp de un grupo de conductores de Rosario, Argentina. Solo devuelve la transcripción literal, sin explicaciones. Si no hay voz clara, responde: [sin voz]'
+                                                        }
+                                                    ]
+                                                }]
+                                            }, { timeout: 20000 });
+                                            
+                                            const transcribed = geminiAudioRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                                            if (transcribed && !transcribed.includes('[sin voz]') && transcribed.trim().length > 2) {
+                                                text = transcribed.trim();
+                                                if (!GEMINI_URL) GEMINI_URL = url;
+                                                console.log(`🎙️ [GEMINI-AUDIO] Transcripción: "${text}"`);
+                                                break;
+                                            }
+                                        } catch (gemErr) {
+                                            console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${gemErr.response?.data?.error?.message || gemErr.message}`);
+                                        }
+                                    }
+                                } catch (geminiAudioErr) {
+                                    console.error('❌ [GEMINI-AUDIO] Error de transcripción:', geminiAudioErr.message);
+                                }
+                            }
+                            
+                            if (!text) {
+                                console.log('⚠️ [AUDIO] No se pudo transcribir el audio. El mensaje de voz no generó texto.');
+                            }
+                        } catch (err) { console.error('❌ Error descargando/procesando audio:', err.message); }
                     }
 
                     if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
