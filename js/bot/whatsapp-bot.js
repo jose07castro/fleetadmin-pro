@@ -786,8 +786,8 @@ const WhatsappBot = (() => {
                                 });
                             }
 
-                            // Procesar la alerta pasando el message ID único y el audioUrl
-                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl);
+                            // Procesar la alerta pasando el message ID único, audioUrl y description
+                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description);
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -887,7 +887,7 @@ REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE):
 9. Cortes de calle, baches, inundaciones, protestas, tráfico pesado, tránsito demorado → tipo: "traffic"
 
 Responde ÚNICAMENTE con un objeto JSON válido sin explicaciones ni formato markdown adicional:
-{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad/región inferida o null","description":"resumen muy breve","confidence":0.0}
+{"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad/región inferida o null","description":"un resumen extremadamente breve (máximo 8 palabras o 60 caracteres), limpio y directo en español, optimizado para ser leído por un conductor en pantalla mientras maneja (ejemplos: 'Control policial y de motos', 'Accidente vehicular - demora leve', 'Cruce cortado por bache', 'Inspectores con grúa'). Sin emojis, saludos ni rodeos.","confidence":0.0}
 Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
 
         try {
@@ -1164,7 +1164,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         return 'Rosario';
     }
 
-     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null) {
+     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null) {
         const fleetId = await _resolveFleetId();
         // Generar una clave determinista basada en el ID de WhatsApp si existe.
         // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
@@ -1267,6 +1267,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             expiresAt: Date.now() + (60 * 60 * 1000),
             authorName: sourceGroup,
             originalText: originalText,
+            description: description || (originalText ? originalText.substring(0, 60) : ''),
             confirmations: approximate ? 0 : 1,
             status: 'active',
             source: 'whatsapp_bot',

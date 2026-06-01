@@ -579,12 +579,29 @@ const GPSModule = (() => {
                     `;
                 }
 
+                // Si hay descripción de IA/Resumen limpio, mostrarlo como primario. Si no, usar texto original recortado.
+                const cleanSummary = alert.description || (alert.originalText ? alert.originalText.substring(0, 60) : '');
+                
+                // Texto original en un desplegable <details>
+                let detailsHtml = '';
+                if (alert.originalText) {
+                    detailsHtml = `
+                        <details style="margin-top: 6px; text-align: left; font-size: 10px; color: #64748b; cursor: pointer; outline: none;">
+                            <summary style="font-weight: 600; color: #3b82f6; outline: none; margin-bottom: 2px;">Ver texto original</summary>
+                            <div style="max-height: 65px; overflow-y: auto; padding: 4px 6px; background: #f8fafc; border-radius: 4px; border: 1px solid #e2e8f0; font-style: italic; white-space: pre-wrap; line-height: 1.2;">
+                                "${alert.originalText}"
+                            </div>
+                        </details>
+                    `;
+                }
+
                 const popupContent = `
                     <div style="text-align:center; padding:8px; font-family:Inter,sans-serif; min-width: 160px; max-width: 220px; color: #1e293b;">
                         <strong style="display:block; margin-bottom:6px; font-size:13px; color: ${borderColor};">${popupLabel}</strong>
-                        <p style="margin:0 0 6px 0; font-size:12px; font-weight:600;">${alert.location}</p>
-                        ${alert.originalText ? `<p style="margin:0 0 6px 0; font-size:11px; color:#64748b; font-style:italic; line-height: 1.3;">"${alert.originalText.substring(0, 100)}${alert.originalText.length > 100 ? '...' : ''}"</p>` : ''}
-                        <span style="font-size:10px; color:#94a3b8; display:block;">Reportado por WhatsApp</span>
+                        <p style="margin:0 0 6px 0; font-size:12px; font-weight:700;">${alert.location}</p>
+                        ${cleanSummary ? `<p style="margin:0 0 6px 0; font-size:11px; font-weight: 500; color: #334155; line-height: 1.3;">${cleanSummary}</p>` : ''}
+                        ${detailsHtml}
+                        <span style="font-size:9px; color:#94a3b8; display:block; margin-top:6px;">Reportado por WhatsApp</span>
                         ${audioButtonHtml}
                     </div>
                 `;
