@@ -699,19 +699,6 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // Para audios sin texto: crear alerta automáticamente (el audio ES el reporte)
-                    if (isAudioOnlyAlert && audioUrl) {
-                        console.log(`🎙️ [AUDIO-ALERTA] Audio sin texto detectado. Clasificando como alerta de voz del grupo: ${groupName || 'desconocido'}`);
-                        // Detectar ciudad desde el nombre del grupo
-                        const city = _detectCity('', groupName);
-                        // Obtener la dirección desde el nombre del grupo si es posible
-                        const groupAddress = null; // Sin texto no podemos extraer dirección exacta
-                        await _processAlert(groupAddress, '[REPORTE_DE_VOZ]', groupName, 'checkpoint', msg.key.id, audioUrl, 'Reporte por audio de voz');
-                        continue; // No hay texto que analizar con IA
-                    }
-
-
-
                     // --- RASTREO DE ANCHO DE BANDA (ENTRANTE) ---
                     _trackBandwidth(msg, 'in');
 
@@ -755,7 +742,16 @@ const WhatsappBot = (() => {
                         } catch(ge) { groupName = 'Grupo Desconocido'; }
                     }
 
-                    // --- ANÁLISIS: GEMINI + FALLBACK POR PALABRAS CLAVE ---
+                    // Para audios sin texto: crear alerta directamente
+                    if (isAudioOnlyAlert && audioUrl) {
+                        console.log(`🎤 [AUDIO-ALERTA] Audio de voz recibido del grupo: "${groupName}". Creando alerta checkpoint.`);
+                        await _processAlert(null, '[REPORTE_DE_VOZ]', groupName, 'checkpoint', msg.key.id, audioUrl, 'Reporte por audio de voz');
+                        continue; // Saltar análisis de IA — no hay texto
+                    }
+
+                    // Si no es audio y no hay texto, saltar
+                    if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
+
                     console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..." [Grupo: ${groupName}]`);
                     
                     try {
@@ -775,24 +771,6 @@ const WhatsappBot = (() => {
                         
                         if (analysis && analysis.isAlert) {
                             console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
-
-                            // Si venía de un audio, guardar el audio en la carpeta pública
-                            if (audioBuffer) {
-                                try {
-                                    const safeMsgId = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-                                    const audioFileName = `wsp_${safeMsgId}.ogg`;
-                                    const audioDestDir = path.join(__dirname, '../../audio');
-                                    if (!fs.existsSync(audioDestDir)) {
-                                        fs.mkdirSync(audioDestDir, { recursive: true });
-                                    }
-                                    const audioPath = path.join(audioDestDir, audioFileName);
-                                    fs.writeFileSync(audioPath, audioBuffer);
-                                    audioUrl = `/audio/${audioFileName}`;
-                                    console.log(`🎙️ Audio de alerta guardado en: ${audioPath}`);
-                                } catch (saveErr) {
-                                    console.error('❌ Error guardando archivo de audio:', saveErr.message);
-                                }
-                            }
 
                             // Guardar en Firebase (diagnóstico)
                             if (db) {
