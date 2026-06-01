@@ -46,11 +46,13 @@ const RadarModule = (() => {
         if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
         
         _HTMLMapMarkerClass = class extends google.maps.OverlayView {
-            constructor(latlng, html, popupHtml) {
+            constructor(latlng, html, popupHtml, offsetX = 30, offsetY = 40) {
                 super();
                 this.latlng = latlng;
                 this.html = html;
                 this.popupHtml = popupHtml;
+                this.offsetX = offsetX;
+                this.offsetY = offsetY;
                 this.div = null;
             }
             onAdd() {
@@ -66,7 +68,7 @@ const RadarModule = (() => {
                         if (window._activeInfoWindow) window._activeInfoWindow.close();
                         const iw = new google.maps.InfoWindow({
                             content: this.popupHtml,
-                            pixelOffset: new google.maps.Size(0, -25)
+                            pixelOffset: new google.maps.Size(0, -this.offsetY)
                         });
                         iw.setPosition(this.latlng);
                         iw.open(this.getMap());
@@ -79,8 +81,8 @@ const RadarModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
-                    this.div.style.left = (pos.x - 30) + 'px';
-                    this.div.style.top = (pos.y - 40) + 'px';
+                    this.div.style.left = (pos.x - this.offsetX) + 'px';
+                    this.div.style.top = (pos.y - this.offsetY) + 'px';
                 }
             }
             onRemove() {
@@ -835,65 +837,129 @@ const RadarModule = (() => {
         const type = data.type || 'warning'; // 'police' | 'radar' | 'traffic' | 'helicopter' | 'warning'
         
         const typeLabels = {
-            police:     '👮 Control de Policía',
-            checkpoint: '🚧 Operativo / Control',
-            radar:      '📷 Radar / Cámara de Velocidad',
-            helicopter: '🚁 Helicóptero Sanitario (HECA)',
-            traffic:    '🚦 Alerta de Tráfico',
+            police:     '🚔 Operativo Policial',
+            checkpoint: '🚧 Control de Tránsito',
+            municipal:  '🦊 Inspector Municipal',
+            radar:      '📷 Radar / Fotomulta',
+            helicopter: '🚁 Helicóptero Sanitario',
+            ambulance:  '🚑 Servicio de Ambulancia',
+            firetruck:  '🚒 Bomberos en Emergencia',
+            accident:   '💥 Accidente de Tránsito',
+            traffic:    '🚗 Tránsito Demorado',
             warning:    '⚠️ Alerta'
         };
         const label = typeLabels[type] || typeLabels.warning;
-        const description = data.description || '';
+
+        const BORDER_COLORS = {
+            police: '#3b82f6',
+            checkpoint: '#1d40af',
+            radar: '#f59e0b',
+            helicopter: '#10b981',
+            ambulance: '#ef4444',
+            firetruck: '#b91c1c',
+            municipal: '#10b981',
+            accident: '#ef4444',
+            traffic: '#f97316',
+            warning: '#6b7280'
+        };
+
+        const GLOW_SHADOWS = {
+            police: '0 0 10px rgba(59, 130, 246, 0.8)',
+            checkpoint: '0 0 10px rgba(29, 64, 175, 0.8)',
+            radar: '0 0 10px rgba(245, 158, 11, 0.8)',
+            helicopter: '0 0 10px rgba(16, 185, 129, 0.8)',
+            ambulance: '0 0 10px rgba(239, 68, 68, 0.8)',
+            firetruck: '0 0 10px rgba(185, 28, 28, 0.8)',
+            municipal: '0 0 10px rgba(16, 185, 129, 0.8)',
+            accident: '0 0 10px rgba(239, 68, 68, 0.8)',
+            traffic: '0 0 10px rgba(249, 115, 22, 0.8)',
+            warning: '0 0 8px rgba(107, 114, 128, 0.5)'
+        };
+
+        const iconUrl = _getAlertIconUrl(type);
+        const borderColor = BORDER_COLORS[type] || BORDER_COLORS.warning;
+        const glowStyle = GLOW_SHADOWS[type] || GLOW_SHADOWS.warning;
+
+        // Marcador premium: chapa circular blanca con borde y brillo
+        const iconHtml = `
+            <div class="custom-alert-marker" style="
+                width: 40px;
+                height: 40px;
+                background-color: #ffffff;
+                border: 3px solid ${borderColor};
+                border-radius: 50%;
+                box-shadow: ${glowStyle};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                position: relative;
+                box-sizing: border-box;
+            ">
+                <img src="${iconUrl}" style="width: 24px; height: 24px; object-fit: contain;" />
+            </div>
+        `;
+
+        const cleanSummary = data.description || (data.originalText ? data.originalText.substring(0, 60) : '');
+
+        let detailsHtml = '';
+        if (data.originalText) {
+            detailsHtml = `
+                <details style="margin-top: 6px; text-align: left; font-size: 10px; color: #64748b; cursor: pointer; outline: none;">
+                    <summary style="font-weight: 600; color: #3b82f6; outline: none; margin-bottom: 2px;">Ver texto original</summary>
+                    <div style="max-height: 65px; overflow-y: auto; padding: 4px 6px; background: #f8fafc; border-radius: 4px; border: 1px solid #e2e8f0; font-style: italic; white-space: pre-wrap; line-height: 1.2; color: #334155;">
+                        "${data.originalText}"
+                    </div>
+                </details>
+            `;
+        }
+
+        let audioButtonHtml = '';
+        if (data.audioUrl) {
+            audioButtonHtml = `
+                <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                    <button id="play-btn-${id}" class="audio-play-btn btn btn-primary btn-sm" 
+                        onclick="RadarModule.playAudio('${data.audioUrl}', 'play-btn-${id}')"
+                        style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; background: #3b82f6; color: white;">
+                        ▶️ Escuchar Audio
+                    </button>
+                </div>
+            `;
+        }
 
         const popupContent = `
-            <div class="radar-alert-popup">
-                <div class="alert-popup-header ${type}">
+            <div class="radar-alert-popup" style="padding: 4px; font-family: Inter, sans-serif; min-width: 160px; max-width: 220px;">
+                <div class="alert-popup-header ${type}" style="font-weight: bold; color: ${borderColor}; font-size: 13px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
                     ${label}
                 </div>
-                <div class="alert-popup-body">
-                    ${description ? `<p>${description}</p>` : ''}
-                    <p><strong>Ubicación:</strong> ${data.location}</p>
-                    <p><strong>Detectado:</strong> ${new Date(data.timestamp).toLocaleTimeString()}</p>
-                    <p class="alert-expiry">Expira en: ${Math.round((data.expiresAt - Date.now()) / 60000)} min</p>
+                <div class="alert-popup-body" style="font-size: 11px; color: #1e293b; line-height: 1.3;">
+                    ${cleanSummary ? `<p style="font-weight: 600; margin: 0 0 6px 0; font-size: 12px;">${cleanSummary}</p>` : ''}
+                    <p style="margin: 2px 0;"><strong>Ubicación:</strong> ${data.location}</p>
+                    <p style="margin: 2px 0;"><strong>Detectado:</strong> ${new Date(data.timestamp).toLocaleTimeString()}</p>
+                    <p class="alert-expiry" style="margin: 2px 0; color: #ef4444; font-weight: 500;">Expira en: ${Math.round((data.expiresAt - Date.now()) / 60000)} min</p>
+                    ${detailsHtml}
+                    ${audioButtonHtml}
                 </div>
-                <div class="alert-popup-actions">
-                    <button class="btn-confirm" onclick="RadarModule.confirmAlert('${id}')">👍 Sigue ahí</button>
-                    <button class="btn-dismiss" onclick="RadarModule.dismissAlert('${id}')">👎 Ya no está</button>
+                <div class="alert-popup-actions" style="margin-top: 10px; display: flex; gap: 6px; justify-content: space-between;">
+                    <button class="btn-confirm" onclick="RadarModule.confirmAlert('${id}')" style="flex: 1; padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid #d1d5db; background: #f3f4f6; cursor: pointer; font-weight: 500;">👍 Sigue ahí</button>
+                    <button class="btn-dismiss" onclick="RadarModule.dismissAlert('${id}')" style="flex: 1; padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid #d1d5db; background: #f3f4f6; cursor: pointer; font-weight: 500;">👎 Ya no está</button>
                 </div>
             </div>
         `;
 
-        const latlng = { lat, lng };
+        const latlng = new google.maps.LatLng(lat, lng);
 
         if (_alertMarkers[id]) {
-            // Alerta existente: solo actualizar posición y popup
-            _alertMarkers[id].marker.setPosition(latlng);
-            _alertMarkers[id].infoWindow.setContent(popupContent);
+            // Alerta existente: actualizar posición, contenido HTML y popup
+            _alertMarkers[id].setPosition(latlng);
+            _alertMarkers[id].setHtml(iconHtml);
+            _alertMarkers[id].setPopupContent(popupContent);
         } else {
-            // Alerta NUEVA: mostrar en mapa
-            const iconUrl = _getAlertIconUrl(type);
-            
-            const marker = new google.maps.Marker({
-                position: latlng,
-                map: _map,
-                icon: {
-                    url: iconUrl,
-                    scaledSize: new google.maps.Size(44, 44),
-                    anchor: new google.maps.Point(22, 22)
-                }
-            });
-
-            const infoWindow = new google.maps.InfoWindow({
-                content: popupContent
-            });
-
-            marker.addListener('click', () => {
-                if (window._activeInfoWindow) window._activeInfoWindow.close();
-                infoWindow.open(_map, marker);
-                window._activeInfoWindow = infoWindow;
-            });
-
-            _alertMarkers[id] = { marker, infoWindow };
+            // Alerta NUEVA: instanciar HTMLMapMarker (offset 20, 20 para centrar la chapa de 40px)
+            const MarkerClass = _getHTMLMapMarkerClass();
+            const marker = new MarkerClass(latlng, iconHtml, popupContent, 20, 20);
+            marker.setMap(_map);
+            _alertMarkers[id] = marker;
             
             // Auto-enfocar el mapa en la nueva alerta con una animación suave
             if (_map) {
@@ -918,25 +984,94 @@ const RadarModule = (() => {
 
     function _removeAlertMarker(id) {
         if (_alertMarkers[id]) {
-            _alertMarkers[id].marker.setMap(null);
+            _alertMarkers[id].setMap(null);
             delete _alertMarkers[id];
         }
     }
 
     function _getAlertIconUrl(type) {
         const iconMap = {
-            police:     '/assets/alert-icons/police.png',
-            checkpoint: '/assets/alert-icons/police.png',
-            radar:      '/assets/alert-icons/radar.png',
-            helicopter: '/assets/alert-icons/helicopter.png',
-            ambulance:  '/assets/alert-icons/ambulance.png',
-            firetruck:  '/assets/alert-icons/firetruck.png',
-            municipal:  '/assets/alert-icons/municipal.png',
-            accident:   '/assets/alert-icons/accident.png',
-            traffic:    '/assets/alert-icons/accident.png',
-            warning:    '/assets/alert-icons/accident.png',
+            police:     'assets/alert-icons/police.png',
+            checkpoint: 'assets/alert-icons/police.png',
+            radar:      'assets/alert-icons/radar.png',
+            helicopter: 'assets/alert-icons/helicopter.png',
+            ambulance:  'assets/alert-icons/ambulance.png',
+            firetruck:  'assets/alert-icons/firetruck.png',
+            municipal:  'assets/alert-icons/municipal.png',
+            accident:   'assets/alert-icons/accident.png',
+            traffic:    'assets/alert-icons/accident.png',
+            warning:    'assets/alert-icons/accident.png',
         };
         return iconMap[type] || iconMap.warning;
+    }
+
+    let currentAudio = null;
+    let currentAudioId = null;
+
+    function playAudio(audioUrl, btnId) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+
+        const serverUrl = (window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.protocol === 'file:') 
+                           ? 'https://fleetadmin-web-nueva.onrender.com' 
+                           : window.location.origin;
+
+        const fullUrl = audioUrl.startsWith('http') ? audioUrl : `${serverUrl}${audioUrl}`;
+
+        if (currentAudio && currentAudioId === audioUrl) {
+            if (!currentAudio.paused) {
+                currentAudio.pause();
+                btn.innerHTML = '▶️ Escuchar Audio';
+                btn.classList.remove('playing');
+            } else {
+                currentAudio.play().catch(e => console.error('Audio play error:', e));
+                btn.innerHTML = '⏸️ Pausar Audio';
+                btn.classList.add('playing');
+            }
+            return;
+        }
+
+        if (currentAudio) {
+            currentAudio.pause();
+            const prevBtn = document.querySelector('.audio-play-btn.playing');
+            if (prevBtn) {
+                prevBtn.innerHTML = '▶️ Escuchar Audio';
+                prevBtn.classList.remove('playing');
+            }
+        }
+
+        currentAudio = new Audio(fullUrl);
+        currentAudioId = audioUrl;
+        
+        btn.innerHTML = '⏳ Cargando...';
+        
+        currentAudio.addEventListener('canplaythrough', () => {
+            if (currentAudioId === audioUrl) {
+                currentAudio.play().catch(e => console.error('Audio play error:', e));
+                btn.innerHTML = '⏸️ Pausar Audio';
+                btn.classList.add('playing');
+            }
+        });
+
+        currentAudio.addEventListener('ended', () => {
+            btn.innerHTML = '▶️ Escuchar Audio';
+            btn.classList.remove('playing');
+            currentAudio = null;
+            currentAudioId = null;
+        });
+
+        currentAudio.addEventListener('error', (e) => {
+            console.error('Audio load error:', e);
+            btn.innerHTML = '❌ Error';
+            btn.classList.remove('playing');
+            currentAudio = null;
+            currentAudioId = null;
+            setTimeout(() => {
+                btn.innerHTML = '▶️ Escuchar Audio';
+            }, 2000);
+        });
     }
 
     // ============ FEEDBACK LOGIC ============
@@ -1089,6 +1224,6 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, playAudio
     };
 })();

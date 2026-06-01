@@ -231,8 +231,9 @@
             }
 
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
-            if (alert.timestamp && alert.timestamp < _appStartTime) {
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 15 segundos.
+            const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 15000;
+            if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 return; 
             }
 
