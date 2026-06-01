@@ -920,16 +920,57 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             let street1 = match[1].trim();
             let street2 = match[2].trim();
 
+            // 1. Limpiar street1: tomar la última parte que no tenga puntuación especial o emojis
+            let cleanStreet1 = street1;
+            let streetParts1 = street1.split(/[^a-zA-Z0-9\sáéíóúñÁÉÍÓÚÑ]/);
+            if (streetParts1.length > 0) {
+                for (let i = streetParts1.length - 1; i >= 0; i--) {
+                    const segment = streetParts1[i].trim();
+                    if (segment.length > 0) {
+                        cleanStreet1 = segment;
+                        break;
+                    }
+                }
+            }
+
             // Limpiar palabras comunes al inicio de la primera calle
             const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'operativo', 'control', 'la', 'los', 'las', 'del', 'de'];
-            let words = street1.split(' ');
-            while (words.length > 0 && noise.includes(words[0].toLowerCase())) {
-                words.shift();
+            let words1 = cleanStreet1.split(' ');
+            while (words1.length > 0 && noise.includes(words1[0].toLowerCase())) {
+                words1.shift();
             }
-            street1 = words.join(' ');
+            if (words1.length > 3) {
+                words1 = words1.slice(-3);
+            }
+            cleanStreet1 = words1.join(' ');
 
-            if (street1 && street2) {
-                return `${street1} y ${street2}`;
+            // 2. Limpiar street2: tomar la primera parte antes de la puntuación especial
+            let cleanStreet2 = street2;
+            let streetParts2 = street2.split(/[^a-zA-Z0-9\sáéíóúñÁÉÍÓÚÑ]/);
+            if (streetParts2.length > 0) {
+                for (let i = 0; i < streetParts2.length; i++) {
+                    const segment = streetParts2[i].trim();
+                    if (segment.length > 0) {
+                        cleanStreet2 = segment;
+                        break;
+                    }
+                }
+            }
+
+            // Cortar street2 en palabras clave que indican información colateral
+            let words2 = cleanStreet2.split(' ');
+            let cleanWords2 = [];
+            for (let i = 0; i < words2.length; i++) {
+                const w = words2[i].trim();
+                if (['frente', 'cerca', 'atencion', 'eviten', 'zona', 'llega', 'operativo', 'control', 'en'].includes(w.toLowerCase())) {
+                    break;
+                }
+                cleanWords2.push(w);
+            }
+            cleanStreet2 = cleanWords2.slice(0, 3).join(' ');
+
+            if (cleanStreet1 && cleanStreet2) {
+                return `${cleanStreet1} y ${cleanStreet2}`;
             }
         }
         return null;
