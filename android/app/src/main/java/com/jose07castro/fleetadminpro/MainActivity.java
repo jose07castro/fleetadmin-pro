@@ -67,6 +67,7 @@ public class MainActivity extends BridgeActivity {
         // Capturar referencia al WebView
         this.bridge.getWebView().post(() -> {
             webView = this.bridge.getWebView();
+            webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
             webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
             Log.i(TAG, "✅ NativeServiceBridge registrado en el WebView");
         });

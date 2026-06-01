@@ -26,7 +26,13 @@ const audioDir = path.join(__dirname, 'audio');
 if (!fs.existsSync(audioDir)) {
     fs.mkdirSync(audioDir, { recursive: true });
 }
-app.use('/audio', express.static(audioDir));
+app.use('/audio', express.static(audioDir, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.ogg')) {
+            res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
+        }
+    }
+}));
 
 app.use(express.json({ limit: '10mb' })); // Aumentado para soportar base64 de imágenes
 
