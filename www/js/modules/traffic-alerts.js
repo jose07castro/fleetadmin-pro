@@ -245,9 +245,14 @@
 
             // Si la alerta tiene un audio original de WhatsApp, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
+                const serverUrl = (window.location.hostname === 'localhost' || 
+                                   window.location.hostname === '127.0.0.1' ||
+                                   window.location.protocol === 'file:') 
+                                   ? 'https://fleetadmin-web-nueva.onrender.com' 
+                                   : window.location.origin;
                 const fullAudioUrl = alert.audioUrl.startsWith('http') 
                     ? alert.audioUrl 
-                    : `${window.location.origin}${alert.audioUrl}`;
+                    : `${serverUrl}${alert.audioUrl}`;
                 console.log(`🎵 [AUDIO-ORIGINAL] Reproduciendo audio de WhatsApp: ${fullAudioUrl}`);
                 try {
                     const audio = new Audio(fullAudioUrl);

@@ -6,6 +6,17 @@ const PORT = process.env.PORT || 10000;
 // Importar Bot de WhatsApp (Escucha grupos en segundo plano)
 const WhatsappBot = require('./js/bot/whatsapp-bot');
 
+// Habilitar CORS para todas las peticiones (requerido para clientes Capacitor/móviles)
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
 // 1. Dejamos que Express sirva los archivos libremente (JS, CSS, HTML, lo que sea)
 app.use(express.static(__dirname));
 

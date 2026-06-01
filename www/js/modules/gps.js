@@ -192,14 +192,7 @@ const GPSModule = (() => {
                 
                 if (this.popupHtml) {
                     this.div.addEventListener('click', () => {
-                        if (window._activeInfoWindow) window._activeInfoWindow.close();
-                        const iw = new google.maps.InfoWindow({
-                            content: this.popupHtml,
-                            pixelOffset: new google.maps.Size(0, -this.offsetY)
-                        });
-                        iw.setPosition(this.latlng);
-                        iw.open(this.getMap());
-                        window._activeInfoWindow = iw;
+                        this.openPopup();
                     });
                 }
                 this.getPanes().overlayMouseTarget.appendChild(this.div);
@@ -225,6 +218,20 @@ const GPSModule = (() => {
             setHtml(html) {
                 this.html = html;
                 if (this.div) this.div.innerHTML = html;
+            }
+            setPopupContent(content) {
+                this.popupHtml = content;
+            }
+            openPopup() {
+                if (!this.popupHtml) return;
+                if (window._activeInfoWindow) window._activeInfoWindow.close();
+                const iw = new google.maps.InfoWindow({
+                    content: this.popupHtml,
+                    pixelOffset: new google.maps.Size(0, -this.offsetY)
+                });
+                iw.setPosition(this.latlng);
+                iw.open(this.getMap());
+                window._activeInfoWindow = iw;
             }
             getPosition() {
                 return this.latlng;

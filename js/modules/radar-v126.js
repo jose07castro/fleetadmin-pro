@@ -65,14 +65,7 @@ const RadarModule = (() => {
                 
                 if (this.popupHtml) {
                     this.div.addEventListener('click', () => {
-                        if (window._activeInfoWindow) window._activeInfoWindow.close();
-                        const iw = new google.maps.InfoWindow({
-                            content: this.popupHtml,
-                            pixelOffset: new google.maps.Size(0, -this.offsetY)
-                        });
-                        iw.setPosition(this.latlng);
-                        iw.open(this.getMap());
-                        window._activeInfoWindow = iw;
+                        this.openPopup();
                     });
                 }
                 this.getPanes().overlayMouseTarget.appendChild(this.div);
@@ -101,6 +94,17 @@ const RadarModule = (() => {
             }
             setPopupContent(content) {
                 this.popupHtml = content;
+            }
+            openPopup() {
+                if (!this.popupHtml) return;
+                if (window._activeInfoWindow) window._activeInfoWindow.close();
+                const iw = new google.maps.InfoWindow({
+                    content: this.popupHtml,
+                    pixelOffset: new google.maps.Size(0, -this.offsetY)
+                });
+                iw.setPosition(this.latlng);
+                iw.open(this.getMap());
+                window._activeInfoWindow = iw;
             }
             getPosition() {
                 return this.latlng;
@@ -966,6 +970,13 @@ const RadarModule = (() => {
                 _map.panTo(latlng);
                 _map.setZoom(14);
             }
+
+            // Abrir automáticamente la ventana emergente para que el conductor vea la alerta y pueda reproducir el audio
+            setTimeout(() => {
+                if (_alertMarkers[id]) {
+                    _alertMarkers[id].openPopup();
+                }
+            }, 500);
         }
     }
 
