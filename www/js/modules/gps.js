@@ -195,7 +195,7 @@ const GPSModule = (() => {
                         if (window._activeInfoWindow) window._activeInfoWindow.close();
                         const iw = new google.maps.InfoWindow({
                             content: this.popupHtml,
-                            pixelOffset: new google.maps.Size(0, -this.offset)
+                            pixelOffset: new google.maps.Size(0, -this.offsetY)
                         });
                         iw.setPosition(this.latlng);
                         iw.open(this.getMap());
@@ -480,33 +480,117 @@ const GPSModule = (() => {
             }
         });
 
+        const ALERT_ICONS = {
+            police: 'assets/alert-icons/police.png',
+            checkpoint: 'assets/alert-icons/police.png',
+            radar: 'assets/alert-icons/radar.png',
+            helicopter: 'assets/alert-icons/helicopter.png',
+            ambulance: 'assets/alert-icons/ambulance.png',
+            firetruck: 'assets/alert-icons/firetruck.png',
+            municipal: 'assets/alert-icons/municipal.png',
+            accident: 'assets/alert-icons/accident.png',
+            traffic: 'assets/alert-icons/accident.png'
+        };
+        
+        const BORDER_COLORS = {
+            police: '#3b82f6',
+            checkpoint: '#1d40af',
+            radar: '#f59e0b',
+            helicopter: '#10b981',
+            ambulance: '#ef4444',
+            firetruck: '#b91c1c',
+            municipal: '#10b981',
+            accident: '#ef4444',
+            traffic: '#f97316'
+        };
+
+        const GLOW_SHADOWS = {
+            police: '0 0 10px rgba(59, 130, 246, 0.8)',
+            checkpoint: '0 0 10px rgba(29, 64, 175, 0.8)',
+            radar: '0 0 10px rgba(245, 158, 11, 0.8)',
+            helicopter: '0 0 10px rgba(16, 185, 129, 0.8)',
+            ambulance: '0 0 10px rgba(239, 68, 68, 0.8)',
+            firetruck: '0 0 10px rgba(185, 28, 28, 0.8)',
+            municipal: '0 0 10px rgba(16, 185, 129, 0.8)',
+            accident: '0 0 10px rgba(239, 68, 68, 0.8)',
+            traffic: '0 0 10px rgba(249, 115, 22, 0.8)'
+        };
+
         // Agregar o actualizar markers
         Object.keys(alerts).forEach(id => {
             const alert = alerts[id];
-            if (alert.type === 'police' || alert.type === 'checkpoint') pCount++; else tCount++;
+            
+            // Registrar inspectores municipales en el conteo de operativos
+            if (alert.type === 'police' || alert.type === 'checkpoint' || alert.type === 'municipal') {
+                pCount++;
+            } else {
+                tCount++;
+            }
 
             const latlng = new google.maps.LatLng(alert.lat, alert.lng);
 
             if (markers[id]) {
                 markers[id].setPosition(latlng);
             } else {
-                const isOperativo = alert.type === 'police' || alert.type === 'checkpoint';
-                const iconHtml = isOperativo 
-                    ? '<div style="font-size:24px; filter: drop-shadow(0 0 5px blue);">👮‍♂️</div>' 
-                    : '<div style="font-size:24px; filter: drop-shadow(0 0 5px orange);">⚠️</div>';
+                const iconUrl = ALERT_ICONS[alert.type] || 'assets/logo-3d-marker.svg';
+                const borderColor = BORDER_COLORS[alert.type] || '#6b7280';
+                const glowStyle = GLOW_SHADOWS[alert.type] || '0 0 8px rgba(107, 114, 128, 0.5)';
 
-                const popupLabel = isOperativo ? '🚔 Operativo Detectado' : '⚠️ Alerta de Tránsito';
-                
+                const iconHtml = `
+                    <div class="custom-alert-marker" style="
+                        width: 40px;
+                        height: 40px;
+                        background-color: #ffffff;
+                        border: 3px solid ${borderColor};
+                        border-radius: 50%;
+                        box-shadow: ${glowStyle};
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        overflow: hidden;
+                        position: relative;
+                        box-sizing: border-box;
+                    ">
+                        <img src="${iconUrl}" style="width: 24px; height: 24px; object-fit: contain;" />
+                    </div>
+                `;
+
+                let popupLabel = '⚠️ Alerta de Tránsito';
+                if (alert.type === 'police') popupLabel = '🚔 Operativo Policial';
+                else if (alert.type === 'checkpoint') popupLabel = '🚧 Control de Tránsito';
+                else if (alert.type === 'municipal') popupLabel = '🦊 Inspector Municipal';
+                else if (alert.type === 'radar') popupLabel = '📷 Radar / Fotomulta';
+                else if (alert.type === 'helicopter') popupLabel = '🚁 Helicóptero Sanitario';
+                else if (alert.type === 'ambulance') popupLabel = '🚑 Servicio de Ambulancia';
+                else if (alert.type === 'firetruck') popupLabel = '🚒 Bomberos en Emergencia';
+                else if (alert.type === 'accident') popupLabel = '💥 Accidente de Tránsito';
+                else if (alert.type === 'traffic') popupLabel = '🚗 Tránsito Demorado';
+
+                let audioButtonHtml = '';
+                if (alert.audioUrl) {
+                    audioButtonHtml = `
+                        <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+                            <button id="play-btn-${id}" class="audio-play-btn btn btn-primary btn-sm" 
+                                onclick="GPSModule.playAudio('${alert.audioUrl}', 'play-btn-${id}')"
+                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; background: #3b82f6; color: white;">
+                                ▶️ Escuchar Audio
+                            </button>
+                        </div>
+                    `;
+                }
+
                 const popupContent = `
-                    <div style="text-align:center; padding:5px; font-family:Inter,sans-serif;">
-                        <strong style="display:block; margin-bottom:5px;">${popupLabel}</strong>
-                        <p style="margin:0; font-size:12px;">${alert.location}</p>
-                        <span style="font-size:10px; color:gray;">Detectado por Bot WhatsApp</span>
+                    <div style="text-align:center; padding:8px; font-family:Inter,sans-serif; min-width: 160px; max-width: 220px; color: #1e293b;">
+                        <strong style="display:block; margin-bottom:6px; font-size:13px; color: ${borderColor};">${popupLabel}</strong>
+                        <p style="margin:0 0 6px 0; font-size:12px; font-weight:600;">${alert.location}</p>
+                        ${alert.originalText ? `<p style="margin:0 0 6px 0; font-size:11px; color:#64748b; font-style:italic; line-height: 1.3;">"${alert.originalText.substring(0, 100)}${alert.originalText.length > 100 ? '...' : ''}"</p>` : ''}
+                        <span style="font-size:10px; color:#94a3b8; display:block;">Reportado por WhatsApp</span>
+                        ${audioButtonHtml}
                     </div>
                 `;
 
                 const MarkerClass = _getHTMLMapMarkerClass();
-                const marker = new MarkerClass(latlng, iconHtml, popupContent, 12, 12);
+                const marker = new MarkerClass(latlng, iconHtml, popupContent, 20, 20);
                 marker.setMap(map);
                 markers[id] = marker;
             }
@@ -597,6 +681,75 @@ const GPSModule = (() => {
         }
     }
 
-    return { render, saveToken, simulateGPS, toggleMapStyle };
+    let currentAudio = null;
+    let currentAudioId = null;
+
+    function playAudio(audioUrl, btnId) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+
+        const serverUrl = (window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.protocol === 'file:') 
+                           ? 'https://fleetadmin-web-nueva.onrender.com' 
+                           : window.location.origin;
+
+        const fullUrl = audioUrl.startsWith('http') ? audioUrl : `${serverUrl}${audioUrl}`;
+
+        if (currentAudio && currentAudioId === audioUrl) {
+            if (!currentAudio.paused) {
+                currentAudio.pause();
+                btn.innerHTML = '▶️ Escuchar Audio';
+                btn.classList.remove('playing');
+            } else {
+                currentAudio.play().catch(e => console.error('Audio play error:', e));
+                btn.innerHTML = '⏸️ Pausar Audio';
+                btn.classList.add('playing');
+            }
+            return;
+        }
+
+        if (currentAudio) {
+            currentAudio.pause();
+            const prevBtn = document.querySelector('.audio-play-btn.playing');
+            if (prevBtn) {
+                prevBtn.innerHTML = '▶️ Escuchar Audio';
+                prevBtn.classList.remove('playing');
+            }
+        }
+
+        currentAudio = new Audio(fullUrl);
+        currentAudioId = audioUrl;
+        
+        btn.innerHTML = '⏳ Cargando...';
+        
+        currentAudio.addEventListener('canplaythrough', () => {
+            if (currentAudioId === audioUrl) {
+                currentAudio.play().catch(e => console.error('Audio play error:', e));
+                btn.innerHTML = '⏸️ Pausar Audio';
+                btn.classList.add('playing');
+            }
+        });
+
+        currentAudio.addEventListener('ended', () => {
+            btn.innerHTML = '▶️ Escuchar Audio';
+            btn.classList.remove('playing');
+            currentAudio = null;
+            currentAudioId = null;
+        });
+
+        currentAudio.addEventListener('error', (e) => {
+            console.error('Audio load error:', e);
+            btn.innerHTML = '❌ Error';
+            btn.classList.remove('playing');
+            currentAudio = null;
+            currentAudioId = null;
+            setTimeout(() => {
+                btn.innerHTML = '▶️ Escuchar Audio';
+            }, 2000);
+        });
+    }
+
+    return { render, saveToken, simulateGPS, toggleMapStyle, playAudio };
 })();
 

@@ -8,6 +8,15 @@ const WhatsappBot = require('./js/bot/whatsapp-bot');
 
 // 1. Dejamos que Express sirva los archivos libremente (JS, CSS, HTML, lo que sea)
 app.use(express.static(__dirname));
+
+// Servir de forma explícita la carpeta de audios de alertas
+const fs = require('fs');
+const audioDir = path.join(__dirname, 'audio');
+if (!fs.existsSync(audioDir)) {
+    fs.mkdirSync(audioDir, { recursive: true });
+}
+app.use('/audio', express.static(audioDir));
+
 app.use(express.json({ limit: '10mb' })); // Aumentado para soportar base64 de imágenes
 
 // Ruta de Salud rápida para Render (evita el "Port binding timeout")

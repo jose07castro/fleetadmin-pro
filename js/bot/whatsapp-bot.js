@@ -654,6 +654,8 @@ const WhatsappBot = (() => {
 
 
                     // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
+                    let audioBuffer = null;
+                    let audioUrl = null;
                     if (isAudio && process.env.OPENAI_API_KEY) {
                         try {
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
@@ -664,13 +666,13 @@ const WhatsappBot = (() => {
                                 message: { audioMessage: resolvedAudioMsg }
                             };
                             
-                            const buffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, { 
+                            audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, { 
                                 logger: P({ level: 'silent' }),
                                 reuploadRequest: sock.updateMediaMessage 
                             });
 
                             const tmpPath = path.join(__dirname, `tmp_${Date.now()}.ogg`);
-                            fs.writeFileSync(tmpPath, buffer);
+                            fs.writeFileSync(tmpPath, audioBuffer);
 
                             const FormData = require('form-data');
                             const form = new FormData();
@@ -756,6 +758,24 @@ const WhatsappBot = (() => {
                         if (analysis && analysis.isAlert) {
                             console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
 
+                            // Si venía de un audio, guardar el audio en la carpeta pública
+                            if (audioBuffer) {
+                                try {
+                                    const safeMsgId = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+                                    const audioFileName = `wsp_${safeMsgId}.ogg`;
+                                    const audioDestDir = path.join(__dirname, '../../audio');
+                                    if (!fs.existsSync(audioDestDir)) {
+                                        fs.mkdirSync(audioDestDir, { recursive: true });
+                                    }
+                                    const audioPath = path.join(audioDestDir, audioFileName);
+                                    fs.writeFileSync(audioPath, audioBuffer);
+                                    audioUrl = `/audio/${audioFileName}`;
+                                    console.log(`🎙️ Audio de alerta guardado en: ${audioPath}`);
+                                } catch (saveErr) {
+                                    console.error('❌ Error guardando archivo de audio:', saveErr.message);
+                                }
+                            }
+
                             // Guardar en Firebase (diagnóstico)
                             if (db) {
                                 await db.ref('bot_alerts').push({
@@ -766,8 +786,8 @@ const WhatsappBot = (() => {
                                 });
                             }
 
-                            // Procesar la alerta pasando el message ID único para asegurar idempotencia 
-                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id);
+                            // Procesar la alerta pasando el message ID único y el audioUrl
+                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl);
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -817,14 +837,14 @@ const WhatsappBot = (() => {
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
+        if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
+        if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
+        if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
         if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
         if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
-        if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
-        if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
-        if (/municipal|transito|zorros|inspectores/.test(t)) return { type: 'municipal', address: null };
-        if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
-        if (/corte|cortada|trafico|tráfico|bache|inundacion/.test(t)) return { type: 'traffic', address: null };
+        if (/municipal|zorros|inspectores/.test(t)) return { type: 'municipal', address: null };
+        if (/corte|cortada|trafico|tráfico|transito|bache|inundacion/.test(t)) return { type: 'traffic', address: null };
         return null;
     }
 
@@ -841,9 +861,9 @@ CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Mensaje escrito por el conductor: "${text}"
 
 REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
-Los conductores raramente escriben la ciudad completa. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO.
-1. Si el nombre del grupo menciona una región, ciudad, autopista o zona específica (ej: "Buenos Aires", "México DF", "São Paulo", "Mendoza", "Ruta 9", "Panamericana"), asume que cualquier calle mencionada sin ciudad se encuentra en ese contexto geográfico o área circundante.
-2. Utiliza el contexto espacial global para inferir el país y la región basados en las expresiones, jerga o nombres de localidades incluidos en el nombre del grupo y en el texto del mensaje.
+Los conductores raramente escriben la ciudad completa. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO o en palabras clave del texto.
+- Ciudades comunes en la región: "Rosario", "Arroyo Seco", "Pueblo Esther", "Funes", "Roldán", "San Lorenzo", "Granadero Baigorria", "Capitán Bermúdez", "Villa Constitución", "Pérez", "Ibarlucea", "Alvear", "Villa Gobernador Gálvez" (VGG).
+- Si el nombre del grupo menciona una ciudad (ej: "Operativos Arroyo Seco", "Accidentes Pueblo Esther") o el mensaje menciona una de estas ciudades, asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas.
 
 NORMALIZACIÓN DE ABREVIATURAS GLOBALES (IMPORTANTE):
 - "av" / "av." = Avenida
@@ -857,15 +877,14 @@ NORMALIZACIÓN DE ABREVIATURAS GLOBALES (IMPORTANTE):
 
 REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE):
 1. "CODIGO ROJO" / "HELICOPTERO" → tipo: "helicopter"
-2. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial" (o jerga policial local equivalente) → tipo: "police"
-3. Mensajes que mencionen control "municipal", "tránsito", "grúa", "fiscalización", "inspectores" → tipo: "municipal"
-4. Si menciona "GENDARMERÍA" o fuerzas federales similares → tipo: "police"
-5. Si menciona "OPERATIVO" o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
-6. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
-7. "AMBULANCIA", "SAMU", urgencias médicas médicas → tipo: "ambulance"
-8. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-9. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
-10. Cortes de calle, baches, inundaciones, protestas, tráfico pesado → tipo: "traffic"
+2. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
+3. "AMBULANCIA", "SAMU", urgencias médicas → tipo: "ambulance"
+4. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
+5. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial" (o jerga policial local equivalente) → tipo: "police"
+6. Si menciona "OPERATIVO" o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
+7. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
+8. Mensajes que mencionen control "municipal", "grúa", "fiscalización", "inspectores", "zorros" → tipo: "municipal"
+9. Cortes de calle, baches, inundaciones, protestas, tráfico pesado, tránsito demorado → tipo: "traffic"
 
 Responde ÚNICAMENTE con un objeto JSON válido sin explicaciones ni formato markdown adicional:
 {"isAlert":boolean,"type":"police"|"checkpoint"|"radar"|"helicopter"|"ambulance"|"firetruck"|"municipal"|"accident"|"traffic","address":"dirección completa con ciudad/región inferida o null","description":"resumen muy breve","confidence":0.0}
@@ -889,15 +908,20 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
      * Extrae calles de un texto usando Regex.
      */
     function _extractIntersection(text) {
+        // Normalizar texto reemplazando delimitadores de intersección comunes por " y "
+        let normalized = text
+            .replace(/\b(?:a\s+la\s+altura\s+de|esquina|esq\.?|entre|e\/)\b/gi, ' y ')
+            .replace(/\s+/g, ' ');
+
         // Regex para "Calle A y Calle B"
-        const regex = /([a-z0-9\sáéíóúñ]+)\sy\s([a-z0-9\sáéíóúñ]+)/i;
-        const match = text.match(regex);
+        const regex = /([a-z0-9\sáéíóúñ.]+)\sy\s([a-z0-9\sáéíóúñ.]+)/i;
+        const match = normalized.match(regex);
         if (match) {
             let street1 = match[1].trim();
             let street2 = match[2].trim();
 
             // Limpiar palabras comunes al inicio de la primera calle
-            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'un', 'operativo', 'control', 'la', 'los', 'las'];
+            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'operativo', 'control', 'la', 'los', 'las', 'del', 'de'];
             let words = street1.split(' ');
             while (words.length > 0 && noise.includes(words[0].toLowerCase())) {
                 words.shift();
@@ -1061,7 +1085,45 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
     /**
      * Geocodifica y guarda en Firebase.
      */
-     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null) {
+    const CITY_COORDINATES = {
+        'Rosario': { lat: -32.9468, lng: -60.6393 },
+        'Arroyo Seco': { lat: -33.1531, lng: -60.5239 },
+        'Pueblo Esther': { lat: -33.0744, lng: -60.5750 },
+        'Funes': { lat: -32.9168, lng: -60.8118 },
+        'Roldán': { lat: -32.8986, lng: -60.9069 },
+        'San Lorenzo': { lat: -32.7456, lng: -60.7335 },
+        'Granadero Baigorria': { lat: -32.8533, lng: -60.6974 },
+        'Capitán Bermúdez': { lat: -32.8184, lng: -60.7143 },
+        'Villa Constitución': { lat: -33.2274, lng: -60.3294 },
+        'Carcarañá': { lat: -32.8601, lng: -61.1448 },
+        'Pérez': { lat: -32.9986, lng: -60.7709 },
+        'Ibarlucea': { lat: -32.8624, lng: -60.7937 },
+        'Alvear': { lat: -33.0401, lng: -60.6366 },
+        'Villa Gobernador Gálvez': { lat: -32.9922, lng: -60.6300 }
+    };
+
+    function _detectCity(text, groupName = '') {
+        const fullContent = `${groupName} ${text}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        if (/\barroyo\s+seco\b/.test(fullContent)) return 'Arroyo Seco';
+        if (/\bpueblo\s+esther\b/.test(fullContent)) return 'Pueblo Esther';
+        if (/\bfunes\b/.test(fullContent)) return 'Funes';
+        if (/\broldan\b/.test(fullContent)) return 'Roldán';
+        if (/\bsan\s+lorenzo\b/.test(fullContent)) return 'San Lorenzo';
+        if (/\bbaigorria\b|\bgranadero\s+baigorria\b/.test(fullContent)) return 'Granadero Baigorria';
+        if (/\bbermudez\b|\bcapitan\s+bermudez\b/.test(fullContent)) return 'Capitán Bermúdez';
+        if (/\bvilla\s+constitucion\b/.test(fullContent)) return 'Villa Constitución';
+        if (/\bcarcara[nñ]a\b/.test(fullContent)) return 'Carcarañá';
+        if (/\bperez\b/.test(fullContent)) return 'Pérez';
+        if (/\bibarlucea\b/.test(fullContent)) return 'Ibarlucea';
+        if (/\balvear\b/.test(fullContent)) return 'Alvear';
+        if (/\bshangri\b/.test(fullContent)) return 'Pueblo Esther';
+        if (/\bvgg\b|\bvilla\s+gobernador\s+galvez\b/.test(fullContent)) return 'Villa Gobernador Gálvez';
+
+        return 'Rosario';
+    }
+
+     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null) {
         const fleetId = await _resolveFleetId();
         // Generar una clave determinista basada en el ID de WhatsApp si existe.
         // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
@@ -1071,8 +1133,12 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         // Determinar tipo
         let type = aiType || (/gorra|control|operativo|zorros|chanchos|ratis/i.test(originalText) ? 'police' : 'warning');
         
-        let lat = -32.9468; // Centro de Rosario (fallback)
-        let lng = -60.6393;
+        // Detectar ciudad
+        const city = _detectCity(originalText, sourceGroup);
+        const cityCoords = CITY_COORDINATES[city] || CITY_COORDINATES['Rosario'];
+        
+        let lat = cityCoords.lat;
+        let lng = cityCoords.lng;
         let approximate = true;
         let expandedAddress = address;
         
@@ -1086,7 +1152,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
             } else if (!address || address === 'null') {
                 // Sin dirección: usar ubicación neutra
-                console.log('⚠️ [GEO] Sin dirección exacta.');
+                console.log(`⚠️ [GEO] Sin dirección exacta. Usando centro de ${city}`);
             } else {
                 expandedAddress = _expandStreetNames(address);
                 let isResolved = false;
@@ -1096,9 +1162,10 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
                 if (googleApiKey) {
                     try {
-                        console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}"`);
+                        console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}" en ciudad: "${city}"`);
                         // Buscamos forzando la región y el idioma en Argentina
-                        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(expandedAddress + ', Rosario, Santa Fe, Argentina')}&language=es&region=AR&key=${googleApiKey}`;
+                        const queryAddress = `${expandedAddress}, ${city}, Santa Fe, Argentina`;
+                        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(queryAddress)}&language=es&region=AR&key=${googleApiKey}`;
                         const gResponse = await axios.get(gUrl, { timeout: 6000 });
                         
                         if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
@@ -1121,13 +1188,13 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     // Respetar delay básico para evitar rate limits
                     await new Promise(r => setTimeout(r, 1200));
                     
-                    console.log(`🔍 [GEO-PHOTON] Ejecutando consulta gratuita de emergencia para: "${expandedAddress}"`);
+                    console.log(`🔍 [GEO-PHOTON] Ejecutando consulta gratuita de emergencia para: "${expandedAddress}" en ciudad: "${city}"`);
                     
                     // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para Photon/OpenStreetMap
                     const cleanAddressForGeo = expandedAddress.replace(/\s+[yY]\s+/gi, ', ');
-                    const fullAddress = `${cleanAddressForGeo}, Rosario, Argentina`;
+                    const fullAddress = `${cleanAddressForGeo}, ${city}, Argentina`;
                     
-                    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=-32.9477&lon=-60.6652`;
+                    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=${cityCoords.lat}&lon=${cityCoords.lng}`;
                     const response = await axios.get(url, { timeout: 8000 });
                     const features = response.data?.features || [];
 
@@ -1164,6 +1231,9 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             source: 'whatsapp_bot',
             approximate: approximate
         };
+        if (audioUrl) {
+            alertData.audioUrl = audioUrl;
+        }
 
         console.log(`💾 [DB] Guardando alerta en TODAS las flotas...`);
 
@@ -1319,6 +1389,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 const fleets = fleetsSnap.val();
                 
                 let countAlerts = 0;
+                const audioFilesToDelete = new Set();
                 if (fleets) {
                     for (const fid in fleets) {
                         const alerts = fleets[fid].traffic_alerts;
@@ -1327,10 +1398,30 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                                 const a = alerts[aid];
                                 // Si tiene timestamp y es más viejo que 24hs, O si expiró explícitamente
                                 if ((a.timestamp && a.timestamp < cutOffAlerts) || (a.expiresAt && a.expiresAt < now)) {
+                                    if (a.audioUrl) {
+                                        audioFilesToDelete.add(a.audioUrl);
+                                    }
                                     await db.ref(`fleets/${fid}/traffic_alerts/${aid}`).remove();
                                     countAlerts++;
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Borrar archivos de audio físicos si expiraron
+                if (audioFilesToDelete.size > 0) {
+                    const audioDestDir = path.join(__dirname, '../../audio');
+                    for (const url of audioFilesToDelete) {
+                        try {
+                            const filename = path.basename(url);
+                            const filepath = path.join(audioDestDir, filename);
+                            if (fs.existsSync(filepath)) {
+                                fs.unlinkSync(filepath);
+                                console.log(`🧹 [CRON] Audio eliminado físicamente: ${filepath}`);
+                            }
+                        } catch (err) {
+                            console.error(`❌ [CRON] Error eliminando audio: ${url}`, err.message);
                         }
                     }
                 }
