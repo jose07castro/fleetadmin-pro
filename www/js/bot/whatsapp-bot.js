@@ -842,6 +842,10 @@ const WhatsappBot = (() => {
      */
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        // Si es una pregunta o consulta (contiene ? o palabras de duda/pregunta), ignorar
+        if (t.includes('?') || /\b(?:alguien\s+sabe|saben\s+si|info\b|reporta\s+si|saben\s+algo|hay\s+algo|alguien\s+vio|que\s+onda|pasa\s+algo|alguien\s+que\s+sepa)\b/i.test(t)) {
+            return null;
+        }
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
         if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
@@ -861,6 +865,9 @@ const WhatsappBot = (() => {
         if (!GEMINI_KEY) return null;
         
         const prompt = `Analiza este mensaje de un grupo de WhatsApp de conductores de flota para detectar incidentes de tránsito y operativos en tiempo real.
+
+REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
+- Si el mensaje es una pregunta, consulta o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos de controles o incidentes activos.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Nombre del Grupo de WhatsApp: "${groupName}"
