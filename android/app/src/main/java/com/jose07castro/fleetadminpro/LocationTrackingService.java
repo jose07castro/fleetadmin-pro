@@ -713,7 +713,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 data.put("updated_at", timestamp);
                 data.put("_source", source);
                 data.put("last_heartbeat", System.currentTimeMillis());
-                data.put("status", "active");
+
+                // Verificar dinámicamente el estado de permisos antes de reportar la ubicación
+                boolean hasBgLoc = true;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    hasBgLoc = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                } else {
+                    hasBgLoc = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                }
+
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                boolean isIgnoringBatt = true;
+                if (pm != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        isIgnoringBatt = pm.isIgnoringBatteryOptimizations(getPackageName());
+                    }
+                }
+
+                boolean permOk = hasBgLoc && isIgnoringBatt;
+                data.put("permissions_ok", permOk);
+                data.put("bg_location_ok", hasBgLoc);
+                data.put("battery_optimization_ok", isIgnoringBatt);
+                data.put("status", permOk ? "active" : "permissions_disabled");
                 data.put("gps_status", "active");
                 data.put("appVersion", appVersion);
 
@@ -995,8 +1016,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         boolean currentPermissionsOk = hasBgLocation && isIgnoringBattery;
 
-        // Si cambia el estado, o si están desactivados (para asegurar sincronización en Firebase)
-        if (currentPermissionsOk != lastPermissionsOk || !currentPermissionsOk) {
+        // Si cambia el estado de los permisos (eliminada la condición redundante que causaba reportes cada 1 minuto)
+        if (currentPermissionsOk != lastPermissionsOk) {
             Log.w(TAG, "🔒 [PERMISSIONS] Check: bgLocation=" + hasBgLocation + " | batteryIgnoring=" + isIgnoringBattery);
             
             // Actualizar Firebase RTDB

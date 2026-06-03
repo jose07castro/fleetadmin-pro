@@ -708,6 +708,7 @@ const RadarModule = (() => {
                         let rawName = data.driverName || (shift ? shift.driverName : null) || 'Chofer';
                         let firstName = rawName.split(' ')[0];
                         if (firstName.length > 20) firstName = 'Chofer';
+                        const plateText = vehicle && vehicle.plate ? ` (${vehicle.plate})` : '';
 
                         // Solo alertar si el estado CAMBIA hacia algo negativo (no al abrir radar por primera vez)
                         if (prevStatus !== null) {
@@ -716,25 +717,25 @@ const RadarModule = (() => {
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`, true);
                                 }
-                                showRadarWarning(`El conductor ${firstName} ha desactivado el GPS de su dispositivo`, 'warning');
+                                showRadarWarning(`El conductor ${firstName}${plateText} ha desactivado el GPS de su dispositivo`, 'warning');
                             } else if (newStatus === 'suspicious_disconnect') {
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`, true);
                                 }
-                                showRadarWarning(`Desconexión sospechosa detectada para ${firstName} (Sin señal)`, 'danger');
+                                showRadarWarning(`Desconexión sospechosa detectada para ${firstName}${plateText} (Sin señal)`, 'danger');
                             } else if (newStatus === 'permissions_disabled') {
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`, true);
                                 }
-                                showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}`, 'warning');
+                                showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}${plateText}`, 'warning');
                             } else if (newStatus === 'logout_voluntario') {
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`El conductor ${firstName} ha cerrado sesión voluntariamente.`, true);
                                 }
-                                showRadarWarning(`El conductor ${firstName} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
+                                showRadarWarning(`El conductor ${firstName}${plateText} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
                             }
                         }
                         
