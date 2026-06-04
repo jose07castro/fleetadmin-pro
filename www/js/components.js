@@ -17,7 +17,7 @@ const Components = (() => {
         const role = Auth.getRole();
 
         return `
-            <div class="app-layout">
+            <div class="app-layout route-${activeRoute}">
                 ${renderSidebar(activeRoute, user, role)}
                 <div class="sidebar-overlay" id="sidebarOverlay"></div>
                 <div class="app-main">

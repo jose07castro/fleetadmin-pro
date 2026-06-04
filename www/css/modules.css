@@ -2877,6 +2877,20 @@
     background: transparent !important;
     background-color: transparent !important;
     box-shadow: none !important;
+
+/* ============================================
+   FORZAR TRANSPARENCIA ABSOLUTA EN LOGIN
+   ============================================ */
+.login-screen,
+.login-container,
+.login-card,
+.login-screen form,
+.login-screen .card,
+.login-screen [class*="card"],
+.login-screen [class*="container"] {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
     border: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -2889,4 +2903,100 @@
 .login-card .form-label {
     color: #ffffff !important;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+/* ============================================
+   MAPA FULLSCREEN EN MÓVIL (RUTA: GPS/RADAR)
+   ============================================ */
+@media (max-width: 768px) {
+    /* Ocultar header por completo para ganar espacio */
+    .app-layout.route-gps .app-header {
+        display: none !important;
+    }
+
+    /* Eliminar paddings del contenedor de página */
+    .app-layout.route-gps .app-content {
+        padding: 0 !important;
+        margin: 0 !important;
+        height: 100vh !important;
+        height: calc(100vh - env(safe-area-inset-bottom, 0px)) !important;
+        max-width: 100vw !important;
+        width: 100vw !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+
+    /* El wrapper del mapa ocupa toda la pantalla */
+    .app-layout.route-gps .app-content > .map-container-wrapper {
+        height: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: relative !important;
+        gap: 0 !important;
+        display: block !important;
+    }
+
+    /* El mapa de Google Maps ocupa el 100% del wrapper */
+    .app-layout.route-gps .app-content > .map-container-wrapper #live-map {
+        position: absolute !important;
+        inset: 0 !important;
+        height: 100% !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+        border: none !important;
+        margin: 0 !important;
+        z-index: 1 !important;
+    }
+
+    /* Cabecera del mapa flotando al tope */
+    .app-layout.route-gps .app-content > .map-container-wrapper .map-header {
+        position: absolute !important;
+        top: var(--space-4) !important;
+        left: var(--space-4) !important;
+        right: var(--space-4) !important;
+        z-index: 10 !important;
+        margin: 0 !important;
+        background: rgba(30, 41, 59, 0.75) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+        border-radius: var(--radius-xl) !important;
+    }
+
+    /* Resumen de alertas flotando abajo por encima del bottom nav */
+    .app-layout.route-gps .app-content > .map-container-wrapper #alerts-summary {
+        position: absolute !important;
+        bottom: 84px !important; /* Espacio para librar el bottom nav de 64px */
+        left: var(--space-4) !important;
+        right: var(--space-4) !important;
+        z-index: 10 !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: var(--space-3) !important;
+        margin: 0 !important;
+    }
+
+    .app-layout.route-gps .app-content > .map-container-wrapper #alerts-summary .stat-card {
+        background: rgba(30, 41, 59, 0.75) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+        border-radius: var(--radius-lg) !important;
+        margin: 0 !important;
+    }
+
+    /* Botón flotante para cambiar estilo de mapa reposicionado */
+    .app-layout.route-gps .app-content > .map-container-wrapper #gpsMapStyleBtn {
+        bottom: 164px !important; /* Justo arriba de las tarjetas de alertas */
+        right: var(--space-4) !important;
+        z-index: 10 !important;
+        background: rgba(30, 41, 59, 0.85) !important;
+        color: white !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: var(--radius-md) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    }
 }
