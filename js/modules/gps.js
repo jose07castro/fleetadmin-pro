@@ -478,10 +478,15 @@ const GPSModule = (() => {
     function _updateMapMarkers(alerts) {
         let pCount = 0;
         let tCount = 0;
+        const now = Date.now();
 
-        // Limpiar markers que ya no están en Firebase
+        // 1. Limpiar markers que ya no están en Firebase o están inactivos/expirados
         Object.keys(markers).forEach(id => {
-            if (!alerts[id]) {
+            const alert = alerts[id];
+            const isExpired = alert && alert.expiresAt && alert.expiresAt <= now;
+            const isInactive = alert && alert.status !== 'active';
+            
+            if (!alert || isExpired || isInactive) {
                 markers[id].setMap(null);
                 delete markers[id];
             }
@@ -496,7 +501,8 @@ const GPSModule = (() => {
             firetruck: 'assets/alert-icons/firetruck.png',
             municipal: 'assets/alert-icons/municipal.png',
             accident: 'assets/alert-icons/accident.png',
-            traffic: 'assets/alert-icons/accident.png'
+            traffic: 'assets/alert-icons/accident.png',
+            warning: 'assets/alert-icons/warning.png'
         };
         
         const BORDER_COLORS = {
@@ -508,7 +514,8 @@ const GPSModule = (() => {
             firetruck: '#b91c1c',
             municipal: '#10b981',
             accident: '#ef4444',
-            traffic: '#f97316'
+            traffic: '#f97316',
+            warning: '#6b7280'
         };
 
         const GLOW_SHADOWS = {
@@ -520,13 +527,25 @@ const GPSModule = (() => {
             firetruck: '0 0 10px rgba(185, 28, 28, 0.8)',
             municipal: '0 0 10px rgba(16, 185, 129, 0.8)',
             accident: '0 0 10px rgba(239, 68, 68, 0.8)',
-            traffic: '0 0 10px rgba(249, 115, 22, 0.8)'
+            traffic: '0 0 10px rgba(249, 115, 22, 0.8)',
+            warning: '0 0 8px rgba(107, 114, 128, 0.5)'
         };
 
-        // Agregar o actualizar markers
+        // 2. Agregar o actualizar markers
         Object.keys(alerts).forEach(id => {
             const alert = alerts[id];
-            
+            if (!alert) return;
+
+            // Validar latitud/longitud
+            const lat = parseFloat(alert.lat);
+            const lng = parseFloat(alert.lng);
+            if (isNaN(lat) || isNaN(lng)) return;
+
+            // Filtrar alertas inactivas o expiradas
+            const isExpired = alert.expiresAt && alert.expiresAt <= now;
+            const isInactive = alert.status !== 'active';
+            if (isExpired || isInactive) return;
+
             // Registrar inspectores municipales en el conteo de operativos
             if (alert.type === 'police' || alert.type === 'checkpoint' || alert.type === 'municipal') {
                 pCount++;
@@ -534,89 +553,101 @@ const GPSModule = (() => {
                 tCount++;
             }
 
-            const latlng = new google.maps.LatLng(alert.lat, alert.lng);
+            const latlng = new google.maps.LatLng(lat, lng);
+            const iconUrl = ALERT_ICONS[alert.type] || ALERT_ICONS.warning;
+            const borderColor = BORDER_COLORS[alert.type] || BORDER_COLORS.warning;
+            const glowStyle = GLOW_SHADOWS[alert.type] || GLOW_SHADOWS.warning;
+
+            const iconHtml = `
+                <div class="custom-alert-marker" style="
+                    width: 40px;
+                    height: 40px;
+                    background-color: #ffffff;
+                    border: 3px solid ${borderColor};
+                    border-radius: 50%;
+                    box-shadow: ${glowStyle};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                    position: relative;
+                    box-sizing: border-box;
+                ">
+                    <img src="${iconUrl}" style="width: 24px; height: 24px; object-fit: contain;" />
+                </div>
+            `;
+
+            let popupLabel = '⚠️ Alerta de Tránsito';
+            if (alert.type === 'police') popupLabel = '🚔 Operativo Policial';
+            else if (alert.type === 'checkpoint') popupLabel = '🚧 Control de Tránsito';
+            else if (alert.type === 'municipal') popupLabel = '🦊 Inspector Municipal';
+            else if (alert.type === 'radar') popupLabel = '📷 Radar / Fotomulta';
+            else if (alert.type === 'helicopter') popupLabel = '🚁 Helicóptero Sanitario';
+            else if (alert.type === 'ambulance') popupLabel = '🚑 Servicio de Ambulancia';
+            else if (alert.type === 'firetruck') popupLabel = '🚒 Bomberos en Emergencia';
+            else if (alert.type === 'accident') popupLabel = '💥 Accidente de Tránsito';
+            else if (alert.type === 'traffic') popupLabel = '🚗 Tránsito Demorado';
+
+            let audioButtonHtml = '';
+            if (alert.audioUrl) {
+                audioButtonHtml = `
+                    <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                        <button id="play-btn-${id}" class="audio-play-btn btn btn-primary btn-sm" 
+                            onclick="GPSModule.playAudio('${alert.audioUrl}', 'play-btn-${id}')"
+                            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; background: #3b82f6; color: white;">
+                            ▶️ Escuchar Audio
+                        </button>
+                    </div>
+                `;
+            }
+
+            // Si hay descripción de IA/Resumen limpio, mostrarlo como primario. Si no, usar texto original recortado.
+            const cleanSummary = alert.description || (alert.originalText ? alert.originalText.substring(0, 60) : '');
+            
+            // Texto original en un desplegable <details>
+            let detailsHtml = '';
+            if (alert.originalText) {
+                detailsHtml = `
+                    <details style="margin-top: 6px; text-align: left; font-size: 10px; color: #64748b; cursor: pointer; outline: none;">
+                        <summary style="font-weight: 600; color: #3b82f6; outline: none; margin-bottom: 2px;">Ver texto original</summary>
+                        <div style="max-height: 65px; overflow-y: auto; padding: 4px 6px; background: #f8fafc; border-radius: 4px; border: 1px solid #e2e8f0; font-style: italic; white-space: pre-wrap; line-height: 1.2; color: #334155;">
+                            "${alert.originalText}"
+                        </div>
+                    </details>
+                `;
+            }
+
+            const popupContent = `
+                <div style="text-align:center; padding:8px; font-family:Inter,sans-serif; min-width: 160px; max-width: 220px; color: #1e293b;">
+                    <strong style="display:block; margin-bottom:6px; font-size:13px; color: ${borderColor};">${popupLabel}</strong>
+                    <p style="margin:0 0 6px 0; font-size:12px; font-weight:700;">${alert.location}</p>
+                    ${cleanSummary ? `<p style="margin:0 0 6px 0; font-size:11px; font-weight: 500; color: #334155; line-height: 1.3;">${cleanSummary}</p>` : ''}
+                    ${detailsHtml}
+                    <span style="font-size:9px; color:#94a3b8; display:block; margin-top:6px;">Reportado por WhatsApp</span>
+                    ${audioButtonHtml}
+                </div>
+            `;
 
             if (markers[id]) {
                 markers[id].setPosition(latlng);
+                markers[id].setHtml(iconHtml);
+                markers[id].setPopupContent(popupContent);
             } else {
-                const iconUrl = ALERT_ICONS[alert.type] || 'assets/logo-3d-marker.svg';
-                const borderColor = BORDER_COLORS[alert.type] || '#6b7280';
-                const glowStyle = GLOW_SHADOWS[alert.type] || '0 0 8px rgba(107, 114, 128, 0.5)';
-
-                const iconHtml = `
-                    <div class="custom-alert-marker" style="
-                        width: 40px;
-                        height: 40px;
-                        background-color: #ffffff;
-                        border: 3px solid ${borderColor};
-                        border-radius: 50%;
-                        box-shadow: ${glowStyle};
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        overflow: hidden;
-                        position: relative;
-                        box-sizing: border-box;
-                    ">
-                        <img src="${iconUrl}" style="width: 24px; height: 24px; object-fit: contain;" />
-                    </div>
-                `;
-
-                let popupLabel = '⚠️ Alerta de Tránsito';
-                if (alert.type === 'police') popupLabel = '🚔 Operativo Policial';
-                else if (alert.type === 'checkpoint') popupLabel = '🚧 Control de Tránsito';
-                else if (alert.type === 'municipal') popupLabel = '🦊 Inspector Municipal';
-                else if (alert.type === 'radar') popupLabel = '📷 Radar / Fotomulta';
-                else if (alert.type === 'helicopter') popupLabel = '🚁 Helicóptero Sanitario';
-                else if (alert.type === 'ambulance') popupLabel = '🚑 Servicio de Ambulancia';
-                else if (alert.type === 'firetruck') popupLabel = '🚒 Bomberos en Emergencia';
-                else if (alert.type === 'accident') popupLabel = '💥 Accidente de Tránsito';
-                else if (alert.type === 'traffic') popupLabel = '🚗 Tránsito Demorado';
-
-                let audioButtonHtml = '';
-                if (alert.audioUrl) {
-                    audioButtonHtml = `
-                        <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
-                            <button id="play-btn-${id}" class="audio-play-btn btn btn-primary btn-sm" 
-                                onclick="GPSModule.playAudio('${alert.audioUrl}', 'play-btn-${id}')"
-                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; font-size: 11px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; background: #3b82f6; color: white;">
-                                ▶️ Escuchar Audio
-                            </button>
-                        </div>
-                    `;
-                }
-
-                // Si hay descripción de IA/Resumen limpio, mostrarlo como primario. Si no, usar texto original recortado.
-                const cleanSummary = alert.description || (alert.originalText ? alert.originalText.substring(0, 60) : '');
-                
-                // Texto original en un desplegable <details>
-                let detailsHtml = '';
-                if (alert.originalText) {
-                    detailsHtml = `
-                        <details style="margin-top: 6px; text-align: left; font-size: 10px; color: #64748b; cursor: pointer; outline: none;">
-                            <summary style="font-weight: 600; color: #3b82f6; outline: none; margin-bottom: 2px;">Ver texto original</summary>
-                            <div style="max-height: 65px; overflow-y: auto; padding: 4px 6px; background: #f8fafc; border-radius: 4px; border: 1px solid #e2e8f0; font-style: italic; white-space: pre-wrap; line-height: 1.2;">
-                                "${alert.originalText}"
-                            </div>
-                        </details>
-                    `;
-                }
-
-                const popupContent = `
-                    <div style="text-align:center; padding:8px; font-family:Inter,sans-serif; min-width: 160px; max-width: 220px; color: #1e293b;">
-                        <strong style="display:block; margin-bottom:6px; font-size:13px; color: ${borderColor};">${popupLabel}</strong>
-                        <p style="margin:0 0 6px 0; font-size:12px; font-weight:700;">${alert.location}</p>
-                        ${cleanSummary ? `<p style="margin:0 0 6px 0; font-size:11px; font-weight: 500; color: #334155; line-height: 1.3;">${cleanSummary}</p>` : ''}
-                        ${detailsHtml}
-                        <span style="font-size:9px; color:#94a3b8; display:block; margin-top:6px;">Reportado por WhatsApp</span>
-                        ${audioButtonHtml}
-                    </div>
-                `;
-
                 const MarkerClass = _getHTMLMapMarkerClass();
                 const marker = new MarkerClass(latlng, iconHtml, popupContent, 20, 20);
                 marker.setMap(map);
                 markers[id] = marker;
+
+                // Auto-enfocar mapa y abrir popup para NUEVAS alertas si el mapa existe
+                if (map) {
+                    map.panTo(latlng);
+                    map.setZoom(14);
+                    setTimeout(() => {
+                        if (markers[id]) {
+                            markers[id].openPopup();
+                        }
+                    }, 500);
+                }
             }
         });
 
@@ -744,14 +775,33 @@ const GPSModule = (() => {
 
         currentAudio = new Audio(fullUrl);
         currentAudioId = audioUrl;
-        
+        currentAudio.preload = 'auto'; // Forzar precarga de audio para móviles
+
         btn.innerHTML = '⏳ Cargando...';
-        
-        currentAudio.addEventListener('canplaythrough', () => {
-            if (currentAudioId === audioUrl) {
-                currentAudio.play().catch(e => console.error('Audio play error:', e));
-                btn.innerHTML = '⏸️ Pausar Audio';
-                btn.classList.add('playing');
+
+        // Intentar reproducir directamente (más rápido en la mayoría de navegadores modernos)
+        currentAudio.play()
+            .then(() => {
+                if (currentAudioId === audioUrl) {
+                    btn.innerHTML = '⏸️ Pausar Audio';
+                    btn.classList.add('playing');
+                }
+            })
+            .catch(e => {
+                console.warn('Play directo falló, esperando evento canplay:', e);
+            });
+
+        // Evento alternativo más seguro para móviles que canplaythrough
+        currentAudio.addEventListener('canplay', () => {
+            if (currentAudioId === audioUrl && currentAudio.paused) {
+                currentAudio.play()
+                    .then(() => {
+                        btn.innerHTML = '⏸️ Pausar Audio';
+                        btn.classList.add('playing');
+                    })
+                    .catch(err => {
+                        console.error('Audio play error in canplay:', err);
+                    });
             }
         });
 

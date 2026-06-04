@@ -679,8 +679,18 @@ const WhatsappBot = (() => {
                             console.log(`🎙️ [AUDIO] Descargado ${audioBuffer.length} bytes — se usará el audio original (sin transcribir).`);
 
                             // Guardar el audio en la carpeta pública /audio para que el cliente lo pueda reproducir
+                            let extension = 'ogg';
+                            const mimeType = (resolvedAudioMsg && resolvedAudioMsg.mimetype) || '';
+                            if (mimeType.includes('audio/mpeg') || mimeType.includes('audio/mp3')) {
+                                extension = 'mp3';
+                            } else if (mimeType.includes('audio/mp4') || mimeType.includes('audio/aac') || mimeType.includes('audio/m4a')) {
+                                extension = 'm4a';
+                            } else if (mimeType.includes('audio/wav') || mimeType.includes('audio/x-wav')) {
+                                extension = 'wav';
+                            }
+
                             const safeMsgIdAudio = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-                            const audioFileName = `wsp_${safeMsgIdAudio}.ogg`;
+                            const audioFileName = `wsp_${safeMsgIdAudio}.${extension}`;
                             const audioDestDir = path.join(__dirname, '../../audio');
                             if (!fs.existsSync(audioDestDir)) {
                                 fs.mkdirSync(audioDestDir, { recursive: true });
@@ -688,7 +698,7 @@ const WhatsappBot = (() => {
                             const audioPath = path.join(audioDestDir, audioFileName);
                             fs.writeFileSync(audioPath, audioBuffer);
                             audioUrl = `/audio/${audioFileName}`;
-                            console.log(`💾 [AUDIO] Guardado en: ${audioPath} → URL pública: ${audioUrl}`);
+                            console.log(`💾 [AUDIO] Guardado en: ${audioPath} (MIME: ${mimeType}) → URL pública: ${audioUrl}`);
 
                             // Si no hay texto (el mensaje es solo audio), marcarlo para clasificación automática
                             if (!text) {

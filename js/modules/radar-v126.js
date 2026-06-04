@@ -1056,14 +1056,33 @@ const RadarModule = (() => {
 
         currentAudio = new Audio(fullUrl);
         currentAudioId = audioUrl;
-        
+        currentAudio.preload = 'auto'; // Forzar precarga de audio para móviles
+
         btn.innerHTML = '⏳ Cargando...';
-        
-        currentAudio.addEventListener('canplaythrough', () => {
-            if (currentAudioId === audioUrl) {
-                currentAudio.play().catch(e => console.error('Audio play error:', e));
-                btn.innerHTML = '⏸️ Pausar Audio';
-                btn.classList.add('playing');
+
+        // Intentar reproducir directamente (más rápido en la mayoría de navegadores modernos)
+        currentAudio.play()
+            .then(() => {
+                if (currentAudioId === audioUrl) {
+                    btn.innerHTML = '⏸️ Pausar Audio';
+                    btn.classList.add('playing');
+                }
+            })
+            .catch(e => {
+                console.warn('Play directo falló, esperando evento canplay:', e);
+            });
+
+        // Evento alternativo más seguro para móviles que canplaythrough
+        currentAudio.addEventListener('canplay', () => {
+            if (currentAudioId === audioUrl && currentAudio.paused) {
+                currentAudio.play()
+                    .then(() => {
+                        btn.innerHTML = '⏸️ Pausar Audio';
+                        btn.classList.add('playing');
+                    })
+                    .catch(err => {
+                        console.error('Audio play error in canplay:', err);
+                    });
             }
         });
 
