@@ -1,3 +1,4 @@
+try { require('dotenv').config(); } catch (e) { console.log('ℹ️ dotenv no está instalado, se usarán variables de entorno del sistema.'); }
 const express = require('express');
 const path = require('path');
 const app = express();
