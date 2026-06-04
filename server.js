@@ -85,6 +85,35 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
+// Endpoint de diagnóstico para verificar los archivos de audio en Render
+app.get('/api/debug/audio-files', (req, res) => {
+    try {
+        const audioPath = path.join(__dirname, 'audio');
+        const exists = fs.existsSync(audioPath);
+        let files = [];
+        if (exists) {
+            files = fs.readdirSync(audioPath).map(file => {
+                const stat = fs.statSync(path.join(audioPath, file));
+                return {
+                    name: file,
+                    size: stat.size,
+                    mtime: stat.mtime
+                };
+            });
+        }
+        res.json({
+            ok: true,
+            serverDirname: __dirname,
+            audioPath: audioPath,
+            exists: exists,
+            files: files,
+            timestamp: new Date().toISOString()
+        });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 
 
 // Endpoint para resetear la sesión corrompida (MAC malo)
