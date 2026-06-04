@@ -168,7 +168,7 @@
         
         let fullText = '';
         // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó
-        if (originalText) {
+        if (originalText && originalText !== '[REPORTE_DE_VOZ]') {
             let cleanText = originalText
                 .replace(/https?:\/\/\S+/gi, '') // Quitar enlaces HTTP
                 .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]/g, ' ') // Dejar ÚNICAMENTE letras, acentos, números y espacios. Elimina markdown, emojis y puntuación ruidosa.
@@ -265,17 +265,58 @@
                 const fullAudioUrl = alert.audioUrl.startsWith('http') 
                     ? alert.audioUrl 
                     : `${serverUrl}${alert.audioUrl}`;
-                console.log(`🎵 [AUDIO-ORIGINAL] Reproduciendo audio de WhatsApp: ${fullAudioUrl}`);
+                console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de WhatsApp: ${fullAudioUrl}`);
+                
+                let audioPlayed = false;
                 try {
                     const audio = new Audio(fullAudioUrl);
                     audio.volume = 1.0;
-                    audio.play().catch(audioErr => {
-                        console.warn('⚠️ [AUDIO-ORIGINAL] Fallo al reproducir, usando voz sintetizada:', audioErr.message);
-                        speakAlert(alert.type, alert.location, alert.originalText);
+                    audio.preload = 'auto';
+
+                    // Intentar reproducir directamente
+                    audio.play()
+                        .then(() => {
+                            audioPlayed = true;
+                            console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada directamente.');
+                        })
+                        .catch(audioErr => {
+                            console.warn('⚠️ [AUDIO-ORIGINAL] Play directo falló, esperando evento canplay...', audioErr.message);
+                        });
+
+                    // Evento canplay para móviles
+                    audio.addEventListener('canplay', () => {
+                        if (!audioPlayed) {
+                            audio.play()
+                                .then(() => {
+                                    audioPlayed = true;
+                                    console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada en evento canplay.');
+                                })
+                                .catch(err => {
+                                    console.error('❌ [AUDIO-ORIGINAL] Error en canplay:', err.message);
+                                });
+                        }
                     });
+
+                    // Timeout de 5s como resguardo de seguridad
+                    setTimeout(() => {
+                        if (!audioPlayed) {
+                            console.warn('⚠️ [AUDIO-ORIGINAL] Timeout de 5s superado sin reproducir, usando fallback de voz...');
+                            try { audio.pause(); } catch(e){}
+                            if (alert.originalText && alert.originalText !== '[REPORTE_DE_VOZ]') {
+                                speakAlert(alert.type, alert.location, alert.originalText);
+                            } else {
+                                speakAlert(alert.type, alert.location, '');
+                            }
+                        }
+                    }, 5000);
+
                 } catch (audioEx) {
-                    console.warn('⚠️ [AUDIO-ORIGINAL] Error de Audio API, usando voz sintetizada:', audioEx.message);
-                    speakAlert(alert.type, alert.location, alert.originalText);
+                    console.warn('⚠️ [AUDIO-ORIGINAL] Error al instanciar o reproducir audio, usando voz sintetizada:', audioEx.message);
+                    if (alert.originalText && alert.originalText !== '[REPORTE_DE_VOZ]') {
+                        speakAlert(alert.type, alert.location, alert.originalText);
+                    } else {
+                        speakAlert(alert.type, alert.location, '');
+                    }
                 }
             } else {
                 speakAlert(alert.type, alert.location, alert.originalText);
