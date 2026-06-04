@@ -249,7 +249,8 @@ const WhatsappBot = (() => {
         const keywords = [
             'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
             'chanchos', 'gorra', 'ratis', 'radar', 'movil', 'seguridad', 'camara', 
-            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte'
+            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte',
+            'trabajo' // Grupo de pruebas del admin — Gemini filtra el contenido igual
         ];
         return keywords.some(kw => gn.includes(kw));
     }
