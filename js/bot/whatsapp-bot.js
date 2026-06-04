@@ -48,8 +48,76 @@ async function callGemini(prompt) {
     return null;
 }
 
+/**
+ * Analiza el CONTENIDO de un audio con Gemini multimodal.
+ * Transcribe el audio y determina si es una alerta de tránsito real.
+ * @returns {Promise<{isTrafficAlert: boolean, transcription: string, type: string, address: string|null, reason: string}|null>}
+ */
+async function callGeminiAudio(audioBuffer, mimeType) {
+    if (!GEMINI_KEY || !audioBuffer) return null;
+
+    const audioB64 = audioBuffer.toString('base64');
+    // Limite seguro: ~10MB en base64. Las notas de voz de WhatsApp son << 1MB normalmente.
+    if (audioB64.length > 12 * 1024 * 1024) {
+        console.warn('⚠️ [GEMINI-AUDIO] Audio demasiado grande para análisis inline, saltando.');
+        return null;
+    }
+
+    const prompt = `Sos un asistente de seguridad vial para taxistas de Rosario, Argentina.
+Escuchá este audio de un grupo de WhatsApp y respondé SOLO con JSON válido (sin markdown).
+
+Determiná:
+1. Si el audio reporta alguna situación de tránsito: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
+2. La transcripción exacta de lo que dice el audio
+3. El tipo de alerta: police / checkpoint / radar / accident / traffic / warning
+4. La dirección o intersección mencionada (null si no hay ninguna)
+
+Si el audio es: conversación personal, música, tutorial, broma, saludos, venta de productos, noticias generales, o cualquier cosa NO relacionada con el tránsito en las calles → isTrafficAlert: false.
+
+Respuesta EXACTAMENTE en este formato:
+{"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
+
+    // Los modelos Flash soportan audio inline
+    const audioModels = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    ];
+
+    for (const url of audioModels) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: mimeType || 'audio/ogg', data: audioB64 } },
+                        { text: prompt }
+                    ]
+                }]
+            }, { timeout: 25000 });
+
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) {
+                try {
+                    const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    console.log(`🤖 [GEMINI-AUDIO] isAlert=${parsed.isTrafficAlert} | Tipo=${parsed.type} | Razón="${parsed.reason}" | Transcripción="${(parsed.transcription||'').substring(0,60)}"`);
+                    return parsed;
+                } catch (parseErr) {
+                    console.warn('⚠️ [GEMINI-AUDIO] No se pudo parsear JSON de respuesta:', rawText.substring(0, 150));
+                    // Intentar extraer isTrafficAlert por texto plano como último recurso
+                    const isAlert = /isTrafficAlert.*true/i.test(rawText);
+                    return { isTrafficAlert: isAlert, transcription: rawText.substring(0, 200), type: 'checkpoint', address: null, reason: 'parse_fallback' };
+                }
+            }
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.response?.data?.error?.message || e.message}`);
+        }
+    }
+    return null;
+}
+
 
 // 1. Inicialización de Firebase Admin
+
 let db = null;
 
 if (!admin.apps.length) {
@@ -701,10 +769,16 @@ const WhatsappBot = (() => {
                     let isAudioOnlyAlert = false; // Flag: el mensaje es un audio sin texto
 
                     if (isAudio) {
+                        // Comando especial .test_audio: bypass del filtro de grupo para pruebas del admin
+                        const isTestCommand = text.trim().toLowerCase().startsWith('.test_audio');
+                        
                         // Filtro de solo operativos: solo procesar audios de grupos de transito/operativos
-                        if (!_isOperativoGroup(groupName)) {
+                        if (!isTestCommand && !_isOperativoGroup(groupName)) {
                             console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio en grupo no operativo: "${groupName}"`);
                             continue;
+                        }
+                        if (isTestCommand) {
+                            console.log(`🧪 [TEST] Modo prueba activado desde "${groupName}" - saltando filtro de grupo operativo`);
                         }
 
                         try {
@@ -797,9 +871,40 @@ const WhatsappBot = (() => {
                                 }
                             }
 
-                            // Si no hay texto (el mensaje es solo audio y no se transcribió), marcarlo para clasificación automática
+                            // ============================================================
+                            // FILTRO DE CONTENIDO: Gemini analiza el audio antes de publicar.
+                            // Solo se crea alerta si el contenido es realmente de tránsito.
+                            // ============================================================
                             if (!text) {
-                                isAudioOnlyAlert = true;
+                                console.log('🎙️ [AUDIO-FILTER] Sin transcripción previa. Analizando contenido con Gemini...');
+                                const audioAnalysis = await callGeminiAudio(audioBuffer, mimeType);
+                                
+                                if (audioAnalysis) {
+                                    if (!audioAnalysis.isTrafficAlert) {
+                                        // Audio irrelevante: música, tutorial, charla personal, etc.
+                                        console.log(`🚫 [AUDIO-FILTER] Audio DESCARTADO — no es tránsito. Razón: "${audioAnalysis.reason}"`);
+                                        continue; // Saltar este mensaje completamente
+                                    }
+                                    // Es alerta de tránsito: usar la transcripción como texto
+                                    text = audioAnalysis.transcription || '';
+                                    console.log(`✅ [AUDIO-FILTER] Audio APROBADO como alerta de tránsito (${audioAnalysis.type}).`);
+                                    // Si Gemini detectó dirección y tipo, crear alerta directamente
+                                    isAudioOnlyAlert = false;
+                                    await _processAlert(
+                                        audioAnalysis.address || null,
+                                        text || '[REPORTE_DE_VOZ]',
+                                        groupName,
+                                        audioAnalysis.type || 'checkpoint',
+                                        msg.key.id,
+                                        audioUrl,
+                                        audioAnalysis.transcription ? audioAnalysis.transcription.substring(0, 100) : 'Reporte por audio de voz'
+                                    );
+                                    continue;
+                                } else {
+                                    // Gemini no disponible o falló: publicar como checkpoint genérico (comportamiento anterior)
+                                    console.log('⚠️ [AUDIO-FILTER] Gemini no disponible, publicando como alerta genérica.');
+                                    isAudioOnlyAlert = true;
+                                }
                             }
                         } catch (err) {
                             console.error('❌ Error descargando audio:', err.message);
@@ -837,6 +942,23 @@ const WhatsappBot = (() => {
                                 _trackBandwidth(resText, 'out');
                             }
                             continue;
+                        }
+                    }
+
+                    // --- COMANDO ADMIN: .test_audio ---
+                    // Fuerza el procesamiento del audio adjunto como alerta de prueba desde CUALQUIER grupo
+                    if (text.trim().toLowerCase().startsWith('.test_audio') && audioUrl) {
+                        const sender = msg.key.participant || msg.key.remoteJid;
+                        const adminPrefix = process.env.ADMIN_NUMBER || '549341';
+                        if (msg.key.fromMe || sender.includes(adminPrefix)) {
+                            console.log(`🧪 [TEST-AUDIO] Procesando audio de prueba del admin desde grupo: "${groupName}"`);
+                            await _processAlert(null, '[PRUEBA_DE_VOZ]', `TEST - ${groupName}`, 'checkpoint', msg.key.id, audioUrl, 'Prueba de audio del administrador');
+                            if (sock) {
+                                await sock.sendMessage(jid, { text: '✅ *Audio de prueba procesado correctamente.*\n\nLa alerta fue publicada en el mapa con el audio adjunto. Verificá en la app.' }, { quoted: msg });
+                            }
+                            continue;
+                        } else {
+                            console.log(`⚠️ [TEST-AUDIO] Comando ignorado: el remitente no es admin.`);
                         }
                     }
 
