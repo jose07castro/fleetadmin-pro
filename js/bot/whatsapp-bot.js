@@ -132,7 +132,8 @@ if (!admin.apps.length) {
 
         admin.initializeApp({
             credential,
-            databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${process.env.FIREBASE_PROJECT_ID || 'fleetadmin-pro'}-default-rtdb.firebaseio.com`
+            databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${process.env.FIREBASE_PROJECT_ID || 'fleetadmin-pro'}-default-rtdb.firebaseio.com`,
+            storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID || 'fleetadmin-pro'}.firebasestorage.app`
         });
         
         db = admin.database();
@@ -718,7 +719,7 @@ const WhatsappBot = (() => {
                             });
                             console.log(`🎙️ [AUDIO] Descargado ${audioBuffer.length} bytes.`);
 
-                            // Guardar el audio en la carpeta pública /audio para que el cliente lo pueda reproducir
+                            // Determinar la extensión del archivo de audio
                             let extension = 'ogg';
                             const mimeType = (resolvedAudioMsg && resolvedAudioMsg.mimetype) || '';
                             if (mimeType.includes('audio/mpeg') || mimeType.includes('audio/mp3')) {
@@ -731,14 +732,43 @@ const WhatsappBot = (() => {
 
                             const safeMsgIdAudio = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
                             const audioFileName = `wsp_${safeMsgIdAudio}.${extension}`;
-                            const audioDestDir = path.join(__dirname, '../../audio');
-                            if (!fs.existsSync(audioDestDir)) {
-                                fs.mkdirSync(audioDestDir, { recursive: true });
+
+                            // ======================================================
+                            // PRIORIDAD 1: Firebase Storage (URL permanente, no depende
+                            // del disco efímero de Render que se borra en cada reinicio)
+                            // ======================================================
+                            let storageUploadOk = false;
+                            try {
+                                const { getStorage, getDownloadURL } = require('firebase-admin/storage');
+                                const bucket = getStorage().bucket();
+                                const storageFile = bucket.file(`audio/${audioFileName}`);
+                                await storageFile.save(audioBuffer, {
+                                    metadata: {
+                                        contentType: mimeType || 'audio/ogg',
+                                        cacheControl: 'public, max-age=86400'
+                                    }
+                                });
+                                audioUrl = await getDownloadURL(storageFile);
+                                storageUploadOk = true;
+                                console.log(`☁️ [AUDIO] Subido a Firebase Storage → URL pública: ${audioUrl}`);
+                            } catch (storageErr) {
+                                console.warn(`⚠️ [AUDIO] Firebase Storage falló (${storageErr.message}), usando disco local como fallback...`);
                             }
-                            const audioPath = path.join(audioDestDir, audioFileName);
-                            fs.writeFileSync(audioPath, audioBuffer);
-                            audioUrl = `/audio/${audioFileName}`;
-                            console.log(`💾 [AUDIO] Guardado en: ${audioPath} (MIME: ${mimeType}) → URL pública: ${audioUrl}`);
+
+                            // ======================================================
+                            // FALLBACK: Disco local (solo funciona si el proceso NO
+                            // se reinició - el archivo puede no existir luego de restart)
+                            // ======================================================
+                            if (!storageUploadOk) {
+                                const audioDestDir = path.join(__dirname, '../../audio');
+                                if (!fs.existsSync(audioDestDir)) {
+                                    fs.mkdirSync(audioDestDir, { recursive: true });
+                                }
+                                const audioPath = path.join(audioDestDir, audioFileName);
+                                fs.writeFileSync(audioPath, audioBuffer);
+                                audioUrl = `/audio/${audioFileName}`;
+                                console.log(`💾 [AUDIO] Guardado en disco local: ${audioPath} → URL relativa: ${audioUrl}`);
+                            }
 
                             // Intentar transcribir usando Whisper si la API Key de OpenAI está configurada
                             if (process.env.OPENAI_API_KEY) {
