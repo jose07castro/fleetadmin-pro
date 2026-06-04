@@ -28,7 +28,7 @@ const Components = (() => {
                     </div>
                 </div>
                 ${renderMobileBottomNav(activeRoute, role)}
-                ${role === 'driver' ? renderSOSFab() : ''}
+                ${role === 'driver' ? renderVoiceAlertFab() : ''}
             </div>
         `;
     }
@@ -194,15 +194,11 @@ const Components = (() => {
         `;
     }
 
-    // --- SOS Floating Action Button (drivers only, mobile) ---
-    function renderSOSFab() {
+    // --- Voice Alert Floating Action Button (drivers only, mobile) ---
+    function renderVoiceAlertFab() {
         return `
-            <button class="sos-fab" onclick="(function(){
-                if (typeof SOSModule === 'undefined') { console.warn('SOSModule not loaded yet'); return; }
-                var d = typeof ShiftsModule !== 'undefined' ? ShiftsModule.getActiveShiftData() : {};
-                SOSModule.triggerSOS(d.shiftId || '', d.vehicleId || '', d.vehicleName || '');
-            })()" title="SOS Emergencia">
-                🆘
+            <button class="voice-alert-fab" onclick="VoiceAlertModule.showRecordModal()" title="Reportar Alerta de Voz">
+                🎤
             </button>
         `;
     }
