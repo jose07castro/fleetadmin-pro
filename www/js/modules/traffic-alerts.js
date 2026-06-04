@@ -174,6 +174,18 @@
                 .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]/g, ' ') // Dejar ÚNICAMENTE letras, acentos, números y espacios. Elimina markdown, emojis y puntuación ruidosa.
                 .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
                 .trim();
+
+            // Censurar palabras prohibidas para la síntesis de voz (KITT Voice)
+            const forbidden = [
+                'boludo', 'boluda', 'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'tarado', 'tarada',
+                'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra', 'pelotudo', 'pelotuda', 'orto',
+                'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada', 'pija', 'chota', 'mierda',
+                'trola', 'trolo'
+            ];
+            forbidden.forEach(word => {
+                const regex = new RegExp(`\\b${word}\\b`, 'gi');
+                cleanText = cleanText.replace(regex, '***');
+            });
             
             // Si tras la limpieza quedó algo inteligible, lo cantamos. Si no, usamos el fallback genérico.
             if (cleanText.length > 2) {

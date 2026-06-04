@@ -157,6 +157,34 @@ const WhatsappBot = (() => {
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
+    // Lista de palabras/insultos prohibidos para censura o rechazo de alertas (Modo Moderación)
+    const FORBIDDEN_WORDS = [
+        'boludo', 'boluda', 'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'tarado', 'tarada',
+        'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra', 'pelotudo', 'pelotuda', 'orto',
+        'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada', 'pija', 'chota', 'mierda',
+        'trola', 'trolo'
+    ];
+
+    function _containsForbiddenWords(text) {
+        if (!text) return false;
+        const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return FORBIDDEN_WORDS.some(word => {
+            // Check for substring match to be extra safe and catch variations like "boludoo"
+            return normalized.includes(word);
+        });
+    }
+
+    function _isOperativoGroup(groupName) {
+        if (!groupName) return false;
+        const gn = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const keywords = [
+            'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
+            'chanchos', 'gorra', 'ratis', 'radar', 'movil', 'seguridad', 'camara', 
+            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte'
+        ];
+        return keywords.some(kw => gn.includes(kw));
+    }
+
     // Fleet ID real (se auto-detecta al iniciar)
     let _resolvedFleetId = null;
 
@@ -586,6 +614,13 @@ const WhatsappBot = (() => {
                     // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
                     if (!jid) continue;
 
+                    // --- EXTRAER CONTEXTO DEL GRUPO ---
+                    let groupName = 'Grupo Desconocido';
+                    try {
+                        const groupInfo = await sock.groupMetadata(jid);
+                        groupName = groupInfo.subject || 'Grupo Desconocido';
+                    } catch(ge) { groupName = 'Grupo Desconocido'; }
+
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
                     const m = msg.message;
@@ -659,46 +694,87 @@ const WhatsappBot = (() => {
                     console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
 
 
-                    // 1. PROCESAR AUDIO (Speech-to-Text con OpenAI Whisper)
+                    // 1. PROCESAR AUDIO
                     let audioBuffer = null;
                     let audioUrl = null;
-                    if (isAudio && process.env.OPENAI_API_KEY) {
+                    let isAudioOnlyAlert = false; // Flag: el mensaje es un audio sin texto
+
+                    if (isAudio) {
+                        // Filtro de solo operativos: solo procesar audios de grupos de transito/operativos
+                        if (!_isOperativoGroup(groupName)) {
+                            console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio en grupo no operativo: "${groupName}"`);
+                            continue;
+                        }
+
                         try {
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-                            
-                            // Reconstruir un envelope limpio para asegurar que Baileys descargue el audio sin importar la envoltura
                             const cleanMsg = {
                                 key: msg.key,
                                 message: { audioMessage: resolvedAudioMsg }
                             };
-                            
-                            audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, { 
+                            audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
                                 logger: P({ level: 'silent' }),
-                                reuploadRequest: sock.updateMediaMessage 
+                                reuploadRequest: sock.updateMediaMessage
                             });
+                            console.log(`🎙️ [AUDIO] Descargado ${audioBuffer.length} bytes.`);
 
-                            const tmpPath = path.join(__dirname, `tmp_${Date.now()}.ogg`);
-                            fs.writeFileSync(tmpPath, audioBuffer);
-
-                            const FormData = require('form-data');
-                            const form = new FormData();
-                            form.append('file', fs.createReadStream(tmpPath), { filename: 'audio.ogg', contentType: 'audio/ogg' });
-                            form.append('model', 'whisper-1');
-                            form.append('language', 'es');
-
-                            const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
-                                headers: { ...form.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
-                            });
-
-                            fs.unlinkSync(tmpPath);
-                            if (whisperRes.data?.text) {
-                                text = whisperRes.data.text;
-                                console.log(`🎙️ Audio transcrito: "${text}"`);
+                            // Guardar el audio en la carpeta pública /audio para que el cliente lo pueda reproducir
+                            let extension = 'ogg';
+                            const mimeType = (resolvedAudioMsg && resolvedAudioMsg.mimetype) || '';
+                            if (mimeType.includes('audio/mpeg') || mimeType.includes('audio/mp3')) {
+                                extension = 'mp3';
+                            } else if (mimeType.includes('audio/mp4') || mimeType.includes('audio/aac') || mimeType.includes('audio/m4a')) {
+                                extension = 'm4a';
+                            } else if (mimeType.includes('audio/wav') || mimeType.includes('audio/x-wav')) {
+                                extension = 'wav';
                             }
-                        } catch (err) { console.error('❌ Error audio:', err.message); }
-                    }
 
-                    if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
+                            const safeMsgIdAudio = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+                            const audioFileName = `wsp_${safeMsgIdAudio}.${extension}`;
+                            const audioDestDir = path.join(__dirname, '../../audio');
+                            if (!fs.existsSync(audioDestDir)) {
+                                fs.mkdirSync(audioDestDir, { recursive: true });
+                            }
+                            const audioPath = path.join(audioDestDir, audioFileName);
+                            fs.writeFileSync(audioPath, audioBuffer);
+                            audioUrl = `/audio/${audioFileName}`;
+                            console.log(`💾 [AUDIO] Guardado en: ${audioPath} (MIME: ${mimeType}) → URL pública: ${audioUrl}`);
+
+                            // Intentar transcribir usando Whisper si la API Key de OpenAI está configurada
+                            if (process.env.OPENAI_API_KEY) {
+                                try {
+                                    console.log('🎙️ [WHISPER] Intentando transcribir audio en segundo plano...');
+                                    const tmpPath = path.join(__dirname, `tmp_${Date.now()}.${extension}`);
+                                    fs.writeFileSync(tmpPath, audioBuffer);
+
+                                    const FormData = require('form-data');
+                                    const form = new FormData();
+                                    form.append('file', fs.createReadStream(tmpPath), { filename: `audio.${extension}`, contentType: mimeType || 'audio/ogg' });
+                                    form.append('model', 'whisper-1');
+                                    form.append('language', 'es');
+
+                                    const whisperRes = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+                                        headers: { ...form.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
+                                    });
+
+                                    fs.unlinkSync(tmpPath);
+                                    if (whisperRes.data?.text) {
+                                        text = whisperRes.data.text;
+                                        console.log(`🎙️ [WHISPER] Audio transcrito: "${text}"`);
+                                    }
+                                } catch (whisperErr) {
+                                    console.error('❌ [WHISPER] Error transcribiendo audio:', whisperErr.message);
+                                }
+                            }
+
+                            // Si no hay texto (el mensaje es solo audio y no se transcribió), marcarlo para clasificación automática
+                            if (!text) {
+                                isAudioOnlyAlert = true;
+                            }
+                        } catch (err) {
+                            console.error('❌ Error descargando audio:', err.message);
+                        }
+                    }
 
                     // --- RASTREO DE ANCHO DE BANDA (ENTRANTE) ---
                     _trackBandwidth(msg, 'in');
@@ -734,16 +810,22 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // --- EXTRAER CONTEXTO DEL GRUPO ---
-                    let groupName = 'Privado';
-                    if (isGroup) {
-                        try {
-                            const groupInfo = await sock.groupMetadata(jid);
-                            groupName = groupInfo.subject || 'Grupo Desconocido';
-                        } catch(ge) { groupName = 'Grupo Desconocido'; }
+                    // --- FILTRO DE PALABRAS PROHIBIDAS / INSULTOS ---
+                    if (_containsForbiddenWords(text)) {
+                        console.log(`🚫 [CENSOR] Mensaje descartado por contener insultos/palabras prohibidas: "${text}"`);
+                        continue;
                     }
 
-                    // --- ANÁLISIS: GEMINI + FALLBACK POR PALABRAS CLAVE ---
+                    // Para audios sin texto: crear alerta directamente (ya validado que el grupo es operativo al descargar)
+                    if (isAudioOnlyAlert && audioUrl) {
+                        console.log(`🎤 [AUDIO-ALERTA] Audio de voz recibido del grupo operativo: "${groupName}". Creando alerta checkpoint.`);
+                        await _processAlert(null, '[REPORTE_DE_VOZ]', groupName, 'checkpoint', msg.key.id, audioUrl, 'Reporte por audio de voz');
+                        continue; // Saltar análisis de IA — no hay texto
+                    }
+
+                    // Si no es audio y no hay texto, saltar
+                    if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
+
                     console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..." [Grupo: ${groupName}]`);
                     
                     try {
@@ -763,24 +845,6 @@ const WhatsappBot = (() => {
                         
                         if (analysis && analysis.isAlert) {
                             console.log(`🚨 [ALERT] Detectada por IA: type=${analysis.type}, address=${analysis.address}`);
-
-                            // Si venía de un audio, guardar el audio en la carpeta pública
-                            if (audioBuffer) {
-                                try {
-                                    const safeMsgId = msg.key.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-                                    const audioFileName = `wsp_${safeMsgId}.ogg`;
-                                    const audioDestDir = path.join(__dirname, '../../audio');
-                                    if (!fs.existsSync(audioDestDir)) {
-                                        fs.mkdirSync(audioDestDir, { recursive: true });
-                                    }
-                                    const audioPath = path.join(audioDestDir, audioFileName);
-                                    fs.writeFileSync(audioPath, audioBuffer);
-                                    audioUrl = `/audio/${audioFileName}`;
-                                    console.log(`🎙️ Audio de alerta guardado en: ${audioPath}`);
-                                } catch (saveErr) {
-                                    console.error('❌ Error guardando archivo de audio:', saveErr.message);
-                                }
-                            }
 
                             // Guardar en Firebase (diagnóstico)
                             if (db) {
