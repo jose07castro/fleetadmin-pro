@@ -114,8 +114,18 @@ const App = (() => {
                             }
                         }
                         
-                        // Sincronizar turno activo/GPS al iniciar la app
-                        await syncActiveShiftGPS();
+                        // Sincronizar turno activo/GPS al iniciar la app o apagar si no es driver
+                        if (Auth.isDriver()) {
+                            await syncActiveShiftGPS();
+                        } else {
+                            if (typeof AndroidServices !== 'undefined') {
+                                try {
+                                    AndroidServices.disableForegroundService();
+                                } catch (e) {
+                                    console.warn('Error disabling foreground service:', e);
+                                }
+                            }
+                        }
                         
                         _hideSplash();
                         Router.navigate(Router.getDefaultRoute());
@@ -142,6 +152,13 @@ const App = (() => {
                             setTimeout(() => PWAInstall.showBanner(), 2000);
                         }
                     } else {
+                        if (typeof AndroidServices !== 'undefined') {
+                            try {
+                                AndroidServices.disableForegroundService();
+                            } catch (e) {
+                                console.warn('Error disabling foreground service:', e);
+                            }
+                        }
                         _hideSplash();
                         Router.navigate('login');
                     }

@@ -148,6 +148,9 @@ const ShiftsModule = (() => {
                 console.log('🔄 Turno cerrado remotamente. Limpiando localStorage.');
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
+                if (typeof AndroidServices !== 'undefined') {
+                    AndroidServices.disableForegroundService();
+                }
                 if (typeof Components !== 'undefined') {
                     Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
                 }

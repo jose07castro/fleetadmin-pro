@@ -116,6 +116,11 @@ const Auth = (() => {
     // Logout — Limpieza completa de las 3 capas
     // =============================================
     function logout() {
+        // Detener el Foreground Service de rastreo GPS en Android antes de limpiar nada
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.disableForegroundService === 'function') {
+            try { AndroidServices.disableForegroundService(); } catch (e) { console.warn('Error desactivando foreground service:', e); }
+        }
+
         // 🔔 Limpiar FCM token antes de borrar datos del usuario
         if (typeof FCM !== 'undefined') {
             try { FCM.removeToken().catch(e => console.warn('🔔 FCM removeToken error:', e)); } catch(e) { /* ignorar */ }
