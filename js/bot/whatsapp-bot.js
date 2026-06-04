@@ -1067,7 +1067,7 @@ const WhatsappBot = (() => {
         if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
         if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
-        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null };
+        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|fizca|fizcalizacion|servicio publico|servicios publicos|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null };
         if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
         if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
@@ -1110,7 +1110,7 @@ REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE - PRIORIDADES):
 2. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
 3. "AMBULANCIA", "SAMU", urgencias médicas → tipo: "ambulance"
 4. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial.
+5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "fizca", "fizcalización", "servicio público", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial.
 6. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial", "comando" → tipo: "police" (solo si no califica como municipal).
 7. Si menciona "OPERATIVO" o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
 8. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
