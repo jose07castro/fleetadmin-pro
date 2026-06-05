@@ -797,13 +797,20 @@ const RadarModule = (() => {
         if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
 
         const fleetId = Auth.getFleetId();
-        if (!fleetId) return;
+        if (!fleetId) {
+            // Auth aún no hidró la sesión — reintentar en 1 segundo
+            console.warn('[RADAR] fleetId no disponible aún, reintentando en 1s...');
+            setTimeout(() => { if (_isOpen) _startAlertListener(); }, 1000);
+            return;
+        }
 
+        console.log(`[RADAR] Escuchando alertas de tráfico para flota: ${fleetId}`);
         _alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
 
         _alertRef.on('value', (snap) => {
             const allAlerts = snap.val() || {};
             const alertIds = Object.keys(allAlerts);
+            console.log(`[RADAR] Alertas recibidas: ${alertIds.length}`);
 
             // 1. Update/Add alerts
             alertIds.forEach(id => {
@@ -824,6 +831,8 @@ const RadarModule = (() => {
                     _removeAlertMarker(id);
                 }
             });
+        }, (error) => {
+            console.error('[RADAR] Error escuchando alertas de Firebase:', error);
         });
     }
 
