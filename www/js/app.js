@@ -143,7 +143,19 @@ const App = (() => {
                         if (typeof TrafficAlerts !== 'undefined') {
                             TrafficAlerts.init();
                         }
-                        // 8.6 Activar comandos de voz (Manos Libres)
+                        // 8.6 Activar copiloto de radares para TODOS (dueños y choferes)
+                        if (typeof GPSPermissions !== 'undefined') {
+                            // Pedir permiso GPS al dueño también si todavía no lo otorgó
+                            GPSPermissions.checkPermission().then(state => {
+                                if (state === 'granted') {
+                                    GPSPermissions.initCopilotForAll();
+                                } else if (state !== 'denied') {
+                                    // Pedir permiso con explicación amigable
+                                    setTimeout(() => GPSPermissions.requestWithDialog(), 3000);
+                                }
+                            });
+                        }
+                        // 8.7 Activar comandos de voz (Manos Libres)
                         if (typeof VoiceModule !== 'undefined') {
                             VoiceModule.init();
                         }
@@ -512,6 +524,16 @@ const App = (() => {
                 try { SOSModule.startListening(); } catch(e) {
                     console.error('📱 Error reiniciando SOS listener:', e);
                 }
+            }
+
+            // 5.6. Reiniciar voz global de operativos (se puede perder en background)
+            if (typeof TrafficAlerts !== 'undefined' && typeof TrafficAlerts.startGlobalVoiceListener === 'function') {
+                try { TrafficAlerts.startGlobalVoiceListener(); } catch(e) { /* no crítico */ }
+            }
+
+            // 5.7. Reiniciar copiloto de radares si se desconectó
+            if (typeof GPSPermissions !== 'undefined') {
+                try { GPSPermissions.initCopilotForAll(); } catch(e) { /* no crítico */ }
             }
 
             // Sincronizar turno activo/GPS al volver del background

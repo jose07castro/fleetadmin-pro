@@ -371,6 +371,9 @@ const GPSPermissions = (() => {
         // Start background GPS tracking automatically
         _startPersistentTracking();
 
+        // v162: Copiloto universal de radares para TODOS los roles
+        _startUniversalCopilot();
+
         // v122: Chequear si falta el permiso nativo "Permitir todo el tiempo" en Android
         if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
             try {
@@ -422,12 +425,13 @@ const GPSPermissions = (() => {
                     if (error) return console.error('BG_GEO Native Error:', error);
                     
                     const inShift = localStorage.getItem('active_shift_state') === 'true';
-                    if (!inShift) return;
 
-                    // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
+                    // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo, sin importar turno) ---
                     if (typeof CopilotModule !== 'undefined') {
                         CopilotModule.checkProximity(location.latitude, location.longitude);
                     }
+
+                    if (!inShift) return;
 
                     let batteryLevel = null;
                     if (navigator.getBattery) {
@@ -499,7 +503,6 @@ const GPSPermissions = (() => {
         _forceSendPosition();
         _lastPositionPushTime = Date.now();
 
-        // v118/121: Integración Nivel Nativo (Cordova/Capacitor Foreground Service)
         _enableNativeForegroundService();
 
         // v121: Capacitor Native Background Geolocation (Immortal Mode)
@@ -678,6 +681,43 @@ const GPSPermissions = (() => {
         }
     }
 
+    // ============ COPILOTO UNIVERSAL DE RADARES (TODOS LOS ROLES) ============
+    // Funciona para dueños, choferes sin turno y cualquier usuario logueado.
+    // La única fuente de verdad para la proximidad de radares estáticos.
+
+    let _copilotWatchId = null;
+
+    function _startUniversalCopilot() {
+        if (_copilotWatchId !== null) return; // Ya activo
+        if (typeof CopilotModule === 'undefined') return;
+
+        console.log('📡 [COPILOTO-UNIVERSAL] Activando vigilancia de fotomultas para todos los roles...');
+
+        try {
+            _copilotWatchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    // Siempre avisar de radares, sin importar turno ni rol
+                    CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude);
+                },
+                (err) => {
+                    // Silencioso en errores intermitentes de GPS
+                    if (err.code !== 3) { // Ignorar TIMEOUT
+                        console.warn('📡 [COPILOTO-UNIVERSAL] Error GPS:', err.message);
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+            );
+            console.log('📡 [COPILOTO-UNIVERSAL] ✅ watchPosition activo, ID:', _copilotWatchId);
+        } catch(e) {
+            console.warn('📡 [COPILOTO-UNIVERSAL] No se pudo iniciar watchPosition:', e);
+        }
+    }
+
+    function initCopilotForAll() {
+        // Función pública para iniciar el copiloto para cualquier usuario logueado
+        _startUniversalCopilot();
+    }
+
     // ============ INIT: Auto-request for drivers on login ============
 
     async function initForDriver() {
@@ -709,6 +749,7 @@ const GPSPermissions = (() => {
         checkPermission,
         requestWithDialog,
         initForDriver,
+        initCopilotForAll,
         getState: () => _permissionState,
         showBackgroundLocationRequestDialog,
         triggerBackgroundLocationIntent,

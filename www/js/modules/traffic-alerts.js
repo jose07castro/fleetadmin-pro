@@ -348,5 +348,5 @@
         startGlobalVoiceListener();
     }
 
-    return { init, processPost, geocodeIntersection, speakAlert };
+    return { init, processPost, geocodeIntersection, speakAlert, startGlobalVoiceListener };
 })();
