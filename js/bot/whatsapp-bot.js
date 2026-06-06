@@ -254,6 +254,17 @@ const WhatsappBot = (() => {
         ];
         return keywords.some(kw => gn.includes(kw));
     }
+    // Números de admin/dueño que pueden enviar alertas por chat privado
+    // Formato: código de país + código de área + número (sin +)
+    const TRUSTED_ADMIN_NUMBERS = [
+        '5493415707731', // Número principal del bot/dueño (341-5707731)
+    ];
+
+    function _isTrustedAdmin(jid) {
+        if (!jid) return false;
+        const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
+        return TRUSTED_ADMIN_NUMBERS.some(t => num.endsWith(t) || t.endsWith(num));
+    }
 
     // Fleet ID real (se auto-detecta al iniciar)
     let _resolvedFleetId = null;
@@ -675,21 +686,38 @@ const WhatsappBot = (() => {
 
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
+                    const senderJid = msg.key.participant || msg.key.remoteJid || '';
+                    const isFromTrustedAdmin = _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // Solo analizar mensajes de GRUPOS — privados siempre ignorados
-                    if (!isGroup) { console.log('⏭️ [SKIP] Privado, ignorado'); continue; }
+                    // Procesar grupos siempre. Mensajes privados: solo de admins de confianza.
+                    if (!isGroup && !isFromTrustedAdmin) {
+                        console.log(`⏭️ [SKIP] Privado de número no autorizado, ignorado (${senderJid?.substring(0,20)})`);
+                        continue;
+                    }
+                    
+                    if (!isGroup && isFromTrustedAdmin) {
+                        console.log(`✅ [ADMIN-PRIVADO] Mensaje privado de admin de confianza aceptado: ${senderJid?.substring(0,25)}`);
+                    }
                     
                     // En grupos: procesar TODOS los mensajes (incluso fromMe)
                     // El dueño puede enviar alertas desde su celular/WhatsApp Web
                     // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
                     if (!jid) continue;
 
-                    // --- EXTRAER CONTEXTO DEL GRUPO ---
-                    let groupName = 'Grupo Desconocido';
-                    try {
-                        const groupInfo = await sock.groupMetadata(jid);
-                        groupName = groupInfo.subject || 'Grupo Desconocido';
-                    } catch(ge) { groupName = 'Grupo Desconocido'; }
+                    // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente) ---
+                    let groupName = isGroup ? 'Grupo Desconocido' : 'Admin Privado';
+                    if (isGroup) {
+                        try {
+                            const groupInfo = await sock.groupMetadata(jid);
+                            groupName = groupInfo?.subject || 'Grupo Desconocido';
+                        } catch(ge) {
+                            // Fallback: intentar obtener nombre desde el JID del grupo
+                            console.warn(`⚠️ [GROUP] No se pudo obtener metadatos del grupo ${jid?.substring(0,20)}. Usando Gemini como filtro.`);
+                            groupName = 'Grupo Desconocido';
+                        }
+                    }
+                    const isKnownOperativoGroup = _isOperativoGroup(groupName);
+                    console.log(`📱 [MSG] JID=${jid?.substring(0,20)}... | Grupo=${isGroup} | Admin=${isFromTrustedAdmin} | Nombre="${groupName}" | Operativo=${isKnownOperativoGroup}`);
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
@@ -773,13 +801,18 @@ const WhatsappBot = (() => {
                         // Comando especial .test_audio: bypass del filtro de grupo para pruebas del admin
                         const isTestCommand = text.trim().toLowerCase().startsWith('.test_audio');
                         
-                        // Filtro de solo operativos: solo procesar audios de grupos de transito/operativos
-                        if (!isTestCommand && !_isOperativoGroup(groupName)) {
-                            console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio en grupo no operativo: "${groupName}"`);
+                        // Filtro de grupos: 
+                        // - Si el grupo es conocido como operativo → procesar siempre
+                        // - Si el nombre no coincide (ej: 'Grupo Desconocido' por error de metadatos) → dejar que Gemini decida
+                        // - Si viene de admin por privado → procesar siempre
+                        // - Si viene de grupo desconocido SIN Gemini → skip (no tenemos forma de saber)
+                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup || GEMINI_KEY !== null;
+                        if (!shouldProcessAudio) {
+                            console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio: grupo "${groupName}" no es operativo y Gemini no está configurado.`);
                             continue;
                         }
-                        if (isTestCommand) {
-                            console.log(`🧪 [TEST] Modo prueba activado desde "${groupName}" - saltando filtro de grupo operativo`);
+                        if (!isKnownOperativoGroup && GEMINI_KEY) {
+                            console.log(`🤖 [GEMINI-FALLBACK] Grupo "${groupName}" no confirmado como operativo. Gemini decidirá si el audio es alerta de tránsito.`);
                         }
 
                         try {
