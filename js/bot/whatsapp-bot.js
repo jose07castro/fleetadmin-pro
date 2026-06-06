@@ -258,6 +258,7 @@ const WhatsappBot = (() => {
     // Formato: código de país + código de área + número (sin +)
     const TRUSTED_ADMIN_NUMBERS = [
         '5493415707731', // Número principal del bot/dueño (341-5707731)
+        '5493417327248', // Segundo número de prueba/reenvío del admin (341-7327248)
     ];
 
     function _isTrustedAdmin(jid) {
@@ -687,7 +688,7 @@ const WhatsappBot = (() => {
                     const jid = msg.key.remoteJid;
                     const isGroup = jid?.endsWith('@g.us');
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
-                    const isFromTrustedAdmin = _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
+                    const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
                     // Procesar grupos siempre. Mensajes privados: solo de admins de confianza.
                     if (!isGroup && !isFromTrustedAdmin) {
