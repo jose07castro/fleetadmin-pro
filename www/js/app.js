@@ -1,6 +1,38 @@
 // ==========================================
 // 🛡️ AJUSTE ANTIGRAVITY - MODO WEB
 // ==========================================
+
+window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
+    if (!window.AudioContext && !window.webkitAudioContext) {
+        return audioElement.play();
+    }
+    try {
+        if (!window._sharedAudioContext) {
+            window._sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = window._sharedAudioContext;
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        
+        // Evitar doble conexión si se recicla el elemento
+        if (!audioElement._isBoosted) {
+            // Un error común es CORS en el createMediaElementSource si el audio no tiene crossOrigin
+            audioElement.crossOrigin = 'anonymous'; 
+            const source = ctx.createMediaElementSource(audioElement);
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = multiplier; // 300% de volumen original
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            audioElement._isBoosted = true;
+        }
+        return audioElement.play();
+    } catch(e) {
+        console.warn('Audio boost falló, usando volumen normal', e);
+        return audioElement.play();
+    }
+};
+
 // import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 
 // Interceptor global de fetch para móviles (redirige rutas relativas a la URL de producción)

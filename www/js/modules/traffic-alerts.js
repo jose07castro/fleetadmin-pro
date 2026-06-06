@@ -273,8 +273,12 @@
                     audio.volume = 1.0;
                     audio.preload = 'auto';
 
+                    const playPromise = (typeof window.playAudioWithBoost === 'function')
+                        ? window.playAudioWithBoost(audio, 3.0)
+                        : audio.play();
+
                     // Intentar reproducir directamente
-                    audio.play()
+                    playPromise
                         .then(() => {
                             audioPlayed = true;
                             console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada directamente.');
@@ -286,7 +290,11 @@
                     // Evento canplay para móviles
                     audio.addEventListener('canplay', () => {
                         if (!audioPlayed) {
-                            audio.play()
+                            const canPlayPromise = (typeof window.playAudioWithBoost === 'function')
+                                ? window.playAudioWithBoost(audio, 3.0)
+                                : audio.play();
+
+                            canPlayPromise
                                 .then(() => {
                                     audioPlayed = true;
                                     console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada en evento canplay.');
