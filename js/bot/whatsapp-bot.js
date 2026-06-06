@@ -699,6 +699,11 @@ const WhatsappBot = (() => {
                         console.log(`✅ [ADMIN-PRIVADO] Mensaje privado de admin de confianza aceptado: ${senderJid?.substring(0,25)}`);
                     }
                     
+                    if (isFromTrustedAdmin) {
+                        console.log(`🐛 [ADMIN-RAW-MSG] ID=${msg.key.id} | HasMessage=${!!msg.message} | Keys=${Object.keys(msg.message || {})}`);
+                        console.log(`🐛 [ADMIN-RAW-JSON] ${JSON.stringify(msg)}`);
+                    }
+                    
                     // En grupos: procesar TODOS los mensajes (incluso fromMe)
                     // El dueño puede enviar alertas desde su celular/WhatsApp Web
                     // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
