@@ -218,7 +218,12 @@ const AndroidServices = (() => {
         window._onNativeGPS = async function(lat, lng, speed, bearing) {
             _lastNativeGPSTime = Date.now();
 
-            // Validar que estemos en turno activo
+            // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo) ---
+            if (typeof CopilotModule !== 'undefined') {
+                CopilotModule.checkProximity(lat, lng);
+            }
+
+            // Validar que estemos en turno activo para enviar a Firebase
             const inShift = localStorage.getItem('active_shift_state') === 'true';
             if (!inShift) return;
 

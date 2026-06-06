@@ -149,7 +149,7 @@ const ShiftsModule = (() => {
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
                 if (typeof AndroidServices !== 'undefined') {
-                    AndroidServices.disableForegroundService();
+                    AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
                 }
                 if (typeof Components !== 'undefined') {
                     Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
@@ -780,7 +780,7 @@ const ShiftsModule = (() => {
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
                 if (typeof AndroidServices !== 'undefined') {
-                    AndroidServices.disableForegroundService();
+                    AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
                 }
             } catch (lsErr) { }
 

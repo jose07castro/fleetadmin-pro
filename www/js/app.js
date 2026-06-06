@@ -120,9 +120,9 @@ const App = (() => {
                         } else {
                             if (typeof AndroidServices !== 'undefined') {
                                 try {
-                                    AndroidServices.disableForegroundService();
+                                    AndroidServices.enableForegroundService(null, 'Modo Administrador (Alertas activas)');
                                 } catch (e) {
-                                    console.warn('Error disabling foreground service:', e);
+                                    console.warn('Error enabling foreground service para admin:', e);
                                 }
                             }
                         }
@@ -820,22 +820,24 @@ const App = (() => {
                 console.log('✅ [GPS] Sincronización: Turno activo detectado → GPS activado:', activeShift.id);
 
                 if (typeof AndroidServices !== 'undefined') {
-                    const vehicles = await DB.getAll('vehicles');
-                    const vehicle = vehicles.find(v => v.id === activeShift.vehicleId);
-                    const vehiclePlate = vehicle ? vehicle.plate : null;
-                    
-                    console.log('✅ [GPS] Iniciando Foreground Service Nativo...');
-                    AndroidServices.enableForegroundService(activeShift.id, vehiclePlate);
+                    try {
+                        const vehicleData = await DB.getVehicle(activeShift.vehicleId);
+                        AndroidServices.enableForegroundService(activeShift.id, vehicleData?.plate || 'Vehículo en uso');
+                    } catch (e) {
+                        console.warn('Error enabling foreground service:', e);
+                    }
                 }
             } else {
-                const wasActive = localStorage.getItem('active_shift_state') === 'true';
                 localStorage.removeItem('active_shift_id');
-                localStorage.removeItem('active_shift_state');
-
-                if (wasActive) {
-                    console.log('ℹ️ [GPS] Sincronización: Sin turno activo → Deteniendo GPS');
-                    if (typeof AndroidServices !== 'undefined') {
-                        AndroidServices.disableForegroundService();
+                localStorage.setItem('active_shift_state', 'false');
+                console.log('⏹️ [GPS] Sincronización: No hay turno activo → GPS desactivado (pero background alerts continúan)');
+                
+                // MANTENEMOS EL FOREGROUND SERVICE VIVO para las alertas en segundo plano
+                if (typeof AndroidServices !== 'undefined') {
+                    try {
+                        AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                    } catch (e) {
+                        console.warn('Error updating foreground service:', e);
                     }
                 }
             }
