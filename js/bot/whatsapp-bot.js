@@ -690,12 +690,7 @@ const WhatsappBot = (() => {
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
                     const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // Procesar grupos siempre. Mensajes privados: solo de admins de confianza.
-                    if (!isGroup && !isFromTrustedAdmin) {
-                        console.log(`⏭️ [SKIP] Privado de número no autorizado, ignorado (${senderJid?.substring(0,20)})`);
-                        continue;
-                    }
-                    
+                    // Procesar todos los grupos y chats privados para analizar alertas.
                     if (!isGroup && isFromTrustedAdmin) {
                         console.log(`✅ [ADMIN-PRIVADO] Mensaje privado de admin de confianza aceptado: ${senderJid?.substring(0,25)}`);
                     }
@@ -711,7 +706,7 @@ const WhatsappBot = (() => {
                     if (!jid) continue;
 
                     // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente) ---
-                    let groupName = isGroup ? 'Grupo Desconocido' : 'Admin Privado';
+                    let groupName = isGroup ? 'Grupo Desconocido' : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
                     if (isGroup) {
                         try {
                             const groupInfo = await sock.groupMetadata(jid);
@@ -1055,7 +1050,8 @@ const WhatsappBot = (() => {
                             // Si no es alerta, ver si es una pregunta directa al bot
                             const botNumber = sock.user?.id?.split(':')[0] || '';
                             const isMentioned = text.toLowerCase().includes(botNumber) || text.toLowerCase().includes('bot');
-                            const isPrivate = !isGroup;
+                            // Responder charlas genéricas o preguntas por privado solo si viene de un admin de confianza
+                            const isPrivate = !isGroup && isFromTrustedAdmin;
 
                             if (isPrivate || isMentioned) {
                                 console.log(`🧠 [CHAT] Respondiendo consulta...`);
