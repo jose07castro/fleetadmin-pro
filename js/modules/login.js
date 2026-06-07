@@ -225,6 +225,13 @@ const LoginModule = (() => {
                 // NAVEGACIÓN INMEDIATA — no bloqueamos con queries post-login
                 Router.navigate(Router.getDefaultRoute());
 
+                // Registrar/actualizar estado de instalación
+                const currentUserId = Auth.getUserId();
+                const currentUser = Auth.getUser();
+                if (currentUserId && currentUser && typeof App !== 'undefined' && App.trackAppInstallation) {
+                    App.trackAppInstallation(currentUserId, currentUser);
+                }
+
                 // Reportar versión del chofer al backend
                 if (typeof App !== 'undefined' && App.reportAppVersionToServer) {
                     App.reportAppVersionToServer();

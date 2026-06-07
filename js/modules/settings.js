@@ -11,7 +11,12 @@ const SettingsModule = (() => {
         const location = await DB.getSetting('location');
 
         // Wiring post-mount: load user list for owners
-        setTimeout(() => { if (Auth.isOwner()) loadUserList(); }, 100);
+        setTimeout(() => { 
+            if (Auth.isOwner()) {
+                loadUserList(); 
+                loadInstallationsList();
+            }
+        }, 100);
 
         return `
             <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
@@ -246,6 +251,19 @@ const SettingsModule = (() => {
                         </button>
                     </div>
                     <div id="userList" style="margin-top:var(--space-3);"></div>
+                </div>
+
+                <!-- Telemetría de Aplicación (Descargas y Desinstalaciones) -->
+                <div class="settings-section">
+                    <div class="settings-section-title">📊 Estado de Aplicación (Descargas y Desinstalaciones)</div>
+                    <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
+                        <div class="settings-item-desc" style="margin-bottom:var(--space-2);">
+                            Monitorea la descarga (primera apertura), última actividad y si desinstalaron la app (detectado por el servidor).
+                        </div>
+                        <div id="appInstallationsList" style="margin-top:var(--space-2);">
+                            <p style="color:var(--text-secondary); text-align:center; padding:var(--space-3);">Cargando registros...</p>
+                        </div>
+                    </div>
                 </div>
             ` : ''}
 
@@ -1498,6 +1516,80 @@ const SettingsModule = (() => {
         }
     }
 
+    async function loadInstallationsList() {
+        const container = document.getElementById('appInstallationsList');
+        if (!container) return;
+
+        if (typeof firebaseDB === 'undefined') {
+            container.innerHTML = '<p style="color:var(--text-secondary); text-align:center;">Realtime Database no disponible</p>';
+            return;
+        }
+
+        try {
+            const snap = await firebaseDB.ref('app_installations').once('value');
+            const data = snap.val();
+            if (!data || Object.keys(data).length === 0) {
+                container.innerHTML = '<p style="color:var(--text-secondary); text-align:center; padding:var(--space-3);">No hay registros de instalación</p>';
+                return;
+            }
+
+            let html = '<div style="overflow-x:auto;">' +
+                '<table style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align:left; color:var(--text-primary);">' +
+                '<thead>' +
+                '<tr style="border-bottom:2px solid var(--border-color); color:var(--text-secondary);">' +
+                '<th style="padding:var(--space-2); font-weight:600;">Usuario</th>' +
+                '<th style="padding:var(--space-2); font-weight:600;">Plataforma</th>' +
+                '<th style="padding:var(--space-2); font-weight:600;">Primera Apertura</th>' +
+                '<th style="padding:var(--space-2); font-weight:600;">Última Actividad</th>' +
+                '<th style="padding:var(--space-2); font-weight:600;">Estado</th>' +
+                '</tr>' +
+                '</thead>' +
+                '<tbody>';
+
+            for (const [userId, inst] of Object.entries(data)) {
+                const name = inst.userName || userId;
+                const platform = inst.platform || 'web';
+                const installedAt = inst.installedAt ? new Date(inst.installedAt).toLocaleString() : 'N/A';
+                const lastActive = inst.lastActive ? new Date(inst.lastActive).toLocaleString() : 'N/A';
+                const status = inst.status || 'installed';
+                const device = inst.deviceInfo || '';
+
+                let statusBadge = '';
+                if (status === 'installed') {
+                    statusBadge = '<span class="badge badge-success" style="font-size:0.75rem; padding:2px 8px;">🟢 Instalada</span>';
+                } else if (status === 'uninstalled') {
+                    const uninstalledAtStr = inst.uninstalledAt ? ' (el ' + new Date(inst.uninstalledAt).toLocaleString() + ')' : '';
+                    statusBadge = '<span class="badge badge-danger" title="Desinstalada' + uninstalledAtStr + '" style="font-size:0.75rem; padding:2px 8px; cursor:help;">🔴 Desinstalada</span>';
+                } else {
+                    statusBadge = '<span class="badge" style="font-size:0.75rem; padding:2px 8px; background:var(--bg-tertiary); color:var(--text-secondary);">' + status + '</span>';
+                }
+
+                let platformIcon = '🌐';
+                if (platform === 'android') platformIcon = '🤖';
+                else if (platform === 'ios') platformIcon = '🍎';
+                else if (platform === 'windows') platformIcon = '🪟';
+                else if (platform === 'mac') platformIcon = '💻';
+
+                html += '<tr style="border-bottom:1px solid var(--border-color);">' +
+                    '<td style="padding:var(--space-2); font-weight:500;">' +
+                    '<div>' + name + '</div>' +
+                    '<div style="font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">' + userId + '</div>' +
+                    '</td>' +
+                    '<td style="padding:var(--space-2);" title="' + device + '">' + platformIcon + ' ' + platform + '</td>' +
+                    '<td style="padding:var(--space-2); color:var(--text-secondary);">' + installedAt + '</td>' +
+                    '<td style="padding:var(--space-2); color:var(--text-secondary);">' + lastActive + '</td>' +
+                    '<td style="padding:var(--space-2);">' + statusBadge + '</td>' +
+                    '</tr>';
+            }
+
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('⚠️ Error al cargar telemetría de instalaciones:', e);
+            container.innerHTML = '<p style="color:var(--color-danger); text-align:center;">Error al cargar datos</p>';
+        }
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1506,6 +1598,7 @@ const SettingsModule = (() => {
         loadUserList, showEditUser, updateUserLicense, deepDeleteUser,
         showReportModal, submitReport, toggleReportDriverType,
         saveVapidKey, toggleVoice,
-        startVoiceEnrollment, recordSample
+        startVoiceEnrollment, recordSample,
+        loadInstallationsList
     };
 })();

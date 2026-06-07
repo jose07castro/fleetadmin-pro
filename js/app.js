@@ -98,6 +98,12 @@ const App = (() => {
                         // Reportar versión al servidor al recuperar sesión
                         reportAppVersionToServer();
 
+                        // Registrar/actualizar estado de instalación en Firebase
+                        const currentUser = Auth.getUser();
+                        if (currentUserId && currentUser) {
+                            trackAppInstallation(currentUserId, currentUser);
+                        }
+
                         // Bloqueo de perfil incompleto al restaurar sesión
                         if (Auth.isDriver()) {
                             try {
@@ -850,7 +856,42 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer, syncActiveShiftGPS };
+    async function trackAppInstallation(userId, user) {
+        if (!userId || !user || typeof firebaseDB === 'undefined') return;
+        try {
+            const installRef = firebaseDB.ref(`app_installations/${userId}`);
+            const snap = await installRef.once('value');
+            const current = snap.val();
+            
+            const ua = navigator.userAgent || '';
+            let platform = 'web';
+            if (/android/i.test(ua)) platform = 'android';
+            else if (/iPad|iPhone|iPod/.test(ua)) platform = 'ios';
+            else if (/Windows/.test(ua)) platform = 'windows';
+            else if (/Mac/.test(ua)) platform = 'mac';
+
+            const now = Date.now();
+            const payload = {
+                userId: userId,
+                userName: user.name || '',
+                role: user.role || 'unknown',
+                fleetId: user.fleetId || 'unknown',
+                installedAt: current?.installedAt || now,
+                lastActive: now,
+                platform: platform,
+                status: 'installed',
+                uninstalledAt: null,
+                deviceInfo: ua.substring(0, 150)
+            };
+            
+            await installRef.set(payload);
+            console.log(`📊 [TELEMETRY] Installation tracked/updated for ${userId}`);
+        } catch (e) {
+            console.warn('⚠️ [TELEMETRY] Error tracking app installation:', e.message);
+        }
+    }
+
+    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer, syncActiveShiftGPS, trackAppInstallation };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---

@@ -1050,10 +1050,10 @@ const WhatsappBot = (() => {
                             // Si no es alerta, ver si es una pregunta directa al bot
                             const botNumber = sock.user?.id?.split(':')[0] || '';
                             const isMentioned = text.toLowerCase().includes(botNumber) || text.toLowerCase().includes('bot');
-                            // Responder charlas genéricas o preguntas por privado solo si viene de un admin de confianza
-                            const isPrivate = !isGroup && isFromTrustedAdmin;
+                            // Responder charlas genéricas o preguntas por privado solo si viene de un admin de confianza y no es un mensaje saliente
+                            const isPrivate = !isGroup && isFromTrustedAdmin && !msg.key.fromMe;
 
-                            if (isPrivate || isMentioned) {
+                            if ((isPrivate || isMentioned) && !msg.key.fromMe) {
                                 console.log(`🧠 [CHAT] Respondiendo consulta...`);
                                 const aiResponse = await callGemini(text);
                                 if (aiResponse) {
@@ -1651,6 +1651,61 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         }
     }
 
+    async function checkFCMTokensAndDetectUninstalls() {
+        if (!db) {
+            console.log('📊 [UNINSTALL-SCANNER] DB not ready, skipping check.');
+            return;
+        }
+        try {
+            console.log('📊 [UNINSTALL-SCANNER] Starting FCM token verification scan...');
+            const tokensSnap = await db.ref('fcm_tokens').once('value');
+            const tokensVal = tokensSnap.val();
+            if (!tokensVal) {
+                console.log('📊 [UNINSTALL-SCANNER] No tokens to verify.');
+                return;
+            }
+
+            let uninstalledCount = 0;
+            let checkedCount = 0;
+
+            for (const [userId, tData] of Object.entries(tokensVal)) {
+                if (!tData.token) continue;
+                checkedCount++;
+                try {
+                    // Validate token via dry-run send (it doesn't actually deliver a notification)
+                    await admin.messaging().send({
+                        token: tData.token,
+                        data: { dryRun: 'true' }
+                    }, true);
+                } catch (error) {
+                    const errCode = error.code;
+                    if (errCode === 'messaging/registration-token-not-registered' || 
+                        errCode === 'messaging/invalid-registration-token') {
+                        
+                        console.log(`📊 [UNINSTALL-SCANNER] Uninstall detected for user: ${userId} (${tData.userName || 'Unknown'})`);
+                        
+                        // Mark as uninstalled in app_installations
+                        const now = Date.now();
+                        await db.ref(`app_installations/${userId}`).update({
+                            status: 'uninstalled',
+                            uninstalledAt: now,
+                            lastActive: now
+                        });
+
+                        // Remove the obsolete token from fcm_tokens to stop testing it
+                        await db.ref(`fcm_tokens/${userId}`).remove();
+                        uninstalledCount++;
+                    } else {
+                        console.warn(`📊 [UNINSTALL-SCANNER] Other validation error for user ${userId}:`, error.message);
+                    }
+                }
+            }
+            console.log(`📊 [UNINSTALL-SCANNER] Scan complete. Checked: ${checkedCount}, Uninstalls detected: ${uninstalledCount}`);
+        } catch (err) {
+            console.error('❌ [UNINSTALL-SCANNER] Error during FCM scan:', err.message);
+        }
+    }
+
 
     async function resetSession() {
         console.log('🔄 [RESET] Forzando limpieza de sesión COMPLETA (Requiere QR)...');
@@ -1750,6 +1805,9 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         }
                     }
                 }
+
+                // 3. Verificar desinstalaciones vía tokens de FCM
+                await checkFCMTokensAndDetectUninstalls();
 
                 console.log(`✨ [CRON] Limpieza finalizada. Removidas ${countAlerts} alertas viejas y ${countPositions} posiciones fantasma.`);
 
