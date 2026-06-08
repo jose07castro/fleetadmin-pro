@@ -263,7 +263,9 @@ const WhatsappBot = (() => {
 
     function _isTrustedAdmin(jid) {
         if (!jid) return false;
+        if (jid === 'status@broadcast' || jid.endsWith('@broadcast')) return false;
         const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
+        if (!num) return false;
         return TRUSTED_ADMIN_NUMBERS.some(t => num.endsWith(t) || t.endsWith(num));
     }
 
@@ -686,7 +688,9 @@ const WhatsappBot = (() => {
                     }
 
                     const jid = msg.key.remoteJid;
-                    const isGroup = jid?.endsWith('@g.us');
+                    if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
+
+                    const isGroup = jid.endsWith('@g.us');
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
                     const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     

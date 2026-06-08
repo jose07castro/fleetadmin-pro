@@ -674,7 +674,9 @@ const WhatsappBot = (() => {
                     }
 
                     const jid = msg.key.remoteJid;
-                    const isGroup = jid?.endsWith('@g.us');
+                    if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
+
+                    const isGroup = jid.endsWith('@g.us');
                     
                     // Solo analizar mensajes de GRUPOS — privados siempre ignorados
                     if (!isGroup) { console.log('⏭️ [SKIP] Privado, ignorado'); continue; }
