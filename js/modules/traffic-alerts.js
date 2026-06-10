@@ -197,6 +197,9 @@
             fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
         }
 
+        // Repetir el aviso para asegurar la recepción del chofer
+        fullText = `${fullText} Repito. ${fullText}`;
+
         // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
         if (typeof KittVoice !== 'undefined') {
             KittVoice.speak(fullText, true);
@@ -272,6 +275,32 @@
                     const audio = new Audio(fullAudioUrl);
                     audio.volume = 1.0;
                     audio.preload = 'auto';
+
+                    let repeated = false;
+                    audio.onended = () => {
+                        if (!repeated) {
+                            repeated = true;
+                            console.log('🎵 [AUDIO-ORIGINAL] Finalizado, iniciando repetición...');
+                            if (typeof KittVoice !== 'undefined') {
+                                KittVoice.speak('Repito', true).then(() => {
+                                    const repeatPromise = (typeof window.playAudioWithBoost === 'function')
+                                        ? window.playAudioWithBoost(audio, 3.0)
+                                        : audio.play();
+                                    repeatPromise.catch(e => console.error('Error al repetir audio:', e));
+                                });
+                            } else if (window.speechSynthesis) {
+                                const utter = new SpeechSynthesisUtterance('Repito');
+                                utter.lang = 'es-AR';
+                                utter.onend = () => {
+                                    const repeatPromise = (typeof window.playAudioWithBoost === 'function')
+                                        ? window.playAudioWithBoost(audio, 3.0)
+                                        : audio.play();
+                                    repeatPromise.catch(e => console.error('Error al repetir audio:', e));
+                                };
+                                window.speechSynthesis.speak(utter);
+                            }
+                        }
+                    };
 
                     // Intentar reproducir directamente
                     audio.play()
