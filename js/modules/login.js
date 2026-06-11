@@ -218,6 +218,10 @@ const LoginModule = (() => {
                 errorEl.style.display = 'none';
                 App.startRealtimeSync();
 
+                if (typeof TrafficAlerts !== 'undefined') {
+                    TrafficAlerts.startGlobalVoiceListener();
+                }
+
                 if (typeof SOSModule !== 'undefined') {
                     SOSModule.startListening();
                 }

@@ -17,6 +17,10 @@
     
     let _geocodeCache = {}; // { query: { lat, lng, timestamp } }
     let _isProcessing = false;
+    let _initialized = false;
+    let _activeFleetId = null;
+    let _activeVoiceRef = null;
+    let _activeVoiceCallback = null;
 
     /**
      * Procesa un mensaje de comunidad para detectar alertas.
@@ -224,21 +228,30 @@
      */
     function startGlobalVoiceListener() {
         if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
-        const fleetId = Auth.getFleetId();
+        const fleetId = Auth.getFleetId() || 'jose07'; // Fallback a jose07 si no está logeado
         
-        // AUTO-HEAL: Si la app acaba de arrancar y Firebase Auth no levantó el FleetID, 
-        // reintentar automáticamente cada 3 segundos hasta conectarse de por vida.
-        if (!fleetId) {
-            console.warn('📡 [VOZ-GLOBAL] FleetID ausente en arranque. Reintentando puente de audio en 3s...');
-            setTimeout(startGlobalVoiceListener, 3000);
+        // Si ya estamos escuchando a la misma flota, no hacer nada
+        if (_activeFleetId === fleetId) {
+            console.log(`📡 [VOZ-GLOBAL] Ya escuchando la flota ${fleetId}`);
             return;
+        }
+
+        // Si estábamos escuchando a otra flota, apagar el listener anterior
+        if (_activeVoiceRef && _activeVoiceCallback) {
+            console.log(`📡 [VOZ-GLOBAL] Cambiando de flota de ${_activeFleetId} a ${fleetId}. Apagando listener anterior...`);
+            try {
+                _activeVoiceRef.off('child_added', _activeVoiceCallback);
+            } catch(e) {
+                console.warn('Error apagando listener de voz anterior:', e);
+            }
         }
 
         console.log(`📡 [VOZ-GLOBAL] Canal de voz conectado para flota: ${fleetId}. Monitoreando alertas...`);
         const alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+        _activeFleetId = fleetId;
+        _activeVoiceRef = alertRef;
 
-        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
-        alertRef.on('child_added', (snap) => {
+        _activeVoiceCallback = (snap) => {
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
@@ -306,7 +319,11 @@
                     };
 
                     // Intentar reproducir directamente
-                    audio.play()
+                    const playPromise = (typeof window.playAudioWithBoost === 'function')
+                        ? window.playAudioWithBoost(audio, 3.0)
+                        : audio.play();
+
+                    playPromise
                         .then(() => {
                             audioPlayed = true;
                             console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada directamente.');
@@ -318,7 +335,11 @@
                     // Evento canplay para móviles
                     audio.addEventListener('canplay', () => {
                         if (!audioPlayed) {
-                            audio.play()
+                            const canPlayPromise = (typeof window.playAudioWithBoost === 'function')
+                                ? window.playAudioWithBoost(audio, 3.0)
+                                : audio.play();
+
+                            canPlayPromise
                                 .then(() => {
                                     audioPlayed = true;
                                     console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada en evento canplay.');
@@ -353,13 +374,23 @@
             } else {
                 speakAlert(alert.type, alert.location, alert.originalText);
             }
-        });
+        };
+
+        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
+        alertRef.on('child_added', _activeVoiceCallback);
     }
 
     /**
      * Listener para monitorear nuevos posts de comunidad.
      */
     function init() {
+        if (_initialized) {
+            // Si ya se inicializó, solo aseguramos que el listener de voz esté activo/actualizado
+            startGlobalVoiceListener();
+            return;
+        }
+        _initialized = true;
+
         console.log('📡 TrafficAlerts: Iniciando monitoreo de comunidad y voz global...');
         
         if (typeof firebaseDB === 'undefined') return;
@@ -380,5 +411,5 @@
         startGlobalVoiceListener();
     }
 
-    return { init, processPost, geocodeIntersection, speakAlert };
+    return { init, processPost, geocodeIntersection, speakAlert, startGlobalVoiceListener };
 })();

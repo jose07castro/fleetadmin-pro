@@ -164,6 +164,10 @@ const App = (() => {
                         }
                         _hideSplash();
                         Router.navigate('login');
+                        // 8.5 Activar detección de alertas de tráfico (WhatsApp) para chofer no logueado
+                        if (typeof TrafficAlerts !== 'undefined') {
+                            TrafficAlerts.init();
+                        }
                     }
                 } catch (navError) {
                     console.error('🔴 Error en navegación post-init:', navError);
@@ -339,6 +343,11 @@ const App = (() => {
             // 6. Limpiar estado de Auth (localStorage, sessionStorage, currentUser)
             Auth.logout();
 
+            // 6.5 Restablecer listener global de voz al default (jose07)
+            if (typeof TrafficAlerts !== 'undefined') {
+                TrafficAlerts.startGlobalVoiceListener();
+            }
+
             // 7. Redirigir forzosamente a login
             Router.navigate('login');
 
@@ -347,6 +356,9 @@ const App = (() => {
             console.error('Error durante logout:', error);
             // Forzar limpieza y navegación aunque haya error
             Auth.logout();
+            if (typeof TrafficAlerts !== 'undefined') {
+                TrafficAlerts.startGlobalVoiceListener();
+            }
             Router.navigate('login');
         }
     }
