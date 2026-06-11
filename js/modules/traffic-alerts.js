@@ -350,26 +350,15 @@
                         }
                     });
 
-                    // Timeout de 5s como resguardo de seguridad
+                    // Loguear resguardo si no reproduce tras 10s, pero SIN interrumpir ni usar fallback de voz
                     setTimeout(() => {
                         if (!audioPlayed) {
-                            console.warn('⚠️ [AUDIO-ORIGINAL] Timeout de 5s superado sin reproducir, usando fallback de voz...');
-                            try { audio.pause(); } catch(e){}
-                            if (alert.originalText && alert.originalText !== '[REPORTE_DE_VOZ]') {
-                                speakAlert(alert.type, alert.location, alert.originalText);
-                            } else {
-                                speakAlert(alert.type, alert.location, '');
-                            }
+                            console.warn('⚠️ [AUDIO-ORIGINAL] No se detectó reproducción tras 10s (posible bloqueo de autoplay o red lenta).');
                         }
-                    }, 5000);
+                    }, 10000);
 
                 } catch (audioEx) {
-                    console.warn('⚠️ [AUDIO-ORIGINAL] Error al instanciar o reproducir audio, usando voz sintetizada:', audioEx.message);
-                    if (alert.originalText && alert.originalText !== '[REPORTE_DE_VOZ]') {
-                        speakAlert(alert.type, alert.location, alert.originalText);
-                    } else {
-                        speakAlert(alert.type, alert.location, '');
-                    }
+                    console.error('❌ [AUDIO-ORIGINAL] Error al instanciar o reproducir audio:', audioEx.message);
                 }
             } else {
                 speakAlert(alert.type, alert.location, alert.originalText);

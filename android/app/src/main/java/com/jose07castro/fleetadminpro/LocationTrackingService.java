@@ -130,8 +130,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         String location;
         String originalText;
         long timestamp;
+        String audioUrl;
 
-        TrafficAlert(String id, String type, double lat, double lng, String location, String originalText, long timestamp) {
+        TrafficAlert(String id, String type, double lat, double lng, String location, String originalText, long timestamp, String audioUrl) {
             this.id = id;
             this.type = type;
             this.lat = lat;
@@ -139,6 +140,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             this.location = location;
             this.originalText = originalText;
             this.timestamp = timestamp;
+            this.audioUrl = audioUrl;
         }
     }
 
@@ -542,6 +544,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         Long timestamp = getLongValue(child.child("timestamp"));
                         String status = getStringValue(child.child("status"));
                         Long expiresAt = getLongValue(child.child("expiresAt"));
+                        String audioUrl = getStringValue(child.child("audioUrl"));
 
                         Log.d(TAG, "🔔 [ALERTS] parsing alert id=" + id + ", type=" + type + ", lat=" + lat + ", lng=" + lng + ", status=" + status + ", expiresAt=" + expiresAt);
 
@@ -553,14 +556,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                                 lng, 
                                 location != null ? location : "", 
                                 originalText != null ? originalText : "", 
-                                timestamp != null ? timestamp : 0L
+                                timestamp != null ? timestamp : 0L,
+                                audioUrl != null ? audioUrl : ""
                             );
                             activeAlerts.add(alert);
                             loadedCount++;
 
                             // Immediate announcement check
                             if (alert.timestamp >= serviceStartTime - 5000 && !spokenAlertIds.contains(id)) {
-                                speakImmediateAlert(alert);
+                                // Skip native TTS if the alert contains an audio file (to avoid speaking "atencion reporte de voz")
+                                if (alert.audioUrl == null || alert.audioUrl.isEmpty()) {
+                                    speakImmediateAlert(alert);
+                                } else {
+                                    Log.i(TAG, "🎵 [ALERTS] Skipping native TTS for audio alert: id=" + id);
+                                }
                                 spokenAlertIds.add(id);
                                 if (spokenAlertIds.size() > 200) {
                                     spokenAlertIds.remove(0);
