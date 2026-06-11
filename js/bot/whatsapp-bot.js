@@ -1122,6 +1122,10 @@ const WhatsappBot = (() => {
         if (t.includes('?') || /\b(?:alguien\s+sabe|saben\s+si|info\b|reporta\s+si|saben\s+algo|hay\s+algo|alguien\s+vio|que\s+onda|pasa\s+algo|alguien\s+que\s+sepa)\b/i.test(t)) {
             return null;
         }
+        // Si contiene palabras explícitas del pasado o anécdotas personales/charlas, ignorar
+        if (/\b(?:ayer|anoche|anteayer|el\s+otro\s+dia|la\s+otra\s+vez|semana\s+pasada|mes\s+pasado|año\s+pasado)\b/i.test(t)) {
+            return null;
+        }
         if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
         if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
@@ -1147,6 +1151,11 @@ REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 
 REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
 - Si el mensaje es un saludo (ej: "buen día", "hola"), un agradecimiento o respuesta de cortesía (ej: "gracias viejo", "muchas gracias", "buenísimo gracias", "ok gracias", "muchas gracias de verdad"), o una conversación personal/comentario general que no reporta activamente un nuevo incidente (ej: "yo estoy saliendo de arroyo", "está complicado", "qué mala suerte", "quería saber gracias"), responde ESTRICTAMENTE con {"isAlert":false}.
+
+REGLAS DE EXCLUSIÓN DE ANÉCDOTAS, HISTORIAS Y EVENTOS PASADOS (CRÍTICA):
+- Si el mensaje describe un evento pasado (ej: "ayer había operativo", "anoche lo pararon", "le pasó a un compañero", "el otro día pasé"), responde ESTRICTAMENTE con {"isAlert":false}.
+- Si el mensaje cuenta una historia personal, anécdota, estafa, robo, discusión o situación particular de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
+
 - Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
@@ -1195,6 +1204,32 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             console.error('❌ [GEMINI] Error parseando respuesta:', e.message);
         }
         return null;
+    }
+
+    function _isValidIntersection(street1, street2) {
+        const forbiddenWords = [
+            'cuando', 'llego', 'hecho', 'pedido', 'buscar', 'companero', 'anoche', 'ayer', 
+            'hola', 'gracias', 'viejo', 'bueno', 'malo', 'todo', 'nada', 'cosa', 'estafa', 'policia', 
+            'control', 'operativo', 'radar', 'camara', 'fotomulta', 'grua', 'inspector', 'gracias',
+            'por', 'para', 'como', 'pero', 'porque', 'donde', 'quien', 'cual', 'este', 'esta', 'estos',
+            'estas', 'ese', 'esa', 'esos', 'esas', 'aquel', 'aquella', 'ellos', 'ellas', 'nosotros',
+            'ustedes', 'yo', 'tu', 'el', 'ella', 'lo', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+            'mi', 'tu', 'su', 'mis', 'tus', 'sus', 'nuestro', 'nuestra', 'suspenso', 'sospechoso',
+            'hacer', 'hace', 'haciendo', 'hecho', 'tengo', 'tiene', 'tienen', 'tenia', 'tenian',
+            'gente', 'paso', 'pasa', 'mandado', 'estaba', 'estaban', 'esperando', 'quien', 'quienes'
+        ];
+        
+        const s1 = street1.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const s2 = street2.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        if (s1.length < 3 || s2.length < 3 || s1.length > 35 || s2.length > 35) return false;
+        
+        const words = [...s1.split(/\s+/), ...s2.split(/\s+/)];
+        for (const w of words) {
+            if (forbiddenWords.includes(w)) return false;
+        }
+        
+        return true;
     }
 
     /**
@@ -1263,7 +1298,11 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             cleanStreet2 = cleanWords2.slice(0, 3).join(' ');
 
             if (cleanStreet1 && cleanStreet2) {
-                return `${cleanStreet1} y ${cleanStreet2}`;
+                if (_isValidIntersection(cleanStreet1, cleanStreet2)) {
+                    return `${cleanStreet1} y ${cleanStreet2}`;
+                } else {
+                    console.log(`🚫 [REGEX-GEO] Intersección descartada por contener palabras no válidas de calle: "${cleanStreet1} y ${cleanStreet2}"`);
+                }
             }
         }
         return null;
