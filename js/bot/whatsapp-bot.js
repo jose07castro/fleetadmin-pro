@@ -1164,7 +1164,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             if (!jsonText) return null;
             const clean = jsonText.trim().replace(/```json|```/g, '').trim();
             const analysis = JSON.parse(clean);
-            if (analysis.isAlert && analysis.address && analysis.address !== 'null') {
+            if (analysis.isAlert) {
                 return analysis;
             }
         } catch (e) {

@@ -8,7 +8,8 @@
     // Diccionario de lunfardo y palabras clave
     const KEYWORDS = [
         'gorra', 'operativo', 'control', 'zorros', 'palo', 
-        'chanchos', 'parando', 'evitar zona', 'transito'
+        'chanchos', 'parando', 'evitar zona', 'transito',
+        'radar', 'camara', 'cámara', 'fotomulta', 'foto multa', 'radar móvil', 'radar movil'
     ];
 
     const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
@@ -135,6 +136,8 @@
         if (policeKeywords.some(k => t.includes(k))) return 'police';
         const checkpointKeywords = ['operativo', 'control', 'zorros'];
         if (checkpointKeywords.some(k => t.includes(k))) return 'checkpoint';
+        const radarKeywords = ['radar', 'camara', 'cámara', 'fotomulta', 'foto multa', 'radar móvil', 'radar movil'];
+        if (radarKeywords.some(k => t.includes(k))) return 'radar';
         return 'warning';
     }
 
