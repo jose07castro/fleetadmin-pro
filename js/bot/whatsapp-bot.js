@@ -243,6 +243,21 @@ const WhatsappBot = (() => {
         });
     }
 
+    function _isObviousChatter(text) {
+        if (!text) return true;
+        const t = text.toLowerCase().trim().replace(/[^a-z0-9áéíóúñ\s]/g, '');
+        
+        // Saludos y agradecimientos ultra-comunes
+        const patterns = [
+            /^(gracias|muchas gracias|gracias viejo|buenisimo gracias|joya gracias|excelente gracias|de 10 gracias|de diez gracias|gracias crack)$/,
+            /^(hola|buen dia|buenos dias|buenas tardes|buenas noches|hola gente|hola grupo|buen dia gente|buen dia grupo)$/,
+            /^(ok|okey|dale|listo|joya|espectacular|buenisimo|excelente|entendido|recibido)$/,
+            /^(gracias por la info|gracias x la info|gracias por reportar|buenisimo el dato|buen dato)$/
+        ];
+        
+        return patterns.some(p => p.test(t));
+    }
+
     function _isOperativoGroup(groupName) {
         if (!groupName) return false;
         const gn = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1017,6 +1032,11 @@ const WhatsappBot = (() => {
                     // Si no es audio y no hay texto, saltar
                     if (!text) { console.log('⏭️ [SKIP] Sin texto'); continue; }
 
+                    if (_isObviousChatter(text)) {
+                        console.log(`⏭️ [SKIP-CHATTER] Omitiendo charla general/saludo obvio: "${text}"`);
+                        continue;
+                    }
+
                     console.log(`🧠 [GEMINI] Analizando: "${text.substring(0,60)}..." [Grupo: ${groupName}]`);
                     
                     try {
@@ -1124,6 +1144,10 @@ const WhatsappBot = (() => {
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 - Si el mensaje es una pregunta, consulta o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos de controles o incidentes activos.
+
+REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
+- Si el mensaje es un saludo (ej: "buen día", "hola"), un agradecimiento o respuesta de cortesía (ej: "gracias viejo", "muchas gracias", "buenísimo gracias", "ok gracias", "muchas gracias de verdad"), o una conversación personal/comentario general que no reporta activamente un nuevo incidente (ej: "yo estoy saliendo de arroyo", "está complicado", "qué mala suerte", "quería saber gracias"), responde ESTRICTAMENTE con {"isAlert":false}.
+- Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Nombre del Grupo de WhatsApp: "${groupName}"
