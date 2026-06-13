@@ -827,56 +827,57 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // Debug: si el mensaje del grupo no tiene texto, loguear las claves para diagnosticar
-                    if (!text && isGroup && m) {
+                    // Debug: si el mensaje no tiene texto, loguear las claves para diagnosticar
+                    if (!text && (isGroup || isFromTrustedAdmin) && m) {
                         const keys = Object.keys(m).filter(k => k !== 'messageContextInfo');
                         console.log(`🐛 [DEBUG] Mensaje sin texto. Claves: [${keys.join(', ')}]`);
+                        if (isFromTrustedAdmin) {
+                            try { console.log(`🐛 [DEBUG-ADMIN] Estructura: ${JSON.stringify(m, null, 0).substring(0, 500)}`); } catch(e) {}
+                        }
                     }
                     
-                    // RESCATE ABSOLUTO DE AUDIO: Buscar recursivamente audioMessage en cualquier nivel (ephemeral, viewOnce, etc.)
+                    // RESCATE ABSOLUTO DE AUDIO: búsqueda deep recursiva en TODO el árbol del mensaje
                     let resolvedAudioMsg = null;
-                    function _recursiveFindAudio(obj) {
-                        if (!obj || typeof obj !== 'object') return null;
-                        if (obj.audioMessage) return obj.audioMessage;
+                    function _recursiveFindAudio(obj, depth) {
+                        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+                        if (obj.audioMessage && typeof obj.audioMessage === 'object') return obj.audioMessage;
                         for (const k of Object.keys(obj)) {
+                            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
                             const val = obj[k];
-                            if (val && typeof val === 'object') {
-                                if (val.audioMessage) return val.audioMessage;
-                                if (val.message) {
-                                    const res = _recursiveFindAudio(val.message);
-                                    if (res) return res;
-                                }
+                            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
+                                const found = _recursiveFindAudio(val, depth + 1);
+                                if (found) return found;
                             }
                         }
                         return null;
                     }
                     
                     if (m) {
-                        resolvedAudioMsg = _recursiveFindAudio(m);
+                        resolvedAudioMsg = _recursiveFindAudio(m, 0);
+                        if (!resolvedAudioMsg && m.audioMessage) resolvedAudioMsg = m.audioMessage;
                     }
                     const isAudio = !!resolvedAudioMsg;
                     const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
 
-                    // RESCATE ABSOLUTO DE IMAGEN: Buscar recursivamente imageMessage en cualquier nivel (ephemeral, viewOnce, etc.)
+                    // RESCATE ABSOLUTO DE IMAGEN: búsqueda deep recursiva en TODO el árbol del mensaje
                     let resolvedImageMsg = null;
-                    function _recursiveFindImage(obj) {
-                        if (!obj || typeof obj !== 'object') return null;
-                        if (obj.imageMessage) return obj.imageMessage;
+                    function _recursiveFindImage(obj, depth) {
+                        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+                        if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
                         for (const k of Object.keys(obj)) {
+                            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
                             const val = obj[k];
-                            if (val && typeof val === 'object') {
-                                if (val.imageMessage) return val.imageMessage;
-                                if (val.message) {
-                                    const res = _recursiveFindImage(val.message);
-                                    if (res) return res;
-                                }
+                            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
+                                const found = _recursiveFindImage(val, depth + 1);
+                                if (found) return found;
                             }
                         }
                         return null;
                     }
 
                     if (m) {
-                        resolvedImageMsg = _recursiveFindImage(m);
+                        resolvedImageMsg = _recursiveFindImage(m, 0);
+                        if (!resolvedImageMsg && m.imageMessage) resolvedImageMsg = m.imageMessage;
                     }
                     const isImage = !!resolvedImageMsg;
 
