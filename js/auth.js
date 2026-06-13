@@ -101,6 +101,7 @@ const Auth = (() => {
         // Activar la flota del usuario
         if (user.fleetId) {
             DB.setFleet(user.fleetId);
+            localStorage.setItem('last_fleet_id', user.fleetId);
         }
 
         console.log('🔐 Sesión guardada en 3 capas (localStorage + sessionStorage + IndexedDB)');
@@ -152,6 +153,7 @@ const Auth = (() => {
                     // Restaurar fleetId en DB
                     if (currentUser.fleetId) {
                         DB.setFleet(currentUser.fleetId);
+                        localStorage.setItem('last_fleet_id', currentUser.fleetId);
                     }
                     console.log('🔐 Sesión restaurada desde storage sincrónico');
                 } catch (e) { /* ignorar */ }
@@ -183,6 +185,7 @@ const Auth = (() => {
             sessionStorage.setItem('fleetadmin_user', JSON.stringify(idbUser));
             if (idbUser.fleetId) {
                 DB.setFleet(idbUser.fleetId);
+                localStorage.setItem('last_fleet_id', idbUser.fleetId);
             }
             return idbUser;
         }
@@ -244,7 +247,7 @@ const Auth = (() => {
     }
 
     function getFleetId() {
-        return getUser()?.fleetId || DB.getFleet() || null;
+        return getUser()?.fleetId || DB.getFleet() || localStorage.getItem('last_fleet_id') || null;
     }
 
     // Verificar credenciales contra globalUsers

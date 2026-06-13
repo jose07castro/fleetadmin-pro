@@ -10,40 +10,26 @@ const db = admin.database();
 
 async function main() {
     try {
-        console.log("🔍 BUSCANDO DATOS DE VALERIA...");
+        console.log("🔍 LISTANDO CLAVES DEL REPOSITORIO DE FIREBASE (ROOT)...");
+        const rootSnap = await db.ref().once('value');
+        const rootVal = rootSnap.val() || {};
         
-        const globalSnap = await db.ref('globalUsers').once('value');
-        const globals = globalSnap.val() || {};
+        console.log("Claves raíz:");
+        Object.keys(rootVal).forEach(key => {
+            console.log(`- ${key}`);
+        });
         
-        const valeriaGlobal = Object.entries(globals).find(([id, u]) => u.name && u.name.toLowerCase().includes('valeria'));
-        
-        if (valeriaGlobal) {
-            console.log("\n✅ VALERIA ENCONTRADA EN GLOBAL USERS:");
-            console.log(JSON.stringify(valeriaGlobal[1], null, 2));
-            console.log("ID Global:", valeriaGlobal[0]);
-        } else {
-            console.log("\n❌ VALERIA NO ENCONTRADA EN GLOBAL USERS");
+        // Si hay una clave de status del bot o similar, imprimirla
+        if (rootVal.bot_status) {
+            console.log("\n🤖 BOT STATUS:", JSON.stringify(rootVal.bot_status, null, 2));
         }
-
-        const fleetId = "-OnPd8HaV1VZWBnYQQX7";
-        console.log(`\n🔍 BUSCANDO EN FLOTA PRINCIPAL: ${fleetId}...`);
-        
-        const fleetUsersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
-        const fleetUsers = fleetUsersSnap.val() || {};
-        
-        const valeriaLocals = Object.entries(fleetUsers).filter(([id, u]) => u.name && u.name.toLowerCase().includes('valeria'));
-        
-        if (valeriaLocals.length > 0) {
-            console.log(`\n✅ ENCONTRADA(S) ${valeriaLocals.length} VALERIA(S) LOCALES:`);
-            valeriaLocals.forEach(([id, u]) => {
-                console.log(`\n📌 ID LOCAL: ${id}`);
-                console.log(JSON.stringify(u, null, 2));
-            });
-        } else {
-            console.log("\n❌ VALERIA NO ENCONTRADA EN LA FLOTA LOCAL");
-            console.log("\nLista de todos los usuarios de la flota para depuración:");
-            Object.entries(fleetUsers).forEach(([id, u]) => {
-                console.log(`- ${id}: ${u.name} (${u.role})`);
+        if (rootVal.bot_alerts) {
+            const count = Object.keys(rootVal.bot_alerts).length;
+            console.log(`\n🤖 BOT ALERTS (Diagnóstico): ${count} alertas en historial.`);
+            // Mostrar las últimas 3 alertas de diagnóstico del bot
+            const alerts = Object.entries(rootVal.bot_alerts).slice(-3);
+            alerts.forEach(([id, a]) => {
+                console.log(`  - [${new Date(a.timestamp).toLocaleString()}] Group: ${a.group} | Text: "${a.text}"`);
             });
         }
         

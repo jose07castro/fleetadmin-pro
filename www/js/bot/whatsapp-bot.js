@@ -116,6 +116,73 @@ Respuesta EXACTAMENTE en este formato:
 }
 
 
+/**
+ * Analiza el CONTENIDO de un imagen con Gemini multimodal.
+ * Determina si la imagen muestra una alerta de tránsito real (por ejemplo, grúas, zorros, patrullas,
+ * operativo, control de tránsito, cartel de fiscalización, conos de control, etc.).
+ * @returns {Promise<{isTrafficAlert: boolean, description: string, type: string, address: string|null, reason: string}|null>}
+ */
+async function callGeminiImage(imageBuffer, mimeType) {
+    if (!GEMINI_KEY || !imageBuffer) return null;
+
+    const imageB64 = imageBuffer.toString('base64');
+    if (imageB64.length > 12 * 1024 * 1024) {
+        console.warn('⚠️ [GEMINI-IMAGE] Imagen demasiado grande para análisis inline, saltando.');
+        return null;
+    }
+
+    const prompt = `Sos un asistente de seguridad vial para taxistas de Rosario, Argentina.
+Analizá esta imagen enviada en un grupo de WhatsApp y respondé SOLO con un objeto JSON válido (sin markdown ni bloques de código).
+
+Determiná:
+1. Si la imagen reporta o muestra una situación de tránsito activa: control de tránsito, inspectores municipales ("zorros" o "chanchos"), grúas ("carretón"), operativos policiales, patrullas de policía, conos de tránsito bloqueando carriles, carteles de "Fiscalización de Transporte", radares de fotomulta, accidentes de tránsito, cortes de calle, bomberos o ambulancias en escena.
+2. Si la imagen contiene texto escrito (carteles, folletos informativos, capturas de pantalla con texto sobre controles), leelo y extraelo.
+3. El tipo de alerta: police / checkpoint / radar / accident / traffic / municipal / warning
+4. La dirección o intersección mencionada en el texto dentro de la imagen (null si no hay ninguna).
+5. Un resumen muy breve de lo que se ve en la imagen (máximo 8 palabras) en español.
+
+Si la imagen es una foto común y corriente (paisaje, selfie, comida, meme genérico, foto de un auto circulando normal, saludo, publicidad) o cualquier cosa NO relacionada con un operativo de control o incidente vial activo → isTrafficAlert: false.
+
+Respuesta EXACTAMENTE en este formato JSON:
+{"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
+
+    const imageModels = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    ];
+
+    for (const url of imageModels) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: mimeType || 'image/jpeg', data: imageB64 } },
+                        { text: prompt }
+                    ]
+                }]
+            }, { timeout: 25000 });
+
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) {
+                try {
+                    const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    console.log(`🤖 [GEMINI-IMAGE] isAlert=${parsed.isTrafficAlert} | Tipo=${parsed.type} | Razón="${parsed.reason}" | Desc="${parsed.description}"`);
+                    return parsed;
+                } catch (parseErr) {
+                    console.warn('⚠️ [GEMINI-IMAGE] No se pudo parsear JSON de respuesta:', rawText.substring(0, 150));
+                    const isAlert = /isTrafficAlert.*true/i.test(rawText);
+                    return { isTrafficAlert: isAlert, description: 'Imagen de tránsito', type: 'checkpoint', address: null, reason: 'parse_fallback' };
+                }
+            }
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI-IMAGE] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.response?.data?.error?.message || e.message}`);
+        }
+    }
+    return null;
+}
+
+
 // 1. Inicialización de Firebase Admin
 
 let db = null;
@@ -222,6 +289,16 @@ const WhatsappBot = (() => {
     let _stableTimer = null; // Validador de salud de conexión
     const MAX_RETRIES = 10;
     const AUTH_DIR = './auth_info';
+    const groupAddressContext = {}; // key: jid, value: { address: string, timestamp: number }
+
+    function _syncBotStatus() {
+        if (db) {
+            db.ref('bot_status').set({
+                connected: _isConnectedState,
+                timestamp: Date.now()
+            }).catch(e => console.error('⚠️ [STATUS] Error syncing bot status:', e.message));
+        }
+    }
 
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
@@ -584,6 +661,7 @@ const WhatsappBot = (() => {
                     clearTimeout(lockWatchdog); // Detener watchdog al finalizar el intento
                     isConnecting = false; // Liberar cerrojo
                     _isConnectedState = false;
+                    _syncBotStatus();
                     
                     // Cancelar validador de salud inmediatamente al desconectar
                     if (_stableTimer) { clearTimeout(_stableTimer); _stableTimer = null; }
@@ -656,6 +734,7 @@ const WhatsappBot = (() => {
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
+                    _syncBotStatus();
                     
                     // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
                     // y estable por lo menos 60 segundos consecutivos. Si muere antes, acumulamos
@@ -778,7 +857,30 @@ const WhatsappBot = (() => {
                     const isAudio = !!resolvedAudioMsg;
                     const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
 
-                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
+                    // RESCATE ABSOLUTO DE IMAGEN: Buscar recursivamente imageMessage en cualquier nivel (ephemeral, viewOnce, etc.)
+                    let resolvedImageMsg = null;
+                    function _recursiveFindImage(obj) {
+                        if (!obj || typeof obj !== 'object') return null;
+                        if (obj.imageMessage) return obj.imageMessage;
+                        for (const k of Object.keys(obj)) {
+                            const val = obj[k];
+                            if (val && typeof val === 'object') {
+                                if (val.imageMessage) return val.imageMessage;
+                                if (val.message) {
+                                    const res = _recursiveFindImage(val.message);
+                                    if (res) return res;
+                                }
+                            }
+                        }
+                        return null;
+                    }
+
+                    if (m) {
+                        resolvedImageMsg = _recursiveFindImage(m);
+                    }
+                    const isImage = !!resolvedImageMsg;
+
+                    console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | Image=${isImage} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
 
 
                     // 1. PROCESAR AUDIO
@@ -915,7 +1017,8 @@ const WhatsappBot = (() => {
                                         audioAnalysis.type || 'checkpoint',
                                         msg.key.id,
                                         audioUrl,
-                                        audioAnalysis.transcription ? audioAnalysis.transcription.substring(0, 100) : 'Reporte por audio de voz'
+                                        audioAnalysis.transcription ? audioAnalysis.transcription.substring(0, 100) : 'Reporte por audio de voz',
+                                        jid
                                     );
                                     continue;
                                 } else {
@@ -980,6 +1083,58 @@ const WhatsappBot = (() => {
                         }
                     }
 
+                    // --- 2. PROCESAR IMAGEN SIN TEXTO O CON CAPTION CORTO ---
+                    if (isImage && (!text || text.trim().length < 5) && GEMINI_KEY) {
+                        try {
+                            const shouldProcessImage = isFromTrustedAdmin || isKnownOperativoGroup;
+                            if (shouldProcessImage) {
+                                console.log(`📸 [IMAGE] Descargando imagen para análisis multimodal con Gemini...`);
+                                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                                const cleanMsg = {
+                                    key: msg.key,
+                                    message: { imageMessage: resolvedImageMsg }
+                                };
+                                const imageBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
+                                    logger: P({ level: 'silent' }),
+                                    reuploadRequest: sock.updateMediaMessage
+                                });
+                                console.log(`📸 [IMAGE] Descargada imagen de ${imageBuffer.length} bytes.`);
+                                
+                                const mimeType = resolvedImageMsg.mimetype || 'image/jpeg';
+                                const imageAnalysis = await callGeminiImage(imageBuffer, mimeType);
+                                
+                                if (imageAnalysis && imageAnalysis.isTrafficAlert) {
+                                    console.log(`✅ [IMAGE-FILTER] Imagen aprobada como alerta de tránsito (${imageAnalysis.type}).`);
+                                    text = text || imageAnalysis.description || '[REPORTE_DE_IMAGEN]';
+                                    await _processAlert(
+                                        imageAnalysis.address || null,
+                                        text,
+                                        groupName,
+                                        imageAnalysis.type || 'checkpoint',
+                                        msg.key.id,
+                                        null,
+                                        imageAnalysis.description || 'Reporte por imagen',
+                                        jid
+                                    );
+                                    
+                                    if (db) {
+                                        await db.ref('bot_alerts').push({
+                                            group: groupName,
+                                            text: `[IMAGEN] ${text}`,
+                                            analysis: { isAlert: true, type: imageAnalysis.type, address: imageAnalysis.address, description: imageAnalysis.description },
+                                            timestamp: Date.now()
+                                        });
+                                    }
+                                    continue; // Salir de este mensaje, ya procesado
+                                } else {
+                                    console.log(`🚫 [IMAGE-FILTER] Imagen descartada — no es de tránsito o relevante.`);
+                                }
+                            }
+                        } catch (imageErr) {
+                            console.error('❌ Error procesando imagen con Gemini:', imageErr.message);
+                        }
+                    }
+
                     // --- FILTRO DE PALABRAS PROHIBIDAS / INSULTOS ---
                     if (_containsForbiddenWords(text)) {
                         console.log(`🚫 [CENSOR] Mensaje descartado por contener insultos/palabras prohibidas: "${text}"`);
@@ -989,7 +1144,7 @@ const WhatsappBot = (() => {
                     // Para audios sin texto: crear alerta directamente (ya validado que el grupo es operativo al descargar)
                     if (isAudioOnlyAlert && audioUrl) {
                         console.log(`🎤 [AUDIO-ALERTA] Audio de voz recibido del grupo operativo: "${groupName}". Creando alerta checkpoint.`);
-                        await _processAlert(null, '[REPORTE_DE_VOZ]', groupName, 'checkpoint', msg.key.id, audioUrl, 'Reporte por audio de voz');
+                        await _processAlert(null, '[REPORTE_DE_VOZ]', groupName, 'checkpoint', msg.key.id, audioUrl, 'Reporte por audio de voz', jid);
                         continue; // Saltar análisis de IA — no hay texto
                     }
 
@@ -1032,7 +1187,7 @@ const WhatsappBot = (() => {
                             }
 
                             // Procesar la alerta pasando el message ID único, audioUrl y description
-                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description);
+                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description, jid);
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -1459,7 +1614,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         return 'Rosario';
     }
 
-     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null) {
+    async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null) {
         const fleetId = await _resolveFleetId();
         // Generar una clave determinista basada en el ID de WhatsApp si existe.
         // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
@@ -1477,6 +1632,18 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         let lng = cityCoords.lng;
         let approximate = true;
         let expandedAddress = address;
+        let isContextFallback = false;
+
+        // Si no hay dirección provista, buscar contexto reciente en el grupo
+        if ((!expandedAddress || expandedAddress === 'null' || expandedAddress === '') && jid && groupAddressContext[jid]) {
+            const context = groupAddressContext[jid];
+            const age = Date.now() - context.timestamp;
+            if (age < 15 * 60 * 1000) { // 15 minutos
+                expandedAddress = context.address;
+                isContextFallback = true;
+                console.log(`🎯 [CONTEXT-GEO] Usando dirección del contexto reciente del grupo (${age/1000}s de antigüedad): "${expandedAddress}"`);
+            }
+        }
         
         try {
             // Caso especial: Helicóptero en Pellegrini y Vera Mujica (HECA)
@@ -1486,11 +1653,11 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 approximate = false;
                 expandedAddress = "Pellegrini y Vera Mujica";
                 console.log('🚁 [HECA] Ubicación forzada para Helicóptero Sanitario');
-            } else if (!address || address === 'null') {
+            } else if (!expandedAddress || expandedAddress === 'null') {
                 // Sin dirección: usar ubicación neutra
                 console.log(`⚠️ [GEO] Sin dirección exacta. Usando centro de ${city}`);
             } else {
-                expandedAddress = _expandStreetNames(address);
+                expandedAddress = _expandStreetNames(expandedAddress);
                 let isResolved = false;
                 
                 // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
@@ -1550,6 +1717,15 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             }
         } catch (err) {
             console.error(`⚠️ [GEO] Error (${err.message}), guardando con ubicación aproximada`);
+        }
+
+        // Guardar dirección exitosa en el contexto del grupo
+        if (!approximate && jid && !isContextFallback && expandedAddress) {
+            groupAddressContext[jid] = {
+                address: expandedAddress,
+                timestamp: Date.now()
+            };
+            console.log(`💾 [CONTEXT-GEO] Actualizando contexto geográfico del grupo ${jid} con: "${expandedAddress}"`);
         }
 
         const alertData = {

@@ -667,7 +667,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
 
         String fullText = "";
-        if (alert.originalText != null && !alert.originalText.isEmpty()) {
+        if (alert.originalText != null && !alert.originalText.isEmpty() && !alert.originalText.equals("[REPORTE_DE_VOZ]")) {
             String cleanText = alert.originalText
                 .replaceAll("https?://\\S+", "") // Remove URL
                 .replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]", " ") // Leave alphanumeric
