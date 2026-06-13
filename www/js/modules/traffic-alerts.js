@@ -224,31 +224,32 @@
     }
 
     /**
-     * Inicia la escucha de alertas de tráfico para anuncios globales por voz
+     * Inicia la escucha de alertas de tráfico para anuncios globales por voz.
+     * Escucha el nodo GLOBAL — funciona para TODOS los celulares con la app,
+     * independientemente de si el usuario está logueado o a qué flota pertenece.
      */
     function startGlobalVoiceListener() {
-        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
-        const fleetId = Auth.getFleetId() || 'jose07'; // Fallback a jose07 si no está logeado
-        
-        // Si ya estamos escuchando a la misma flota, no hacer nada
-        if (_activeFleetId === fleetId) {
-            console.log(`📡 [VOZ-GLOBAL] Ya escuchando la flota ${fleetId}`);
+        if (typeof firebaseDB === 'undefined') return;
+
+        // Si ya estamos escuchando el nodo global, no hacer nada
+        if (_activeFleetId === '__GLOBAL__') {
+            console.log(`📡 [VOZ-GLOBAL] Ya escuchando nodo global_traffic_alerts`);
             return;
         }
 
-        // Si estábamos escuchando a otra flota, apagar el listener anterior
+        // Si estábamos escuchando otro nodo, apagar el listener anterior
         if (_activeVoiceRef && _activeVoiceCallback) {
-            console.log(`📡 [VOZ-GLOBAL] Cambiando de flota de ${_activeFleetId} a ${fleetId}. Apagando listener anterior...`);
+            console.log(`📡 [VOZ-GLOBAL] Cambiando a nodo global. Apagando listener anterior...`);
             try {
                 _activeVoiceRef.off('child_added', _activeVoiceCallback);
             } catch(e) {
-                console.warn('Error apagando listener de voz anterior:', e);
+                console.warn('Error apagando listener anterior:', e);
             }
         }
 
-        console.log(`📡 [VOZ-GLOBAL] Canal de voz conectado para flota: ${fleetId}. Monitoreando alertas...`);
-        const alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
-        _activeFleetId = fleetId;
+        console.log(`📡 [VOZ-GLOBAL] Conectado a global_traffic_alerts. Todos los alertas llegarán a este dispositivo.`);
+        const alertRef = firebaseDB.ref(`global_traffic_alerts`);
+        _activeFleetId = '__GLOBAL__';
         _activeVoiceRef = alertRef;
 
         _activeVoiceCallback = (snap) => {

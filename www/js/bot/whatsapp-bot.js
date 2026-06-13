@@ -1748,11 +1748,15 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             alertData.audioUrl = audioUrl;
         }
 
-        console.log(`💾 [DB] Guardando alerta en TODAS las flotas...`);
+        console.log(`💾 [DB] Guardando alerta en nodo GLOBAL y en todas las flotas...`);
 
         if (db) {
             try {
-                // Broadcast a TODAS las flotas para evitar problemas de mismatch
+                // ✅ NODO GLOBAL: Todos los celulares escuchan este nodo sin importar la flota
+                await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
+                console.log(`✅ [DB] Alerta publicada en global_traffic_alerts/${alertId}`);
+
+                // Broadcast también a TODAS las flotas existentes (compatibilidad)
                 const snap = await db.ref('fleets').once('value');
                 const fleets = snap.val() || {};
                 
@@ -1761,7 +1765,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 });
                 
                 await Promise.all(updatePromises);
-                console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA EN ${updatePromises.length} FLOTAS!!! type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
+                console.log(`✅ [DB] ¡¡¡ALERTA PUBLICADA EN ${updatePromises.length} FLOTAS + GLOBAL!!! type=${alertData.type}, lat=${lat}, lng=${lng}, exact=${!approximate}`);
 
                 // Send push notification to admins
                 const alertTypeNames = {
@@ -1779,7 +1783,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     { alertId: alertId, type: alertData.type }
                 );
             } catch (e) {
-                console.error('❌ [FIREBASE] Error guardando alerta en flotas:', e.message);
+                console.error('❌ [FIREBASE] Error guardando alerta global/flotas:', e.message);
             }
         } else {
             console.error('❌ [DB] Firebase db es NULL - NO SE PUEDE GUARDAR');

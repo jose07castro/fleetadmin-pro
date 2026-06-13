@@ -26,6 +26,12 @@
     "veraz_reports": {
       ".read": true,
       ".write": true
+    },
+
+    "global_traffic_alerts": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["timestamp", "status"]
     }
   }
 }

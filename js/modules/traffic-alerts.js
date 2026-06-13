@@ -224,49 +224,46 @@
     }
 
     /**
-     * Inicia la escucha de alertas de tráfico para anuncios globales por voz
+     * Inicia la escucha de alertas de tráfico para anuncios globales por voz.
+     * Escucha el nodo GLOBAL — funciona para TODOS los celulares con la app,
+     * independientemente de si el usuario está logueado o a qué flota pertenece.
      */
     function startGlobalVoiceListener() {
-        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
-        const fleetId = Auth.getFleetId() || 'jose07'; // Fallback a jose07 si no está logeado
-        
-        // Si ya estamos escuchando a la misma flota, no hacer nada
-        if (_activeFleetId === fleetId) {
-            console.log(`📡 [VOZ-GLOBAL] Ya escuchando la flota ${fleetId}`);
+        if (typeof firebaseDB === 'undefined') return;
+
+        // Si ya estamos escuchando el nodo global, no hacer nada
+        if (_activeFleetId === '__GLOBAL__') {
+            console.log(`📡 [VOZ-GLOBAL] Ya escuchando nodo global_traffic_alerts`);
             return;
         }
 
-        // Si estábamos escuchando a otra flota, apagar el listener anterior
+        // Si estábamos escuchando otro nodo, apagar el listener anterior
         if (_activeVoiceRef && _activeVoiceCallback) {
-            console.log(`📡 [VOZ-GLOBAL] Cambiando de flota de ${_activeFleetId} a ${fleetId}. Apagando listener anterior...`);
+            console.log(`📡 [VOZ-GLOBAL] Cambiando a nodo global. Apagando listener anterior...`);
             try {
                 _activeVoiceRef.off('child_added', _activeVoiceCallback);
             } catch(e) {
-                console.warn('Error apagando listener de voz anterior:', e);
+                console.warn('Error apagando listener anterior:', e);
             }
         }
 
-        console.log(`📡 [VOZ-GLOBAL] Canal de voz conectado para flota: ${fleetId}. Monitoreando alertas...`);
-        const alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
-        _activeFleetId = fleetId;
+        console.log(`📡 [VOZ-GLOBAL] Conectado a global_traffic_alerts. Todos los alertas llegarán a este dispositivo.`);
+        const alertRef = firebaseDB.ref(`global_traffic_alerts`);
+        _activeFleetId = '__GLOBAL__';
         _activeVoiceRef = alertRef;
 
         _activeVoiceCallback = (snap) => {
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // NOTA: NO saltamos el anuncio en Android nativo — el servicio Java solo maneja GPS
-            // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
-
-            // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 30 segundos.
+            // FILTRO 1: Solo cantar alertas NUEVAS (posteriores al arranque de la app)
             const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 30000;
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 return; 
             }
 
-            // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
+            // FILTRO 2: Si la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
                 console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
                 return;
@@ -350,7 +347,7 @@
                         }
                     });
 
-                    // Loguear resguardo si no reproduce tras 10s, pero SIN interrumpir ni usar fallback de voz
+                    // Loguear resguardo si no reproduce tras 10s
                     setTimeout(() => {
                         if (!audioPlayed) {
                             console.warn('⚠️ [AUDIO-ORIGINAL] No se detectó reproducción tras 10s (posible bloqueo de autoplay o red lenta).');
@@ -365,7 +362,7 @@
             }
         };
 
-        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
+        // Escucha en tiempo real del nodo global
         alertRef.on('child_added', _activeVoiceCallback);
     }
 
