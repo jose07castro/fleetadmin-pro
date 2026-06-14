@@ -1,6 +1,38 @@
 // ==========================================
 // 🛡️ AJUSTE ANTIGRAVITY - MODO WEB
 // ==========================================
+
+window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
+    if (!window.AudioContext && !window.webkitAudioContext) {
+        return audioElement.play();
+    }
+    try {
+        if (!window._sharedAudioContext) {
+            window._sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = window._sharedAudioContext;
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        
+        // Evitar doble conexión si se recicla el elemento
+        if (!audioElement._isBoosted) {
+            // Un error común es CORS en el createMediaElementSource si el audio no tiene crossOrigin
+            audioElement.crossOrigin = 'anonymous'; 
+            const source = ctx.createMediaElementSource(audioElement);
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = multiplier; // 300% de volumen original
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            audioElement._isBoosted = true;
+        }
+        return audioElement.play();
+    } catch(e) {
+        console.warn('Audio boost falló, usando volumen normal', e);
+        return audioElement.play();
+    }
+};
+
 // import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 
 // Interceptor global de fetch para móviles (redirige rutas relativas a la URL de producción)
@@ -118,18 +150,21 @@ const App = (() => {
                                 // Error de red verificando perfil — NO bloquear, dejar pasar
                                 console.warn('📱 Error verificando perfil (red), continuando:', profileErr);
                             }
-
-                            // Sincronizar turno activo/GPS al iniciar la app
+                        }
+                        
+                        // Sincronizar turno activo/GPS al iniciar la app o apagar si no es driver
+                        if (Auth.isDriver()) {
                             await syncActiveShiftGPS();
                         } else {
                             if (typeof AndroidServices !== 'undefined') {
                                 try {
-                                    AndroidServices.disableForegroundService();
+                                    AndroidServices.enableForegroundService(null, 'Modo Administrador (Alertas activas)');
                                 } catch (e) {
-                                    console.warn('Error disabling foreground service:', e);
+                                    console.warn('Error enabling foreground service para admin:', e);
                                 }
                             }
                         }
+                        
                         _hideSplash();
                         Router.navigate(Router.getDefaultRoute());
                         // 6. Activar sincronización en tiempo real
@@ -146,7 +181,19 @@ const App = (() => {
                         if (typeof TrafficAlerts !== 'undefined') {
                             TrafficAlerts.init();
                         }
-                        // 8.6 Activar comandos de voz (Manos Libres)
+                        // 8.6 Activar copiloto de radares para TODOS (dueños y choferes)
+                        if (typeof GPSPermissions !== 'undefined') {
+                            // Pedir permiso GPS al dueño también si todavía no lo otorgó
+                            GPSPermissions.checkPermission().then(state => {
+                                if (state === 'granted') {
+                                    GPSPermissions.initCopilotForAll();
+                                } else if (state !== 'denied') {
+                                    // Pedir permiso con explicación amigable
+                                    setTimeout(() => GPSPermissions.requestWithDialog(), 3000);
+                                }
+                            });
+                        }
+                        // 8.7 Activar comandos de voz (Manos Libres)
                         if (typeof VoiceModule !== 'undefined') {
                             VoiceModule.init();
                         }
@@ -529,6 +576,16 @@ const App = (() => {
                 }
             }
 
+            // 5.6. Reiniciar voz global de operativos (se puede perder en background)
+            if (typeof TrafficAlerts !== 'undefined' && typeof TrafficAlerts.startGlobalVoiceListener === 'function') {
+                try { TrafficAlerts.startGlobalVoiceListener(); } catch(e) { /* no crítico */ }
+            }
+
+            // 5.7. Reiniciar copiloto de radares si se desconectó
+            if (typeof GPSPermissions !== 'undefined') {
+                try { GPSPermissions.initCopilotForAll(); } catch(e) { /* no crítico */ }
+            }
+
             // Sincronizar turno activo/GPS al volver del background
             await syncActiveShiftGPS();
 
@@ -813,22 +870,24 @@ const App = (() => {
                 console.log('✅ [GPS] Sincronización: Turno activo detectado → GPS activado:', activeShift.id);
 
                 if (typeof AndroidServices !== 'undefined') {
-                    const vehicles = await DB.getAll('vehicles');
-                    const vehicle = vehicles.find(v => v.id === activeShift.vehicleId);
-                    const vehiclePlate = vehicle ? vehicle.plate : null;
-                    
-                    console.log('✅ [GPS] Iniciando Foreground Service Nativo...');
-                    AndroidServices.enableForegroundService(activeShift.id, vehiclePlate);
+                    try {
+                        const vehicleData = await DB.getVehicle(activeShift.vehicleId);
+                        AndroidServices.enableForegroundService(activeShift.id, vehicleData?.plate || 'Vehículo en uso');
+                    } catch (e) {
+                        console.warn('Error enabling foreground service:', e);
+                    }
                 }
             } else {
-                const wasActive = localStorage.getItem('active_shift_state') === 'true';
                 localStorage.removeItem('active_shift_id');
-                localStorage.removeItem('active_shift_state');
-
-                if (wasActive) {
-                    console.log('ℹ️ [GPS] Sincronización: Sin turno activo → Deteniendo GPS');
-                    if (typeof AndroidServices !== 'undefined') {
-                        AndroidServices.disableForegroundService();
+                localStorage.setItem('active_shift_state', 'false');
+                console.log('⏹️ [GPS] Sincronización: No hay turno activo → GPS desactivado (pero background alerts continúan)');
+                
+                // MANTENEMOS EL FOREGROUND SERVICE VIVO para las alertas en segundo plano
+                if (typeof AndroidServices !== 'undefined') {
+                    try {
+                        AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                    } catch (e) {
+                        console.warn('Error updating foreground service:', e);
                     }
                 }
             }

@@ -26,8 +26,8 @@ const GPSModule = (() => {
 
         // v125: Leaflet dependencies replaced by Google Maps global SDK
 
-        // Inicializar mapa después del render
-        setTimeout(() => _initMap(), 100);
+        // Inicializar mapa después del render — esperar a que el DOM esté listo
+        setTimeout(() => _initMap(), 300);
 
         return `
             <div class="gps-admin-panel" style="animation: fadeIn 0.5s ease-out;">
@@ -105,7 +105,7 @@ const GPSModule = (() => {
         // v125: Leaflet dependencies replaced by Google Maps global SDK
 
         // Cargar Leaflet JS e inicializar
-        setTimeout(() => _initMap(), 100);
+        setTimeout(() => _initMap(), 300);
 
         return `
             <div class="map-container-wrapper" style="height: calc(100vh - 180px); display: flex; flex-direction: column; gap: 15px; animation: fadeIn 0.5s ease-out;">
@@ -241,6 +241,12 @@ const GPSModule = (() => {
     }
 
     async function _initMap() {
+        // Guard: verificar que el contenedor del mapa exista en el DOM
+        if (!document.getElementById('live-map')) {
+            console.warn('[GPS] #live-map no encontrado en el DOM, reintentando en 200ms...');
+            setTimeout(() => _initMap(), 200);
+            return;
+        }
         const loader = document.getElementById('map-loader');
         
         // Rosario por defecto
@@ -466,12 +472,24 @@ const GPSModule = (() => {
     }
 
     function _listenToFirebaseAlerts() {
-        const fleetId = Auth.getFleetId() || 'jose07';
+        let fleetId = Auth.getFleetId();
+        
+        // Si fleetId aún no está disponible (Auth hidratando), reintentar en 1 segundo
+        if (!fleetId) {
+            console.warn('[GPS] fleetId no disponible aún, reintentando en 1s...');
+            setTimeout(() => _listenToFirebaseAlerts(), 1000);
+            return;
+        }
+        
+        console.log(`[GPS] Escuchando alertas de tráfico para flota: ${fleetId}`);
         const alertsRef = firebase.database().ref(`fleets/${fleetId}/traffic_alerts`);
 
         alertsRef.on('value', (snapshot) => {
             const data = snapshot.val() || {};
+            console.log(`[GPS] Alertas recibidas de Firebase: ${Object.keys(data).length}`);
             _updateMapMarkers(data);
+        }, (error) => {
+            console.error('[GPS] Error escuchando alertas de Firebase:', error);
         });
     }
 

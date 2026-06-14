@@ -7,7 +7,31 @@
 const LoginModule = (() => {
     let selectedRole = 'owner';
 
+    const REMEMBER_KEY = 'fleetadmin_remember_credentials';
+
+    function _loadRemembered() {
+        try {
+            const saved = localStorage.getItem(REMEMBER_KEY);
+            return saved ? JSON.parse(saved) : null;
+        } catch(e) { return null; }
+    }
+
+    function _saveRemembered(name, pin, role) {
+        try {
+            localStorage.setItem(REMEMBER_KEY, JSON.stringify({ name, pin, role, savedAt: Date.now() }));
+        } catch(e) { /* quota */ }
+    }
+
+    function _clearRemembered() {
+        localStorage.removeItem(REMEMBER_KEY);
+    }
+
     function render() {
+        // Precargar rol recordado si existe
+        const remembered = _loadRemembered();
+        if (remembered && remembered.role) {
+            selectedRole = remembered.role;
+        }
         return `
             <div class="login-screen">
                 <div class="login-container">
@@ -66,18 +90,24 @@ const LoginModule = (() => {
                             </button>
                         </div>
 
+                        <form id="loginForm" onsubmit="event.preventDefault(); LoginModule.doLogin();" autocomplete="on">
+
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_name')}</label>
                             <input type="text" class="form-input" id="loginName"
-                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="off">
+                                name="username"
+                                placeholder="${I18n.t('login_name_placeholder')}" autocomplete="username"
+                                value="${_loadRemembered()?.name || ''}">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">${I18n.t('login_pin')} (${I18n.t('login_pin_hint')})</label>
                             <div style="position:relative;">
                                 <input type="password" class="form-input" id="loginPin"
+                                    name="password"
                                     placeholder="${I18n.t('login_pin_placeholder')}" maxlength="15" inputmode="numeric"
-                                    onkeydown="if(event.key==='Enter') LoginModule.doLogin()"
+                                    autocomplete="current-password"
+                                    value="${_loadRemembered()?.pin || ''}"
                                     style="padding-right:3rem;">
                                 <button type="button" onclick="LoginModule.togglePin()" id="pinToggleBtn"
                                     style="position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.2rem; padding:0.25rem; opacity:0.6; transition:opacity 0.2s;"
@@ -91,9 +121,17 @@ const LoginModule = (() => {
                             ${I18n.t('login_error')}
                         </div>
 
-                        <button class="btn btn-primary btn-block btn-lg" onclick="LoginModule.doLogin()">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:var(--space-4);">
+                            <input type="checkbox" id="rememberMe" style="width:18px; height:18px; accent-color:var(--color-primary); cursor:pointer;"
+                                ${_loadRemembered() ? 'checked' : ''}>
+                            <label for="rememberMe" style="color:var(--text-secondary); font-size:0.9rem; cursor:pointer; user-select:none;">Recordar mis datos</label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block btn-lg">
                             ${I18n.t('login_enter')}
                         </button>
+
+                        </form>
 
                         <div style="text-align:center; margin-top:var(--space-4); overflow: visible !important; position: relative; z-index: 9999;">
                             <button class="btn btn-block" id="btnRegisterOwner" onclick="LoginModule.showRegister()"
@@ -216,6 +254,15 @@ const LoginModule = (() => {
 
             if (success) {
                 errorEl.style.display = 'none';
+
+                // Guardar credenciales si el usuario marcó "Recordar mis datos"
+                const rememberCb = document.getElementById('rememberMe');
+                if (rememberCb && rememberCb.checked) {
+                    _saveRemembered(name, pin, selectedRole);
+                } else {
+                    _clearRemembered();
+                }
+
                 App.startRealtimeSync();
 
                 if (typeof TrafficAlerts !== 'undefined') {

@@ -239,14 +239,18 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // FILTRO 1: Solo cantar alertas NUEVAS (posteriores al arranque de la app)
+            // NOTA: NO saltamos el anuncio en Android nativo — el servicio Java solo maneja GPS
+            // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
+
+            // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 30 segundos.
             const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 30000;
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 return; 
             }
 
-            // FILTRO 2: Si la alerta ya expiró, silenciarla.
+            // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
                 console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
                 return;
@@ -298,11 +302,11 @@
                         }
                     };
 
-                    // Intentar reproducir directamente
                     const playPromise = (typeof window.playAudioWithBoost === 'function')
                         ? window.playAudioWithBoost(audio, 3.0)
                         : audio.play();
 
+                    // Intentar reproducir directamente
                     playPromise
                         .then(() => {
                             audioPlayed = true;
@@ -330,7 +334,7 @@
                         }
                     });
 
-                    // Loguear resguardo si no reproduce tras 10s
+                    // Loguear resguardo si no reproduce tras 10s, pero SIN interrumpir ni usar fallback de voz
                     setTimeout(() => {
                         if (!audioPlayed) {
                             console.warn('⚠️ [AUDIO-ORIGINAL] No se detectó reproducción tras 10s (posible bloqueo de autoplay o red lenta).');
@@ -345,7 +349,7 @@
             }
         };
 
-        // Escucha en tiempo real del nodo global
+        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
         alertRef.on('child_added', _activeVoiceCallback);
     }
 

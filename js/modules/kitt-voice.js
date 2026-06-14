@@ -103,7 +103,11 @@ const KittVoice = (() => {
 
                 audio.onplay = () => clearTimeout(timeout);
 
-                audio.play().catch(() => {
+                const playPromise = (typeof window.playAudioWithBoost === 'function') 
+                    ? window.playAudioWithBoost(audio, 3.0) 
+                    : audio.play();
+
+                playPromise.catch(() => {
                     clearTimeout(timeout);
                     _currentAudio = null;
                     resolve(false);
