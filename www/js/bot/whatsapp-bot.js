@@ -117,7 +117,7 @@ Respuesta EXACTAMENTE en este formato:
 
 
 /**
- * Analiza el CONTENIDO de un imagen con Gemini multimodal.
+ * Analiza el CONTENIDO de una imagen con Gemini multimodal.
  * Determina si la imagen muestra una alerta de tránsito real (por ejemplo, grúas, zorros, patrullas,
  * operativo, control de tránsito, cartel de fiscalización, conos de control, etc.).
  * @returns {Promise<{isTrafficAlert: boolean, description: string, type: string, address: string|null, reason: string}|null>}
@@ -345,6 +345,20 @@ const WhatsappBot = (() => {
             'trabajo' // Grupo de pruebas del admin — Gemini filtra el contenido igual
         ];
         return keywords.some(kw => gn.includes(kw));
+    }
+    // Números de admin/dueño que pueden enviar alertas por chat privado
+    // Formato: código de país + código de área + número (sin +)
+    const TRUSTED_ADMIN_NUMBERS = [
+        '5493415707731', // Número principal del bot/dueño (341-5707731)
+        '5493417327248', // Segundo número de prueba/reenvío del admin (341-7327248)
+    ];
+
+    function _isTrustedAdmin(jid) {
+        if (!jid) return false;
+        if (jid === 'status@broadcast' || jid.endsWith('@broadcast')) return false;
+        const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
+        if (!num) return false;
+        return TRUSTED_ADMIN_NUMBERS.some(t => num.endsWith(t) || t.endsWith(num));
     }
 
     // Fleet ID real (se auto-detecta al iniciar)
@@ -771,21 +785,38 @@ const WhatsappBot = (() => {
                     if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
 
                     const isGroup = jid.endsWith('@g.us');
+                    const senderJid = msg.key.participant || msg.key.remoteJid || '';
+                    const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // Solo analizar mensajes de GRUPOS — privados siempre ignorados
-                    if (!isGroup) { console.log('⏭️ [SKIP] Privado, ignorado'); continue; }
+                    // Procesar todos los grupos y chats privados para analizar alertas.
+                    if (!isGroup && isFromTrustedAdmin) {
+                        console.log(`✅ [ADMIN-PRIVADO] Mensaje privado de admin de confianza aceptado: ${senderJid?.substring(0,25)}`);
+                    }
+                    
+                    if (isFromTrustedAdmin) {
+                        console.log(`🐛 [ADMIN-RAW-MSG] ID=${msg.key.id} | HasMessage=${!!msg.message} | Keys=${Object.keys(msg.message || {})}`);
+                        console.log(`🐛 [ADMIN-RAW-JSON] ${JSON.stringify(msg)}`);
+                    }
                     
                     // En grupos: procesar TODOS los mensajes (incluso fromMe)
                     // El dueño puede enviar alertas desde su celular/WhatsApp Web
                     // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
                     if (!jid) continue;
 
-                    // --- EXTRAER CONTEXTO DEL GRUPO ---
-                    let groupName = 'Grupo Desconocido';
-                    try {
-                        const groupInfo = await sock.groupMetadata(jid);
-                        groupName = groupInfo.subject || 'Grupo Desconocido';
-                    } catch(ge) { groupName = 'Grupo Desconocido'; }
+                    // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente) ---
+                    let groupName = isGroup ? 'Grupo Desconocido' : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
+                    if (isGroup) {
+                        try {
+                            const groupInfo = await sock.groupMetadata(jid);
+                            groupName = groupInfo?.subject || 'Grupo Desconocido';
+                        } catch(ge) {
+                            // Fallback: intentar obtener nombre desde el JID del grupo
+                            console.warn(`⚠️ [GROUP] No se pudo obtener metadatos del grupo ${jid?.substring(0,20)}. Usando Gemini como filtro.`);
+                            groupName = 'Grupo Desconocido';
+                        }
+                    }
+                    const isKnownOperativoGroup = _isOperativoGroup(groupName);
+                    console.log(`📱 [MSG] JID=${jid?.substring(0,20)}... | Grupo=${isGroup} | Admin=${isFromTrustedAdmin} | Nombre="${groupName}" | Operativo=${isKnownOperativoGroup}`);
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
@@ -831,18 +862,22 @@ const WhatsappBot = (() => {
                     if (!text && (isGroup || isFromTrustedAdmin) && m) {
                         const keys = Object.keys(m).filter(k => k !== 'messageContextInfo');
                         console.log(`🐛 [DEBUG] Mensaje sin texto. Claves: [${keys.join(', ')}]`);
+                        // Log extra para admin: mostrar toda la estructura de message
                         if (isFromTrustedAdmin) {
                             try { console.log(`🐛 [DEBUG-ADMIN] Estructura: ${JSON.stringify(m, null, 0).substring(0, 500)}`); } catch(e) {}
                         }
                     }
                     
                     // RESCATE ABSOLUTO DE AUDIO: búsqueda deep recursiva en TODO el árbol del mensaje
+                    // Detecta: mensajes directos, reenviados, ephemeral, viewOnce, viewOnceV2, etc.
                     let resolvedAudioMsg = null;
                     function _recursiveFindAudio(obj, depth) {
                         if (!obj || typeof obj !== 'object' || depth > 8) return null;
+                        // Chequeo directo en este nivel
                         if (obj.audioMessage && typeof obj.audioMessage === 'object') return obj.audioMessage;
+                        // Buscar en TODOS los valores del objeto recursivamente
                         for (const k of Object.keys(obj)) {
-                            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
+                            if (k === 'messageContextInfo' || k === 'contextInfo') continue; // evitar loops
                             const val = obj[k];
                             if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
                                 const found = _recursiveFindAudio(val, depth + 1);
@@ -854,7 +889,10 @@ const WhatsappBot = (() => {
                     
                     if (m) {
                         resolvedAudioMsg = _recursiveFindAudio(m, 0);
-                        if (!resolvedAudioMsg && m.audioMessage) resolvedAudioMsg = m.audioMessage;
+                        // Fallback directo: el mensaje completo tiene audioMessage en raíz
+                        if (!resolvedAudioMsg && m.audioMessage) {
+                            resolvedAudioMsg = m.audioMessage;
+                        }
                     }
                     const isAudio = !!resolvedAudioMsg;
                     const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
@@ -877,7 +915,9 @@ const WhatsappBot = (() => {
 
                     if (m) {
                         resolvedImageMsg = _recursiveFindImage(m, 0);
-                        if (!resolvedImageMsg && m.imageMessage) resolvedImageMsg = m.imageMessage;
+                        if (!resolvedImageMsg && m.imageMessage) {
+                            resolvedImageMsg = m.imageMessage;
+                        }
                     }
                     const isImage = !!resolvedImageMsg;
 
@@ -892,14 +932,28 @@ const WhatsappBot = (() => {
                     if (isAudio) {
                         // Comando especial .test_audio: bypass del filtro de grupo para pruebas del admin
                         const isTestCommand = text.trim().toLowerCase().startsWith('.test_audio');
-                        
-                        // Filtro de solo operativos: solo procesar audios de grupos de transito/operativos
-                        if (!isTestCommand && !_isOperativoGroup(groupName)) {
-                            console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio en grupo no operativo: "${groupName}"`);
+
+                        // FILTRO ESTRICTO DE PRIVACIDAD:
+                        // Solo procesar audio de:
+                        //   1. Grupos conocidos de operativos/tránsito (nombre validado)
+                        //   2. Chat privado de un admin de confianza
+                        //   3. Comando .test_audio del admin
+                        //
+                        // NUNCA procesar audios de chats personales, grupos de amigos,
+                        // familia u otros grupos que no sean de tránsito.
+                        // "Grupo Desconocido" tampoco se procesa: si no pudimos leer el nombre,
+                        // es más seguro saltarlo que arriesgar privacidad.
+                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup;
+
+                        if (!shouldProcessAudio) {
+                            console.log(`🔒 [PRIVACIDAD] Audio IGNORADO: el chat "${groupName}" no es un grupo de operativos ni un admin de confianza. No se descarga ni procesa.`);
                             continue;
                         }
-                        if (isTestCommand) {
-                            console.log(`🧪 [TEST] Modo prueba activado desde "${groupName}" - saltando filtro de grupo operativo`);
+
+                        if (isKnownOperativoGroup) {
+                            console.log(`✅ [AUDIO-OK] Grupo "${groupName}" confirmado como operativo. Procesando audio...`);
+                        } else if (isFromTrustedAdmin) {
+                            console.log(`✅ [AUDIO-OK] Audio del admin de confianza. Procesando...`);
                         }
 
                         try {
@@ -1194,7 +1248,8 @@ const WhatsappBot = (() => {
                             // Si no es alerta, ver si es una pregunta directa al bot
                             const botNumber = sock.user?.id?.split(':')[0] || '';
                             const isMentioned = text.toLowerCase().includes(botNumber) || text.toLowerCase().includes('bot');
-                            const isPrivate = !isGroup && !msg.key.fromMe;
+                            // Responder charlas genéricas o preguntas por privado solo si viene de un admin de confianza y no es un mensaje saliente
+                            const isPrivate = !isGroup && isFromTrustedAdmin && !msg.key.fromMe;
 
                             if ((isPrivate || isMentioned) && !msg.key.fromMe) {
                                 console.log(`🧠 [CHAT] Respondiendo consulta...`);
@@ -1249,7 +1304,7 @@ const WhatsappBot = (() => {
         if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
         if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
         if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
-        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|fizca|fizcalizacion|servicio publico|servicios publicos|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null };
+        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|fiscalisacion|fizca|fisca|fizcalizacion|fizcalisacion|servicio publico|servicios publicos|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null };
         if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
         if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null };
         if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
@@ -1263,7 +1318,13 @@ const WhatsappBot = (() => {
     async function _analyzeMessageWithAI(text, groupName = '') {
         if (!GEMINI_KEY) return null;
         
-        const prompt = `Analiza este mensaje de un grupo de WhatsApp de conductores de flota para detectar incidentes de tránsito y operativos en tiempo real.
+        const prompt = `Sos un detector de alertas de tránsito para un grupo de WhatsApp de conductores de flota en Argentina.
+Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO Y CONCRETO.
+
+REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
+- Si el mensaje es SOLO un nombre propio, apodo, mote o forma de llamar a alguien (ej: "roti", "juanchi", "el gordo", "carlitos", "toto", "el vasco", "tío", "che"), responde ESTRICTAMENTE con {"isAlert":false}. Los apodos NO son alertas de tránsito.
+- Si el mensaje es solo un nombre de persona o conjunto de nombres/apodos sin ningún verbo de acción ni ubicación vial, responde ESTRICTAMENTE con {"isAlert":false}.
+- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 - Si el mensaje es una pregunta, consulta o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos de controles o incidentes activos.
@@ -1273,9 +1334,9 @@ REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
 
 REGLAS DE EXCLUSIÓN DE ANÉCDOTAS, HISTORIAS Y EVENTOS PASADOS (CRÍTICA):
 - Si el mensaje describe un evento pasado (ej: "ayer había operativo", "anoche lo pararon", "le pasó a un compañero", "el otro día pasé"), responde ESTRICTAMENTE con {"isAlert":false}.
-- Si el mensaje cuenta una historia personal, anécdotas, estafas, robos, discusiones o situaciones particulares de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
+- Si el mensaje cuenta una historia personal, anécdota, estafa, robo, discusión o situación particular de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
 
-- Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos.
+- Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos. El campo "confidence" debe reflejar qué tan seguro estás: usa 0.9 si el mensaje es claro y concreto, 0.5 si es ambiguo.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Nombre del Grupo de WhatsApp: "${groupName}"
@@ -1285,6 +1346,7 @@ REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
 Los conductores raramente escriben la ciudad completa. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO o en palabras clave del texto.
 - Ciudades comunes en la región: "Rosario", "Arroyo Seco", "Pueblo Esther", "Funes", "Roldán", "San Lorenzo", "Granadero Baigorria", "Capitán Bermúdez", "Villa Constitución", "Pérez", "Ibarlucea", "Alvear", "Villa Gobernador Gálvez" (VGG).
 - Si el nombre del grupo menciona una ciudad (ej: "Operativos Arroyo Seco", "Accidentes Pueblo Esther") o el mensaje menciona una de estas ciudades, asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas.
+- NUNCA inventes una dirección si el texto no la contiene. Si no hay calle mencionada explícitamente, pon "address": null.
 
 NORMALIZACIÓN DE ABREVIATURAS GLOBALES (IMPORTANTE):
 - "av" / "av." = Avenida
@@ -1301,9 +1363,9 @@ REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE - PRIORIDADES):
 2. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
 3. "AMBULANCIA", "SAMU", urgencias médicas → tipo: "ambulance"
 4. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "fizca", "fizcalización", "servicio público", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial.
+5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "fiscalisacion", "fizca", "fisca", "fizcalización", "fizcalisacion", "servicio público", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial.
 6. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial", "comando" → tipo: "police" (solo si no califica como municipal).
-7. Si menciona "OPERATIVO" o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
+7. Si menciona "OPERATIVO" (a veces escrito con errores como "operatico") o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
 8. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
 9. Cortes de calle, baches, inundaciones, protestas, tráfico pesado, tránsito demorado → tipo: "traffic"
 
@@ -1317,6 +1379,12 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             const clean = jsonText.trim().replace(/```json|```/g, '').trim();
             const analysis = JSON.parse(clean);
             if (analysis.isAlert) {
+                // Umbral mínimo de confianza: 0.6. Por debajo, rechazar para evitar falsos positivos.
+                const confidence = parseFloat(analysis.confidence || 0);
+                if (confidence < 0.6) {
+                    console.log(`⚠️ [GEMINI] Alerta descartada por baja confianza (${confidence.toFixed(2)} < 0.6): "${text.substring(0,60)}"`);
+                    return null;
+                }
                 return analysis;
             }
         } catch (e) {
@@ -1615,7 +1683,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         return 'Rosario';
     }
 
-    async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null) {
+     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null) {
         const fleetId = await _resolveFleetId();
         // Generar una clave determinista basada en el ID de WhatsApp si existe.
         // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
@@ -1632,6 +1700,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         let lat = cityCoords.lat;
         let lng = cityCoords.lng;
         let approximate = true;
+        
         let expandedAddress = address;
         let isContextFallback = false;
 
@@ -1658,7 +1727,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 // Sin dirección: usar ubicación neutra
                 console.log(`⚠️ [GEO] Sin dirección exacta. Usando centro de ${city}`);
             } else {
-                expandedAddress = _expandStreetNames(expandedAddress);
+                expandedAddress = _expandStreetNames(address);
                 let isResolved = false;
                 
                 // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
@@ -1674,11 +1743,25 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         
                         if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
                             const loc = gResponse.data.results[0].geometry.location;
-                            lat = parseFloat(loc.lat);
-                            lng = parseFloat(loc.lng);
-                            approximate = false;
-                            isResolved = true;
-                            console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación perfecta detectada! Lat=${lat}, Lng=${lng}`);
+                            const tempLat = parseFloat(loc.lat);
+                            const tempLng = parseFloat(loc.lng);
+                            
+                            // Validar que el resultado esté dentro de 60km del centro de la ciudad esperada
+                            const distKm = Math.sqrt(
+                                Math.pow((tempLat - cityCoords.lat) * 111, 2) +
+                                Math.pow((tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180), 2)
+                            );
+                            
+                            if (distKm <= 60) {
+                                lat = tempLat;
+                                lng = tempLng;
+                                approximate = false;
+                                isResolved = true;
+                                console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación válida a ${distKm.toFixed(1)}km del centro! Lat=${lat}, Lng=${lng}`);
+                            } else {
+                                console.warn(`⚠️ [GEO-GOOGLE] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — posible dirección inventada. Descartando, se usará ubicación aproximada.`);
+                                // No marcar como isResolved, intentar Photon o fallback
+                            }
                         } else {
                             console.warn(`⚠️ [GEO-GOOGLE] Fallo en respuesta (status=${gResponse.data?.status || 'UNKNOWN'}). Procediendo al fallback gratuito...`);
                         }
@@ -1706,11 +1789,21 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         const tempLng = parseFloat(features[0].geometry.coordinates[0]);
                         const tempLat = parseFloat(features[0].geometry.coordinates[1]);
                         
-                        // Sin validación de cercanía geocodificada obligatoria (Modo Internacional)
-                        lng = tempLng;
-                        lat = tempLat;
-                        approximate = false;
-                        console.log(`📍 [GEO-PHOTON] ✅ Ubicación detectada: ${lat}, ${lng}`);
+                        // Validación de cercanía: el resultado debe estar a ≤ 60km del centro esperado.
+                        // Esto evita que Nominatim/Photon devuelva una ciudad en otro país o provincia.
+                        const distKm = Math.sqrt(
+                            Math.pow((tempLat - cityCoords.lat) * 111, 2) +
+                            Math.pow((tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180), 2)
+                        );
+                        if (distKm <= 60) {
+                            lng = tempLng;
+                            lat = tempLat;
+                            approximate = false;
+                            console.log(`📍 [GEO-PHOTON] ✅ Ubicación válida a ${distKm.toFixed(1)}km del centro: ${lat}, ${lng}`);
+                        } else {
+                            console.warn(`⚠️ [GEO-PHOTON] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — demasiado lejos, descartando. Usando ubicación aproximada de la ciudad.`);
+                            // approximate = true ya es el valor por defecto
+                        }
                     } else {
                         console.log(`⚠️ [GEO-PHOTON] Sin resultados.`);
                     }
@@ -1978,6 +2071,20 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                                     countAlerts++;
                                 }
                             }
+                        }
+                    }
+                }
+
+                // 1b. Purgar también el nodo GLOBAL de alertas
+                const globalAlertsSnap = await db.ref('global_traffic_alerts').once('value');
+                const globalAlerts = globalAlertsSnap.val();
+                if (globalAlerts) {
+                    for (const aid in globalAlerts) {
+                        const a = globalAlerts[aid];
+                        if ((a.timestamp && a.timestamp < cutOffAlerts) || (a.expiresAt && a.expiresAt < now)) {
+                            if (a.audioUrl) audioFilesToDelete.add(a.audioUrl);
+                            await db.ref(`global_traffic_alerts/${aid}`).remove();
+                            countAlerts++;
                         }
                     }
                 }
