@@ -125,6 +125,14 @@ const VoiceAlertModule = (() => {
             };
 
             _mediaRecorder.onstop = async () => {
+                // Detener todas las pistas de audio para cerrar el micrófono de forma garantizada
+                if (_activeStream) {
+                    _activeStream.getTracks().forEach(track => {
+                        track.enabled = false;
+                        track.stop();
+                    });
+                    _activeStream = null;
+                }
                 await _processRecordedAudio();
             };
 
@@ -189,13 +197,8 @@ const VoiceAlertModule = (() => {
         const statusEl = document.getElementById('voice-alert-status');
         if (statusEl) statusEl.innerText = 'Procesando audio...';
 
-        if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
             _mediaRecorder.stop();
-        }
-
-        if (_activeStream) {
-            _activeStream.getTracks().forEach(track => track.stop());
-            _activeStream = null;
         }
     }
 
@@ -208,12 +211,18 @@ const VoiceAlertModule = (() => {
             _timerInterval = null;
         }
 
-        if (_mediaRecorder && _mediaRecorder.state === 'recording') {
-            _mediaRecorder.stop();
+        if (_mediaRecorder) {
+            _mediaRecorder.onstop = null; // Evitar que se gatille el envío al detener
+            if (_mediaRecorder.state !== 'inactive') {
+                _mediaRecorder.stop();
+            }
         }
 
         if (_activeStream) {
-            _activeStream.getTracks().forEach(track => track.stop());
+            _activeStream.getTracks().forEach(track => {
+                track.enabled = false;
+                track.stop();
+            });
             _activeStream = null;
         }
 
