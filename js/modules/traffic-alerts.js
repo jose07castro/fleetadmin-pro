@@ -171,38 +171,21 @@
         };
 
         const msg = voiceMessages[type] || voiceMessages.warning;
-        const loc = location ? location.replace(' (ubicación aprox.)', '').replace(' y ', ' esquina ') : '';
-        
-        let fullText = '';
-        // Si hay texto original de WhatsApp, usarlo para cantar TODO tal cual llegó
-        if (originalText && originalText !== '[REPORTE_DE_VOZ]') {
-            let cleanText = originalText
-                .replace(/https?:\/\/\S+/gi, '') // Quitar enlaces HTTP
-                .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]/g, ' ') // Dejar ÚNICAMENTE letras, acentos, números y espacios. Elimina markdown, emojis y puntuación ruidosa.
-                .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
-                .trim();
+        // Limpiar la ubicación: quitar sufijos internos, reemplazar " y " por " esquina "
+        const loc = location
+            ? location
+                .replace(' (ubicación aprox.)', '')
+                .replace(/ \(reporte de [^)]+\)/gi, '') // Quitar "(reporte de NombreChofer)"
+                .replace(/ - .*$/, '')                   // Quitar todo lo que viene después de " - "
+                .replace(' y ', ' esquina ')
+                .trim()
+            : '';
 
-            // Censurar palabras prohibidas para la síntesis de voz (KITT Voice)
-            const forbidden = [
-                'boludo', 'boluda', 'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'tarado', 'tarada',
-                'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra', 'pelotudo', 'pelotuda', 'orto',
-                'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada', 'pija', 'chota', 'mierda',
-                'trola', 'trolo'
-            ];
-            forbidden.forEach(word => {
-                const regex = new RegExp(`\\b${word}\\b`, 'gi');
-                cleanText = cleanText.replace(regex, '***');
-            });
-            
-            // Si tras la limpieza quedó algo inteligible, lo cantamos. Si no, usamos el fallback genérico.
-            if (cleanText.length > 2) {
-                fullText = `Atención: ${cleanText}.`;
-            } else {
-                fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
-            }
-        } else {
-            fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
-        }
+        // SIEMPRE usar el mensaje estructurado (tipo + ubicación del mapa).
+        // NO leer el texto crudo del WhatsApp — puede contener apodos, nombres propios,
+        // slang o contenido irrelevante que confunde al conductor.
+        let fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
+        console.log(`🔊 [GLOBAL VOZ] Usando ubicación estructurada: "${fullText}" (originalText ignorado para evitar ruido)`);
 
         // Repetir el aviso para asegurar la recepción del chofer
         fullText = `${fullText} Repito. ${fullText}`;

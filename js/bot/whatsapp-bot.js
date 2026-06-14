@@ -1309,7 +1309,13 @@ const WhatsappBot = (() => {
     async function _analyzeMessageWithAI(text, groupName = '') {
         if (!GEMINI_KEY) return null;
         
-        const prompt = `Analiza este mensaje de un grupo de WhatsApp de conductores de flota para detectar incidentes de tránsito y operativos en tiempo real.
+        const prompt = `Sos un detector de alertas de tránsito para un grupo de WhatsApp de conductores de flota en Argentina.
+Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO Y CONCRETO.
+
+REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
+- Si el mensaje es SOLO un nombre propio, apodo, mote o forma de llamar a alguien (ej: "roti", "juanchi", "el gordo", "carlitos", "toto", "el vasco", "tío", "che"), responde ESTRICTAMENTE con {"isAlert":false}. Los apodos NO son alertas de tránsito.
+- Si el mensaje es solo un nombre de persona o conjunto de nombres/apodos sin ningún verbo de acción ni ubicación vial, responde ESTRICTAMENTE con {"isAlert":false}.
+- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 - Si el mensaje es una pregunta, consulta o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos de controles o incidentes activos.
@@ -1321,7 +1327,7 @@ REGLAS DE EXCLUSIÓN DE ANÉCDOTAS, HISTORIAS Y EVENTOS PASADOS (CRÍTICA):
 - Si el mensaje describe un evento pasado (ej: "ayer había operativo", "anoche lo pararon", "le pasó a un compañero", "el otro día pasé"), responde ESTRICTAMENTE con {"isAlert":false}.
 - Si el mensaje cuenta una historia personal, anécdota, estafa, robo, discusión o situación particular de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
 
-- Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos.
+- Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos. El campo "confidence" debe reflejar qué tan seguro estás: usa 0.9 si el mensaje es claro y concreto, 0.5 si es ambiguo.
         
 CONTEXTO GEOGRÁFICO DE ORIGEN:
 - Nombre del Grupo de WhatsApp: "${groupName}"
@@ -1331,6 +1337,7 @@ REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
 Los conductores raramente escriben la ciudad completa. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO o en palabras clave del texto.
 - Ciudades comunes en la región: "Rosario", "Arroyo Seco", "Pueblo Esther", "Funes", "Roldán", "San Lorenzo", "Granadero Baigorria", "Capitán Bermúdez", "Villa Constitución", "Pérez", "Ibarlucea", "Alvear", "Villa Gobernador Gálvez" (VGG).
 - Si el nombre del grupo menciona una ciudad (ej: "Operativos Arroyo Seco", "Accidentes Pueblo Esther") o el mensaje menciona una de estas ciudades, asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas.
+- NUNCA inventes una dirección si el texto no la contiene. Si no hay calle mencionada explícitamente, pon "address": null.
 
 NORMALIZACIÓN DE ABREVIATURAS GLOBALES (IMPORTANTE):
 - "av" / "av." = Avenida
@@ -1347,7 +1354,7 @@ REGLAS DE CLASIFICACIÓN (MUY IMPORTANTE - PRIORIDADES):
 2. "ACCIDENTE", "CHOQUE", colisión vial → tipo: "accident"
 3. "AMBULANCIA", "SAMU", urgencias médicas → tipo: "ambulance"
 4. "BOMBEROS", "INCENDIO", "FUEGO" → tipo: "firetruck"
-5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "fiscalisacion", "fizca", "fisca", "fizcalización", "fizcalisacion", "servicio público", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial. Ten en cuenta que los conductores suelen escribir rápido y con muchos errores de ortografía: "fizca", "fisca", "fizcalizacion", "fizcalisacion", "fiscalisacion" significan todas "fiscalización".
+5. Si el mensaje menciona control "municipal", "grúa", "fiscalización", "fiscalisacion", "fizca", "fisca", "fizcalización", "fizcalisacion", "servicio público", "inspectores", "zorros", "motos" o acarreo de vehículos/motos (ej: "carretón", "llevando motos"), clasifícalo estrictamente como "municipal", incluso si también menciona presencia o apoyo policial.
 6. Mensajes que mencionen "policía", "patrulla", "operativo policial", "cuerpo policial", "comando" → tipo: "police" (solo si no califica como municipal).
 7. Si menciona "OPERATIVO" (a veces escrito con errores como "operatico") o "CONTROL" genérico sin especificar fuerza → tipo: "checkpoint"
 8. "RADAR", "CAMARA", "FOTOMULTA", "MULTA FOTO", "RADAR MOVIL" → tipo: "radar"
@@ -1363,6 +1370,12 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             const clean = jsonText.trim().replace(/```json|```/g, '').trim();
             const analysis = JSON.parse(clean);
             if (analysis.isAlert) {
+                // Umbral mínimo de confianza: 0.6. Por debajo, rechazar para evitar falsos positivos.
+                const confidence = parseFloat(analysis.confidence || 0);
+                if (confidence < 0.6) {
+                    console.log(`⚠️ [GEMINI] Alerta descartada por baja confianza (${confidence.toFixed(2)} < 0.6): "${text.substring(0,60)}"`);
+                    return null;
+                }
                 return analysis;
             }
         } catch (e) {
@@ -1721,11 +1734,25 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         
                         if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
                             const loc = gResponse.data.results[0].geometry.location;
-                            lat = parseFloat(loc.lat);
-                            lng = parseFloat(loc.lng);
-                            approximate = false;
-                            isResolved = true;
-                            console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación perfecta detectada! Lat=${lat}, Lng=${lng}`);
+                            const tempLat = parseFloat(loc.lat);
+                            const tempLng = parseFloat(loc.lng);
+                            
+                            // Validar que el resultado esté dentro de 60km del centro de la ciudad esperada
+                            const distKm = Math.sqrt(
+                                Math.pow((tempLat - cityCoords.lat) * 111, 2) +
+                                Math.pow((tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180), 2)
+                            );
+                            
+                            if (distKm <= 60) {
+                                lat = tempLat;
+                                lng = tempLng;
+                                approximate = false;
+                                isResolved = true;
+                                console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación válida a ${distKm.toFixed(1)}km del centro! Lat=${lat}, Lng=${lng}`);
+                            } else {
+                                console.warn(`⚠️ [GEO-GOOGLE] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — posible dirección inventada. Descartando, se usará ubicación aproximada.`);
+                                // No marcar como isResolved, intentar Photon o fallback
+                            }
                         } else {
                             console.warn(`⚠️ [GEO-GOOGLE] Fallo en respuesta (status=${gResponse.data?.status || 'UNKNOWN'}). Procediendo al fallback gratuito...`);
                         }
@@ -1753,11 +1780,21 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                         const tempLng = parseFloat(features[0].geometry.coordinates[0]);
                         const tempLat = parseFloat(features[0].geometry.coordinates[1]);
                         
-                        // Sin validación de cercanía geocodificada obligatoria (Modo Internacional)
-                        lng = tempLng;
-                        lat = tempLat;
-                        approximate = false;
-                        console.log(`📍 [GEO-PHOTON] ✅ Ubicación detectada: ${lat}, ${lng}`);
+                        // Validación de cercanía: el resultado debe estar a ≤ 60km del centro esperado.
+                        // Esto evita que Nominatim/Photon devuelva una ciudad en otro país o provincia.
+                        const distKm = Math.sqrt(
+                            Math.pow((tempLat - cityCoords.lat) * 111, 2) +
+                            Math.pow((tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180), 2)
+                        );
+                        if (distKm <= 60) {
+                            lng = tempLng;
+                            lat = tempLat;
+                            approximate = false;
+                            console.log(`📍 [GEO-PHOTON] ✅ Ubicación válida a ${distKm.toFixed(1)}km del centro: ${lat}, ${lng}`);
+                        } else {
+                            console.warn(`⚠️ [GEO-PHOTON] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — demasiado lejos, descartando. Usando ubicación aproximada de la ciudad.`);
+                            // approximate = true ya es el valor por defecto
+                        }
                     } else {
                         console.log(`⚠️ [GEO-PHOTON] Sin resultados.`);
                     }
