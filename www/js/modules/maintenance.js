@@ -90,6 +90,17 @@ const MaintenanceModule = (() => {
                 ? I18n.t('maint_belt_warning')
                 : I18n.t('maint_belt_ok');
 
+        // Lógica de Correa de Distribución para Botón
+        let correaEstadoClase = "estado-ok";
+        let correaBotonTexto = `🔄 ${I18n.t('maint_belt_register')}`;
+        if (belt.level === 'danger') {
+            correaEstadoClase = "estado-critico";
+            correaBotonTexto = `⚠️ SERVICE CORREA VENCIDO`;
+        } else if (belt.level === 'warning') {
+            correaEstadoClase = "estado-alerta";
+            correaBotonTexto = `⚠️ SERVICE CORREA PRÓXIMO`;
+        }
+
         // Lógica de Vencimiento de Aceite
         const currentOdo = vehicle.currentOdometer || 0;
         const nextOil = vehicle.nextOilChangeKm;
@@ -166,8 +177,8 @@ const MaintenanceModule = (() => {
 
                 ${Auth.isOwner() ? `
                     <div style="margin-top:var(--space-3);">
-                        <button class="btn-mantenimiento btn-correa" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
-                            🔄 ${I18n.t('maint_belt_register')}
+                        <button class="btn-mantenimiento btn-correa ${correaEstadoClase}" onclick="MaintenanceModule.registerBeltChange('${vehicle.id}')">
+                            ${correaBotonTexto}
                         </button>
                         <button class="btn-mantenimiento btn-aceite ${oilEstadoClase}" onclick="OilModule.registerOilChange('${vehicle.id}')">
                             ${oilBotonTexto}

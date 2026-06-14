@@ -149,15 +149,15 @@
 }
 
 
-/* Animación de parpadeo de color (más liviana para CPU) */
+/* Animación de parpadeo de color (más visible: alterna con versión más clara) */
 @keyframes parpadeoColorAlert {
     0%, 100% {
-        background-color: #ff1744;
+        background-color: #d32f2f;
         color: white;
     }
     50% {
-        background-color: #ef6c00;
-        color: white;
+        background-color: #ff8a80;
+        color: #5d0000;
     }
 }
 
@@ -182,22 +182,52 @@
 .texto-ok-estatico { color: #4caf50; font-size: 0.8rem; margin-top: 5px; display: block; font-weight: bold; }
 .texto-alerta-estatico { color: #ff9800; font-size: 0.8rem; margin-top: 5px; display: block; font-weight: bold; }
 
-/* Estados Semáforo Aceite (Botones) */
-.btn-aceite.estado-ok {
+.alerta-km.texto-peligro-estatico {
+    color: #ff1744 !important;
+    animation: parpadeoTextoRojo 1.5s infinite;
+}
+
+.alerta-km.texto-alerta-estatico {
+    color: #ff9800 !important;
+    animation: parpadeoTextoNaranja 1.5s infinite;
+}
+
+@keyframes parpadeoTextoRojo {
+    0%, 100% { color: #ff1744; opacity: 1; }
+    50% { color: #ff8a80; opacity: 0.6; }
+}
+
+@keyframes parpadeoTextoNaranja {
+    0%, 100% { color: #ff9800; opacity: 1; }
+    50% { color: #ffe082; opacity: 0.6; }
+}
+
+/* Estados Semáforo Aceite y Correa (Botones) */
+.btn-aceite.estado-ok,
+.btn-correa.estado-ok {
     background-color: #2e7d32 !important;
 }
-.btn-aceite.estado-ok:hover {
+.btn-aceite.estado-ok:hover,
+.btn-correa.estado-ok:hover {
     background-color: #1b5e20 !important;
 }
 
-.btn-aceite.estado-alerta {
+.btn-aceite.estado-alerta,
+.btn-correa.estado-alerta {
     background-color: #ff9800 !important;
-    animation: pulsoNaranja 2s infinite;
+    animation: pulsoNaranja 1.5s infinite ease-in-out;
 }
 @keyframes pulsoNaranja {
-    0% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
-    50% { background-color: #f57c00; box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
-    100% { background-color: #ff9800; box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+    0%, 100% {
+        background-color: #ff9800;
+        color: #ffffff;
+        box-shadow: 0 0 5px rgba(255, 152, 0, 0.5);
+    }
+    50% {
+        background-color: #ffe082; /* Naranja/Amarillo mucho más claro */
+        color: #5d3f00; /* Texto oscuro para contraste */
+        box-shadow: 0 0 15px rgba(255, 152, 0, 0.9);
+    }
 }
 
 .btn-neumaticos.estado-ok {
@@ -208,26 +238,69 @@
     background-color: #fbc02d !important;
     color: #000 !important;
     font-weight: bold;
-    animation: pulsoAmarillo 2s infinite;
+    animation: pulsoAmarillo 1.5s infinite ease-in-out;
 }
 
 @keyframes pulsoAmarillo {
-    0% { background-color: #fbc02d; box-shadow: 0 0 0 0 rgba(251, 192, 45, 0.7); }
-    50% { background-color: #f57f17; box-shadow: 0 0 0 10px rgba(251, 192, 45, 0); }
-    100% { background-color: #fbc02d; box-shadow: 0 0 0 0 rgba(251, 192, 45, 0); }
+    0%, 100% {
+        background-color: #fbc02d;
+        color: #000000;
+        box-shadow: 0 0 5px rgba(251, 192, 45, 0.5);
+    }
+    50% {
+        background-color: #fff9c4; /* Amarillo mucho más claro */
+        color: #5d4037;
+        box-shadow: 0 0 15px rgba(251, 192, 45, 0.9);
+    }
 }
 
-.btn-aceite.estado-critico {
+.btn-aceite.estado-critico,
+.btn-correa.estado-critico {
     background-color: #d32f2f !important;
-    animation: parpadeoRojo 1.5s infinite;
+    animation: parpadeoRojo 1.5s infinite ease-in-out;
     font-weight: bold;
     text-transform: uppercase;
     border: 2px solid white;
 }
 @keyframes parpadeoRojo {
-    0% { background-color: #d32f2f; box-shadow: 0 0 5px rgba(211, 47, 47, 0.4); }
-    50% { background-color: #b71c1c; box-shadow: 0 0 15px rgba(211, 47, 47, 0.8); }
-    100% { background-color: #d32f2f; box-shadow: 0 0 5px rgba(211, 47, 47, 0.4); }
+    0%, 100% {
+        background-color: #d32f2f;
+        color: #ffffff;
+        border-color: #ffffff;
+        box-shadow: 0 0 5px rgba(211, 47, 47, 0.5);
+    }
+    50% {
+        background-color: #ff8a80; /* Rojo mucho más claro */
+        color: #5d0000; /* Texto oscuro para contraste */
+        border-color: #5d0000;
+        box-shadow: 0 0 15px rgba(211, 47, 47, 0.9);
+    }
+}
+
+@keyframes parpadeoRojoBanner {
+    0%, 100% {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+    }
+    50% {
+        background-color: rgba(239, 68, 68, 0.5); /* Mucho más brillante/opaco */
+        border-color: rgba(255, 255, 255, 0.8);
+        color: #ffffff;
+    }
+}
+
+@keyframes parpadeoAmarilloBanner {
+    0%, 100% {
+        background-color: rgba(245, 158, 11, 0.15);
+        border-color: rgba(245, 158, 11, 0.4);
+        color: var(--color-accent-light);
+    }
+    50% {
+        background-color: rgba(245, 158, 11, 0.5); /* Mucho más brillante/opaco */
+        border-color: rgba(255, 255, 255, 0.8);
+        color: #ffffff;
+    }
 }
 
 /* Detalles del Aceite */
@@ -601,13 +674,14 @@
     background: var(--color-warning-bg);
     border: 1px solid rgba(245, 158, 11, 0.3);
     color: var(--color-accent-light);
+    animation: parpadeoAmarilloBanner 1.5s infinite ease-in-out;
 }
 
 .alert-banner-danger {
     background: var(--color-danger-bg);
     border: 1px solid rgba(239, 68, 68, 0.3);
     color: #fca5a5;
-    animation: shake 0.4s ease, slideInUp 0.3s ease;
+    animation: shake 0.4s ease, slideInUp 0.3s ease, parpadeoRojoBanner 1.5s infinite ease-in-out;
 }
 
 .alert-banner-success {
