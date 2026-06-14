@@ -932,19 +932,28 @@ const WhatsappBot = (() => {
                     if (isAudio) {
                         // Comando especial .test_audio: bypass del filtro de grupo para pruebas del admin
                         const isTestCommand = text.trim().toLowerCase().startsWith('.test_audio');
-                        
-                        // Filtro de grupos: 
-                        // - Si el grupo es conocido como operativo → procesar siempre
-                        // - Si el nombre no coincide (ej: 'Grupo Desconocido' por error de metadatos) → dejar que Gemini decida
-                        // - Si viene de admin por privado → procesar siempre
-                        // - Si viene de grupo desconocido SIN Gemini → skip (no tenemos forma de saber)
-                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup || GEMINI_KEY !== null;
+
+                        // FILTRO ESTRICTO DE PRIVACIDAD:
+                        // Solo procesar audio de:
+                        //   1. Grupos conocidos de operativos/tránsito (nombre validado)
+                        //   2. Chat privado de un admin de confianza
+                        //   3. Comando .test_audio del admin
+                        //
+                        // NUNCA procesar audios de chats personales, grupos de amigos,
+                        // familia u otros grupos que no sean de tránsito.
+                        // "Grupo Desconocido" tampoco se procesa: si no pudimos leer el nombre,
+                        // es más seguro saltarlo que arriesgar privacidad.
+                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup;
+
                         if (!shouldProcessAudio) {
-                            console.log(`⏭️ [SKIP-AUDIO] Omitiendo audio: grupo "${groupName}" no es operativo y Gemini no está configurado.`);
+                            console.log(`🔒 [PRIVACIDAD] Audio IGNORADO: el chat "${groupName}" no es un grupo de operativos ni un admin de confianza. No se descarga ni procesa.`);
                             continue;
                         }
-                        if (!isKnownOperativoGroup && GEMINI_KEY) {
-                            console.log(`🤖 [GEMINI-FALLBACK] Grupo "${groupName}" no confirmado como operativo. Gemini decidirá si el audio es alerta de tránsito.`);
+
+                        if (isKnownOperativoGroup) {
+                            console.log(`✅ [AUDIO-OK] Grupo "${groupName}" confirmado como operativo. Procesando audio...`);
+                        } else if (isFromTrustedAdmin) {
+                            console.log(`✅ [AUDIO-OK] Audio del admin de confianza. Procesando...`);
                         }
 
                         try {
