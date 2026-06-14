@@ -261,7 +261,22 @@ app.post('/api/driver/report-version', async (req, res) => {
         await db.ref(`globalUsers/${driver_id}/appVersion`).set(version);
 
         // Update in fleet users
-        await db.ref(`fleets/${fleetId}/users/${driver_id}/appVersion`).set(version);
+        // Primero buscar si hay un usuario local con ese globalId
+        const usersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
+        const users = usersSnap.val() || {};
+        let localUserId = null;
+        for (const [key, u] of Object.entries(users)) {
+            if (u.globalId === driver_id || key === driver_id) {
+                localUserId = key;
+                break;
+            }
+        }
+
+        if (localUserId) {
+            await db.ref(`fleets/${fleetId}/users/${localUserId}/appVersion`).set(version);
+        } else {
+            console.log(`⚠️ [VERSION REPORT] No local user found for global ID ${driver_id} in fleet ${fleetId}. Not writing local appVersion.`);
+        }
 
         // Update in driver_positions as well (for live tracking indicators)
         await db.ref(`driver_positions/${driver_id}/appVersion`).set(version);
