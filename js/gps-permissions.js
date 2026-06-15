@@ -101,8 +101,21 @@ const GPSPermissions = (() => {
     function _onDialogAccept() {
         Components.closeModal();
         localStorage.setItem(PERMISSION_KEY, 'asked');
-        
-        // Actually request geolocation — this triggers the browser prompt
+
+        // En APK nativa con Capacitor: abrir Ajustes directamente
+        // (el WebView de Capacitor no puede pedir permisos via navigator.geolocation)
+        const isNativeCapacitor = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform();
+        if (isNativeCapacitor) {
+            console.log('📍 GPSPerms: APK nativa detectada — abriendo Ajustes de la app');
+            _openAndroidSettings();
+            if (GPSPermissions._resolveCallback) {
+                GPSPermissions._resolveCallback(true);
+                GPSPermissions._resolveCallback = null;
+            }
+            return;
+        }
+
+        // En PWA / Chrome: pedir permiso geolocation del navegador
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 console.log('📍 GPSPerms: ✅ Permiso concedido, posición:', pos.coords.latitude.toFixed(4));
@@ -135,6 +148,8 @@ const GPSPermissions = (() => {
     // Called when user taps "Ahora No"
     function _onDialogCancel() {
         Components.closeModal();
+        // Guardar que ya fue mostrado para no volver a aparecer en la próxima apertura
+        localStorage.setItem(PERMISSION_KEY, 'dismissed');
         _showWarningBanner();
         if (GPSPermissions._resolveCallback) {
             GPSPermissions._resolveCallback(false);
@@ -735,9 +750,9 @@ const GPSPermissions = (() => {
             return;
         }
         
-        // Only show dialog if not asked before, or if denied
+        // Mostrar diálogo solo si NUNCA fue mostrado antes (ni aceptado, ni rechazado)
         const wasAsked = localStorage.getItem(PERMISSION_KEY);
-        if (!wasAsked || state === 'denied') {
+        if (!wasAsked) {
             // Small delay so the app finishes loading first
             setTimeout(() => requestWithDialog(), 2000);
         }
