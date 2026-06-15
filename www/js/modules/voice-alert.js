@@ -251,63 +251,62 @@ const VoiceAlertModule = (() => {
                 const lng = position.coords.longitude;
                 
                 try {
-                    if (statusEl) statusEl.innerText = 'Subiendo audio al servidor...';
-
-                    // Generar extensión adecuada
-                    let ext = 'webm';
-                    if (_selectedMime.includes('ogg')) ext = 'ogg';
-                    else if (_selectedMime.includes('mp4')) ext = 'mp4';
-                    else if (_selectedMime.includes('wav')) ext = 'wav';
+                    if (statusEl) statusEl.innerText = 'Procesando audio...';
 
                     const blob = new Blob(_audioChunks, { type: _selectedMime || 'audio/webm' });
                     
-                    // Subir a Firebase Storage
-                    const fleetId = Auth.getFleetId();
-                    const timestamp = Date.now();
-                    const path = `audio_alertas/${fleetId}/alert_${timestamp}.${ext}`;
-                    
-                    const storageRef = firebaseStorage.ref(path);
-                    const snapshot = await storageRef.put(blob, { contentType: blob.type });
-                    const audioUrl = await snapshot.ref.getDownloadURL();
+                    // Convertir el audio grabado (Blob) a base64
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        try {
+                            const base64Data = reader.result.split(',')[1];
+                            const fleetId = Auth.getFleetId();
+                            const author = Auth.getUserName() || 'Chofer';
 
-                    if (statusEl) statusEl.innerText = 'Publicando alerta en tiempo real...';
+                            if (statusEl) statusEl.innerText = 'Procesando con KITT...';
 
-                    const alertId = `alert_voice_${timestamp}`;
-                    
-                    // Nombres legibles para la ubicación
-                    let locationLabel = 'Alerta de Tránsito';
-                    if (_selectedType === 'police') locationLabel = 'Operativo Policial';
-                    else if (_selectedType === 'checkpoint') locationLabel = 'Control de Tránsito';
-                    else if (_selectedType === 'municipal') locationLabel = 'Inspector Municipal';
-                    else if (_selectedType === 'warning') locationLabel = 'Peligro Vial';
+                            // Determinar URL del servidor
+                            const serverUrl = (window.location.hostname === 'localhost' || 
+                                               window.location.hostname === '127.0.0.1' ||
+                                               window.location.protocol === 'file:') 
+                                               ? 'https://fleetadmin-web-nueva.onrender.com' 
+                                               : window.location.origin;
 
-                    const author = Auth.getUserName() || 'Chofer';
+                            const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    audio: base64Data,
+                                    audioMimeType: _selectedMime || 'audio/webm',
+                                    lat: lat,
+                                    lng: lng,
+                                    type: _selectedType,
+                                    authorName: author,
+                                    fleetId: fleetId
+                                })
+                            });
 
-                    const alertData = {
-                        id: alertId,
-                        type: _selectedType,
-                        location: `${locationLabel} (reporte de ${author})`,
-                        lat: lat,
-                        lng: lng,
-                        timestamp: timestamp,
-                        expiresAt: timestamp + (60 * 60 * 1000), // Expiración: 60 minutos
-                        authorName: author,
-                        status: 'active',
-                        audioUrl: audioUrl,
-                        originalText: '[REPORTE_DE_VOZ]',
-                        description: `Alerta de voz reportada por ${author}`
+                            const result = await response.json();
+                            if (!response.ok) {
+                                throw new Error(result.error || 'Error en el procesamiento del servidor');
+                            }
+
+                            console.log(`✅ [VOICE-ALERT] Procesada por backend KITT:`, result);
+                            Components.closeModal();
+                            Components.showToast('🎙️ Alerta procesada y enviada a la flota por KITT', 'success');
+                        } catch (err) {
+                            console.error('❌ Error enviando alerta de voz a KITT:', err);
+                            if (statusEl) statusEl.innerText = 'Error al enviar.';
+                            Components.showToast(`❌ Error: ${err.message || 'Error en el servidor de KITT'}`, 'danger');
+                            Components.closeModal();
+                        }
                     };
-
-                    // Publicar en la Base de Datos en Tiempo Real
-                    await firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-
-                    console.log(`✅ [VOICE-ALERT] Publicada con éxito: ${alertId} (${_selectedType})`);
-                    Components.closeModal();
-                    Components.showToast('🚨 Alerta de voz compartida con éxito', 'success');
-
                 } catch (err) {
-                    console.error('❌ Error subiendo/publicando alerta de voz:', err);
-                    if (statusEl) statusEl.innerText = 'Error al enviar.';
+                    console.error('❌ Error inicial al leer audio:', err);
+                    if (statusEl) statusEl.innerText = 'Error al procesar.';
                     Components.showToast(`❌ Error: ${err.message || 'Error desconocido'}`, 'danger');
                     Components.closeModal();
                 }

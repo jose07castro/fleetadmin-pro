@@ -761,6 +761,197 @@ app.get('/api/voice/tts', async (req, res) => {
     }
 });
 
+// ============================================
+// Funciones Auxiliares para Alertas Dinámicas (Gemini & ElevenLabs)
+// ============================================
+
+const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
+const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+];
+
+async function callGeminiAudio(audioBuffer, mimeType) {
+    if (!GEMINI_KEY || !audioBuffer) return null;
+    const audioB64 = audioBuffer.toString('base64');
+    const prompt = `Transcribí de forma exacta el audio de este mensaje de tránsito. Devolvé únicamente el texto transcrito, sin añadir ningún comentario, nota ni formato.`;
+    const axios = require('axios');
+    for (const url of GEMINI_MODELS) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: mimeType || 'audio/ogg', data: audioB64 } },
+                        { text: prompt }
+                    ]
+                }]
+            }, { timeout: 25000 });
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) return rawText.trim();
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
+        }
+    }
+    return null;
+}
+
+async function adaptToKittStyle(originalText) {
+    if (!GEMINI_KEY) return `Atención conductor. Alerta reportada: ${originalText}.`;
+    const prompt = `Adaptá la siguiente alerta de tránsito al estilo formal, robótico y computarizado de KITT (el auto increíble de Knight Rider).
+Debe comenzar siempre con "Atención conductor." u otra frase formal y robótica similar. Ser claro, conciso, directo y en español.
+No devuelvas explicaciones, notas, ni marcas de código Markdown (como \`\`\`). Devuelve ÚNICAMENTE la frase terminada lista para ser leída por un sintetizador de voz.
+
+Alerta original: "${originalText}"
+
+Ejemplo de salida: "Atención conductor. Se reporta un operativo policial activo en Avenida Pellegrini esquina Corrientes. Proceda con precaución."`;
+
+    const axios = require('axios');
+    for (const url of GEMINI_MODELS) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{ parts: [{ text: prompt }] }]
+            }, { timeout: 15000 });
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) return rawText.trim();
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI-KITT] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
+        }
+    }
+    return `Atención conductor. Alerta reportada: ${originalText}.`;
+}
+
+async function generateElevenLabsTTS(text) {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgmoE1GGz11j';
+    if (!apiKey) {
+        throw new Error('ELEVENLABS_API_KEY not configured on server');
+    }
+
+    const axios = require('axios');
+    const response = await axios({
+        method: 'POST',
+        url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        headers: {
+            'xi-api-key': apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'audio/mpeg'
+        },
+        data: {
+            text: text,
+            model_id: 'eleven_multilingual_v2',
+            voice_settings: {
+                stability: 0.75,
+                similarity_boost: 0.80,
+                style: 0.45,
+                use_speaker_boost: true
+            }
+        },
+        responseType: 'arraybuffer',
+        timeout: 15000
+    });
+
+    return Buffer.from(response.data);
+}
+
+// Endpoint de Alertas Dinámicas en Tiempo Real con voz de KITT (Gemini + ElevenLabs)
+app.post('/api/alerts/dynamic', async (req, res) => {
+    try {
+        const { text, audio, audioMimeType, lat, lng, type, authorName, fleetId } = req.body;
+
+        if (!lat || !lng || !type || !authorName) {
+            return res.status(400).json({ error: 'Faltan parámetros requeridos: lat, lng, type, authorName' });
+        }
+
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).json({ error: 'Base de datos de Firebase no disponible' });
+        }
+
+        let originalText = text || '';
+        let transcribedText = '';
+
+        // 1. Si viene audio en base64, transcribirlo usando Gemini
+        if (audio) {
+            console.log(`🎙️ [DYNAMIC-ALERT] Procesando audio de alerta (${audioMimeType || 'audio/ogg'}) de ${authorName}...`);
+            const audioBuffer = Buffer.from(audio, 'base64');
+            const transcription = await callGeminiAudio(audioBuffer, audioMimeType);
+            if (transcription) {
+                transcribedText = transcription;
+                originalText = transcription;
+                console.log(`🎙️ [DYNAMIC-ALERT] Transcripción Gemini: "${transcribedText}"`);
+            } else {
+                console.warn('⚠️ [DYNAMIC-ALERT] Falló la transcripción de Gemini. Usando texto por defecto.');
+                transcribedText = 'Alerta reportada por voz';
+                originalText = '[Audio no transcrito]';
+            }
+        }
+
+        if (!originalText) {
+            return res.status(400).json({ error: 'Debes proporcionar un parámetro "text" o un archivo de "audio" base64' });
+        }
+
+        // 2. Procesar con Gemini para adaptar al estilo de KITT
+        console.log(`🤖 [DYNAMIC-ALERT] Adaptando texto al estilo KITT: "${originalText}"`);
+        const adaptedText = await adaptToKittStyle(originalText);
+        console.log(`🤖 [DYNAMIC-ALERT] Texto adaptado: "${adaptedText}"`);
+
+        // 3. Generar la voz con ElevenLabs usando la API Key y Voice ID del servidor
+        let audioFileName = `alert_kitt_${Date.now()}.mp3`;
+        let audioFilePath = path.join(__dirname, 'audio', audioFileName);
+        let audioUrl = `/audio/${audioFileName}`;
+
+        try {
+            const audioBuffer = await generateElevenLabsTTS(adaptedText);
+            fs.writeFileSync(audioFilePath, audioBuffer);
+            console.log(`🔊 [DYNAMIC-ALERT] Audio de KITT generado y guardado en ${audioFilePath}`);
+        } catch (ttsError) {
+            console.error('❌ [DYNAMIC-ALERT] Error generando voz ElevenLabs:', ttsError.message);
+            // Si falla ElevenLabs, guardamos con audioUrl null y el cliente usará su fallback de TTS local
+            audioUrl = null;
+        }
+
+        // 4. Publicar la alerta en Firebase
+        const alertId = `alert_dynamic_${Date.now()}`;
+        const finalFleetId = fleetId || await WhatsappBot.getFleetId() || 'default_fleet';
+
+        const alertData = {
+            id: alertId,
+            type: type,
+            location: adaptedText,
+            lat: Number(lat),
+            lng: Number(lng),
+            timestamp: Date.now(),
+            expiresAt: Date.now() + (60 * 60 * 1000), // Expiración: 60 minutos
+            authorName: authorName,
+            status: 'active',
+            audioUrl: audioUrl,
+            originalText: originalText,
+            description: `Alerta dinámica procesada por KITT para ${authorName}`
+        };
+
+        // Guardar en fleets/${fleetId}/traffic_alerts/
+        await db.ref(`fleets/${finalFleetId}/traffic_alerts/${alertId}`).set(alertData);
+
+        // Guardar en el nodo global global_traffic_alerts/ para que todos los dispositivos sin loguear la escuchen también
+        await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
+
+        console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId}`);
+        res.json({
+            ok: true,
+            alertId,
+            fleetId: finalFleetId,
+            transcription: transcribedText,
+            location: adaptedText,
+            audioUrl
+        });
+
+    } catch (e) {
+        console.error('❌ [DYNAMIC-ALERT] Error en endpoint:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
