@@ -56,6 +56,9 @@ const DB = (() => {
 
     // --- Abrir conexión (verificar Firebase) ---
     async function open() {
+        try {
+            firebase.database().goOnline();
+        } catch (e) {}
         return new Promise((resolve) => {
             const connRef = firebase.database().ref('.info/connected');
             const timeout = setTimeout(() => {

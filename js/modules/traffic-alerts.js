@@ -211,18 +211,26 @@
      * Escucha el nodo GLOBAL — funciona para TODOS los celulares con la app,
      * independientemente de si el usuario está logueado o a qué flota pertenece.
      */
-    function startGlobalVoiceListener() {
+    function startGlobalVoiceListener(force = false) {
         if (typeof firebaseDB === 'undefined') return;
 
-        // Si ya estamos escuchando el nodo global, no hacer nada
-        if (_activeFleetId === '__GLOBAL__') {
-            console.log(`📡 [VOZ-GLOBAL] Ya escuchando nodo global_traffic_alerts`);
+        // Asegurar que la base de datos está online (por si venimos de un estado offline)
+        try {
+            firebase.database().goOnline();
+            console.log('📡 [VOZ-GLOBAL] goOnline() llamado para asegurar conexión.');
+        } catch (e) {
+            console.warn('📡 [VOZ-GLOBAL] Error en goOnline():', e);
+        }
+
+        // Si ya estamos escuchando el nodo global y no forzamos re-registro, no hacer nada
+        if (_activeFleetId === '__GLOBAL__' && !force) {
+            console.log(`📡 [VOZ-GLOBAL] Ya escuchando nodo global_traffic_alerts y goOnline ejecutado`);
             return;
         }
 
-        // Si estábamos escuchando otro nodo, apagar el listener anterior
+        // Si estábamos escuchando, apagar el listener anterior
         if (_activeVoiceRef && _activeVoiceCallback) {
-            console.log(`📡 [VOZ-GLOBAL] Cambiando a nodo global. Apagando listener anterior...`);
+            console.log(`📡 [VOZ-GLOBAL] Restableciendo listener. Apagando anterior...`);
             try {
                 _activeVoiceRef.off('child_added', _activeVoiceCallback);
             } catch(e) {
@@ -350,7 +358,9 @@
         };
 
         // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
-        alertRef.on('child_added', _activeVoiceCallback);
+        alertRef.on('child_added', _activeVoiceCallback, (error) => {
+            console.error('❌ [VOZ-GLOBAL] Error en listener de Firebase global_traffic_alerts:', error);
+        });
     }
 
     /**
@@ -359,7 +369,7 @@
     function init() {
         if (_initialized) {
             // Si ya se inicializó, solo aseguramos que el listener de voz esté activo/actualizado
-            startGlobalVoiceListener();
+            startGlobalVoiceListener(true);
             return;
         }
         _initialized = true;
@@ -367,6 +377,11 @@
         console.log('📡 TrafficAlerts: Iniciando monitoreo de comunidad y voz global...');
         
         if (typeof firebaseDB === 'undefined') return;
+
+        // Asegurar base de datos online
+        try {
+            firebase.database().goOnline();
+        } catch(e) {}
 
         // 1. Escuchar nuevos posts de comunidad (existente)
         const postsRef = firebaseDB.ref('community_posts').limitToLast(5);
@@ -378,10 +393,12 @@
             if (Date.now() - postTime > 600000) return;
 
             processPost({ ...post, id: snapshot.key });
+        }, (error) => {
+            console.warn('⚠️ [TrafficAlerts] Error escuchando community_posts:', error);
         });
 
         // 2. Escuchar alertas de tráfico de la flota para voz global
-        startGlobalVoiceListener();
+        startGlobalVoiceListener(true);
     }
 
     return { init, processPost, geocodeIntersection, speakAlert, startGlobalVoiceListener };

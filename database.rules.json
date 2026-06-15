@@ -32,6 +32,31 @@
       ".read": true,
       ".write": true,
       ".indexOn": ["timestamp", "status"]
+    },
+
+    "community_posts": {
+      ".read": true,
+      ".write": true
+    },
+
+    "sos_alerts": {
+      ".read": true,
+      ".write": true
+    },
+
+    "gps_tracker": {
+      ".read": true,
+      ".write": true
+    },
+
+    "app_installations": {
+      ".read": true,
+      ".write": true
+    },
+
+    "fcm_tokens": {
+      ".read": true,
+      ".write": true
     }
   }
 }

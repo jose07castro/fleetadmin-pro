@@ -382,17 +382,17 @@ const App = (() => {
                 console.warn('Firebase Auth signOut error (no crítico):', e);
             }
 
-            // 5. Desconectar Firebase Realtime Database
-            try {
-                firebase.database().goOffline();
-            } catch (e) { /* ignorar */ }
+            // 5. Desconectar Firebase Realtime Database — v167: No apagar para seguir recibiendo alertas de tráfico
+            // try {
+            //     firebase.database().goOffline();
+            // } catch (e) { /* ignorar */ }
 
             // 6. Limpiar estado de Auth (localStorage, sessionStorage, currentUser)
             Auth.logout();
 
-            // 6.5 Restablecer listener global de voz al default (jose07)
+            // 6.5 Restablecer listener global de voz al default (jose07) — v167: forzar re-suscripción
             if (typeof TrafficAlerts !== 'undefined') {
-                TrafficAlerts.startGlobalVoiceListener();
+                TrafficAlerts.startGlobalVoiceListener(true);
             }
 
             // 7. Redirigir forzosamente a login
@@ -404,7 +404,7 @@ const App = (() => {
             // Forzar limpieza y navegación aunque haya error
             Auth.logout();
             if (typeof TrafficAlerts !== 'undefined') {
-                TrafficAlerts.startGlobalVoiceListener();
+                TrafficAlerts.startGlobalVoiceListener(true);
             }
             Router.navigate('login');
         }
