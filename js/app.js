@@ -113,6 +113,10 @@ const App = (() => {
                 const splashStatus = document.getElementById('splashStatus');
                 if (splashStatus) splashStatus.innerText = 'Conectando con la base de datos...';
                 await DB.open();
+                // 2.5 Activar detección de alertas de tráfico (WhatsApp) de forma global e incondicional
+                if (typeof TrafficAlerts !== 'undefined') {
+                    TrafficAlerts.init();
+                }
             } catch (dbErr) {
                 console.warn('⚠️ Firebase open() falló, continuando:', dbErr);
             }
@@ -194,10 +198,6 @@ const App = (() => {
                         if (typeof SOSModule !== 'undefined') {
                             SOSModule.startListening();
                         }
-                        // 8.5 Activar detección de alertas de tráfico (WhatsApp)
-                        if (typeof TrafficAlerts !== 'undefined') {
-                            TrafficAlerts.init();
-                        }
                         // 8.6 Activar copiloto de radares para TODOS (dueños y choferes)
                         if (typeof GPSPermissions !== 'undefined') {
                             // Pedir permiso GPS al dueño también si todavía no lo otorgó
@@ -228,10 +228,6 @@ const App = (() => {
                         }
                         _hideSplash();
                         Router.navigate('login');
-                        // 8.5 Activar detección de alertas de tráfico (WhatsApp) para chofer no logueado
-                        if (typeof TrafficAlerts !== 'undefined') {
-                            TrafficAlerts.init();
-                        }
                     }
                 } catch (navError) {
                     console.error('🔴 Error en navegación post-init:', navError);

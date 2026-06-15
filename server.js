@@ -798,10 +798,14 @@ async function callGeminiAudio(audioBuffer, mimeType) {
 
 async function adaptToKittStyle(originalText, authorName = '') {
     // Extraer primer nombre (nombre de pila) del chofer si está provisto
-    let nameGreeting = "conductor";
+    let nameGreeting = "Conductor";
     if (authorName && typeof authorName === 'string') {
         const cleanName = authorName.trim().split(' ')[0];
-        if (cleanName && cleanName.toLowerCase() !== 'chofer' && cleanName.toLowerCase() !== 'test') {
+        if (cleanName && 
+            cleanName.toLowerCase() !== 'chofer' && 
+            cleanName.toLowerCase() !== 'test' && 
+            cleanName.toLowerCase() !== 'conductor' && 
+            cleanName.toLowerCase() !== 'usuario') {
             nameGreeting = cleanName;
         }
     }

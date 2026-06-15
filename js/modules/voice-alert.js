@@ -261,8 +261,9 @@ const VoiceAlertModule = (() => {
                     reader.onloadend = async () => {
                         try {
                             const base64Data = reader.result.split(',')[1];
-                            const fleetId = Auth.getFleetId();
-                            const author = Auth.getUserName() || 'Chofer';
+                            const currentUser = Auth.getUser();
+                            const author = currentUser ? currentUser.name : 'Conductor';
+                            const fleetId = Auth.getFleetId() || 'default_fleet';
 
                             if (statusEl) statusEl.innerText = 'Procesando con KITT...';
 
