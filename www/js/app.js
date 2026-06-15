@@ -3,6 +3,23 @@
 // ==========================================
 
 window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
+    // Detectar si estamos en entorno nativo / móvil
+    const isNative = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' ||
+                     window.location.protocol === 'file:' ||
+                     window.Capacitor || 
+                     (window.location.origin && window.location.origin.includes('localhost'));
+
+    // Si es nativo y el origen del audio es externo, evitar Web Audio API
+    // para prevenir bloqueos de CORS silenciosos que dejan el audio mudo.
+    const audioSrc = audioElement.src || '';
+    const isCrossOrigin = audioSrc.startsWith('http') && !audioSrc.includes(window.location.host);
+
+    if (isNative && isCrossOrigin) {
+        console.log('🎵 [AUDIO-BOOST] Detectado audio cross-origin en nativo. Evitando boost para prevenir silencio de CORS.');
+        return audioElement.play();
+    }
+
     if (!window.AudioContext && !window.webkitAudioContext) {
         return audioElement.play();
     }

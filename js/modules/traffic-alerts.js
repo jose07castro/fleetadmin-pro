@@ -267,7 +267,7 @@
 
             console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
 
-            // Si la alerta tiene un audio original de WhatsApp, reproducirlo tal cual (sin TTS)
+            // Si la alerta tiene un audio original de WhatsApp o audio de KITT generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
                 const serverUrl = (window.location.hostname === 'localhost' || 
                                    window.location.hostname === '127.0.0.1' ||
@@ -277,13 +277,42 @@
                 const fullAudioUrl = alert.audioUrl.startsWith('http') 
                     ? alert.audioUrl 
                     : `${serverUrl}${alert.audioUrl}`;
-                console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de WhatsApp: ${fullAudioUrl}`);
+                console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de alerta: ${fullAudioUrl}`);
                 
                 let audioPlayed = false;
+                let fallbackTriggered = false;
+
+                const audio = new Audio();
+
+                const triggerFallback = () => {
+                    if (fallbackTriggered) return;
+                    fallbackTriggered = true;
+                    console.warn('⚠️ [AUDIO-FALLBACK] El audio de la alerta falló o fue bloqueado. Usando Text-To-Speech local.');
+                    try {
+                        audio.pause();
+                        audio.src = '';
+                    } catch (e) {}
+                    speakAlert(alert.type, alert.location, alert.originalText);
+                };
+
+                // Si no se reproduce tras 4 segundos, activar fallback de voz
+                const fallbackTimeout = setTimeout(() => {
+                    if (!audioPlayed) {
+                        triggerFallback();
+                    }
+                }, 4000);
+
                 try {
-                    const audio = new Audio(fullAudioUrl);
+                    audio.crossOrigin = 'anonymous'; // Necesario para boost
+                    audio.src = fullAudioUrl;
                     audio.volume = 1.0;
                     audio.preload = 'auto';
+
+                    audio.onerror = (err) => {
+                        console.error('❌ [AUDIO-ORIGINAL] Error cargando el archivo de audio:', err);
+                        clearTimeout(fallbackTimeout);
+                        triggerFallback();
+                    };
 
                     let repeated = false;
                     audio.onended = () => {
@@ -319,6 +348,7 @@
                     playPromise
                         .then(() => {
                             audioPlayed = true;
+                            clearTimeout(fallbackTimeout);
                             console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada directamente.');
                         })
                         .catch(audioErr => {
@@ -335,6 +365,7 @@
                             canPlayPromise
                                 .then(() => {
                                     audioPlayed = true;
+                                    clearTimeout(fallbackTimeout);
                                     console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada en evento canplay.');
                                 })
                                 .catch(err => {
@@ -343,15 +374,10 @@
                         }
                     });
 
-                    // Loguear resguardo si no reproduce tras 10s, pero SIN interrumpir ni usar fallback de voz
-                    setTimeout(() => {
-                        if (!audioPlayed) {
-                            console.warn('⚠️ [AUDIO-ORIGINAL] No se detectó reproducción tras 10s (posible bloqueo de autoplay o red lenta).');
-                        }
-                    }, 10000);
-
                 } catch (audioEx) {
                     console.error('❌ [AUDIO-ORIGINAL] Error al instanciar o reproducir audio:', audioEx.message);
+                    clearTimeout(fallbackTimeout);
+                    triggerFallback();
                 }
             } else {
                 speakAlert(alert.type, alert.location, alert.originalText);
