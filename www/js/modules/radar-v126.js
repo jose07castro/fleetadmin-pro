@@ -54,13 +54,14 @@ const RadarModule = (() => {
                 this.offsetX = offsetX;
                 this.offsetY = offsetY;
                 this.div = null;
+                this.isUpdatingPosition = false;
             }
             onAdd() {
                 this.div = document.createElement('div');
                 this.div.style.position = 'absolute';
                 this.div.style.cursor = 'pointer';
                 this.div.style.zIndex = '10';
-                this.div.style.transition = 'left 2s linear, top 2s linear'; // v126: Movimiento fluido
+                this.div.style.transition = 'none'; // v166: Sin transición por defecto para evitar rezago en drag/zoom
                 this.div.innerHTML = this.html;
                 
                 if (this.popupHtml) {
@@ -74,6 +75,11 @@ const RadarModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
+                    if (this.isUpdatingPosition) {
+                        this.div.style.transition = 'left 2s linear, top 2s linear'; // Solo al cambiar posición de GPS
+                    } else {
+                        this.div.style.transition = 'none'; // Instantáneo al arrastrar/hacer zoom el mapa
+                    }
                     this.div.style.left = (pos.x - this.offsetX) + 'px';
                     this.div.style.top = (pos.y - this.offsetY) + 'px';
                 }
@@ -86,7 +92,12 @@ const RadarModule = (() => {
             }
             setPosition(latlng) {
                 this.latlng = latlng;
+                this.isUpdatingPosition = true;
                 this.draw();
+                // Limpiar el flag después de que inicie la transición
+                setTimeout(() => {
+                    this.isUpdatingPosition = false;
+                }, 100);
             }
             setHtml(html) {
                 this.html = html;
