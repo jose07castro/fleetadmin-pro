@@ -277,6 +277,16 @@ const GPSPermissions = (() => {
     // ============ ANDROID SETTINGS DEEP-LINK ============
 
     async function _openAndroidSettings() {
+        // v165: Usar bridge nativo preferentemente para asegurar la apertura de Ajustes de la App
+        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.openAppSettings === 'function') {
+            try {
+                window.NativeServiceBridge.openAppSettings();
+                return;
+            } catch (e) {
+                console.warn('📍 GPSPerms: Error llamando openAppSettings via bridge:', e);
+            }
+        }
+
         // v121: Auto-Ajustes Nativos en App Híbrida Capacitor
         if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.App) {
             try {
