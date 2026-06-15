@@ -59,7 +59,7 @@
     function _extractIntersection(text) {
         // Regex mejorada para capturar intersecciones rosarinas comunes
         // Captura: "Pellegrini y Belgrano", "Av Peron esq San Martin", "Cafferata e/ Cordoba"
-        const regex = /([A-Záéíóúñ0-9.\s]{3,})\s+(y|esq|esquina|entre|e\/)\s+([A-Záéíóúñ0-9.\s]{3,})/i;
+        const regex = /([A-Záéíóúñ0-9.\s]{3,})\s+(y|e|esq|esquina|entre|e\/)\s+([A-Záéíóúñ0-9.\s]{3,})/i;
         const match = text.match(regex);
         
         if (match) {

@@ -21,6 +21,7 @@ const path = require('path');
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 // Modelos estables actuales y validados de Google AI Studio para esta Key (Confirmados por diagnóstico)
 const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
@@ -83,6 +84,7 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline
     const audioModels = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
@@ -152,6 +154,7 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
 
     const imageModels = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
@@ -1432,6 +1435,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         // Normalizar texto reemplazando delimitadores de intersección comunes por " y "
         let normalized = text
             .replace(/\b(?:a\s+la\s+altura\s+de|esquina|esq\.?|entre|e\/)\b/gi, ' y ')
+            .replace(/\be\b/gi, ' y ') // Normalizar conjunción copulativa 'e' a 'y'
             .replace(/\s+/g, ' ');
 
         // Regex para "Calle A y Calle B"
