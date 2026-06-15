@@ -115,8 +115,8 @@ const ShiftsModule = (() => {
                                     <span style="font-size:1.8rem; line-height:1;">⚠️</span>
                                     <div style="flex:1;">
                                         <div style="font-weight:800; font-size:14px; margin-bottom:4px; letter-spacing:0.5px;">⚠️ BATERÍA OPTIMIZADA</div>
-                                        <div style="font-size:12px; opacity:0.95; line-height:1.4; margin-bottom:12px;">El sistema podría apagar el GPS si bloqueás la pantalla. Activá la exención para garantizar el rastreo continuo de la flota.</div>
-                                        <button onclick="if(window.NativeServiceBridge && window.NativeServiceBridge.requestBatteryExemption) { window.NativeServiceBridge.requestBatteryExemption(); }" style="background:#ffffff; color:#854d0e; font-weight:700; border:none; border-radius:8px; padding:8px 12px; font-size:11px; cursor:pointer; text-transform:uppercase; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                                        <div style="font-size:12px; opacity:0.95; line-height:1.4; margin-bottom:12px;">El sistema podría apagar el GPS si bloquéas la pantalla. Desactivá el ahorro de batería para esta app.</div>
+                                        <button onclick="if(typeof AndroidServices !== 'undefined') { AndroidServices.showBatteryExemptionDialog(); } else if(window.NativeServiceBridge && window.NativeServiceBridge.requestBatteryExemption) { window.NativeServiceBridge.requestBatteryExemption(); }" style="background:#ffffff; color:#854d0e; font-weight:700; border:none; border-radius:8px; padding:8px 12px; font-size:11px; cursor:pointer; text-transform:uppercase; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
                                             🔋 Configurar Ahora
                                         </button>
                                     </div>

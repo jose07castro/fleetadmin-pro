@@ -207,14 +207,41 @@ public class MainActivity extends BridgeActivity {
             try {
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                 if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
+                    // Intento 1: Diálogo directo de confirmación (funciona en AOSP estándar)
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                        Log.i(TAG, "✅ Diálogo directo de batería abierto");
+                        return;
+                    } catch (Exception e1) {
+                        Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, intentando lista de optimización...", e1);
+                    }
+
+                    // Intento 2: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
+                    try {
+                        Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                        startActivity(intentList);
+                        Log.i(TAG, "✅ Lista de optimización de batería abierta");
+                        return;
+                    } catch (Exception e2) {
+                        Log.w(TAG, "⚠️ ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS falló, abriendo ajustes de la app...", e2);
+                    }
+
+                    // Intento 3 (Universal): Información de la aplicación — disponible en el 100% de los Android
+                    try {
+                        Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intentAppDetails);
+                        Log.i(TAG, "✅ Ajustes de la aplicación abiertos (fallback universal)");
+                    } catch (Exception e3) {
+                        Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
+                    }
                 } else {
                     Log.i(TAG, "✅ Ya exenta de optimización de batería");
                 }
             } catch (Exception e) {
-                Log.e(TAG, "❌ Error battery exemption:", e);
+                Log.e(TAG, "❌ Error general en requestBatteryExemption:", e);
             }
         }
 

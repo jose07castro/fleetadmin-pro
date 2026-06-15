@@ -446,13 +446,14 @@ const AndroidServices = (() => {
                 </div>
                 <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; padding:0 8px;">
                     Para que el <strong>GPS funcione con la pantalla apagada</strong>, 
-                    Android necesita que pongas la app en <strong>"Sin restricciones"</strong>.
+                    desactivá el ahorro de batería para esta aplicación.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚡ En el siguiente paso:</div>
                     <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
-                        <li>Tocá <strong>"Permitir"</strong> en el diálogo del sistema</li>
-                        <li>Esto evita que Android mate el GPS cuando apagás la pantalla</li>
+                        <li>Si ves un cartel directo → tocá <strong>"Permitir"</strong></li>
+                        <li>Si abre una lista de apps → buscá la app y elegí <strong>"Sin restricciones"</strong></li>
+                        <li>Si abre Ajustes → andá a <strong>Batería → Sin restricciones</strong></li>
                     </ul>
                 </div>
             </div>
