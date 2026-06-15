@@ -146,9 +146,35 @@
         return 'warning';
     }
 
-    // Registra el milisegundo en que inició la aplicación (con 3s de tolerancia)
+    // Registra el milisegundo en que inició la aplicación 
     // para ignorar alertas viejas y cantar únicamente lo que sea de este segundo en adelante.
     const _appStartTime = Date.now() - 3000;
+
+    function playScannerSound() {
+        try {
+            const serverUrl = (window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:') 
+                               ? 'https://fleetadmin-web-nueva.onrender.com' 
+                               : window.location.origin;
+            
+            const scannerUrl = (window.location.protocol === 'file:' || window.Capacitor)
+                ? 'woosh-woosh.mp3'
+                : `${serverUrl}/woosh-woosh.mp3`;
+            
+            console.log(`🎵 [SCANNER-SOUND] Reproduciendo sonido del escáner KITT: ${scannerUrl}`);
+            const scannerAudio = new Audio(scannerUrl);
+            scannerAudio.volume = 0.8;
+            
+            if (typeof window.playAudioWithBoost === 'function') {
+                window.playAudioWithBoost(scannerAudio, 2.0).catch(e => console.warn('Boost de escáner falló:', e));
+            } else {
+                scannerAudio.play().catch(e => console.warn('Play de escáner falló:', e));
+            }
+        } catch (e) {
+            console.error('Error al reproducir sonido del escáner:', e);
+        }
+    }
 
     /**
      * Anuncia la alerta por voz usando Web Speech API de manera GLOBAL.
@@ -193,7 +219,9 @@
 
         // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
         if (typeof KittVoice !== 'undefined') {
-            KittVoice.speak(fullText, true);
+            KittVoice.speak(fullText, true).then(() => {
+                playScannerSound();
+            });
         } else {
             // Fallback directo si KittVoice no cargó
             if (window.speechSynthesis) {
@@ -201,6 +229,9 @@
                 const utter = new SpeechSynthesisUtterance(fullText);
                 utter.lang = 'es-AR';
                 utter.rate = 0.9;
+                utter.onend = () => {
+                    playScannerSound();
+                };
                 window.speechSynthesis.speak(utter);
             }
         }
@@ -324,7 +355,10 @@
                                     const repeatPromise = (typeof window.playAudioWithBoost === 'function')
                                         ? window.playAudioWithBoost(audio, 3.0)
                                         : audio.play();
-                                    repeatPromise.catch(e => console.error('Error al repetir audio:', e));
+                                    repeatPromise.catch(e => {
+                                        console.error('Error al repetir audio:', e);
+                                        playScannerSound();
+                                    });
                                 });
                             } else if (window.speechSynthesis) {
                                 const utter = new SpeechSynthesisUtterance('Repito');
@@ -333,10 +367,16 @@
                                     const repeatPromise = (typeof window.playAudioWithBoost === 'function')
                                         ? window.playAudioWithBoost(audio, 3.0)
                                         : audio.play();
-                                    repeatPromise.catch(e => console.error('Error al repetir audio:', e));
+                                    repeatPromise.catch(e => {
+                                        console.error('Error al repetir audio:', e);
+                                        playScannerSound();
+                                    });
                                 };
                                 window.speechSynthesis.speak(utter);
                             }
+                        } else {
+                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada, reproduciendo escáner de KITT...');
+                            playScannerSound();
                         }
                     };
 

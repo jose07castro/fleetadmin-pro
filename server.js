@@ -699,8 +699,8 @@ app.get('/api/voice/tts', async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Missing ?text= parameter' });
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    // Voice ID: configurable via env, defaults to the hyper-premium deep "Adam" voice (perfect for KITT)
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgmoE1GGz11j';
+    // Voice ID: configurable via env, defaults to our verified KITT voice fqAXkcoIyMAGiQt53oFg
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'fqAXkcoIyMAGiQt53oFg';
 
     if (!apiKey) {
         return res.status(503).json({ error: 'ELEVENLABS_API_KEY not configured on server' });
@@ -796,15 +796,25 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     return null;
 }
 
-async function adaptToKittStyle(originalText) {
-    if (!GEMINI_KEY) return `Atención conductor. Alerta reportada: ${originalText}.`;
-    const prompt = `Adaptá la siguiente alerta de tránsito al estilo formal, robótico y computarizado de KITT (el auto increíble de Knight Rider).
-Debe comenzar siempre con "Atención conductor." u otra frase formal y robótica similar. Ser claro, conciso, directo y en español.
+async function adaptToKittStyle(originalText, authorName = '') {
+    // Extraer primer nombre (nombre de pila) del chofer si está provisto
+    let nameGreeting = "conductor";
+    if (authorName && typeof authorName === 'string') {
+        const cleanName = authorName.trim().split(' ')[0];
+        if (cleanName && cleanName.toLowerCase() !== 'chofer' && cleanName.toLowerCase() !== 'test') {
+            nameGreeting = cleanName;
+        }
+    }
+
+    if (!GEMINI_KEY) return `Atención ${nameGreeting}. Alerta reportada: ${originalText}.`;
+    const prompt = `Adaptá la siguiente alerta de tránsito al estilo formal, robótico, cortés y analítico de KITT (el auto increíble de Knight Rider).
+Debes dirigirte de forma personalizada al usuario usando su nombre de pila: "${nameGreeting}".
+Debe comenzar siempre con "Atención ${nameGreeting}." u otra frase formal similar que lo salude por su nombre. Ser claro, conciso, directo y en español.
 No devuelvas explicaciones, notas, ni marcas de código Markdown (como \`\`\`). Devuelve ÚNICAMENTE la frase terminada lista para ser leída por un sintetizador de voz.
 
 Alerta original: "${originalText}"
 
-Ejemplo de salida: "Atención conductor. Se reporta un operativo policial activo en Avenida Pellegrini esquina Corrientes. Proceda con precaución."`;
+Ejemplo de salida: "Atención ${nameGreeting}. He detectado un operativo policial activo en Avenida Pellegrini esquina Corrientes. Proceda con extrema precaución."`;
 
     const axios = require('axios');
     for (const url of GEMINI_MODELS) {
@@ -818,12 +828,12 @@ Ejemplo de salida: "Atención conductor. Se reporta un operativo policial activo
             console.warn(`⚠️ [GEMINI-KITT] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
         }
     }
-    return `Atención conductor. Alerta reportada: ${originalText}.`;
+    return `Atención ${nameGreeting}. Alerta reportada: ${originalText}.`;
 }
 
 async function generateElevenLabsTTS(text) {
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgmoE1GGz11j';
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'fqAXkcoIyMAGiQt53oFg';
     if (!apiKey) {
         throw new Error('ELEVENLABS_API_KEY not configured on server');
     }
@@ -892,8 +902,8 @@ app.post('/api/alerts/dynamic', async (req, res) => {
         }
 
         // 2. Procesar con Gemini para adaptar al estilo de KITT
-        console.log(`🤖 [DYNAMIC-ALERT] Adaptando texto al estilo KITT: "${originalText}"`);
-        const adaptedText = await adaptToKittStyle(originalText);
+        console.log(`🤖 [DYNAMIC-ALERT] Adaptando texto al estilo KITT para ${authorName || 'Desconocido'}: "${originalText}"`);
+        const adaptedText = await adaptToKittStyle(originalText, authorName);
         console.log(`🤖 [DYNAMIC-ALERT] Texto adaptado: "${adaptedText}"`);
 
         // 3. Generar la voz con ElevenLabs usando la API Key y Voice ID del servidor
