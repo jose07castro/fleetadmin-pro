@@ -112,6 +112,13 @@ const Router = (() => {
                 }
                 if (route === 'login' || route === 'apply' || route === 'complete-profile') {
                     app.innerHTML = content;
+                    if (route === 'login') {
+                        if (typeof LoginModule !== 'undefined' && typeof LoginModule.init === 'function') {
+                            setTimeout(() => {
+                                try { LoginModule.init(); } catch(e) { console.error('Login init error:', e); }
+                            }, 50);
+                        }
+                    }
                 } else {
                     app.innerHTML = Components.renderLayout(content, route);
                     // Reactivar el sidebar overlay para móvil

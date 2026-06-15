@@ -6,6 +6,8 @@
 
 const LoginModule = (() => {
     let selectedRole = 'owner';
+    let _loginWakeLock = null;
+    let _audioUnlocked = false;
 
     const REMEMBER_KEY = 'fleetadmin_remember_credentials';
 
@@ -149,6 +151,9 @@ const LoginModule = (() => {
                         </div>
                     </div>
 
+                    <!-- Live Alerts Monitor Widget -->
+                    <div id="liveAlertsWidget"></div>
+
                     <div class="login-lang" style="margin-top:var(--space-6);">
                         ${Components.renderLanguageSelector()}
                     </div>
@@ -254,6 +259,10 @@ const LoginModule = (() => {
 
             if (success) {
                 errorEl.style.display = 'none';
+
+                // Liberar WakeLock de login y remover listeners
+                _releaseLoginWakeLock();
+                document.removeEventListener('visibilitychange', _handleVisibilityChange);
 
                 // Guardar credenciales si el usuario marcó "Recordar mis datos"
                 const rememberCb = document.getElementById('rememberMe');
@@ -868,5 +877,331 @@ const LoginModule = (() => {
         }
     }
 
-    return { render, selectRole, doLogin, togglePin, showRegister, doRegister, showPassengerRegister, doPassengerRegister };
+    async function _acquireLoginWakeLock() {
+        if (_loginWakeLock) return;
+        if ('wakeLock' in navigator) {
+            try {
+                _loginWakeLock = await navigator.wakeLock.request('screen');
+                console.log('🛡️ Login: Screen Wake Lock adquirido.');
+                _loginWakeLock.addEventListener('release', () => {
+                    _loginWakeLock = null;
+                });
+            } catch (err) {
+                console.warn('🛡️ Login: No se pudo adquirir Wake Lock:', err.message);
+            }
+        }
+    }
+
+    function _releaseLoginWakeLock() {
+        if (_loginWakeLock) {
+            try {
+                _loginWakeLock.release();
+                console.log('🛡️ Login: Screen Wake Lock liberado.');
+            } catch (e) {}
+            _loginWakeLock = null;
+        }
+    }
+
+    function _handleVisibilityChange() {
+        if (document.visibilityState === 'visible' && !_loginWakeLock && Router.getCurrentRoute() === 'login') {
+            _acquireLoginWakeLock();
+        }
+    }
+
+    async function init() {
+        console.log('📡 LoginModule: Inicializando...');
+        
+        // 1. Inyectar estilos CSS
+        if (!document.getElementById('live-alerts-styles')) {
+            const style = document.createElement('style');
+            style.id = 'live-alerts-styles';
+            style.textContent = `
+                .live-alerts-card {
+                    background: rgba(15, 23, 42, 0.45);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid rgba(129, 140, 248, 0.15);
+                    border-radius: var(--radius-xl);
+                    padding: var(--space-4);
+                    margin-top: var(--space-6);
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                }
+                .live-alerts-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: var(--space-3);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                    padding-bottom: var(--space-2);
+                }
+                .live-alerts-title {
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    color: #e0e7ff;
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-2);
+                }
+                .status-indicator {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.75rem;
+                    color: var(--text-secondary);
+                }
+                .status-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #f59e0b;
+                    box-shadow: 0 0 8px #f59e0b;
+                    display: inline-block;
+                }
+                .status-dot.active {
+                    animation: statusPulse 1.8s infinite;
+                }
+                @keyframes statusPulse {
+                    0%, 100% { transform: scale(0.95); opacity: 0.5; }
+                    50% { transform: scale(1.1); opacity: 1; }
+                }
+                .audio-unlock-btn {
+                    width: 100%;
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(129, 140, 248, 0.2));
+                    border: 1px dashed rgba(129, 140, 248, 0.4);
+                    color: #a5b4fc;
+                    padding: var(--space-3);
+                    border-radius: var(--radius-lg);
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    margin-bottom: var(--space-3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: var(--space-2);
+                }
+                .audio-unlock-btn:hover {
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(129, 140, 248, 0.35));
+                    border-color: #818cf8;
+                    color: #e0e7ff;
+                    transform: translateY(-1px);
+                }
+                .audio-unlock-btn.unlocked {
+                    background: rgba(16, 185, 129, 0.1);
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                    color: #34d399;
+                    cursor: default;
+                    transform: none;
+                }
+                .live-alerts-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--space-2);
+                    max-height: 180px;
+                    overflow-y: auto;
+                }
+                .live-alerts-empty {
+                    text-align: center;
+                    font-size: 0.8rem;
+                    color: var(--text-tertiary);
+                    padding: var(--space-3) 0;
+                }
+                .live-alert-item {
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    border-radius: var(--radius-md);
+                    padding: var(--space-2) var(--space-3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: var(--space-2);
+                    animation: slideInLeft 0.3s ease;
+                }
+                .live-alert-info {
+                    flex: 1;
+                    min-width: 0;
+                }
+                .live-alert-loc {
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    color: #f1f5f9;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .live-alert-time {
+                    font-size: 0.7rem;
+                    color: var(--text-tertiary);
+                    margin-top: 2px;
+                }
+                .live-alert-badge {
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    text-transform: uppercase;
+                    white-space: nowrap;
+                }
+                .badge-police { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+                .badge-checkpoint { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+                .badge-radar { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+                .badge-warning { background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3); }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // 2. Renderizar esqueleto de widget
+        const container = document.getElementById('liveAlertsWidget');
+        if (!container) return;
+
+        _audioUnlocked = localStorage.getItem('login_audio_unlocked') === 'true';
+
+        container.innerHTML = `
+            <div class="live-alerts-card">
+                <div class="live-alerts-header">
+                    <span class="live-alerts-title">📡 Copiloto en Vivo</span>
+                    <span class="status-indicator">
+                        <span id="liveAlertsStatusDot" class="status-dot active"></span>
+                        <span id="liveAlertsStatusText">Conectando...</span>
+                    </span>
+                </div>
+                <button id="liveAlertsAudioBtn" class="audio-unlock-btn \${_audioUnlocked ? 'unlocked' : ''}" onclick="LoginModule.unlockAudio()">
+                    \${_audioUnlocked ? '✅ Sonido Habilitado' : '🔊 Habilitar Sonido y Pantalla'}
+                </button>
+                <div id="liveAlertsList" class="live-alerts-list">
+                    <div class="live-alerts-empty">Cargando alertas en vivo...</div>
+                </div>
+            </div>
+        `;
+
+        // Adquirir WakeLock si ya estaba desbloqueado
+        if (_audioUnlocked) {
+            _acquireLoginWakeLock();
+        }
+
+        // 3. Sincronizar estado de conexión de Firebase
+        if (typeof firebase !== 'undefined') {
+            const connRef = firebase.database().ref('.info/connected');
+            connRef.on('value', (snap) => {
+                const statusDot = document.getElementById('liveAlertsStatusDot');
+                const statusText = document.getElementById('liveAlertsStatusText');
+                if (statusDot && statusText) {
+                    if (snap.val() === true) {
+                        statusDot.style.background = '#10b981';
+                        statusDot.style.boxShadow = '0 0 8px #10b981';
+                        statusText.textContent = 'En vivo';
+                    } else {
+                        statusDot.style.background = '#f59e0b';
+                        statusDot.style.boxShadow = '0 0 8px #f59e0b';
+                        statusText.textContent = 'Conectando...';
+                    }
+                }
+            });
+        }
+
+        // 4. Cargar alertas históricas
+        if (typeof TrafficAlerts !== 'undefined') {
+            try {
+                const recent = await TrafficAlerts.getLastAlerts(3);
+                _renderAlerts(recent);
+
+                // 5. Suscribirse a nuevas alertas en tiempo real
+                TrafficAlerts.onNewAlert((newAlert) => {
+                    _addNewAlert(newAlert);
+                });
+            } catch (err) {
+                console.warn('Error cargando alertas en login:', err);
+            }
+        }
+
+        // 6. Configurar Wake Lock y eventos de visibilidad
+        document.addEventListener('visibilitychange', _handleVisibilityChange);
+    }
+
+    function _renderAlerts(alertsList) {
+        const listContainer = document.getElementById('liveAlertsList');
+        if (!listContainer) return;
+
+        if (!alertsList || alertsList.length === 0) {
+            listContainer.innerHTML = `<div class="live-alerts-empty">Sin alertas recientes.</div>`;
+            return;
+        }
+
+        listContainer.innerHTML = '';
+        alertsList.forEach(alert => {
+            listContainer.appendChild(_createAlertDOM(alert));
+        });
+    }
+
+    function _addNewAlert(alert) {
+        const listContainer = document.getElementById('liveAlertsList');
+        if (!listContainer) return;
+
+        const emptyMsg = listContainer.querySelector('.live-alerts-empty');
+        if (emptyMsg) emptyMsg.remove();
+
+        const itemDOM = _createAlertDOM(alert);
+        listContainer.insertBefore(itemDOM, listContainer.firstChild);
+
+        // Limitar a máximo 5 elementos para evitar sobrecarga en la pantalla
+        while (listContainer.children.length > 5) {
+            listContainer.lastChild.remove();
+        }
+    }
+
+    function _createAlertDOM(alert) {
+        const div = document.createElement('div');
+        div.className = 'live-alert-item';
+        
+        const typeLabels = {
+            police: '👮 Policía',
+            checkpoint: '🚧 Control',
+            radar: '📷 Radar',
+            warning: '⚠️ Tránsito',
+            accident: '💥 Accidente',
+            traffic: '🚗 Lento'
+        };
+        const label = typeLabels[alert.type] || '⚠️ Alerta';
+        
+        const date = alert.timestamp ? new Date(alert.timestamp) : new Date();
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        div.innerHTML = `
+            <div class="live-alert-info">
+                <div class="live-alert-loc">\${alert.location || 'Ubicación desconocida'}</div>
+                <div class="live-alert-time">\${timeStr}</div>
+            </div>
+            <span class="live-alert-badge badge-\${alert.type || 'warning'}">\${label}</span>
+        `;
+        return div;
+    }
+
+    async function unlockAudio() {
+        if (_audioUnlocked) return;
+
+        _audioUnlocked = true;
+        localStorage.setItem('login_audio_unlocked', 'true');
+
+        const btn = document.getElementById('liveAlertsAudioBtn');
+        if (btn) {
+            btn.className = 'audio-unlock-btn unlocked';
+            btn.innerHTML = '✅ Sonido Habilitado';
+        }
+
+        // Adquirir Wake Lock
+        _acquireLoginWakeLock();
+
+        // Hablar para desbloquear Autoplay en el browser
+        if (typeof KittVoice !== 'undefined') {
+            KittVoice.speak("Copiloto activo. Recibiendo alertas de tránsito en tiempo real.", true);
+        } else if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance("Copiloto activo");
+            utter.lang = 'es-AR';
+            window.speechSynthesis.speak(utter);
+        }
+    }
+
+    return { render, selectRole, doLogin, togglePin, showRegister, doRegister, showPassengerRegister, doPassengerRegister, init, unlockAudio };
 })();

@@ -21,6 +21,7 @@
     let _activeFleetId = null;
     let _activeVoiceRef = null;
     let _activeVoiceCallback = null;
+    let _newAlertCallbacks = []; // Callbacks para alertas recibidas en tiempo real
 
     /**
      * Procesa un mensaje de comunidad para detectar alertas.
@@ -355,6 +356,11 @@
             } else {
                 speakAlert(alert.type, alert.location, alert.originalText);
             }
+
+            // Notificar a los callbacks registrados
+            _newAlertCallbacks.forEach(cb => {
+                try { cb(alert); } catch(e) { console.error('Error en callback de nueva alerta:', e); }
+            });
         };
 
         // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
@@ -401,5 +407,24 @@
         startGlobalVoiceListener(true);
     }
 
-    return { init, processPost, geocodeIntersection, speakAlert, startGlobalVoiceListener };
+    function onNewAlert(callback) {
+        if (typeof callback === 'function') {
+            _newAlertCallbacks.push(callback);
+        }
+    }
+
+    async function getLastAlerts(limit = 3) {
+        if (typeof firebaseDB === 'undefined') return [];
+        try {
+            const snap = await firebaseDB.ref('global_traffic_alerts').limitToLast(limit).once('value');
+            const val = snap.val();
+            if (!val) return [];
+            return Object.values(val).sort((a, b) => b.timestamp - a.timestamp);
+        } catch (e) {
+            console.warn('Error fetching last alerts:', e);
+            return [];
+        }
+    }
+
+    return { init, processPost, geocodeIntersection, speakAlert, startGlobalVoiceListener, onNewAlert, getLastAlerts };
 })();

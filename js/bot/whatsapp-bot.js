@@ -67,12 +67,16 @@ async function callGeminiAudio(audioBuffer, mimeType) {
 Escuchá este audio de un grupo de WhatsApp y respondé SOLO con JSON válido (sin markdown).
 
 Determiná:
-1. Si el audio reporta alguna situación de tránsito: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
+1. Si el audio reporta alguna situación de tránsito activa: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
 2. La transcripción exacta de lo que dice el audio
 3. El tipo de alerta: police / checkpoint / radar / accident / traffic / warning
 4. La dirección o intersección mencionada (null si no hay ninguna)
 
-Si el audio es: conversación personal, música, tutorial, broma, saludos, venta de productos, noticias generales, o cualquier cosa NO relacionada con el tránsito en las calles → isTrafficAlert: false.
+REGLA DE EXCLUSIÓN DE PREGUNTAS Y CONSULTAS (CRÍTICA):
+- Si el audio es una pregunta, consulta, duda o pedido de información (por ejemplo: "¿hay algo de arroyo a pavón?", "¿está limpio tal lugar?", "¿alguien sabe si están los zorros en Pellegrini?", "¿cómo está la autopista?", "algo de arroyo a pavón?", "algo de arroyo a pavón"), responde ESTRICTAMENTE con "isTrafficAlert": false.
+- Solo debes marcar "isTrafficAlert": true para reportes AFIRMATIVOS, CONFIRMADOS y CONCRETOS de incidentes o controles activos (por ejemplo: "hay operativo de arroyo a pavón", "están parando los zorros en Pellegrini").
+
+Si el audio es: conversación personal, música, tutorial, broma, saludos, venta de productos, noticias generales, o cualquier cosa NO relacionada con el tránsito activo en las calles → "isTrafficAlert": false.
 
 Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
@@ -1329,7 +1333,7 @@ REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
 - Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
-- Si el mensaje es una pregunta, consulta o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos de controles o incidentes activos.
+- Si el mensaje es una pregunta, consulta, duda o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?", "algo de arroyo a pavón?", "algo de arroyo a pavón"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos y concretos de controles o incidentes activos.
 
 REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
 - Si el mensaje es un saludo (ej: "buen día", "hola"), un agradecimiento o respuesta de cortesía (ej: "gracias viejo", "muchas gracias", "buenísimo gracias", "ok gracias", "muchas gracias de verdad"), o una conversación personal/comentario general que no reporta activamente un nuevo incidente (ej: "yo estoy saliendo de arroyo", "está complicado", "qué mala suerte", "quería saber gracias"), responde ESTRICTAMENTE con {"isAlert":false}.
