@@ -86,6 +86,20 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         LocationTrackingService.isAppInForeground = true;
         try {
+            this.bridge.getWebView().post(new Runnable() {
+                @Override
+                public void run() {
+                    if (webView != null) {
+                        webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
+                            "GPSPermissions.onResumeCheck(); " +
+                            "}", null);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error evaluating JS in onResume: " + e.getMessage());
+        }
+        try {
             AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
             appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
                 if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
@@ -105,6 +119,49 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "Error checking active update in resume: " + e.getMessage());
         }
         checkPlayStoreUpdate();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        Log.i(TAG, "onRequestPermissionsResult: code=" + requestCode);
+        if (requestCode == 7001) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                try {
+                    this.bridge.getWebView().post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (webView != null) {
+                                webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.handleForegroundPermissionGranted === 'function') { " +
+                                    "  GPSPermissions.handleForegroundPermissionGranted(); " +
+                                    "}", null);
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "Error evaluating JS in onRequestPermissionsResult: " + e.getMessage());
+                }
+            }
+        } else if (requestCode == 7002) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                try {
+                    this.bridge.getWebView().post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (webView != null) {
+                                webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
+                                    "  GPSPermissions.onResumeCheck(); " +
+                                    "}", null);
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "Error evaluating JS in onRequestPermissionsResult 7002: " + e.getMessage());
+                }
+            }
+        }
     }
 
     @Override
@@ -262,15 +319,6 @@ public class MainActivity extends BridgeActivity {
                                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                                 android.Manifest.permission.ACCESS_COARSE_LOCATION
                             }, 7001);
-                        } else {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                boolean hasBg = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-                                if (!hasBg) {
-                                    requestPermissions(new String[]{
-                                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                                    }, 7002);
-                                }
-                            }
                         }
                     }
                 }
@@ -280,35 +328,39 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void requestBackgroundLocationPermission() {
             Log.i(TAG, "📱 JS → requestBackgroundLocationPermission()");
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    // En Android 11+ (API 30+), redirigir directamente a Ajustes para permitir al usuario seleccionar "Permitir todo el tiempo"
-                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // Verificamos primero si tenemos permiso de primer plano.
-                    if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        // En Android 10 (API 29), solicitar ACCESS_BACKGROUND_LOCATION
-                        requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7002);
-                    } else {
-                        // Si no tiene primer plano, pedirlo primero
-                        requestPermissions(new String[]{
-                            android.Manifest.permission.ACCESS_FINE_LOCATION,
-                            android.Manifest.permission.ACCESS_COARSE_LOCATION
-                        }, 7001);
+            MainActivity.this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            // En Android 11+ (API 30+), redirigir directamente a la pantalla de Ajustes de la App
+                            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                requestPermissions(new String[]{android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7002);
+                            } else {
+                                requestPermissions(new String[]{
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                }, 7001);
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ Error requesting background location permission:", e);
+                        try {
+                            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        } catch (Exception ex) {
+                            Log.e(TAG, "❌ Fallback intent failed:", ex);
+                        }
                     }
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Error requesting background location permission, falling back to app details:", e);
-                try {
-                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                } catch (Exception ex) {
-                    Log.e(TAG, "❌ Fallback intent failed:", ex);
-                }
-            }
+            });
         }
 
         @JavascriptInterface

@@ -16,7 +16,24 @@ const GPSPermissions = (() => {
         try {
             if ('permissions' in navigator) {
                 const result = await navigator.permissions.query({ name: 'geolocation' });
-                _permissionState = result.state; // 'granted', 'denied', 'prompt'
+                let state = result.state; // 'granted', 'denied', 'prompt'
+                
+                if (state === 'granted') {
+                    // Si estamos en Android, verificar también el permiso en segundo plano (solo si no es Owner)
+                    const isOwner = typeof Auth !== 'undefined' && typeof Auth.isOwner === 'function' && Auth.isOwner();
+                    if (!isOwner && typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
+                        try {
+                            const hasBg = window.NativeServiceBridge.isBackgroundLocationGranted();
+                            if (!hasBg) {
+                                state = 'foreground_only';
+                            }
+                        } catch (e) {
+                            console.warn('Error checking bg location:', e);
+                        }
+                    }
+                }
+                
+                _permissionState = state;
                 
                 // Listen for changes (user toggles in Android settings)
                 result.addEventListener('change', () => {
@@ -48,6 +65,12 @@ const GPSPermissions = (() => {
             console.log('📍 GPSPerms: ✅ Ya tiene permiso, activando tracking...');
             _onPermissionGranted();
             return true;
+        }
+        
+        if (state === 'foreground_only') {
+            console.log('📍 GPSPerms: Tiene primer plano pero falta segundo plano, mostrando Paso 2');
+            _onPermissionGranted(); // Esto disparará el showBackgroundLocationRequestDialog() si no es Owner
+            return false;
         }
         
         if (state === 'denied') {
@@ -754,6 +777,29 @@ const GPSPermissions = (() => {
         _startUniversalCopilot();
     }
 
+    async function onResumeCheck() {
+        const state = await checkPermission();
+        console.log('📍 GPSPerms: onResumeCheck state:', state);
+        if (state === 'granted') {
+            _onPermissionGranted();
+        }
+    }
+
+    function handleForegroundPermissionGranted() {
+        console.log('📍 GPSPerms: handleForegroundPermissionGranted called');
+        checkPermission().then((state) => {
+            if (state === 'foreground_only') {
+                console.log('📍 GPSPerms: Foreground granted. Showing Paso 2 background request...');
+                setTimeout(() => {
+                    showBackgroundLocationRequestDialog();
+                }, 1000);
+            } else if (state === 'granted') {
+                console.log('📍 GPSPerms: Foreground and background granted.');
+                _onPermissionGranted();
+            }
+        });
+    }
+
     // ============ INIT: Auto-request for drivers on login ============
 
     async function initForDriver() {
@@ -789,6 +835,8 @@ const GPSPermissions = (() => {
         getState: () => _permissionState,
         showBackgroundLocationRequestDialog,
         triggerBackgroundLocationIntent,
+        onResumeCheck,
+        handleForegroundPermissionGranted,
         // Internal methods exposed for onclick handlers
         _onDialogAccept,
         _onDialogCancel,
