@@ -105,6 +105,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        LocationTrackingService.isAppInForeground = true;
         try {
             AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
             appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
@@ -125,6 +126,12 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "Error checking active update in resume: " + e.getMessage());
         }
         checkPlayStoreUpdate();
+    }
+
+    @Override
+    public void onPause() {
+        LocationTrackingService.isAppInForeground = false;
+        super.onPause();
     }
 
     @Override

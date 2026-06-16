@@ -65,6 +65,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final String CHANNEL_ID = "fleet_gps_tracking";
     private static final int NOTIFICATION_ID = 7001;
     private static final String PREFS_NAME = "fleet_gps_prefs";
+    public static boolean isAppInForeground = false;
 
     // GPS Config
     private static final long MIN_TIME_MS = 1000;   // 1 segundo (agresivo para evitar suspension del GPS)
@@ -564,8 +565,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                             // Immediate announcement check
                             if (alert.timestamp >= serviceStartTime - 5000 && !spokenAlertIds.contains(id)) {
-                                // Skip native TTS if the alert contains an audio file (to avoid speaking "atencion reporte de voz")
-                                if (alert.audioUrl == null || alert.audioUrl.isEmpty()) {
+                                // Skip native TTS if the app is in the foreground
+                                if (isAppInForeground) {
+                                    Log.i(TAG, "📱 [ALERTS] Skipping native TTS because app is in the foreground: id=" + id);
+                                } else if (alert.audioUrl == null || alert.audioUrl.isEmpty()) {
                                     speakImmediateAlert(alert);
                                 } else {
                                     Log.i(TAG, "🎵 [ALERTS] Skipping native TTS for audio alert: id=" + id);
@@ -642,18 +645,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void speakImmediateAlert(TrafficAlert alert) {
-        String msg = "Atención. Alerta de tráfico";
+        String msg = "Alerta de tráfico";
         if (alert.type != null) {
             switch (alert.type) {
-                case "police": case "checkpoint": msg = "Atención. Control de policía"; break;
-                case "radar": msg = "Cuidado. Radar de velocidad"; break;
-                case "helicopter": msg = "Alerta. Helicóptero sanitario en zona"; break;
-                case "ambulance": msg = "Precaución. Ambulancia en la vía"; break;
-                case "firetruck": msg = "Atención. Bomberos en la vía"; break;
-                case "municipal": msg = "Cuidado. Control municipal de tránsito"; break;
-                case "accident": msg = "Atención. Accidente vial reportado"; break;
-                case "traffic": msg = "Aviso. Tráfico lento reportado"; break;
-                case "warning": msg = "Atención. Alerta de tráfico"; break;
+                case "police": case "checkpoint": msg = "Control de policía"; break;
+                case "radar": msg = "Radar de velocidad"; break;
+                case "helicopter": msg = "Helicóptero en la zona"; break;
+                case "ambulance": msg = "Ambulancia en la vía"; break;
+                case "firetruck": msg = "Bomberos en la vía"; break;
+                case "municipal": msg = "Control de tránsito"; break;
+                case "accident": msg = "Accidente reportado"; break;
+                case "traffic": msg = "Demora de tráfico"; break;
+                case "warning": msg = "Alerta de tráfico"; break;
             }
         }
 
@@ -670,17 +673,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (alert.originalText != null && !alert.originalText.isEmpty() && !alert.originalText.equals("[REPORTE_DE_VOZ]")) {
             String cleanText = alert.originalText
                 .replaceAll("https?://\\S+", "") // Remove URL
-                .replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ ]", " ") // Leave alphanumeric
+                .replaceAll("[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ.,?!;: ]", " ") // Leave alphanumeric and basic punctuation
                 .replaceAll("\\s+", " ") // Normalize spaces
                 .trim();
 
             if (cleanText.length() > 2) {
-                fullText = "Atención: " + cleanText + ".";
+                fullText = cleanText;
             } else {
-                fullText = !loc.isEmpty() ? msg + " en " + loc + ". Precaución." : msg + ". Precaución.";
+                fullText = !loc.isEmpty() ? msg + " en " + loc : msg;
             }
         } else {
-            fullText = !loc.isEmpty() ? msg + " en " + loc + ". Precaución." : msg + ". Precaución.";
+            fullText = !loc.isEmpty() ? msg + " en " + loc : msg;
         }
 
         Log.i(TAG, "🔊 [IMMEDIATE ALERTS] Speaking new alert: " + fullText);

@@ -184,38 +184,46 @@
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
         if (!isVoiceEnabled) return;
 
-        const voiceMessages = {
-            police:     'Atención. Control de policía',
-            checkpoint: 'Atención. Operativo o control en la zona',
-            radar:      'Cuidado. Radar de velocidad',
-            helicopter: 'Alerta. Helicóptero sanitario en zona',
-            ambulance:  'Precaución. Ambulancia en la vía',
-            firetruck:  'Atención. Bomberos en la vía',
-            municipal:  'Cuidado. Control municipal de tránsito',
-            accident:   'Atención. Accidente vial reportado',
-            traffic:    'Aviso. Tráfico lento reportado',
-            warning:    'Atención. Alerta de tráfico',
-        };
+        let fullText = '';
+        const isPlaceholder = !originalText || originalText.startsWith('[') || originalText.trim().length === 0;
 
-        const msg = voiceMessages[type] || voiceMessages.warning;
-        // Limpiar la ubicación: quitar sufijos internos, reemplazar " y " por " esquina "
-        const loc = location
-            ? location
-                .replace(' (ubicación aprox.)', '')
-                .replace(/ \(reporte de [^)]+\)/gi, '') // Quitar "(reporte de NombreChofer)"
-                .replace(/ - .*$/, '')                   // Quitar todo lo que viene después de " - "
-                .replace(' y ', ' esquina ')
-                .trim()
-            : '';
+        if (!isPlaceholder) {
+            // Limpiar texto de emojis y formato markdown para una lectura limpia
+            fullText = originalText
+                .replace(/[*_~`#]/g, '') // Quitar markdown
+                .replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '') // Quitar emojis
+                .replace(/\.+/g, '.') // Normalizar puntos suspensivos
+                .replace(/-+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        } else {
+            const voiceMessages = {
+                police:     'Atención. Control de policía',
+                checkpoint: 'Atención. Operativo o control en la zona',
+                radar:      'Cuidado. Radar de velocidad',
+                helicopter: 'Alerta. Helicóptero sanitario en zona',
+                ambulance:  'Precaución. Ambulancia en la vía',
+                firetruck:  'Atención. Bomberos en la vía',
+                municipal:  'Cuidado. Control municipal de tránsito',
+                accident:   'Atención. Accidente vial reportado',
+                traffic:    'Aviso. Tráfico lento reportado',
+                warning:    'Atención. Alerta de tráfico',
+            };
 
-        // SIEMPRE usar el mensaje estructurado (tipo + ubicación del mapa).
-        // NO leer el texto crudo del WhatsApp — puede contener apodos, nombres propios,
-        // slang o contenido irrelevante que confunde al conductor.
-        let fullText = loc ? `${msg} en ${loc}. Precaución.` : `${msg}. Precaución.`;
-        console.log(`🔊 [GLOBAL VOZ] Usando ubicación estructurada: "${fullText}" (originalText ignorado para evitar ruido)`);
+            const msg = voiceMessages[type] || voiceMessages.warning;
+            const loc = location
+                ? location
+                    .replace(' (ubicación aprox.)', '')
+                    .replace(/ \(reporte de [^)]+\)/gi, '')
+                    .replace(/ - .*$/, '')
+                    .replace(' y ', ' esquina ')
+                    .trim()
+                : '';
 
-        // Repetir el aviso para asegurar la recepción del chofer
-        fullText = `${fullText} Repito. ${fullText}`;
+            fullText = (loc && loc !== 'Ubicación desconocida') ? `${msg} en ${loc}.` : `${msg}.`;
+        }
+
+        console.log(`🔊 [GLOBAL VOZ] Hablando: "${fullText}"`);
 
         // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
         if (typeof KittVoice !== 'undefined') {

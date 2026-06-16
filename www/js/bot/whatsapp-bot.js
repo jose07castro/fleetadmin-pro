@@ -1301,6 +1301,10 @@ const WhatsappBot = (() => {
      */
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        // Si indica que ya se limpió, se retiró o no hay nada, ignorar
+        if (/\b(?:limpio|limpiaron|ya\s+no\s+estan|se\s+fueron|levantaron|suspendido|todo\s+libre|via\s+libre|esta\s+libre|no\s+hay\s+nada)\b/i.test(t)) {
+            return null;
+        }
         // Si es una pregunta o consulta (contiene ? o palabras de duda/pregunta), ignorar
         if (t.includes('?') || /\b(?:alguien\s+sabe|saben\s+si|info\b|reporta\s+si|saben\s+algo|hay\s+algo|alguien\s+vio|que\s+onda|pasa\s+algo|alguien\s+que\s+sepa)\b/i.test(t)) {
             return null;
@@ -1344,6 +1348,9 @@ REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
 REGLAS DE EXCLUSIÓN DE ANÉCDOTAS, HISTORIAS Y EVENTOS PASADOS (CRÍTICA):
 - Si el mensaje describe un evento pasado (ej: "ayer había operativo", "anoche lo pararon", "le pasó a un compañero", "el otro día pasé"), responde ESTRICTAMENTE con {"isAlert":false}.
 - Si el mensaje cuenta una historia personal, anécdota, estafa, robo, discusión o situación particular de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
+
+REGLA DE EXCLUSIÓN DE ALERTAS FINALIZADAS / LIMPIAS (CRÍTICA):
+- Si el mensaje indica que un control, operativo, accidente o corte ya se limpió, se retiró, se fue, está libre o ya no está (ej: "ya está limpio", "todo limpio", "se fueron los zorros", "ya no hay nada", "ya lo levantaron", "limpio Pellegrini"), responde ESTRICTAMENTE con {"isAlert":false}. No queremos reportar como alertas los controles que ya dejaron de estar activos.
 
 - Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos. El campo "confidence" debe reflejar qué tan seguro estás: usa 0.9 si el mensaje es claro y concreto, 0.5 si es ambiguo.
         
