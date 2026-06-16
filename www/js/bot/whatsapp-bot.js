@@ -21,7 +21,6 @@ const path = require('path');
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 // Modelos estables actuales y validados de Google AI Studio para esta Key (Confirmados por diagnóstico)
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
@@ -84,18 +83,19 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline
     const audioModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
     ];
+
+    const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
 
     for (const url of audioModels) {
         try {
             const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
                 contents: [{
                     parts: [
-                        { inlineData: { mimeType: mimeType || 'audio/ogg', data: audioB64 } },
+                        { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
                         { text: prompt }
                     ]
                 }]
@@ -154,18 +154,19 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
 
     const imageModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
     ];
+
+    const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
 
     for (const url of imageModels) {
         try {
             const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
                 contents: [{
                     parts: [
-                        { inlineData: { mimeType: mimeType || 'image/jpeg', data: imageB64 } },
+                        { inlineData: { mimeType: cleanMimeType, data: imageB64 } },
                         { text: prompt }
                     ]
                 }]

@@ -767,7 +767,6 @@ app.get('/api/voice/tts', async (req, res) => {
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
@@ -778,12 +777,13 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     const audioB64 = audioBuffer.toString('base64');
     const prompt = `Transcribí de forma exacta el audio de este mensaje de tránsito. Devolvé únicamente el texto transcrito, sin añadir ningún comentario, nota ni formato.`;
     const axios = require('axios');
+    const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
     for (const url of GEMINI_MODELS) {
         try {
             const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
                 contents: [{
                     parts: [
-                        { inlineData: { mimeType: mimeType || 'audio/ogg', data: audioB64 } },
+                        { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
                         { text: prompt }
                     ]
                 }]
