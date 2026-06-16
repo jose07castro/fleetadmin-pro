@@ -368,8 +368,6 @@ const GPSPermissions = (() => {
         }
     }
 
-    // ============ BACKGROUND LOCATION PROMPT (v122) ============
-
     function showBackgroundLocationRequestDialog() {
         if (typeof Components === 'undefined') return;
 
@@ -385,7 +383,7 @@ const GPSPermissions = (() => {
                 <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.2); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚠️ Pasos obligatorios:</div>
                     <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
-                        <li>1. Tocá <strong>"Configurar Ahora"</strong>.</li>
+                        <li>1. Tocá <strong>"Aceptar"</strong>.</li>
                         <li>2. Seleccioná <strong>"Permisos"</strong> → <strong>"Ubicación"</strong>.</li>
                         <li>3. Marcá <strong>"Permitir todo el tiempo"</strong> (u "Omitir restricciones").</li>
                     </ul>
@@ -395,7 +393,7 @@ const GPSPermissions = (() => {
 
         const footerHTML = `
             <button class="btn btn-ghost" onclick="Components.closeModal()">Después</button>
-            <button class="btn btn-primary" style="min-width:160px;" onclick="Components.closeModal(); GPSPermissions.triggerBackgroundLocationIntent();">
+            <button class="btn btn-primary" style="min-width:160px;" onclick="GPSPermissions.acceptBackgroundLocationRequest();">
                 Aceptar
             </button>
         `;
@@ -403,15 +401,104 @@ const GPSPermissions = (() => {
         Components.showModal('🛡️ Ubicación Permanente', bodyHTML, footerHTML);
     }
 
-    function triggerBackgroundLocationIntent() {
-        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.requestBackgroundLocationPermission === 'function') {
-            window.NativeServiceBridge.requestBackgroundLocationPermission();
-            setTimeout(() => {
-                Components.showToast('⚙️ Buscá Permisos → Ubicación → Permitir todo el tiempo', 'warning');
-            }, 1000);
-        } else {
-            _openAndroidSettings();
+    function acceptBackgroundLocationRequest() {
+        console.log('📍 GPSPerms: Aceptó solicitud de ubicación en segundo plano');
+        // 1. Intentar redirección automática nativa
+        try {
+            if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.requestBackgroundLocationPermission === 'function') {
+                window.NativeServiceBridge.requestBackgroundLocationPermission();
+            } else {
+                const isNativeCapacitor = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform();
+                if (isNativeCapacitor && Capacitor.Plugins && Capacitor.Plugins.App) {
+                    Capacitor.Plugins.App.openAppSettings();
+                }
+            }
+        } catch (e) {
+            console.warn('📍 GPSPerms: Error en redirección nativa:', e);
         }
+
+        // 2. Mostrar instructivo paso a paso como fallback dinámico (no cerrar el cartel)
+        showBackgroundLocationInstructions();
+    }
+
+    function showBackgroundLocationInstructions() {
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isIOS = /iphone|ipad/i.test(navigator.userAgent);
+        
+        let steps = '';
+        if (isAndroid) {
+            steps = `
+                <div class="gps-perm-steps">
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">1</span>
+                        <span style="font-size:0.9rem;">Abrí los <strong>Ajustes</strong> de tu teléfono.</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">2</span>
+                        <span style="font-size:0.9rem;">Buscá <strong>"Aplicaciones"</strong> y seleccioná <strong>"FleetAdmin Pro"</strong> (o "Punto Remis").</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">3</span>
+                        <span style="font-size:0.9rem;">Entrá a <strong>"Permisos"</strong> → <strong>"Ubicación"</strong>.</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">4</span>
+                        <span style="font-size:0.9rem;">Seleccioná la opción <strong>"Permitir todo el tiempo"</strong> o <strong>"Permitir siempre"</strong>.</span>
+                    </div>
+                </div>
+            `;
+        } else if (isIOS) {
+            steps = `
+                <div class="gps-perm-steps">
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">1</span>
+                        <span style="font-size:0.9rem;">Abrí los <strong>Ajustes</strong> de tu iPhone.</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">2</span>
+                        <span style="font-size:0.9rem;">Buscá la app <strong>"FleetAdmin Pro"</strong> (o "Punto Remis") en la lista.</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">3</span>
+                        <span style="font-size:0.9rem;">Tocá <strong>"Ubicación"</strong> y seleccioná <strong>"Siempre"</strong>.</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            steps = `
+                <div class="gps-perm-steps">
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">1</span>
+                        <span style="font-size:0.9rem;">Hacé clic en el ícono de candado 🔒 en la barra de direcciones de tu navegador.</span>
+                    </div>
+                    <div class="gps-perm-step" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; text-align:left;">
+                        <span class="gps-perm-step-num" style="background:var(--primary-color); color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">2</span>
+                        <span style="font-size:0.9rem;">Asegurate de que <strong>"Ubicación"</strong> esté configurado en <strong>"Permitir"</strong>.</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        const bodyHTML = `
+            <div style="text-align:center; padding:8px 0;">
+                <div style="font-size:3rem; margin-bottom:12px;">⚙️</div>
+                <div style="font-size:1.15rem; font-weight:800; color:var(--text-primary); margin-bottom:16px;">
+                    Pasos de Configuración
+                </div>
+                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.5; margin-bottom:20px; text-align:left;">
+                    Si no fuiste redirigido automáticamente a la pantalla de Ajustes, por favor seguí estas indicaciones para habilitar la opción de <strong>"Permitir todo el tiempo"</strong> manualmente:
+                </div>
+                ${steps}
+            </div>
+        `;
+
+        const footerHTML = `
+            <button class="btn btn-primary" style="width:100%;" onclick="Components.closeModal();">
+                Entendido
+            </button>
+        `;
+
+        Components.showModal('⚙️ Configuración Manual', bodyHTML, footerHTML);
     }
 
     // ============ CALLBACKS ============
@@ -834,7 +921,8 @@ const GPSPermissions = (() => {
         initCopilotForAll,
         getState: () => _permissionState,
         showBackgroundLocationRequestDialog,
-        triggerBackgroundLocationIntent,
+        acceptBackgroundLocationRequest,
+        showBackgroundLocationInstructions,
         onResumeCheck,
         handleForegroundPermissionGranted,
         // Internal methods exposed for onclick handlers
