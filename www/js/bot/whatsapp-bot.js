@@ -21,10 +21,10 @@ const path = require('path');
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 // Modelos estables actuales y validados de Google AI Studio para esta Key (Confirmados por diagnóstico)
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 
@@ -83,9 +83,9 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline
     const audioModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -154,9 +154,9 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
 
     const imageModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
