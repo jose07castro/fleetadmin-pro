@@ -68,17 +68,17 @@ const GPSPermissions = (() => {
         const bodyHTML = `
             <div style="text-align:center; padding:8px 0;">
                 <div style="font-size:3rem; margin-bottom:12px;">📍</div>
-                <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:16px;">
-                    Permiso de Ubicación Requerido
+                <div style="font-size:1.15rem; font-weight:800; color:var(--text-primary); margin-bottom:16px;">
+                    Ubicación en Segundo Plano
                 </div>
-                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:center; padding:0 8px;">
-                    Para que el radar de la flota funcione, necesitamos acceso a tu ubicación mientras usás la app.
+                <div style="font-size:0.95rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:left; padding:0 8px;">
+                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico de KITT en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#86efac; font-weight:600; margin-bottom:6px;">⚠️ Por favor seleccioná:</div>
                     <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
-                        <li><strong>"Permitir solo con la app en uso"</strong></li>
-                        <li><strong>"Ubicación precisa"</strong></li>
+                        <li><strong>"Permitir siempre"</strong> o <strong>"Permitir todo el tiempo"</strong> (o "Permitir con la app en uso" primero si así lo solicita Android).</li>
+                        <li><strong>"Ubicación precisa"</strong> para calcular correctamente las distancias.</li>
                     </ul>
                 </div>
             </div>
@@ -87,11 +87,11 @@ const GPSPermissions = (() => {
         const footerHTML = `
             <button class="btn btn-ghost" onclick="GPSPermissions._onDialogCancel()">Ahora No</button>
             <button class="btn btn-primary" style="min-width:160px;" onclick="GPSPermissions._onDialogAccept()">
-                📍 Activar Ubicación
+                Aceptar
             </button>
         `;
 
-        Components.showModal('📍 Ubicación en Tiempo Real', bodyHTML, footerHTML);
+        Components.showModal('📍 Ubicación en Segundo Plano', bodyHTML, footerHTML);
         
         // Store callback
         GPSPermissions._resolveCallback = resolveCallback;
@@ -101,6 +101,17 @@ const GPSPermissions = (() => {
     function _onDialogAccept() {
         Components.closeModal();
         localStorage.setItem(PERMISSION_KEY, 'asked');
+
+        // v1.2.175: Si existe el bridge nativo, solicitar permisos a través del diálogo nativo del sistema
+        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.requestLocationPermissions === 'function') {
+            console.log('📍 GPSPerms: Solicitando permisos nativos a través del Bridge Nativo');
+            window.NativeServiceBridge.requestLocationPermissions();
+            if (GPSPermissions._resolveCallback) {
+                GPSPermissions._resolveCallback(true);
+                GPSPermissions._resolveCallback = null;
+            }
+            return;
+        }
 
         // En APK nativa con Capacitor: abrir Ajustes directamente
         // (el WebView de Capacitor no puede pedir permisos via navigator.geolocation)
@@ -342,11 +353,11 @@ const GPSPermissions = (() => {
         const bodyHTML = `
             <div style="text-align:center; padding:8px 0;">
                 <div style="font-size:3rem; margin-bottom:12px;">🛡️</div>
-                <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:16px;">
-                    Permiso de Segundo Plano Requerido
+                <div style="font-size:1.15rem; font-weight:800; color:var(--text-primary); margin-bottom:16px;">
+                    Ubicación Permanente Requerida
                 </div>
-                <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:center; padding:0 8px;">
-                    Para que el sistema de radares y reporte del GPS funcione <strong>con la pantalla apagada o si abrís Uber / DiDi</strong>, es obligatorio configurar la ubicación permanente.
+                <div style="font-size:0.95rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:left; padding:0 8px;">
+                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico de KITT en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.2); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚠️ Pasos obligatorios:</div>
@@ -362,7 +373,7 @@ const GPSPermissions = (() => {
         const footerHTML = `
             <button class="btn btn-ghost" onclick="Components.closeModal()">Después</button>
             <button class="btn btn-primary" style="min-width:160px;" onclick="Components.closeModal(); GPSPermissions.triggerBackgroundLocationIntent();">
-                🛡️ Configurar Ahora
+                Aceptar
             </button>
         `;
 

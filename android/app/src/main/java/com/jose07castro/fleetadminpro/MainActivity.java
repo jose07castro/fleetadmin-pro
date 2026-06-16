@@ -40,29 +40,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Solicitar permisos de ubicación al iniciar la app si no están ya otorgados
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            boolean hasFine = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasBg = true;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                hasBg = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            }
-
-            if (!hasFine) {
-                // Si no tiene primer plano, pedir primer plano
-                requestPermissions(new String[]{
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                }, 7001);
-            } else if (!hasBg) {
-                // Si tiene primer plano pero no background, pedir background ("Permitir todo el tiempo")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    requestPermissions(new String[]{
-                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                    }, 7002);
-                }
-            }
-        }
+        // v1.2.175: Se remueve la solicitud automática de permisos en onCreate para cumplir con la política
+        // de 'Divulgación Destacada' de Google Play (se solicita desde JS tras mostrar el cartel explicativo).
 
         // Capturar referencia al WebView
         this.bridge.getWebView().post(() -> {
@@ -268,6 +247,34 @@ public class MainActivity extends BridgeActivity {
                 return checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
             }
             return true;
+        }
+
+        @JavascriptInterface
+        public void requestLocationPermissions() {
+            Log.i(TAG, "📱 JS → requestLocationPermissions()");
+            MainActivity.this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        boolean hasFine = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                        if (!hasFine) {
+                            requestPermissions(new String[]{
+                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                            }, 7001);
+                        } else {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                boolean hasBg = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                                if (!hasBg) {
+                                    requestPermissions(new String[]{
+                                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                    }, 7002);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         @JavascriptInterface
