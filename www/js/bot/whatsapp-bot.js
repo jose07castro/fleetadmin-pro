@@ -1148,8 +1148,8 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // --- 2. PROCESAR IMAGEN SIN TEXTO O CON CAPTION CORTO ---
-                    if (isImage && (!text || text.trim().length < 5) && GEMINI_KEY) {
+                    // --- 2. PROCESAR IMAGEN SIN TEXTO O CON CAPTION CORTO (DESACTIVADO: no leer imágenes ni carteles) ---
+                    if (false && isImage && (!text || text.trim().length < 5) && GEMINI_KEY) {
                         try {
                             const shouldProcessImage = isFromTrustedAdmin || isKnownOperativoGroup;
                             if (shouldProcessImage) {
