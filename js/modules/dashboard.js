@@ -809,7 +809,7 @@ window.DashboardModule = (() => {
                         </div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>'}
                         <label class="btn btn-sm" style="cursor:pointer;">
                             📷 Tomar / Subir Foto Frente
-                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editFront')">
+                            <input type="file" accept="image/*" style="display:none;" onchange="DashboardModule.handleLicensePhoto(event, 'editFront')">
                         </label>
                         <div id="editLicenseFrontPreview" style="margin-top:var(--space-2);"></div>
                         <input type="hidden" id="editLicenseFrontData" value="">
@@ -825,7 +825,7 @@ window.DashboardModule = (() => {
                         </div>` : '<div style="color:#dc2626; font-weight:700; font-size:12px; margin-bottom:var(--space-2);">❌ No cargada</div>'}
                         <label class="btn btn-sm" style="cursor:pointer;">
                             📷 Tomar / Subir Foto Dorso
-                            <input type="file" accept="image/*" style="display:none;" onchange="SettingsModule.handleLicensePhoto(event, 'editBack')">
+                            <input type="file" accept="image/*" style="display:none;" onchange="DashboardModule.handleLicensePhoto(event, 'editBack')">
                         </label>
                         <div id="editLicenseBackPreview" style="margin-top:var(--space-2);"></div>
                         <input type="hidden" id="editLicenseBackData" value="">
@@ -1271,5 +1271,36 @@ window.DashboardModule = (() => {
         return html;
     }
 
-    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList };
+    function handleLicensePhoto(event, side) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const sideMap = {
+            front:     { dataId: 'licenseFrontData',     previewId: 'licenseFrontPreview',     label: 'Frente' },
+            back:      { dataId: 'licenseBackData',      previewId: 'licenseBackPreview',      label: 'Dorso' },
+            editFront: { dataId: 'editLicenseFrontData', previewId: 'editLicenseFrontPreview', label: 'Frente' },
+            editBack:  { dataId: 'editLicenseBackData',  previewId: 'editLicenseBackPreview',  label: 'Dorso' },
+            cpFront:   { dataId: 'cpFrontData',          previewId: 'cpFrontPreview',          label: 'Frente' },
+            cpBack:    { dataId: 'cpBackData',           previewId: 'cpBackPreview',           label: 'Dorso' },
+        };
+
+        const mapping = sideMap[side];
+        if (!mapping) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const el = document.getElementById(mapping.dataId);
+            if (el) el.value = e.target.result;
+            const preview = document.getElementById(mapping.previewId);
+            if (preview) {
+                preview.innerHTML = `
+                    <img src="${e.target.result}" style="max-width:100%; max-height:150px; border-radius:var(--radius-md); border:2px solid #22c55e;">
+                    <div style="color:#22c55e; font-weight:700; font-size:12px; margin-top:4px;">✅ ${mapping.label} cargado</div>
+                `;
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList, handleLicensePhoto };
 })();
