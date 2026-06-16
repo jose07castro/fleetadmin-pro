@@ -248,40 +248,36 @@ public class MainActivity extends BridgeActivity {
         public void requestBatteryExemption() {
             Log.i(TAG, "📱 JS → requestBatteryExemption()");
             try {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                    // Intento 1: Diálogo directo de confirmación (funciona en AOSP estándar)
-                    try {
-                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                        intent.setData(Uri.parse("package:" + getPackageName()));
-                        startActivity(intent);
-                        Log.i(TAG, "✅ Diálogo directo de batería abierto");
-                        return;
-                    } catch (Exception e1) {
-                        Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, intentando lista de optimización...", e1);
-                    }
+                // Forzar la apertura de la configuración en todos los modelos y versiones.
+                // Intento 1: Ajustes de la aplicación (App Info) - Recomendado y universal.
+                try {
+                    Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intentAppDetails);
+                    Log.i(TAG, "✅ Ajustes de la aplicación abiertos (App Info)");
+                    return;
+                } catch (Exception e1) {
+                    Log.w(TAG, "⚠️ ACTION_APPLICATION_DETAILS_SETTINGS falló, intentando lista de optimización...", e1);
+                }
 
-                    // Intento 2: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
-                    try {
-                        Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                        startActivity(intentList);
-                        Log.i(TAG, "✅ Lista de optimización de batería abierta");
-                        return;
-                    } catch (Exception e2) {
-                        Log.w(TAG, "⚠️ ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS falló, abriendo ajustes de la app...", e2);
-                    }
+                // Intento 2: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
+                try {
+                    Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    startActivity(intentList);
+                    Log.i(TAG, "✅ Lista de optimización de batería abierta");
+                    return;
+                } catch (Exception e2) {
+                    Log.w(TAG, "⚠️ ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS falló, intentando diálogo directo...", e2);
+                }
 
-                    // Intento 3 (Universal): Información de la aplicación — disponible en el 100% de los Android
-                    try {
-                        Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                        intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
-                        startActivity(intentAppDetails);
-                        Log.i(TAG, "✅ Ajustes de la aplicación abiertos (fallback universal)");
-                    } catch (Exception e3) {
-                        Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
-                    }
-                } else {
-                    Log.i(TAG, "✅ Ya exenta de optimización de batería");
+                // Intento 3: Diálogo directo de confirmación (funciona en AOSP estándar si no está exenta)
+                try {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                    Log.i(TAG, "✅ Diálogo directo de batería abierto");
+                } catch (Exception e3) {
+                    Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "❌ Error general en requestBatteryExemption:", e);
@@ -290,12 +286,9 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean isBatteryOptimized() {
-            try {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                return pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName());
-            } catch (Exception e) {
-                return true;
-            }
+            // Retorna siempre true para forzar que el sistema muestre los avisos y banners
+            // en todos los modelos y versiones de Android.
+            return true;
         }
 
         @JavascriptInterface

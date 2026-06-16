@@ -428,15 +428,8 @@ const AndroidServices = (() => {
         if (!isNativeAndroid()) return;
         if (typeof Components === 'undefined') return;
 
-        // Si el bridge nativo detecta que ya está exenta, no mostrar
-        if (_hasNativeBridge()) {
-            try {
-                if (!window.NativeServiceBridge.isBatteryOptimized()) {
-                    console.log('📱 AndroidServices: ✅ Ya exenta — no se muestra diálogo');
-                    return;
-                }
-            } catch (e) {}
-        }
+        // Siempre preguntar de la batería en Android en todos los modelos y versiones.
+        console.log('📱 AndroidServices: Mostrando diálogo de exención de batería (siempre requerido)');
 
         const bodyHTML = `
             <div style="text-align:center; padding:8px 0;">
