@@ -27,6 +27,8 @@ const GEMINI_MODELS = [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
+let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
+
 
 async function callGemini(prompt) {
     if (!GEMINI_KEY) return null;
@@ -53,7 +55,7 @@ async function callGemini(prompt) {
  * Transcribe el audio y determina si es una alerta de tránsito real.
  * @returns {Promise<{isTrafficAlert: boolean, transcription: string, type: string, address: string|null, reason: string}|null>}
  */
-async function callGeminiAudio(audioBuffer, mimeType) {
+async function callGeminiAudio(audioBuffer, mimeType, groupName = '') {
     if (!GEMINI_KEY || !audioBuffer) {
         if (db) {
             try {
@@ -84,8 +86,16 @@ async function callGeminiAudio(audioBuffer, mimeType) {
         return null;
     }
 
-    const prompt = `Sos un asistente de seguridad vial para taxistas de Rosario, Argentina.
+    const prompt = `Sos un asistente de seguridad vial para taxistas en Argentina.
 Escuchá este audio de un grupo de WhatsApp y respondé SOLO con JSON válido (sin markdown).
+
+CONTEXTO GEOGRÁFICO DE ORIGEN:
+- Nombre del Grupo de WhatsApp: "${groupName}"
+
+REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
+Los conductores raramente dicen la ciudad completa en el audio. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO o en palabras clave que escuches.
+- Ciudades comunes en la región: "Rosario", "Arroyo Seco", "Pueblo Esther", "Funes", "Roldán", "San Lorenzo", "Granadero Baigorria", "Capitán Bermúdez", "Villa Constitución", "Pérez", "Ibarlucea", "Alvear", "Villa Gobernador Gálvez" (VGG).
+- Si el nombre del grupo menciona una de estas ciudades (ej: "Operativos Arroyo Seco"), asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas (por ejemplo, si dicen "están en la entrada" en el grupo de Arroyo Seco, pon "Acceso, Arroyo Seco").
 
 Determiná:
 1. Si el audio reporta alguna situación de tránsito activa: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
@@ -102,11 +112,11 @@ Si el audio es: conversación personal, música, tutorial, broma, saludos, venta
 Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
-    // Los modelos Flash soportan audio inline
-    const audioModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    // Los modelos Flash soportan audio inline. Intentamos primero el modelo cacheado si existe, de lo contrario los recomendados.
+    const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -129,6 +139,11 @@ Respuesta EXACTAMENTE en este formato:
                     const parsed = JSON.parse(clean);
                     console.log(`🤖 [GEMINI-AUDIO] isAlert=${parsed.isTrafficAlert} | Tipo=${parsed.type} | Razón="${parsed.reason}" | Transcripción="${(parsed.transcription||'').substring(0,60)}"`);
                     
+                    if (!GEMINI_AUDIO_URL) {
+                        GEMINI_AUDIO_URL = url;
+                        console.log(`✅ [GEMINI-AUDIO] Modelo de audio activo y memorizado: ${url.split('/models/')[1]?.split(':')[0]}`);
+                    }
+
                     if (db) {
                         try {
                             await db.ref('bot_debug_logs').push({
@@ -167,6 +182,12 @@ Respuesta EXACTAMENTE en este formato:
             const errMsg = e.response?.data?.error?.message || e.message;
             console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${errMsg}`);
             
+            // Si el modelo cacheado falló, invalidarlo para intentar la lista completa en la siguiente ejecución
+            if (GEMINI_AUDIO_URL && url === GEMINI_AUDIO_URL) {
+                console.log(`❌ [GEMINI-AUDIO] Modelo memorizado falló. Invalidando caché de modelo de audio.`);
+                GEMINI_AUDIO_URL = null;
+            }
+
             if (db) {
                 try {
                     await db.ref('bot_debug_logs').push({
@@ -376,6 +397,7 @@ const WhatsappBot = (() => {
     const MAX_RETRIES = 10;
     const AUTH_DIR = './auth_info';
     const groupAddressContext = {}; // key: jid, value: { address: string, timestamp: number }
+    const groupNameCache = {}; // key: jid, value: groupName (string)
 
     function _syncBotStatus() {
         if (db) {
@@ -404,6 +426,20 @@ const WhatsappBot = (() => {
             // Check for substring match to be extra safe and catch variations like "boludoo"
             return normalized.includes(word);
         });
+    }
+
+    function _hasTrafficKeywords(text) {
+        if (!text) return false;
+        const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const keywords = [
+            'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
+            'chanchos', 'gorra', 'ratis', 'radar', 'movil', 'seguridad', 'camara', 
+            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte', 'accidente', 'choque', 
+            'ambulancia', 'bomberos', 'heca', 'gendarme', 'gendarmeria', 'federal', 
+            'parando', 'palo', 'inspeccion', 'limpio', 'libre', 'corte', 'demora',
+            'motos', 'grua', 'carreton', 'fiscalizacion', 'fisca', 'servicios publicos'
+        ];
+        return keywords.some(kw => t.includes(kw));
     }
 
     function _isObviousChatter(text) {
@@ -835,6 +871,27 @@ const WhatsappBot = (() => {
                     _isConnectedState = true;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
                     _syncBotStatus();
+
+                    // Pre-popular el caché de nombres de grupo
+                    try {
+                        console.log('📡 [GROUP-CACHE] Solicitando lista de grupos en segundo plano...');
+                        sock.groupFetchAllParticipating().then(participatingGroups => {
+                            let cachedCount = 0;
+                            for (const groupJid of Object.keys(participatingGroups || {})) {
+                                const subject = participatingGroups[groupJid]?.subject;
+                                if (subject) {
+                                    groupNameCache[groupJid] = subject;
+                                    cachedCount++;
+                                }
+                            }
+                            console.log(`✅ [GROUP-CACHE] Caché inicializado con ${cachedCount} grupos.`);
+                        }).catch(fetchErr => {
+                            console.warn(`⚠️ [GROUP-CACHE] Error obteniendo grupos: ${fetchErr.message}`);
+                        });
+                    } catch (errCache) {
+                        console.warn(`⚠️ [GROUP-CACHE] Error de inicio en caché: ${errCache.message}`);
+                    }
+
                     
                     // BLINDAJE SANITARIO: Solo reseteamos el contador si el bot se mantiene VIVO
                     // y estable por lo menos 60 segundos consecutivos. Si muere antes, acumulamos
@@ -874,35 +931,58 @@ const WhatsappBot = (() => {
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
                     const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // Procesar todos los grupos y chats privados para analizar alertas.
-                    if (!isGroup && isFromTrustedAdmin) {
-                        console.log(`✅ [ADMIN-PRIVADO] Mensaje privado de admin de confianza aceptado: ${senderJid?.substring(0,25)}`);
+                    // 1. FILTRADO ESTRICTO DE PRIVACIDAD: Omitir chats privados que no sean de un Admin de confianza
+                    if (!isGroup && !isFromTrustedAdmin) {
+                        continue;
                     }
-                    
+
                     if (isFromTrustedAdmin) {
                         console.log(`🐛 [ADMIN-RAW-MSG] ID=${msg.key.id} | HasMessage=${!!msg.message} | Keys=${Object.keys(msg.message || {})}`);
                         console.log(`🐛 [ADMIN-RAW-JSON] ${JSON.stringify(msg)}`);
                     }
                     
-                    // En grupos: procesar TODOS los mensajes (incluso fromMe)
-                    // El dueño puede enviar alertas desde su celular/WhatsApp Web
-                    // Solo saltar mensajes de estado del sistema (sin remoteJid válido)
                     if (!jid) continue;
 
-                    // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente) ---
+                    // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente y cache) ---
                     let groupName = isGroup ? 'Grupo Desconocido' : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
                     if (isGroup) {
-                        try {
-                            const groupInfo = await sock.groupMetadata(jid);
-                            groupName = groupInfo?.subject || 'Grupo Desconocido';
-                        } catch(ge) {
-                            // Fallback: intentar obtener nombre desde el JID del grupo
-                            console.warn(`⚠️ [GROUP] No se pudo obtener metadatos del grupo ${jid?.substring(0,20)}. Usando Gemini como filtro.`);
-                            groupName = 'Grupo Desconocido';
+                        if (groupNameCache[jid]) {
+                            groupName = groupNameCache[jid];
+                        } else {
+                            try {
+                                const groupInfo = await sock.groupMetadata(jid);
+                                if (groupInfo?.subject) {
+                                    groupName = groupInfo.subject;
+                                    groupNameCache[jid] = groupName;
+                                    console.log(`💾 [GROUP-CACHE] Nombre guardado: ${jid?.substring(0,15)}... -> "${groupName}"`);
+                                }
+                            } catch(ge) {
+                                console.warn(`⚠️ [GROUP] No se pudo obtener metadatos del grupo ${jid?.substring(0,20)}: ${ge.message}`);
+                                groupName = 'Grupo Desconocido';
+                            }
                         }
                     }
-                    const isKnownOperativoGroup = _isOperativoGroup(groupName);
+
+                    // 2. FILTRADO ESTRICTO DE GRUPOS SELECCIONADOS (Solicitado por el usuario)
+                    // Solo escanear "operativos arroyo seco" y "solo operativos de transito".
+                    // Los chats privados del admin se permiten para diagnósticos.
+                    let isTargetGroup = false;
+                    if (isGroup) {
+                        const cleanedGroupName = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || cleanedGroupName.includes('solo operativos de transito');
+                        
+                        if (!isTargetGroup) {
+                            console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);
+                            continue;
+                        }
+                    } else {
+                        // Si no es grupo pero llegó hasta aquí, es del admin
+                        isTargetGroup = true;
+                    }
+
+                    const isKnownOperativoGroup = isTargetGroup;
                     console.log(`📱 [MSG] JID=${jid?.substring(0,20)}... | Grupo=${isGroup} | Admin=${isFromTrustedAdmin} | Nombre="${groupName}" | Operativo=${isKnownOperativoGroup}`);
+
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
@@ -1150,7 +1230,7 @@ const WhatsappBot = (() => {
                             // ============================================================
                             if (!text) {
                                 console.log('🎙️ [AUDIO-FILTER] Sin transcripción previa. Analizando contenido con Gemini...');
-                                const audioAnalysis = await callGeminiAudio(audioBuffer, mimeType);
+                                const audioAnalysis = await callGeminiAudio(audioBuffer, mimeType, groupName);
                                 
                                 if (audioAnalysis) {
                                     if (!audioAnalysis.isTrafficAlert) {
@@ -1316,6 +1396,13 @@ const WhatsappBot = (() => {
 
                     if (_isObviousChatter(text)) {
                         console.log(`⏭️ [SKIP-CHATTER] Omitiendo charla general/saludo obvio: "${text}"`);
+                        continue;
+                    }
+
+                    // PRE-FILTRADO DE PALABRAS CLAVE (Optimización de cuota de Gemini)
+                    const hasKeywords = _hasTrafficKeywords(text);
+                    if (!hasKeywords && !isFromTrustedAdmin) {
+                        console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito: "${text.substring(0,60)}"`);
                         continue;
                     }
 
