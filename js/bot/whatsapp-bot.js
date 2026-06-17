@@ -1033,6 +1033,18 @@ const WhatsappBot = (() => {
 
                         if (!shouldProcessAudio) {
                             console.log(`🔒 [PRIVACIDAD] Audio IGNORADO: el chat "${groupName}" no es un grupo de operativos ni un admin de confianza. No se descarga ni procesa.`);
+                            if (db) {
+                                try {
+                                    await db.ref('bot_debug_logs').push({
+                                        event: 'audio_ignored_privacy',
+                                        groupName: groupName,
+                                        isGroup: isGroup,
+                                        isFromTrustedAdmin: isFromTrustedAdmin,
+                                        isKnownOperativoGroup: isKnownOperativoGroup,
+                                        timestamp: Date.now()
+                                    });
+                                } catch(e) {}
+                            }
                             continue;
                         }
 
@@ -1170,6 +1182,16 @@ const WhatsappBot = (() => {
                             }
                         } catch (err) {
                             console.error('❌ Error descargando audio:', err.message);
+                            if (db) {
+                                try {
+                                    await db.ref('bot_debug_logs').push({
+                                        event: 'audio_download_failed',
+                                        groupName: groupName,
+                                        error: err.message,
+                                        timestamp: Date.now()
+                                    });
+                                } catch(e) {}
+                            }
                         }
                     }
 
