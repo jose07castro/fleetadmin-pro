@@ -54,12 +54,33 @@ async function callGemini(prompt) {
  * @returns {Promise<{isTrafficAlert: boolean, transcription: string, type: string, address: string|null, reason: string}|null>}
  */
 async function callGeminiAudio(audioBuffer, mimeType) {
-    if (!GEMINI_KEY || !audioBuffer) return null;
+    if (!GEMINI_KEY || !audioBuffer) {
+        if (db) {
+            try {
+                await db.ref('bot_debug_logs').push({
+                    event: 'gemini_audio_skipped',
+                    reason: !GEMINI_KEY ? 'missing_key' : 'missing_buffer',
+                    timestamp: Date.now()
+                });
+            } catch (dbErr) {}
+        }
+        return null;
+    }
 
     const audioB64 = audioBuffer.toString('base64');
     // Limite seguro: ~10MB en base64. Las notas de voz de WhatsApp son << 1MB normalmente.
     if (audioB64.length > 12 * 1024 * 1024) {
         console.warn('⚠️ [GEMINI-AUDIO] Audio demasiado grande para análisis inline, saltando.');
+        if (db) {
+            try {
+                await db.ref('bot_debug_logs').push({
+                    event: 'gemini_audio_skipped',
+                    reason: 'size_limit_exceeded',
+                    size: audioBuffer.length,
+                    timestamp: Date.now()
+                });
+            } catch (dbErr) {}
+        }
         return null;
     }
 
@@ -107,17 +128,72 @@ Respuesta EXACTAMENTE en este formato:
                     const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
                     const parsed = JSON.parse(clean);
                     console.log(`🤖 [GEMINI-AUDIO] isAlert=${parsed.isTrafficAlert} | Tipo=${parsed.type} | Razón="${parsed.reason}" | Transcripción="${(parsed.transcription||'').substring(0,60)}"`);
+                    
+                    if (db) {
+                        try {
+                            await db.ref('bot_debug_logs').push({
+                                event: 'gemini_audio_success',
+                                url: url.split('/models/')[1]?.split(':')[0],
+                                mimeType: cleanMimeType,
+                                size: audioBuffer.length,
+                                result: parsed,
+                                timestamp: Date.now()
+                            });
+                        } catch (dbErr) {}
+                    }
                     return parsed;
                 } catch (parseErr) {
                     console.warn('⚠️ [GEMINI-AUDIO] No se pudo parsear JSON de respuesta:', rawText.substring(0, 150));
-                    // Intentar extraer isTrafficAlert por texto plano como último recurso
+                    
+                    if (db) {
+                        try {
+                            await db.ref('bot_debug_logs').push({
+                                event: 'gemini_audio_parse_error',
+                                url: url.split('/models/')[1]?.split(':')[0],
+                                mimeType: cleanMimeType,
+                                size: audioBuffer.length,
+                                rawText: rawText,
+                                error: parseErr.message,
+                                timestamp: Date.now()
+                            });
+                        } catch (dbErr) {}
+                    }
+
                     const isAlert = /isTrafficAlert.*true/i.test(rawText);
                     return { isTrafficAlert: isAlert, transcription: rawText.substring(0, 200), type: 'checkpoint', address: null, reason: 'parse_fallback' };
                 }
             }
         } catch (e) {
-            console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.response?.data?.error?.message || e.message}`);
+            const errMsg = e.response?.data?.error?.message || e.message;
+            console.warn(`⚠️ [GEMINI-AUDIO] ${url.split('/models/')[1]?.split(':')[0]} falló: ${errMsg}`);
+            
+            if (db) {
+                try {
+                    await db.ref('bot_debug_logs').push({
+                        event: 'gemini_audio_model_error',
+                        url: url.split('/models/')[1]?.split(':')[0],
+                        mimeType: cleanMimeType,
+                        size: audioBuffer.length,
+                        error: errMsg,
+                        status: e.response?.status || null,
+                        timestamp: Date.now()
+                    });
+                } catch (dbErr) {}
+            }
         }
+    }
+
+    if (db) {
+        try {
+            await db.ref('bot_debug_logs').push({
+                event: 'gemini_audio_failed_all_models',
+                mimeType: cleanMimeType,
+                size: audioBuffer.length,
+                hasKey: !!GEMINI_KEY,
+                keySnippet: GEMINI_KEY ? `${GEMINI_KEY.substring(0, 5)}...${GEMINI_KEY.substring(GEMINI_KEY.length - 5)}` : 'none',
+                timestamp: Date.now()
+            });
+        } catch (dbErr) {}
     }
     return null;
 }
