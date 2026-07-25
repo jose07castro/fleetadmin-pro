@@ -127,6 +127,32 @@ public class LocationDbHelper extends SQLiteOpenHelper {
         }
     }
 
+    /**
+     * Elimina entradas de la cola cuyo timestamp sea más antiguo que maxAgeHours horas.
+     * Los puntos GPS viejos no tienen sentido enviarlos días después.
+     * @param maxAgeHours horas máximas de antigüedad permitida
+     * @return cantidad de entradas eliminadas
+     */
+    public synchronized int clearOldEntries(int maxAgeHours) {
+        try {
+            SQLiteDatabase db = this.getWritableDatabase();
+            // Calcular timestamp ISO mínimo aceptable
+            long cutoffMs = System.currentTimeMillis() - ((long) maxAgeHours * 60 * 60 * 1000);
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            String cutoffStr = sdf.format(new java.util.Date(cutoffMs));
+
+            int deleted = db.delete(TABLE_NAME, COLUMN_TIMESTAMP + " < ?", new String[]{cutoffStr});
+            if (deleted > 0) {
+                android.util.Log.i("LocationDbHelper", "🗑️ Cola GPS: " + deleted + " puntos viejos (>" + maxAgeHours + "h) eliminados.");
+            }
+            return deleted;
+        } catch (Exception e) {
+            android.util.Log.e("LocationDbHelper", "Error clearing old entries", e);
+            return 0;
+        }
+    }
+
     public synchronized int getQueueSize() {
         Cursor cursor = null;
         try {

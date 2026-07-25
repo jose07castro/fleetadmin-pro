@@ -774,53 +774,57 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void sendQueuedLocations() {
         if (isSendingQueue) return;
         isSendingQueue = true;
+        // Limpiar puntos viejos (> 6 horas) antes de intentar enviar — son datos GPS obsoletos
+        dbHelper.clearOldEntries(6);
+        _drainQueue();
+    }
 
-        serviceHandler.post(new Runnable() {
-            private boolean called = false;
-            private Runnable timeoutRunnable = null;
+    /**
+     * Vacía la cola de GPS enviando de a un punto por vez.
+     * IMPORTANTE: Se llama recursivamente via postDelayed con una NUEVA invocación
+     * para evitar el bug de Runnable reutilizado donde 'called' quedaba en true
+     * y bloqueaba todos los envíos subsiguientes indefinidamente.
+     */
+    private void _drainQueue() {
+        serviceHandler.post(() -> {
+            List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
+            if (list.isEmpty() || !isNetworkAvailable()) {
+                isSendingQueue = false;
+                updateStatusNotification();
+                return;
+            }
 
-            @Override
-            public void run() {
-                List<LocationDbHelper.QueuedLocation> list = dbHelper.getQueuedLocations();
-                if (list.isEmpty() || !isNetworkAvailable()) {
+            LocationDbHelper.QueuedLocation ql = list.get(0);
+            final boolean[] called = {false}; // Array para mutabilidad en lambda
+
+            Runnable timeoutRunnable = () -> {
+                if (!called[0]) {
+                    called[0] = true;
+                    Log.w(TAG, "⏰ Timeout esperando confirmación de Firebase para punto " + ql.id);
                     isSendingQueue = false;
                     updateStatusNotification();
-                    return;
                 }
+            };
+            serviceHandler.postDelayed(timeoutRunnable, 5000);
 
-                LocationDbHelper.QueuedLocation ql = list.get(0);
+            pushSingleToFirebaseAsync(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native", (error, ref) -> {
+                serviceHandler.post(() -> {
+                    if (called[0]) return;
+                    called[0] = true;
+                    serviceHandler.removeCallbacks(timeoutRunnable);
 
-                // Timeout de 5s para evitar que la cola se congele indefinidamente si no hay internet pero isNetworkAvailable dio true
-                timeoutRunnable = () -> {
-                    if (!called) {
-                        called = true;
-                        Log.w(TAG, "⏰ Timeout esperando confirmación de Firebase para punto " + ql.id);
+                    if (error == null) {
+                        dbHelper.deleteLocation(ql.id);
+                        Log.i(TAG, "✅ Punto encolado enviado y eliminado. Restantes: " + dbHelper.getQueueSize());
+                        // Nueva invocación — NO reutiliza Runnable, evita el bug de 'called' compartido
+                        serviceHandler.postDelayed(() -> _drainQueue(), 100);
+                    } else {
+                        Log.w(TAG, "❌ Error al enviar punto local encolado: " + error.getMessage());
                         isSendingQueue = false;
                         updateStatusNotification();
                     }
-                };
-                serviceHandler.postDelayed(timeoutRunnable, 5000);
-
-                pushSingleToFirebaseAsync(ql.lat, ql.lng, ql.speed, ql.bearing, ql.battery, ql.timestamp, "queued_native", (error, ref) -> {
-                    serviceHandler.post(() -> {
-                        if (called) return; // Ya se disparó el timeout
-                        called = true;
-                        if (timeoutRunnable != null) {
-                            serviceHandler.removeCallbacks(timeoutRunnable);
-                        }
-
-                        if (error == null) {
-                            dbHelper.deleteLocation(ql.id);
-                            // Process next item with a tiny delay to not hog the thread
-                            serviceHandler.postDelayed(this, 100);
-                        } else {
-                            Log.w(TAG, "❌ Error al enviar punto local encolado: " + (error != null ? error.getMessage() : "Desconocido"));
-                            isSendingQueue = false;
-                            updateStatusNotification();
-                        }
-                    });
                 });
-            }
+            });
         });
     }
 
