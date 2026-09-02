@@ -964,12 +964,16 @@ const WhatsappBot = (() => {
                     }
 
                     // 2. FILTRADO ESTRICTO DE GRUPOS SELECCIONADOS (Solicitado por el usuario)
-                    // Solo escanear "operativos arroyo seco" y "solo operativos de transito".
+                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Operativos Arroyo Seco, etc).
                     // Los chats privados del admin se permiten para diagnósticos.
                     let isTargetGroup = false;
                     if (isGroup) {
                         const cleanedGroupName = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || cleanedGroupName.includes('solo operativos de transito');
+                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || 
+                                        cleanedGroupName.includes('solo operativos de transito') ||
+                                        cleanedGroupName.includes('alertas') ||
+                                        cleanedGroupName.includes('apps') ||
+                                        _isOperativoGroup(groupName);
                         
                         if (!isTargetGroup) {
                             console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);

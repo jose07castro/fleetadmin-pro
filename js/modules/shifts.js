@@ -106,17 +106,20 @@ const ShiftsModule = (() => {
 
             // v122: Banner de Advertencia por Optimización de Batería (Android)
             let batteryBannerHTML = '';
-            if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+            const isBannerDismissed = localStorage.getItem('battery_banner_dismissed') === 'true';
+
+            if (!isBannerDismissed && typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
                 try {
                     if (window.NativeServiceBridge.isBatteryOptimized()) {
                         batteryBannerHTML = `
-                            <div id="batteryOptimizationBanner" style="background:linear-gradient(135deg, #eab308, #ca8a04); color:#ffffff; padding:16px; border-radius:12px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(202,138,4,0.2);">
-                                <div style="display:flex; align-items:flex-start; gap:12px;">
+                            <div id="batteryOptimizationBanner" style="position:relative; background:linear-gradient(135deg, #eab308, #ca8a04); color:#ffffff; padding:16px; border-radius:12px; margin-bottom:20px; box-shadow: 0 4px 12px rgba(202,138,4,0.2); transition: opacity 0.3s ease, transform 0.3s ease;">
+                                <button onclick="ShiftsModule.dismissBatteryBanner()" style="position:absolute; top:10px; right:12px; background:rgba(0,0,0,0.15); border:none; color:#ffffff; width:28px; height:28px; border-radius:50%; font-size:14px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center;" aria-label="Cerrar">✕</button>
+                                <div style="display:flex; align-items:flex-start; gap:12px; padding-right:24px;">
                                     <span style="font-size:1.8rem; line-height:1;">⚠️</span>
                                     <div style="flex:1;">
                                         <div style="font-weight:800; font-size:14px; margin-bottom:4px; letter-spacing:0.5px;">⚠️ BATERÍA OPTIMIZADA</div>
                                         <div style="font-size:12px; opacity:0.95; line-height:1.4; margin-bottom:12px;">El sistema podría apagar el GPS si bloquéas la pantalla. Desactivá el ahorro de batería para esta app.</div>
-                                        <button onclick="if(typeof AndroidServices !== 'undefined') { AndroidServices.showBatteryExemptionDialog(); } else if(window.NativeServiceBridge && window.NativeServiceBridge.requestBatteryExemption) { window.NativeServiceBridge.requestBatteryExemption(); }" style="background:#ffffff; color:#854d0e; font-weight:700; border:none; border-radius:8px; padding:8px 12px; font-size:11px; cursor:pointer; text-transform:uppercase; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                                        <button onclick="ShiftsModule.dismissBatteryBanner(); if(typeof AndroidServices !== 'undefined') { AndroidServices.showBatteryExemptionDialog(); } else if(window.NativeServiceBridge && window.NativeServiceBridge.requestBatteryExemption) { window.NativeServiceBridge.requestBatteryExemption(); }" style="background:#ffffff; color:#854d0e; font-weight:700; border:none; border-radius:8px; padding:8px 12px; font-size:11px; cursor:pointer; text-transform:uppercase; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
                                             🔋 Configurar Ahora
                                         </button>
                                     </div>
@@ -1176,9 +1179,21 @@ const ShiftsModule = (() => {
         return false;
     }
 
+    function dismissBatteryBanner() {
+        const banner = document.getElementById('batteryOptimizationBanner');
+        if (banner) {
+            banner.style.opacity = '0';
+            banner.style.transform = 'translateY(-10px)';
+            setTimeout(() => banner.remove(), 300);
+        }
+        try {
+            localStorage.setItem('battery_banner_dismissed', 'true');
+        } catch(e) {}
+    }
+
     return {
         render, startShift, endShift, selectShiftType, deleteShift, editShift, saveEditShift, previewPhoto, validateEditKm,
         getActiveShiftData: () => ({ shiftId: _activeShiftId, vehicleId: _activeVehicleId, vehicleName: _activeVehicleName }),
-        checkActiveShift, hydrateActiveShift, extendActiveShift
+        checkActiveShift, hydrateActiveShift, extendActiveShift, dismissBatteryBanner
     };
 })();
