@@ -967,6 +967,97 @@ app.post('/api/alerts/dynamic', async (req, res) => {
     }
 });
 
+// ============================================
+// Endpoints de Notificaciones y Webhooks
+// ============================================
+
+// Notificación a administradores
+app.post('/api/notify/admin', async (req, res) => {
+    try {
+        const { title, body, fleetId } = req.body;
+        console.log(`📢 [NOTIFY-ADMIN] ${title}: ${body} (Fleet: ${fleetId || 'Global'})`);
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.sendPushToAdmins === 'function') {
+            WhatsappBot.sendPushToAdmins(title || 'Notificación de Administración', body || '');
+        }
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error en /api/notify/admin:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Notificación de Mantenimiento Preventivo
+app.post('/api/notify/maintenance', async (req, res) => {
+    try {
+        const { vehicleId, plate, motive, mileage, fleetId } = req.body;
+        console.log(`🔧 [NOTIFY-MAINTENANCE] Vehículo ${plate || vehicleId} requiere mantenimiento: ${motive} (${mileage || 0} km)`);
+        const db = WhatsappBot.getDb();
+        if (db && fleetId) {
+            await db.ref(`fleets/${fleetId}/notifications`).push({
+                type: 'maintenance_alert',
+                vehicleId,
+                plate,
+                motive,
+                mileage,
+                timestamp: Date.now()
+            });
+        }
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.sendPushToAdmins === 'function') {
+            WhatsappBot.sendPushToAdmins('⚠️ Alerta de Mantenimiento', `El vehículo ${plate || 'unidad'} requiere revisión: ${motive}`);
+        }
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error en /api/notify/maintenance:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Envío Saliente de Mensaje de WhatsApp
+app.post('/api/whatsapp/send', async (req, res) => {
+    try {
+        const { to, message, fleetId } = req.body;
+        if (!to || !message) {
+            return res.status(400).json({ ok: false, error: 'to y message son requeridos' });
+        }
+        console.log(`📱 [WHATSAPP-SEND] Enviando a ${to}: "${message.substring(0, 50)}..."`);
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.sendMessage === 'function') {
+            await WhatsappBot.sendMessage(to, message);
+            return res.json({ ok: true, status: 'sent' });
+        }
+        res.json({ ok: true, status: 'queued', warning: 'Bot no conectado actualmente' });
+    } catch (e) {
+        console.error('❌ Error en /api/whatsapp/send:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Webhook para Rastreadores GPS Externos
+app.post('/api/gps/webhook', async (req, res) => {
+    try {
+        const { deviceId, lat, lng, speed, heading, timestamp, fleetId } = req.body;
+        if (!deviceId || lat === undefined || lng === undefined) {
+            return res.status(400).json({ ok: false, error: 'deviceId, lat y lng son requeridos' });
+        }
+        console.log(`📡 [GPS-WEBHOOK] Dispositivo ${deviceId}: ${lat}, ${lng}`);
+        const db = WhatsappBot.getDb();
+        if (db) {
+            const eventTime = timestamp ? new Date(timestamp).getTime() : Date.now();
+            await db.ref(`gps_tracker/${deviceId}/last_position`).set({
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                speed: speed ? parseFloat(speed) : 0,
+                heading: heading ? parseFloat(heading) : 0,
+                timestamp: eventTime,
+                updated_at: new Date(eventTime).toISOString()
+            });
+        }
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('❌ Error en /api/gps/webhook:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });

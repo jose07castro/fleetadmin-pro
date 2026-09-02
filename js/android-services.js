@@ -142,7 +142,7 @@ const AndroidServices = (() => {
                 const reg = await navigator.serviceWorker.ready;
                 await reg.showNotification('Punto Remis: Turno activo', {
                     body: `📍 GPS de alta precisión — ${vehiclePlate || 'En turno'}`,
-                    icon: 'assets/icons/icon-192x192.png',
+                    icon: 'assets/icon-192.png',
                     tag: 'gps-tracking-fg',
                     silent: true,
                     requireInteraction: true

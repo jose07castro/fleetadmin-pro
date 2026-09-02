@@ -400,16 +400,19 @@ const DB = (() => {
             if (!storedPin) return false;
             // Si el PIN está hasheado con bcrypt
             if (storedPin.startsWith('$2')) {
-                if (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) {
+                const bcryptLib = (typeof bcrypt !== 'undefined' && bcrypt) ||
+                                  (typeof dcodeIO !== 'undefined' && dcodeIO.bcrypt) ||
+                                  (window.dcodeIO && window.dcodeIO.bcrypt) ||
+                                  (window.bcrypt);
+                if (bcryptLib) {
                     try {
-                        return dcodeIO.bcrypt.compareSync(inputPin, storedPin);
+                        return bcryptLib.compareSync(inputPin, storedPin);
                     } catch (e) {
                         console.error('🔐 LOGIN: Error en bcrypt.compareSync:', e);
                         return false;
                     }
                 } else {
-                    // bcrypt CDN not loaded — PIN está hasheado pero no podemos comparar
-                    console.error('🔐 LOGIN: ❌ bcrypt no disponible, no se puede comparar PIN hasheado');
+                    console.error('🔐 LOGIN: ❌ bcrypt no disponible en offline, no se puede comparar PIN hasheado');
                     return false;
                 }
             }
@@ -711,6 +714,8 @@ const DB = (() => {
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,
         addApplicant, getApplicants,
         // Veraz
-        addVerazReport, getVerazReportsByDNI
+        addVerazReport, getVerazReportsByDNI,
+        // Migración
+        migrateOldData
     };
 })();

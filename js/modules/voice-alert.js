@@ -300,9 +300,19 @@ const VoiceAlertModule = (() => {
                             Components.showToast('🎙️ Alerta procesada y enviada a la flota por KITT', 'success');
                         } catch (err) {
                             console.error('❌ Error enviando alerta de voz a KITT:', err);
-                            if (statusEl) statusEl.innerText = 'Error al enviar.';
-                            Components.showToast(`❌ Error: ${err.message || 'Error en el servidor de KITT'}`, 'danger');
+                            // Si falla por red, guardar en cola local offline para reintento automático
+                            _queueOfflineVoiceAlert({
+                                audio: base64Data,
+                                audioMimeType: _selectedMime || 'audio/webm',
+                                lat: lat,
+                                lng: lng,
+                                type: _selectedType,
+                                authorName: author,
+                                fleetId: fleetId,
+                                timestamp: Date.now()
+                            });
                             Components.closeModal();
+                            Components.showToast('📶 Sin conexión. Alerta guardada; se enviará automáticamente al reconectarse.', 'warning');
                         }
                     };
                 } catch (err) {
@@ -320,6 +330,58 @@ const VoiceAlertModule = (() => {
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     }
+
+    // --- Cola Offline para Alertas de Voz ---
+    function _queueOfflineVoiceAlert(payload) {
+        try {
+            const queue = JSON.parse(localStorage.getItem('pending_voice_alerts') || '[]');
+            queue.push(payload);
+            localStorage.setItem('pending_voice_alerts', JSON.stringify(queue));
+            console.log('📦 Alerta de voz guardada en cola offline local');
+        } catch (e) {
+            console.warn('⚠️ No se pudo guardar alerta offline en localStorage:', e);
+        }
+    }
+
+    async function processPendingVoiceAlerts() {
+        try {
+            const queue = JSON.parse(localStorage.getItem('pending_voice_alerts') || '[]');
+            if (queue.length === 0) return;
+
+            console.log(`📡 Procesando ${queue.length} alertas de voz pendientes de la cola offline...`);
+            const serverUrl = (window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:') 
+                               ? 'https://fleetadmin-web-nueva.onrender.com' 
+                               : window.location.origin;
+
+            const remaining = [];
+            for (const item of queue) {
+                try {
+                    const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                    if (response.ok) {
+                        console.log('✅ Alerta de voz offline enviada con éxito');
+                    } else {
+                        remaining.push(item);
+                    }
+                } catch (err) {
+                    remaining.push(item);
+                }
+            }
+            localStorage.setItem('pending_voice_alerts', JSON.stringify(remaining));
+        } catch (e) {
+            console.warn('⚠️ Error procesando cola de alertas offline:', e);
+        }
+    }
+
+    // Listener para reintentar cuando la red vuelva a estar activa
+    window.addEventListener('online', () => {
+        setTimeout(processPendingVoiceAlerts, 3000);
+    });
 
     return {
         showRecordModal,

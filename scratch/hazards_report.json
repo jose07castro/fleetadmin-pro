@@ -1,0 +1,181 @@
+{
+  "unsafeDomAccessCount": 22,
+  "unsafeDomAccessSamples": [
+    {
+      "file": "app.js",
+      "lineNum": 254,
+      "elementId": "app",
+      "prop": "innerHTML",
+      "snippet": "document.getElementById('app').innerHTML = `"
+    },
+    {
+      "file": "components.js",
+      "lineNum": 376,
+      "elementId": "${id}Img",
+      "prop": "src",
+      "snippet": "document.getElementById(`${id}Img`).src = objectUrl;"
+    },
+    {
+      "file": "components.js",
+      "lineNum": 377,
+      "elementId": "${id}Wrapper",
+      "prop": "style",
+      "snippet": "document.getElementById(`${id}Wrapper`).style.display = 'none';"
+    },
+    {
+      "file": "components.js",
+      "lineNum": 378,
+      "elementId": "${id}Preview",
+      "prop": "style",
+      "snippet": "document.getElementById(`${id}Preview`).style.display = 'inline-block';"
+    },
+    {
+      "file": "components.js",
+      "lineNum": 397,
+      "elementId": "${id}Wrapper",
+      "prop": "style",
+      "snippet": "document.getElementById(`${id}Wrapper`).style.display = 'flex';"
+    },
+    {
+      "file": "components.js",
+      "lineNum": 398,
+      "elementId": "${id}Preview",
+      "prop": "style",
+      "snippet": "document.getElementById(`${id}Preview`).style.display = 'none';"
+    },
+    {
+      "file": "applicants.js",
+      "lineNum": 127,
+      "elementId": "geoBlocker",
+      "prop": "style",
+      "snippet": "document.getElementById('geoBlocker').style.display = 'none';"
+    },
+    {
+      "file": "applicants.js",
+      "lineNum": 131,
+      "elementId": "applyForm",
+      "prop": "style",
+      "snippet": "document.getElementById('applyForm').style.display = 'block';"
+    },
+    {
+      "file": "applicants.js",
+      "lineNum": 135,
+      "elementId": "errorBlocker",
+      "prop": "style",
+      "snippet": "document.getElementById('errorBlocker').style.display = 'block';"
+    },
+    {
+      "file": "dashboard.js",
+      "lineNum": 438,
+      "elementId": "themePrimary",
+      "prop": "value",
+      "snippet": "const primary = document.getElementById('themePrimary').value;"
+    },
+    {
+      "file": "dashboard.js",
+      "lineNum": 439,
+      "elementId": "themeBg",
+      "prop": "value",
+      "snippet": "const bg = document.getElementById('themeBg').value;"
+    },
+    {
+      "file": "dashboard.js",
+      "lineNum": 440,
+      "elementId": "themeFont",
+      "prop": "value",
+      "snippet": "const font = document.getElementById('themeFont').value;"
+    },
+    {
+      "file": "login.js",
+      "lineNum": 190,
+      "elementId": "loginName",
+      "prop": "value",
+      "snippet": "const name = document.getElementById('loginName').value.trim();"
+    },
+    {
+      "file": "login.js",
+      "lineNum": 191,
+      "elementId": "loginPin",
+      "prop": "value",
+      "snippet": "const pin = document.getElementById('loginPin').value.trim();"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 234,
+      "elementId": "shiftsContent",
+      "prop": "innerHTML",
+      "snippet": "document.getElementById('shiftsContent').innerHTML = `<p style=\"color:red; text-align:center;\">Error cargando turnos: ${e.message}</p>`;"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 404,
+      "elementId": "ownerShiftsContent",
+      "prop": "innerHTML",
+      "snippet": "document.getElementById('ownerShiftsContent').innerHTML = `<p style=\"color:red; text-align:center;\">Error: ${e.message}</p>`;"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1035,
+      "elementId": "editShiftId",
+      "prop": "value",
+      "snippet": "const id = document.getElementById('editShiftId').value;"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1039,
+      "elementId": "editShiftOdoStart",
+      "prop": "value",
+      "snippet": "const odoStart = parseFloat(document.getElementById('editShiftOdoStart').value);"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1040,
+      "elementId": "editShiftOdoEnd",
+      "prop": "value",
+      "snippet": "const odoEnd = parseFloat(document.getElementById('editShiftOdoEnd').value);"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1041,
+      "elementId": "editShiftStartTime",
+      "prop": "value",
+      "snippet": "const startTime = document.getElementById('editShiftStartTime').value;"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1042,
+      "elementId": "editShiftEndTime",
+      "prop": "value",
+      "snippet": "const endTime = document.getElementById('editShiftEndTime').value;"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 1043,
+      "elementId": "editShiftEarnings",
+      "prop": "value",
+      "snippet": "const earnings = parseFloat(document.getElementById('editShiftEarnings').value);"
+    }
+  ],
+  "unhandledFetches": [
+    {
+      "file": "app.js",
+      "lineNum": 82,
+      "snippet": "fetch('/api/bot/status')"
+    },
+    {
+      "file": "shifts.js",
+      "lineNum": 804,
+      "snippet": "fetch('/api/notify/maintenance', {"
+    },
+    {
+      "file": "sos.js",
+      "lineNum": 631,
+      "snippet": "fetch(url, {"
+    },
+    {
+      "file": "sos.js",
+      "lineNum": 1205,
+      "snippet": "fetch('https://fleetadmin-pro-default-rtdb.firebaseio.com/.json?shallow=true&timeout=1s', {"
+    }
+  ]
+}

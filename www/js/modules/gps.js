@@ -520,7 +520,7 @@ const GPSModule = (() => {
             municipal: 'assets/alert-icons/municipal.png',
             accident: 'assets/alert-icons/accident.png',
             traffic: 'assets/alert-icons/accident.png',
-            warning: 'assets/alert-icons/warning.png'
+            warning: 'assets/alert-icons/radar.png'
         };
         
         const BORDER_COLORS = {

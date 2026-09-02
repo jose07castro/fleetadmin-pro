@@ -738,7 +738,7 @@ const GPSPermissions = (() => {
                 navigator.serviceWorker.ready.then(reg => {
                     reg.showNotification('Punto Remis: Turno activo', {
                         body: 'Reportando ubicación al radar del administrador. (App Activa)',
-                        icon: 'assets/icons/icon-192x192.png',
+                        icon: 'assets/icon-192.png',
                         tag: 'gps-tracking-fg',
                         silent: true,
                         requireInteraction: false

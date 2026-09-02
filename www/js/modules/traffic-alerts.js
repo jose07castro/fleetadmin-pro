@@ -146,7 +146,7 @@
         return 'warning';
     }
 
-    // Registra el milisegundo en que inició la aplicación 
+    // Registra el milisegundo en que inició la aplicación
     // para ignorar alertas viejas y cantar únicamente lo que sea de este segundo en adelante.
     const _appStartTime = Date.now() - 3000;
 

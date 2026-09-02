@@ -2,8 +2,24 @@
 // 🛡️ AJUSTE ANTIGRAVITY - MODO WEB
 // ==========================================
 
-// --- Función interna: aplica Web Audio GainNode al elemento y lo reproduce ---
-function _applyBoostAndPlay(audioElement, multiplier) {
+window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
+    // Detectar si estamos en entorno nativo / móvil
+    const isNative = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' ||
+                     window.location.protocol === 'file:' ||
+                     window.Capacitor || 
+                     (window.location.origin && window.location.origin.includes('localhost'));
+
+    // Si es nativo y el origen del audio es externo, evitar Web Audio API
+    // para prevenir bloqueos de CORS silenciosos que dejan el audio mudo.
+    const audioSrc = audioElement.src || '';
+    const isCrossOrigin = audioSrc.startsWith('http') && !audioSrc.includes(window.location.host);
+
+    if (isNative && isCrossOrigin) {
+        console.log('🎵 [AUDIO-BOOST] Detectado audio cross-origin en nativo. Evitando boost para prevenir silencio de CORS.');
+        return audioElement.play();
+    }
+
     if (!window.AudioContext && !window.webkitAudioContext) {
         return audioElement.play();
     }
@@ -12,14 +28,17 @@ function _applyBoostAndPlay(audioElement, multiplier) {
             window._sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         const ctx = window._sharedAudioContext;
-        if (ctx.state === 'suspended') ctx.resume();
-
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        
         // Evitar doble conexión si se recicla el elemento
         if (!audioElement._isBoosted) {
-            audioElement.crossOrigin = 'anonymous';
+            // Un error común es CORS en el createMediaElementSource si el audio no tiene crossOrigin
+            audioElement.crossOrigin = 'anonymous'; 
             const source = ctx.createMediaElementSource(audioElement);
             const gainNode = ctx.createGain();
-            gainNode.gain.value = multiplier;
+            gainNode.gain.value = multiplier; // 300% de volumen original
             source.connect(gainNode);
             gainNode.connect(ctx.destination);
             audioElement._isBoosted = true;
@@ -29,49 +48,6 @@ function _applyBoostAndPlay(audioElement, multiplier) {
         console.warn('Audio boost falló, usando volumen normal', e);
         return audioElement.play();
     }
-}
-
-window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
-    // Detectar si estamos en entorno nativo / móvil (Capacitor/Android)
-    const isNative = window.location.hostname === 'localhost' || 
-                     window.location.hostname === '127.0.0.1' ||
-                     window.location.protocol === 'file:' ||
-                     window.Capacitor || 
-                     (window.location.origin && window.location.origin.includes('localhost'));
-
-    const audioSrc = audioElement.src || '';
-    const isCrossOrigin = audioSrc.startsWith('http') && !audioSrc.includes(window.location.host);
-
-    // En Android con audio cross-origin, el GainNode falla silenciosamente por CORS.
-    // Solución: descargamos el audio como blob (same-origin) y lo sustituimos en el
-    // mismo elemento de audio antes de aplicar el boost, preservando referencias externas.
-    if (isNative && isCrossOrigin) {
-        console.log('🎵 [AUDIO-BOOST] Android + cross-origin: descargando como blob para habilitar boost...');
-        return fetch(audioSrc)
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.blob();
-            })
-            .then(blob => {
-                const blobUrl = URL.createObjectURL(blob);
-                // Limpiar blob URL cuando el audio termine o falle
-                const cleanup = () => URL.revokeObjectURL(blobUrl);
-                audioElement.addEventListener('ended', cleanup, { once: true });
-                audioElement.addEventListener('error', cleanup, { once: true });
-                // Reemplazar src con blob URL (same-origin → GainNode funciona)
-                audioElement._isBoosted = false; // Resetear para permitir reconexión
-                audioElement.src = blobUrl;
-                audioElement.load();
-                return _applyBoostAndPlay(audioElement, multiplier);
-            })
-            .catch(err => {
-                // Si el fetch falla (sin red, timeout), reproducir sin boost
-                console.warn('🎵 [AUDIO-BOOST] Fetch-blob falló, reproduciendo sin boost:', err.message);
-                return audioElement.play();
-            });
-    }
-
-    return _applyBoostAndPlay(audioElement, multiplier);
 };
 
 // import { BackgroundMode } from '@anuradev/capacitor-background-mode';
