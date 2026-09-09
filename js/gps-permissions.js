@@ -13,47 +13,50 @@ const GPSPermissions = (() => {
     // ============ CHECK CURRENT STATE ============
 
     async function checkPermission() {
+        if (_permissionState === 'granted') return 'granted';
+
         try {
             if ('permissions' in navigator) {
                 const result = await navigator.permissions.query({ name: 'geolocation' });
                 let state = result.state; // 'granted', 'denied', 'prompt'
                 
                 if (state === 'granted') {
-                    // Si estamos en Android, verificar también el permiso en segundo plano (solo si no es Owner)
-                    const isOwner = typeof Auth !== 'undefined' && typeof Auth.isOwner === 'function' && Auth.isOwner();
-                    if (!isOwner && typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
-                        try {
-                            const hasBg = window.NativeServiceBridge.isBackgroundLocationGranted();
-                            if (!hasBg) {
-                                state = 'foreground_only';
-                            }
-                        } catch (e) {
-                            console.warn('Error checking bg location:', e);
-                        }
-                    }
+                    _permissionState = 'granted';
+                    if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+                    return 'granted';
                 }
-                
-                _permissionState = state;
-                
-                // Listen for changes (user toggles in Android settings)
-                result.addEventListener('change', () => {
-                    const oldState = _permissionState;
-                    _permissionState = result.state;
-                    console.log(`📍 GPSPerms: Permiso cambió ${oldState} → ${_permissionState}`);
-                    
-                    if (_permissionState === 'granted') {
-                        _onPermissionGranted();
-                    } else if (_permissionState === 'denied') {
-                        _onPermissionDenied();
-                    }
-                });
-                
-                return _permissionState;
             }
         } catch (e) {
             console.warn('📍 GPSPerms: Permissions API no disponible:', e);
         }
-        return 'unknown';
+
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                _permissionState = 'denied';
+                resolve('denied');
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    console.log('📍 GPSPerms: ✅ Permiso de GPS verificado por prueba activa');
+                    _permissionState = 'granted';
+                    if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+                    resolve('granted');
+                },
+                (err) => {
+                    if (err.code === 1) {
+                        _permissionState = 'denied';
+                        resolve('denied');
+                    } else {
+                        // POSITION_UNAVAILABLE or TIMEOUT -> permission IS granted
+                        _permissionState = 'granted';
+                        if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+                        resolve('granted');
+                    }
+                },
+                { enableHighAccuracy: false, timeout: 3000, maximumAge: 60000 }
+            );
+        });
     }
 
     // ============ MAIN FLOW: Request with Dialog ============
@@ -344,21 +347,48 @@ const GPSPermissions = (() => {
     // ============ WARNING BANNER ============
 
     function _showWarningBanner() {
+        const currentRoute = (typeof Router !== 'undefined') ? Router.getCurrentRoute() : null;
+
+        // 1. NUNCA mostrar la advertencia si no hay usuario logueado o estamos en la pantalla de login/registro
+        if (typeof Auth === 'undefined' || !Auth.isLoggedIn() || !currentRoute || currentRoute === 'login' || currentRoute === 'register') {
+            if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+            return;
+        }
+
+        // 2. NUNCA mostrar la advertencia a dueños/titulares
+        if (Auth.isOwner()) {
+            if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+            return;
+        }
+
+        // 3. Solo mostrar si el chofer está en turno activo ("En Línea")
+        const inShift = localStorage.getItem('active_shift_state') === 'true';
+        if (!inShift) {
+            if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+            return;
+        }
+
+        // 4. Si el permiso ya fue concedido, limpiar el interval y salir
+        if (_permissionState === 'granted') {
+            if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+            return;
+        }
+        
         Components.showToast(
             '⚠️ El modo "En Línea" no funcionará sin permiso GPS. Tocá ⚙️ para activarlo.',
             'warning'
         );
         
-        // Set up periodic retry reminder (every 60s)
         if (!_retryInterval) {
             _retryInterval = setInterval(() => {
-                if (_permissionState === 'granted') {
+                const route = (typeof Router !== 'undefined') ? Router.getCurrentRoute() : null;
+                if (_permissionState === 'granted' || typeof Auth === 'undefined' || !Auth.isLoggedIn() || route === 'login') {
                     clearInterval(_retryInterval);
                     _retryInterval = null;
                     return;
                 }
-                // Only remind if user is a driver
-                if (typeof Auth !== 'undefined' && !Auth.isOwner()) {
+                const isShiftActive = localStorage.getItem('active_shift_state') === 'true';
+                if (!Auth.isOwner() && isShiftActive && _permissionState === 'denied') {
                     Components.showToast(
                         '📍 Tu ubicación GPS está desactivada. El admin no puede verte en el radar.',
                         'warning'
@@ -775,6 +805,8 @@ const GPSPermissions = (() => {
 
                 const handleSuccess = (p) => {
                     clearTimeout(timeoutId);
+                    _permissionState = 'granted';
+                    if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
                     resolve({
                         lat: p.coords.latitude,
                         lng: p.coords.longitude,
