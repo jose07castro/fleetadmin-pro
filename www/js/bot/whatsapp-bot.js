@@ -1537,9 +1537,6 @@ const WhatsappBot = (() => {
                             console.error('❌ Error procesando imagen con Gemini:', imageErr.message);
                         }
                     }
-                            console.error('❌ Error procesando imagen con Gemini:', imageErr.message);
-                        }
-                    }
 
                     // --- FILTRO DE PALABRAS PROHIBIDAS / INSULTOS ---
                     if (_containsForbiddenWords(text)) {
