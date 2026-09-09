@@ -242,6 +242,38 @@ app.get('/api/version-check', async (req, res) => {
     }
 });
 
+// Endpoint para sincronizar movimientos a Google Sheets (Webhook/AppScript)
+app.post('/api/sheets/append', async (req, res) => {
+    try {
+        const { google_sheet_id, movement } = req.body;
+        if (!google_sheet_id || !movement) {
+            return res.status(400).json({ ok: false, error: 'google_sheet_id y movement son requeridos' });
+        }
+
+        console.log(`📊 [GOOGLE-SHEETS] Sincronizando movimiento ${movement.id} con Google Sheet/Webhook: ${google_sheet_id}`);
+
+        let targetUrl = google_sheet_id.trim();
+        if (targetUrl.startsWith('https://script.google.com/')) {
+            const axios = require('axios');
+            const sheetRes = await axios.post(targetUrl, movement, { timeout: 10000 });
+            return res.json({ ok: true, message: 'Fila agregada vía AppScript Webhook', data: sheetRes.data });
+        } else {
+            const db = WhatsappBot.getDb();
+            if (db) {
+                await db.ref('sheets_sync_queue').push({
+                    sheetId: google_sheet_id,
+                    movement,
+                    timestamp: Date.now()
+                });
+            }
+            return res.json({ ok: true, message: 'Movimiento registrado en cola de sincronización para Google Sheets: ' + google_sheet_id });
+        }
+    } catch (e) {
+        console.error('❌ [GOOGLE-SHEETS] Error al sincronizar con Google Sheets:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 // Report driver's current app version
 app.post('/api/driver/report-version', async (req, res) => {
     try {

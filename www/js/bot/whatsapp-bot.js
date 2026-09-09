@@ -289,6 +289,70 @@ Respuesta EXACTAMENTE en este formato JSON:
     return null;
 }
 
+/**
+ * Analiza un comprobante de pago/transferencia con Gemini multimodal.
+ * Extrae tipo (Ingreso/Egreso), monto, fecha, emisor/receptor y concepto.
+ * @returns {Promise<{isReceipt: boolean, type: string, amount: number, party: string, concept: string, date: string}|null>}
+ */
+async function callGeminiReceipt(imageBuffer, mimeType) {
+    if (!GEMINI_KEY || !imageBuffer) return null;
+
+    const imageB64 = imageBuffer.toString('base64');
+    if (imageB64.length > 12 * 1024 * 1024) return null;
+
+    const prompt = `Sos un asistente contable para flotas de transporte en Argentina.
+Analizá esta imagen de un comprobante de pago o transferencia (ej: MercadoPago, Banco, CBU, Ualá, NaranjaX, etc.) y respondé SOLO con un objeto JSON válido (sin markdown ni bloques de código).
+
+Determiná:
+1. Si la imagen es un comprobante válido de transferencia bancaria, pago digital o recibo de dinero -> "isReceipt": true.
+2. Si es una transferencia/pago recibido -> "type": "Ingreso". Si es un pago realizado/gasto -> "type": "Egreso".
+3. El monto numérico total (solo el número, sin el símbolo $, ej: 15450.50) -> "amount".
+4. El emisor o receptor del pago (nombre de la persona, banco o servicio) -> "party".
+5. El concepto o motivo del pago (ej: "Transferencia recibida", "Combustible", "Alquiler", "Mantenimiento") -> "concept".
+6. La fecha del comprobante en formato ISO (AAAA-MM-DDTHH:mm:ss) o fecha legible -> "date".
+
+Si la imagen NO es un comprobante de transferencia ni recibo de dinero -> "isReceipt": false.
+
+Respuesta EXACTAMENTE en este formato JSON:
+{"isReceipt":true,"type":"Ingreso","amount":15450.00,"party":"MercadoPago - Juan Pérez","concept":"Recaudación de turno","date":"2026-09-09T14:30:00.000Z"}`;
+
+    const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
+    ];
+
+    const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
+
+    for (const url of models) {
+        try {
+            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: cleanMimeType, data: imageB64 } },
+                        { text: prompt }
+                    ]
+                }]
+            }, { timeout: 25000 });
+
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) {
+                try {
+                    const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    console.log(`🧾 [GEMINI-RECEIPT] isReceipt=${parsed.isReceipt} | Tipo=${parsed.type} | Monto=$${parsed.amount} | Emisor=${parsed.party}`);
+                    return parsed;
+                } catch (parseErr) {
+                    console.warn('⚠️ [GEMINI-RECEIPT] JSON parse falló:', rawText.substring(0, 150));
+                }
+            }
+        } catch (e) {
+            console.warn(`⚠️ [GEMINI-RECEIPT] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
+        }
+    }
+    return null;
+}
+
 
 // 1. Inicialización de Firebase Admin
 
@@ -518,6 +582,37 @@ const WhatsappBot = (() => {
         _resolvedFleetId = 'jose07';
         console.log(`🏢 [FLEET] ⚠️ Usando fallback: ${_resolvedFleetId}`);
         return _resolvedFleetId;
+    }
+
+    async function _findFleetForPhone(senderPhone) {
+        if (!db || !senderPhone) return null;
+        const cleanSender = senderPhone.replace(/[^0-9]/g, '');
+        try {
+            const snap = await db.ref('fleets').once('value');
+            const fleets = snap.val() || {};
+            for (const [fleetId, fleetData] of Object.entries(fleets)) {
+                const settings = fleetData.settings || {};
+                const scannerEnabled = settings.whatsapp_scanner_enabled !== false;
+                const authPhone = (settings.whatsapp_authorized_phone || '').replace(/[^0-9]/g, '');
+                
+                if (authPhone && (cleanSender.endsWith(authPhone) || authPhone.endsWith(cleanSender))) {
+                    return { fleetId, settings, scannerEnabled };
+                }
+            }
+            
+            const defaultFleetId = await _resolveFleetId();
+            const defaultFleetSnap = await db.ref(`fleets/${defaultFleetId}/settings`).once('value');
+            const defaultSettings = defaultFleetSnap.val() || {};
+            const scannerEnabled = defaultSettings.whatsapp_scanner_enabled !== false;
+            const authPhone = (defaultSettings.whatsapp_authorized_phone || '').replace(/[^0-9]/g, '');
+            
+            if (scannerEnabled && (!authPhone || cleanSender.endsWith(authPhone) || authPhone.endsWith(cleanSender))) {
+                return { fleetId: defaultFleetId, settings: defaultSettings, scannerEnabled: true };
+            }
+        } catch (e) {
+            console.error('⚠️ [FLEET-FIND] Error buscando flota por teléfono:', e.message);
+        }
+        return null;
     }
 
     // ============ GLOBAL ERROR HANDLER ============
@@ -1330,26 +1425,89 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // --- 2. PROCESAR IMAGEN SIN TEXTO O CON CAPTION CORTO (DESACTIVADO: no leer imágenes ni carteles) ---
-                    if (false && isImage && (!text || text.trim().length < 5) && GEMINI_KEY) {
+                    // --- 2. PROCESAR IMAGEN DE COMPROBANTE DE COMPRA/TRANSFERENCIA / ALERTA ---
+                    if (isImage && GEMINI_KEY) {
                         try {
+                            console.log(`📸 [IMAGE] Descargando imagen para análisis multimodal (Comprobantes / Tránsito)...`);
+                            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                            const cleanMsg = {
+                                key: msg.key,
+                                message: { imageMessage: resolvedImageMsg }
+                            };
+                            const imageBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
+                                logger: P({ level: 'silent' }),
+                                reuploadRequest: sock.updateMediaMessage
+                            });
+                            console.log(`📸 [IMAGE] Descargada imagen de ${imageBuffer.length} bytes.`);
+                            
+                            const mimeType = resolvedImageMsg.mimetype || 'image/jpeg';
+                            
+                            // 1. Verificar si es un comprobante de pago/transferencia
+                            const receiptAnalysis = await callGeminiReceipt(imageBuffer, mimeType);
+                            if (receiptAnalysis && receiptAnalysis.isReceipt) {
+                                console.log(`🧾 [RECEIPT-MATCH] Comprobante detectado: ${receiptAnalysis.type} de $${receiptAnalysis.amount}`);
+                                const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace('@s.whatsapp.net', '').replace('@c.us', '');
+                                const fleetMatch = await _findFleetForPhone(senderNum);
+                                
+                                if (!fleetMatch || !fleetMatch.scannerEnabled) {
+                                    console.log(`⚠️ [RECEIPT-REJECT] Número ${senderNum} no autorizado o escáner deshabilitado.`);
+                                    if (!isGroup) {
+                                        await sock.sendMessage(jid, { 
+                                            text: '⚠️ *FleetAdmin Pro:* El escáner automático de comprobantes no está habilitado para tu número en la app. Por favor actívalo y registra tu número en *Ajustes de Cuenta*.' 
+                                        }, { quoted: msg });
+                                    }
+                                    continue;
+                                }
+
+                                const movId = 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                                const formattedAmount = Number(receiptAnalysis.amount) || 0;
+                                const newMov = {
+                                    id: movId,
+                                    type: receiptAnalysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+                                    amount: formattedAmount,
+                                    concept: receiptAnalysis.concept || 'Comprobante WhatsApp',
+                                    party: receiptAnalysis.party || 'Transferencia WhatsApp',
+                                    date: receiptAnalysis.date || new Date().toISOString(),
+                                    source: 'whatsapp_bot',
+                                    senderPhone: senderNum,
+                                    createdAt: Date.now()
+                                };
+
+                                if (db) {
+                                    await db.ref(`fleets/${fleetMatch.fleetId}/movements/${movId}`).set(newMov);
+                                    console.log(`✅ [RECEIPT-SAVED] Movimiento guardado en fleets/${fleetMatch.fleetId}/movements/${movId}`);
+                                }
+
+                                const sheetId = fleetMatch.settings?.google_sheet_id;
+                                if (sheetId && sheetId.trim()) {
+                                    try {
+                                        await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
+                                            google_sheet_id: sheetId,
+                                            movement: newMov
+                                        }, { timeout: 5000 });
+                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a sincronizar con Sheet.`);
+                                    } catch(sErr) {
+                                        console.warn(`⚠️ [RECEIPT-SHEETS] Error llamando a endpoint de Google Sheets:`, sErr.message);
+                                    }
+                                }
+
+                                const replyMsg = `✅ *Comprobante Procesado Exitosamente*\n\n` +
+                                                 `📌 *Tipo:* ${newMov.type}\n` +
+                                                 `💵 *Monto:* $${formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                                 `👤 *Emisor/Receptor:* ${newMov.party}\n` +
+                                                 `📝 *Concepto:* ${newMov.concept}\n` +
+                                                 `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                                 `_Registrado automáticamente en FleetAdmin Pro_ 🚗💰`;
+
+                                await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                                _trackBandwidth(replyMsg, 'out');
+                                continue;
+                            }
+
+                            // 2. Si no es comprobante, continuar con verificación de alertas de tránsito si corresponde
                             const shouldProcessImage = isFromTrustedAdmin || isKnownOperativoGroup;
                             if (shouldProcessImage) {
-                                console.log(`📸 [IMAGE] Descargando imagen para análisis multimodal con Gemini...`);
-                                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-                                const cleanMsg = {
-                                    key: msg.key,
-                                    message: { imageMessage: resolvedImageMsg }
-                                };
-                                const imageBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
-                                    logger: P({ level: 'silent' }),
-                                    reuploadRequest: sock.updateMediaMessage
-                                });
-                                console.log(`📸 [IMAGE] Descargada imagen de ${imageBuffer.length} bytes.`);
-                                
-                                const mimeType = resolvedImageMsg.mimetype || 'image/jpeg';
                                 const imageAnalysis = await callGeminiImage(imageBuffer, mimeType);
-                                
                                 if (imageAnalysis && imageAnalysis.isTrafficAlert) {
                                     console.log(`✅ [IMAGE-FILTER] Imagen aprobada como alerta de tránsito (${imageAnalysis.type}).`);
                                     text = text || imageAnalysis.description || '[REPORTE_DE_IMAGEN]';
@@ -1372,12 +1530,13 @@ const WhatsappBot = (() => {
                                             timestamp: Date.now()
                                         });
                                     }
-                                    continue; // Salir de este mensaje, ya procesado
-                                } else {
-                                    console.log(`🚫 [IMAGE-FILTER] Imagen descartada — no es de tránsito o relevante.`);
+                                    continue;
                                 }
                             }
                         } catch (imageErr) {
+                            console.error('❌ Error procesando imagen con Gemini:', imageErr.message);
+                        }
+                    }
                             console.error('❌ Error procesando imagen con Gemini:', imageErr.message);
                         }
                     }

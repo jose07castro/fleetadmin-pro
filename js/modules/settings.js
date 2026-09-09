@@ -9,6 +9,9 @@ const SettingsModule = (() => {
         const distUnit = Units.getDistanceUnit();
         const volUnit = Units.getVolumeUnit();
         const location = await DB.getSetting('location');
+        const scannerEnabled = (await DB.getSetting('whatsapp_scanner_enabled')) ?? true;
+        const whatsappAuthPhone = (await DB.getSetting('whatsapp_authorized_phone')) || '';
+        const googleSheetId = (await DB.getSetting('google_sheet_id')) || '';
 
         // Wiring post-mount: load user list for owners
         setTimeout(() => { 
@@ -235,6 +238,57 @@ const SettingsModule = (() => {
                             </button>
                         </div>
                         <div id="fcmStatus" style="font-size:var(--font-size-xs);"></div>
+                    </div>
+                </div>
+
+                <!-- Escáner de Comprobantes por WhatsApp -->
+                <div class="settings-section">
+                    <div class="settings-section-title">📲 Escáner de Comprobantes por WhatsApp</div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Escáner Automático de Transferencias</div>
+                            <div class="settings-item-desc">Registra automáticamente comprobantes de pago enviados por WhatsApp</div>
+                        </div>
+                        <div class="toggle-group">
+                            <button class="toggle-option ${scannerEnabled ? 'active' : ''}"
+                                onclick="SettingsModule.toggleWhatsappScanner(true)">
+                                ON
+                            </button>
+                            <button class="toggle-option ${!scannerEnabled ? 'active' : ''}"
+                                onclick="SettingsModule.toggleWhatsappScanner(false)">
+                                OFF
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
+                        <div>
+                            <div class="settings-item-label">Teléfono Autorizado WhatsApp</div>
+                            <div class="settings-item-desc">Número del titular/chofer que envía comprobantes (ej: 5493415707731)</div>
+                        </div>
+                        <div style="display:flex; gap:var(--space-2); align-items:center;">
+                            <input type="text" class="form-input" id="whatsappAuthPhoneInput"
+                                placeholder="5493415707731"
+                                value="${whatsappAuthPhone}"
+                                style="flex:1; font-size:14px !important; font-weight:500 !important;">
+                            <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveWhatsappAuthPhone()" style="white-space:nowrap;">
+                                💾 Guardar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
+                        <div>
+                            <div class="settings-item-label">Google Sheet ID / URL (Opcional)</div>
+                            <div class="settings-item-desc">Sincroniza cada movimiento escaneado con tu planilla personal de Google Sheets</div>
+                        </div>
+                        <div style="display:flex; gap:var(--space-2); align-items:center;">
+                            <input type="text" class="form-input" id="googleSheetIdInput"
+                                placeholder="ID o URL de la planilla"
+                                value="${googleSheetId}"
+                                style="flex:1; font-size:14px !important; font-weight:500 !important;">
+                            <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveGoogleSheetId()" style="white-space:nowrap;">
+                                💾 Guardar
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1590,6 +1644,24 @@ const SettingsModule = (() => {
         }
     }
 
+    async function toggleWhatsappScanner(enabled) {
+        await DB.setSetting('whatsapp_scanner_enabled', enabled);
+        Components.showToast(`Escáner de comprobantes por WhatsApp ${enabled ? 'ACTIVADO ✅' : 'DESACTIVADO ⏸️'}`, 'info');
+        Router.navigate('settings');
+    }
+
+    async function saveWhatsappAuthPhone() {
+        const phone = document.getElementById('whatsappAuthPhoneInput')?.value.trim();
+        await DB.setSetting('whatsapp_authorized_phone', phone);
+        Components.showToast('Teléfono autorizado de WhatsApp guardado ✅', 'success');
+    }
+
+    async function saveGoogleSheetId() {
+        const sheetId = document.getElementById('googleSheetIdInput')?.value.trim();
+        await DB.setSetting('google_sheet_id', sheetId);
+        Components.showToast('Planilla de Google Sheets vinculada ✅', 'success');
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1599,6 +1671,7 @@ const SettingsModule = (() => {
         showReportModal, submitReport, toggleReportDriverType,
         saveVapidKey, toggleVoice,
         startVoiceEnrollment, recordSample,
-        loadInstallationsList
+        loadInstallationsList,
+        toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId
     };
 })();

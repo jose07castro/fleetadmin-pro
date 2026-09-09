@@ -61,6 +61,7 @@ const I18n = (() => {
             nav_gps: 'GPS & Alertas',
             nav_settings: 'Configuración',
             nav_community: 'Comunidad',
+            nav_balances: 'Balances & Finanzas',
             nav_logout: 'Cerrar Sesión',
             nav_operations: 'Operaciones',
             nav_management: 'Gestión',

@@ -18,7 +18,8 @@ const Router = (() => {
         gps: 'js/modules/gps.js',
         settings: 'js/modules/settings.js',
         community: 'js/modules/community.js',
-        applicants: 'js/modules/applicants.js'
+        applicants: 'js/modules/applicants.js',
+        balances: 'js/modules/balances.js'
     };
 
     // Función auxiliar para importar scripts de forma asíncrona
@@ -45,6 +46,7 @@ const Router = (() => {
         gps: async () => { await _loadModuleScript(modulePaths.gps); return GPSModule.render() },
         settings: async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.render() },
         community: async () => { await _loadModuleScript(modulePaths.community); return CommunityModule.render() },
+        balances: async () => { await _loadModuleScript(modulePaths.balances); return BalancesModule.render() },
         'complete-profile': async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.renderCompleteProfile() },
         apply: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderApply() },
         applicants: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderAdmin() },
