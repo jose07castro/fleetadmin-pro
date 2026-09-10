@@ -25,11 +25,12 @@ const Router = (() => {
     // Función auxiliar para importar scripts de forma asíncrona
     function _loadModuleScript(path) {
         return new Promise((resolve, reject) => {
-            if (document.querySelector(`script[src^="${path}"]`)) {
-                return resolve(); // Ya estaba inyectado
+            const existingScript = document.querySelector(`script[src^="${path}"]`);
+            if (existingScript) {
+                existingScript.remove(); // Remover el script viejo inyectado para forzar la recarga del archivo actualizado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=187`;
+            script.src = `${path}?v=188_${Date.now()}`;
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
