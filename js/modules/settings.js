@@ -114,11 +114,11 @@ const SettingsModule = (() => {
                         <div class="settings-item-desc">Activá el micrófono para registrar alertas por voz</div>
                     </div>
                     <div class="toggle-group">
-                        <button class="toggle-option ${VoiceModule.isEnabled() ? 'active' : ''}"
+                        <button class="toggle-option ${(typeof VoiceModule !== 'undefined' && VoiceModule.isEnabled && VoiceModule.isEnabled()) ? 'active' : ''}"
                             onclick="SettingsModule.toggleVoice(true)">
                             ON
                         </button>
-                        <button class="toggle-option ${!VoiceModule.isEnabled() ? 'active' : ''}"
+                        <button class="toggle-option ${!(typeof VoiceModule !== 'undefined' && VoiceModule.isEnabled && VoiceModule.isEnabled()) ? 'active' : ''}"
                             onclick="SettingsModule.toggleVoice(false)">
                             OFF
                         </button>
@@ -134,7 +134,7 @@ const SettingsModule = (() => {
                         🫵 Enrolar Huella
                     </button>
                 </div>
-                ${VoiceModule.isEnabled() ? `
+                ${(typeof VoiceModule !== 'undefined' && VoiceModule.isEnabled && VoiceModule.isEnabled()) ? `
                 <div style="font-size:11px; color:#22c55e; margin-top:var(--space-2); text-align:right; font-weight:600;">
                     ✅ Escuchando "ALERTA..."
                 </div>

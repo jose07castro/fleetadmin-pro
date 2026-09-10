@@ -47,9 +47,18 @@ const BalancesModule = (() => {
                                 Control de ingresos, egresos y comprobantes de transferencias procesados por IA
                             </p>
                         </div>
-                        <button class="btn btn-primary" onclick="BalancesModule.showAddMovementModal()" style="font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
-                            ➕ Registrar Movimiento
-                        </button>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <button class="btn btn-secondary" onclick="BalancesModule.exportCSV()" style="font-weight:600; font-size:0.88rem;">
+                                📄 Exportar Excel/CSV
+                            </button>
+                            ${sheetId ? `
+                            <button class="btn btn-secondary" onclick="BalancesModule.syncAllSheets()" style="font-weight:600; font-size:0.88rem;">
+                                📊 Sincronizar Historial a Sheet
+                            </button>` : ''}
+                            <button class="btn btn-primary" onclick="BalancesModule.showAddMovementModal()" style="font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                                ➕ Registrar Movimiento
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Estado del Escáner de WhatsApp -->
@@ -406,9 +415,68 @@ const BalancesModule = (() => {
         }
     }
 
-    function _formatCurrency(val) {
-        const num = parseFloat(val) || 0;
-        return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    async function exportCSV() {
+        try {
+            const movements = await _getMovements();
+            if (!movements || movements.length === 0) {
+                Components.showToast('No hay movimientos registrados para exportar', 'warning');
+                return;
+            }
+
+            const headers = ['Fecha', 'Tipo', 'Concepto', 'Emisor_Receptor', 'Origen', 'Monto'];
+            const rows = movements.map(m => {
+                const dateStr = m.date || m.fecha ? new Date(m.date || m.fecha).toLocaleString('es-AR') : '';
+                return [
+                    `"${dateStr}"`,
+                    `"${m.type || m.tipo || ''}"`,
+                    `"${(m.concept || m.concepto || '').replace(/"/g, '""')}"`,
+                    `"${(m.party || m.emisor_receptor || '').replace(/"/g, '""')}"`,
+                    `"${m.source || m.origen || ''}"`,
+                    `"${m.amount || m.monto || 0}"`
+                ];
+            });
+
+            const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `reporte_balances_flota_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            Components.showToast('Reporte CSV descargado correctamente 📄', 'success');
+        } catch (e) {
+            console.error('Error al exportar CSV:', e);
+            Components.showToast('Error al generar el reporte CSV: ' + e.message, 'danger');
+        }
+    }
+
+    async function syncAllSheets() {
+        try {
+            const sheetId = (await DB.getSetting('google_sheet_id')) || '';
+            if (!sheetId) {
+                Components.showToast('No tenés ninguna planilla vinculada. Hace clic en ⚙️ Configurar Escáner.', 'warning');
+                return;
+            }
+            const movements = await _getMovements();
+            if (!movements || movements.length === 0) {
+                Components.showToast('No hay movimientos registrados para sincronizar', 'warning');
+                return;
+            }
+            Components.showToast(`Sincronizando ${movements.length} movimientos a Google Sheets... ⏳`, 'info');
+            let synced = 0;
+            for (const m of movements) {
+                await _syncWithGoogleSheets(sheetId, m);
+                synced++;
+            }
+            Components.showToast(`¡${synced} movimientos enviados a Google Sheets! 📊`, 'success');
+        } catch (e) {
+            console.error('Error al sincronizar historial a Sheets:', e);
+            Components.showToast('Error al sincronizar con Google Sheets', 'danger');
+        }
     }
 
     return {
@@ -417,6 +485,8 @@ const BalancesModule = (() => {
         showAddMovementModal,
         saveMovement,
         deleteMovement,
-        viewReceipt
+        viewReceipt,
+        exportCSV,
+        syncAllSheets
     };
 })();
