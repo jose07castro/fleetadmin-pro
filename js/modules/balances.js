@@ -164,6 +164,9 @@ const BalancesModule = (() => {
                 </div>
             `;
         }
+    function _formatCurrency(amount) {
+        const val = parseFloat(amount || 0);
+        return isNaN(val) ? '0,00' : val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     async function _getMovements() {
