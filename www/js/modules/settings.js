@@ -6,25 +6,26 @@
 const SettingsModule = (() => {
 
     async function render() {
-        const distUnit = Units.getDistanceUnit();
-        const volUnit = Units.getVolumeUnit();
-        const location = await DB.getSetting('location');
-        const scannerEnabled = (await DB.getSetting('whatsapp_scanner_enabled')) ?? true;
-        const whatsappAuthPhone = (await DB.getSetting('whatsapp_authorized_phone')) || '';
-        const googleSheetId = (await DB.getSetting('google_sheet_id')) || '';
+        try {
+            const distUnit = Units.getDistanceUnit();
+            const volUnit = Units.getVolumeUnit();
+            const location = await DB.getSetting('location');
+            const scannerEnabled = (await DB.getSetting('whatsapp_scanner_enabled')) ?? true;
+            const whatsappAuthPhone = (await DB.getSetting('whatsapp_authorized_phone')) || '';
+            const googleSheetId = (await DB.getSetting('google_sheet_id')) || '';
 
-        // Wiring post-mount: load user list for owners
-        setTimeout(() => { 
-            if (Auth.isOwner()) {
-                loadUserList(); 
-                loadInstallationsList();
-            }
-        }, 100);
+            // Wiring post-mount: load user list for owners
+            setTimeout(() => { 
+                if (Auth.isOwner()) {
+                    loadUserList(); 
+                    loadInstallationsList();
+                }
+            }, 100);
 
-        return `
-            <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
-                ⚙️ ${I18n.t('settings_title')}
-            </h2>
+            return `
+                <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
+                    ⚙️ ${I18n.t('settings_title')}
+                </h2>
 
             <!-- Idioma -->
             <div class="settings-section">
@@ -333,6 +334,18 @@ const SettingsModule = (() => {
                 </div>
             </div>
         `;
+        } catch (renderErr) {
+            console.error('🔴 SettingsModule render error:', renderErr);
+            return `
+                <div style="padding:2rem; text-align:center;">
+                    <div style="font-size:2.5rem; margin-bottom:1rem;">⚠️</div>
+                    <h3 style="color:var(--text-primary);">Error al cargar Configuración</h3>
+                    <p style="color:#ef4444; font-weight:bold;">${renderErr.message || renderErr}</p>
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:8px;">${renderErr.stack || ''}</div>
+                    <button class="btn btn-primary" onclick="Router.navigate('settings')" style="margin-top:1rem;">🔄 Reintentar</button>
+                </div>
+            `;
+        }
     }
 
     async function exportData() {

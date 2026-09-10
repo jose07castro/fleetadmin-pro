@@ -138,7 +138,7 @@ const Router = (() => {
                         <div style="text-align:center; padding:2rem; max-width:400px;">
                             <div style="font-size:3rem; margin-bottom:1rem;">⚠️</div>
                             <h2 style="color:#f1f5f9; margin-bottom:0.5rem;">Error de Carga</h2>
-                            <p style="color:#94a3b8; margin-bottom:1rem; font-size:0.9rem;">${renderError.message || 'Error de conexión al servidor'}</p>
+                            <p style="color:#ef4444; margin-bottom:1rem; font-size:0.9rem; font-weight:bold;">${renderError.message || renderError}</p>
                             <button onclick="Router.navigate('${route}')" style="background:linear-gradient(135deg,#6366f1,#06b6d4); color:white; border:none; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer; margin-right:8px;">🔄 Reintentar</button>
                             <button onclick="Router.navigate('login')" style="background:#334155; color:#f1f5f9; border:1px solid #475569; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer;">🚪 Ir a Login</button>
                         </div>
