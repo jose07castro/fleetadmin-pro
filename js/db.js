@@ -174,15 +174,6 @@ const DB = (() => {
         return data.id;
     }
 
-    async function get(storeName, id) {
-        const path = `${fleetPath(storeName)}/${id}`;
-        try {
-            const snap = await fetchWithTimeout(db.ref(path), 5000);
-            let val = snap.val() || undefined;
-            if (val && typeof val === 'object') {
-                val.id = val.id || id;
-            }
-            if (storeName === 'users' && val) val = _normalizeUser(val);
     function _safeJsonParse(str, fallback = undefined) {
         if (!str || str === 'undefined' || str === 'null') return fallback;
         try {
