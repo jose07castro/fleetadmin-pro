@@ -21,10 +21,10 @@ const path = require('path');
 const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 // Modelos estables actuales y validados de Google AI Studio para esta Key (Confirmados por diagnóstico)
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -114,9 +114,9 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline. Intentamos primero el modelo cacheado si existe, de lo contrario los recomendados.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -251,9 +251,9 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
 
     const imageModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
@@ -317,9 +317,9 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15450.00,"party":"MercadoPago - Juan Pérez","concept":"Recaudación de turno","date":"2026-09-09T14:30:00.000Z"}`;
 
     const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
