@@ -183,12 +183,30 @@ const DB = (() => {
                 val.id = val.id || id;
             }
             if (storeName === 'users' && val) val = _normalizeUser(val);
+    function _safeJsonParse(str, fallback = undefined) {
+        if (!str || str === 'undefined' || str === 'null') return fallback;
+        try {
+            return JSON.parse(str);
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    async function get(storeName, id) {
+        const path = `${fleetPath(storeName)}/${id}`;
+        try {
+            const snap = await fetchWithTimeout(db.ref(path), 5000);
+            let val = snap.val() || undefined;
+            if (val && typeof val === 'object') {
+                val.id = val.id || id;
+            }
+            if (storeName === 'users' && val) val = _normalizeUser(val);
             try { if (val) localStorage.setItem(`${CACHE_PREFIX}${storeName}_${id}`, JSON.stringify(val)); } catch(ce) { /* quota */ }
             return val;
         } catch (e) {
             console.warn(`Fallback caché (offline): get(${storeName}, ${id})`);
             const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_${id}`);
-            let val = cached ? JSON.parse(cached) : undefined;
+            let val = _safeJsonParse(cached, undefined);
             if (val && typeof val === 'object') {
                 val.id = val.id || id;
             }
@@ -214,9 +232,9 @@ const DB = (() => {
         } catch (e) {
             console.warn(`Fallback caché (offline): getAll(${storeName})`);
             const cached = localStorage.getItem(`${CACHE_PREFIX}${storeName}_all`);
-            let data = cached ? JSON.parse(cached) : [];
-            if (storeName === 'users') data = data.map(_normalizeUser);
-            return data;
+            let data = _safeJsonParse(cached, []);
+            if (Array.isArray(data) && storeName === 'users') data = data.map(_normalizeUser);
+            return Array.isArray(data) ? data : [];
         }
     }
 
@@ -245,11 +263,13 @@ const DB = (() => {
         try {
             const snap = await fetchWithTimeout(db.ref(path), 5000);
             const val = snap.val();
-            localStorage.setItem(`${CACHE_PREFIX}setting_${key}`, JSON.stringify(val));
+            if (val !== undefined && val !== null) {
+                try { localStorage.setItem(`${CACHE_PREFIX}setting_${key}`, JSON.stringify(val)); } catch(ce){}
+            }
             return val;
         } catch (e) {
             const cached = localStorage.getItem(`${CACHE_PREFIX}setting_${key}`);
-            return cached ? JSON.parse(cached) : undefined;
+            return _safeJsonParse(cached, undefined);
         }
     }
 
@@ -263,11 +283,13 @@ const DB = (() => {
         try {
             const snap = await fetchWithTimeout(db.ref(path), 5000);
             const val = snap.val();
-            localStorage.setItem(`${CACHE_PREFIX}prefs_${userId}`, JSON.stringify(val || {}));
+            if (val) {
+                try { localStorage.setItem(`${CACHE_PREFIX}prefs_${userId}`, JSON.stringify(val)); } catch(ce){}
+            }
             return val || {};
         } catch (e) {
             const cached = localStorage.getItem(`${CACHE_PREFIX}prefs_${userId}`);
-            return cached ? JSON.parse(cached) : {};
+            return _safeJsonParse(cached, {});
         }
     }
 
