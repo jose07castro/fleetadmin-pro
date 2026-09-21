@@ -162,7 +162,8 @@ app.post('/api/bot/test-alert', async (req, res) => {
             approximate: false
         };
         await db.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-        res.json({ ok: true, fleetId, alertId, message: `✅ Alerta de prueba guardada en fleets/${fleetId}/traffic_alerts/${alertId}` });
+        await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
+        res.json({ ok: true, fleetId, alertId, message: `✅ Alerta de prueba guardada en fleets/${fleetId}/traffic_alerts/${alertId} y global_traffic_alerts` });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }

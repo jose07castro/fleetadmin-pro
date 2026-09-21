@@ -9,6 +9,11 @@ const BalancesModule = (() => {
     let _currentPeriodFilter = 'all'; // 'all', 'today', 'week', 'month'
     let _currentTypeFilter = 'all';   // 'all', 'ingreso', 'egreso'
 
+    function _formatCurrency(amount) {
+        const val = parseFloat(amount || 0);
+        return isNaN(val) ? '0,00' : val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     async function render() {
         try {
             const movements = await _getMovements();
@@ -164,10 +169,8 @@ const BalancesModule = (() => {
                 </div>
             `;
         }
-    function _formatCurrency(amount) {
-        const val = parseFloat(amount || 0);
-        return isNaN(val) ? '0,00' : val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+
 
     async function _getMovements() {
         if (typeof DB === 'undefined') return [];

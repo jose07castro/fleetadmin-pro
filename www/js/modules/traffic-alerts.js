@@ -124,7 +124,8 @@
 
         try {
             await firebaseDB.ref(`fleets/${fleetId}/traffic_alerts/${alertId}`).set(alertData);
-            console.log('✅ TrafficAlerts: Alerta compartida con la flota.');
+            await firebaseDB.ref(`global_traffic_alerts/${alertId}`).set(alertData);
+            console.log('✅ TrafficAlerts: Alerta compartida con la flota y nodo global.');
             
             // Notificar localmente si estamos en la app
             if (typeof Components !== 'undefined' && Components.showToast) {
@@ -291,8 +292,9 @@
             // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
 
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 30 segundos.
-            const isVeryRecent = alert.timestamp && (Date.now() - alert.timestamp) < 30000;
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 2 minutos / desfase de reloj.
+            const timeDiff = alert.timestamp ? Math.abs(Date.now() - alert.timestamp) : 0;
+            const isVeryRecent = alert.timestamp && (timeDiff < 120000 || alert.timestamp >= _appStartTime - 10000);
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 return; 

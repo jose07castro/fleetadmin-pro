@@ -97,6 +97,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // Firebase Direct
     private DatabaseReference dbRef;
     private DatabaseReference alertsRef;
+    private DatabaseReference globalAlertsRef;
     private String userId;
     private String driverName;
     private String fleetId;
@@ -564,14 +565,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                             loadedCount++;
 
                             // Immediate announcement check
-                            if (alert.timestamp >= serviceStartTime - 5000 && !spokenAlertIds.contains(id)) {
+                            boolean isNewOrRecent = alert.timestamp == 0 || alert.timestamp >= serviceStartTime - 30000 || Math.abs(now - alert.timestamp) < 120000;
+                            if (isNewOrRecent && !spokenAlertIds.contains(id)) {
                                 // Skip native TTS if the app is in the foreground
                                 if (isAppInForeground) {
                                     Log.i(TAG, "📱 [ALERTS] Skipping native TTS because app is in the foreground: id=" + id);
-                                } else if (alert.audioUrl == null || alert.audioUrl.isEmpty()) {
-                                    speakImmediateAlert(alert);
                                 } else {
-                                    Log.i(TAG, "🎵 [ALERTS] Skipping native TTS for audio alert: id=" + id);
+                                    speakImmediateAlert(alert);
                                 }
                                 spokenAlertIds.add(id);
                                 if (spokenAlertIds.size() > 200) {
@@ -595,17 +595,24 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void startTrafficAlertsListener() {
         Log.i(TAG, "📡 [ALERTS] startTrafficAlertsListener. fleetId: " + fleetId);
-        if (fleetId == null || fleetId.isEmpty()) {
-            Log.w(TAG, "⚠️ [ALERTS] Cannot start traffic alerts listener: fleetId is null or empty!");
-            return;
-        }
         if (alertsRef != null) {
-            Log.i(TAG, "📡 [ALERTS] Removing previous database listener");
+            Log.i(TAG, "📡 [ALERTS] Removing previous fleet database listener");
             alertsRef.removeEventListener(alertsListener);
         }
-        alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
-        alertsRef.addValueEventListener(alertsListener);
-        Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
+        if (globalAlertsRef != null) {
+            Log.i(TAG, "📡 [ALERTS] Removing previous global database listener");
+            globalAlertsRef.removeEventListener(alertsListener);
+        }
+
+        globalAlertsRef = FirebaseDatabase.getInstance().getReference("global_traffic_alerts");
+        globalAlertsRef.addValueEventListener(alertsListener);
+        Log.i(TAG, "📡 [ALERTS] Listening on global_traffic_alerts");
+
+        if (fleetId != null && !fleetId.isEmpty()) {
+            alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
+            alertsRef.addValueEventListener(alertsListener);
+            Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
+        }
     }
 
     // ================================================================
