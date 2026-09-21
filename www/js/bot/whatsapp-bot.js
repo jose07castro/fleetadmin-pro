@@ -1517,10 +1517,25 @@ const WhatsappBot = (() => {
                                 }
 
                                 const sheetId = fleetMatch.settings?.google_sheet_id;
-                                        }
-                                    } catch(sErr) {
-                                        console.warn(`⚠️ [RECEIPT-SHEETS] Error sincronizando con Google Sheets:`, sErr.message);
+                                try {
+                                    const targetUrl = (sheetId || '').trim();
+                                    if (targetUrl.startsWith('https://script.google.com/')) {
+                                        await axios.post(targetUrl, JSON.stringify(newMov), {
+                                            headers: { 'Content-Type': 'application/json' },
+                                            maxRedirects: 5,
+                                            timeout: 10000
+                                        });
+                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento $${newMov.amount} sincronizado con Google Sheet ✅`);
+                                    } else {
+                                        const resSheet = await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
+                                            google_sheet_id: targetUrl,
+                                            fleetId: fleetMatch.fleetId,
+                                            movement: newMov
+                                        }, { timeout: 15000 });
+                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a /api/sheets/append. Res:`, resSheet.data?.message);
                                     }
+                                } catch(sErr) {
+                                    console.warn(`⚠️ [RECEIPT-SHEETS] Error sincronizando con Google Sheets:`, sErr.message);
                                 }
 
                                 const replyMsg = `✅ *Comprobante Procesado Exitosamente*\n\n` +
