@@ -1481,13 +1481,24 @@ const WhatsappBot = (() => {
                                 const sheetId = fleetMatch.settings?.google_sheet_id;
                                 if (sheetId && sheetId.trim()) {
                                     try {
-                                        await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
-                                            google_sheet_id: sheetId,
-                                            movement: newMov
-                                        }, { timeout: 5000 });
-                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a sincronizar con Sheet.`);
+                                        const targetUrl = sheetId.trim();
+                                        if (targetUrl.startsWith('https://script.google.com/')) {
+                                            await axios.post(targetUrl, JSON.stringify(newMov), {
+                                                headers: { 'Content-Type': 'application/json' },
+                                                maxRedirects: 5,
+                                                timeout: 10000
+                                            });
+                                            console.log(`📊 [RECEIPT-SHEETS] Movimiento $${newMov.amount} sincronizado con Google Sheet ✅`);
+                                        } else {
+                                            await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
+                                                google_sheet_id: targetUrl,
+                                                sheetId: targetUrl,
+                                                movement: newMov
+                                            }, { timeout: 10000 });
+                                            console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a /api/sheets/append.`);
+                                        }
                                     } catch(sErr) {
-                                        console.warn(`⚠️ [RECEIPT-SHEETS] Error llamando a endpoint de Google Sheets:`, sErr.message);
+                                        console.warn(`⚠️ [RECEIPT-SHEETS] Error sincronizando con Google Sheets:`, sErr.message);
                                     }
                                 }
 

@@ -246,32 +246,71 @@ app.get('/api/version-check', async (req, res) => {
 // Endpoint para sincronizar movimientos a Google Sheets (Webhook/AppScript)
 app.post('/api/sheets/append', async (req, res) => {
     try {
-        const { google_sheet_id, movement } = req.body;
-        if (!google_sheet_id || !movement) {
-            return res.status(400).json({ ok: false, error: 'google_sheet_id y movement son requeridos' });
+        const sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
+        const movement = req.body.movement;
+
+        if (!sheetId || !movement) {
+            return res.status(400).json({ ok: false, error: 'google_sheet_id (o sheetId) y movement son requeridos' });
         }
 
-        console.log(`📊 [GOOGLE-SHEETS] Sincronizando movimiento ${movement.id} con Google Sheet/Webhook: ${google_sheet_id}`);
+        console.log(`📊 [GOOGLE-SHEETS] Sincronizando movimiento ${movement.id} con Google Sheet/Webhook: ${sheetId}`);
 
-        let targetUrl = google_sheet_id.trim();
-        if (targetUrl.startsWith('https://script.google.com/')) {
+        if (sheetId.includes('docs.google.com/spreadsheets')) {
+            return res.status(400).json({
+                ok: false,
+                error: 'Debes pegar la URL del Webhook de Apps Script (https://script.google.com/macros/s/...) creado desde tu planilla. Presiona "📋 Ver Código para Google Sheets" para ver las instrucciones.'
+            });
+        }
+
+        if (sheetId.startsWith('https://script.google.com/')) {
             const axios = require('axios');
-            const sheetRes = await axios.post(targetUrl, movement, { timeout: 10000 });
-            return res.json({ ok: true, message: 'Fila agregada vía AppScript Webhook', data: sheetRes.data });
+            const response = await axios.post(sheetId, JSON.stringify(movement), {
+                headers: { 'Content-Type': 'application/json' },
+                maxRedirects: 5,
+                timeout: 15000
+            });
+            return res.json({ ok: true, message: 'Fila agregada vía Google Apps Script Webhook ✅', data: response.data });
         } else {
-            const db = WhatsappBot.getDb();
-            if (db) {
-                await db.ref('sheets_sync_queue').push({
-                    sheetId: google_sheet_id,
-                    movement,
-                    timestamp: Date.now()
-                });
-            }
-            return res.json({ ok: true, message: 'Movimiento registrado en cola de sincronización para Google Sheets: ' + google_sheet_id });
+            return res.status(400).json({
+                ok: false,
+                error: 'URL de Google Sheets inválida. Debe ser una URL de Webhook que comience con https://script.google.com/macros/s/...'
+            });
         }
     } catch (e) {
         console.error('❌ [GOOGLE-SHEETS] Error al sincronizar con Google Sheets:', e.message);
         res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint para probar conexión con Google Sheets Webhook
+app.post('/api/sheets/test', async (req, res) => {
+    try {
+        const sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
+        if (!sheetId) {
+            return res.status(400).json({ ok: false, error: 'google_sheet_id es requerido' });
+        }
+        if (!sheetId.startsWith('https://script.google.com/')) {
+            return res.status(400).json({ ok: false, error: 'Debe ser una URL de Webhook de Apps Script (https://script.google.com/macros/s/...)' });
+        }
+        const testMovement = {
+            id: 'test_' + Date.now(),
+            type: 'Ingreso',
+            amount: 100.00,
+            concept: 'Prueba de Conexión FleetAdmin Pro',
+            party: 'Sistema FleetAdmin',
+            date: new Date().toISOString(),
+            source: 'Prueba manual'
+        };
+        const axios = require('axios');
+        const response = await axios.post(sheetId, JSON.stringify(testMovement), {
+            headers: { 'Content-Type': 'application/json' },
+            maxRedirects: 5,
+            timeout: 15000
+        });
+        return res.json({ ok: true, message: '¡Conexión exitosa! Fila de prueba enviada a tu Google Sheet. 📊', data: response.data });
+    } catch (e) {
+        console.error('❌ [GOOGLE-SHEETS-TEST] Error probando Google Sheets:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
     }
 });
 

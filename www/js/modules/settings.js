@@ -278,16 +278,24 @@ const SettingsModule = (() => {
                     </div>
                     <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
                         <div>
-                            <div class="settings-item-label">Google Sheet ID / URL (Opcional)</div>
-                            <div class="settings-item-desc">Sincroniza cada movimiento escaneado con tu planilla personal de Google Sheets</div>
+                            <div class="settings-item-label">📊 Google Sheets Webhook URL (Sincronización Automática)</div>
+                            <div class="settings-item-desc">Sincroniza cada transferencia escaneada o movimiento financiero en tiempo real con tu planilla de Google Sheets.</div>
                         </div>
-                        <div style="display:flex; gap:var(--space-2); align-items:center;">
+                        <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">
                             <input type="text" class="form-input" id="googleSheetIdInput"
-                                placeholder="ID o URL de la planilla"
+                                placeholder="https://script.google.com/macros/s/.../exec"
                                 value="${googleSheetId}"
-                                style="flex:1; font-size:14px !important; font-weight:500 !important;">
+                                style="flex:1; min-width:240px; font-size:14px !important; font-weight:500 !important;">
                             <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveGoogleSheetId()" style="white-space:nowrap;">
                                 💾 Guardar
+                            </button>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.showGoogleSheetsScriptModal()" style="font-weight:600; font-size:12px;">
+                                📋 Ver Código Google Apps Script & Instrucciones
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.testGoogleSheetsConnection()" style="font-weight:600; font-size:12px; color:#22c55e;">
+                                🧪 Probar Conexión
                             </button>
                         </div>
                     </div>
@@ -1675,6 +1683,87 @@ const SettingsModule = (() => {
         Components.showToast('Planilla de Google Sheets vinculada ✅', 'success');
     }
 
+    function showGoogleSheetsScriptModal() {
+        const scriptCode = `function doPost(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    
+    // Crear encabezados si la planilla está vacía
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["ID Movimiento", "Fecha", "Tipo", "Monto ($)", "Concepto", "Emisor / Receptor", "Origen"]);
+      sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#1e293b").setFontColor("#ffffff");
+    }
+    
+    var data = JSON.parse(e.postData.contents);
+    sheet.appendRow([
+      data.id || '',
+      data.date ? new Date(data.date).toLocaleString("es-AR") : new Date().toLocaleString("es-AR"),
+      data.type || 'Ingreso',
+      data.amount || 0,
+      data.concept || '',
+      data.party || '',
+      data.source || 'WhatsApp Bot'
+    ]);
+    
+    return ContentService.createTextOutput(JSON.stringify({ result: "success" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ result: "error", error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+        Components.showModal(
+            '📊 Conectar Google Sheets en 4 pasos sencillos',
+            `
+                <div style="font-size:0.9rem; line-height:1.5;">
+                    <p>Para crear y conectar tu planilla de Google Sheets automáticamente con las transferencias de WhatsApp y Balances:</p>
+                    <ol style="margin-left:20px; margin-bottom:15px; color:var(--text-primary);">
+                        <li>Abre una nueva planilla en Google Sheets (<a href="https://sheets.new" target="_blank" style="color:var(--color-primary-light); font-weight:bold; text-decoration:underline;">sheets.new</a>).</li>
+                        <li>En el menú superior, ve a <strong>Extensiones &gt; Apps Script</strong>.</li>
+                        <li>Borra el código existente y pega el siguiente código:</li>
+                    </ol>
+                    <div style="position:relative; margin-bottom:15px;">
+                        <textarea id="appsScriptCodeArea" readonly style="width:100%; height:180px; font-family:monospace; font-size:12px; background:#0f172a; color:#f8fafc; padding:10px; border-radius:8px; border:1px solid #334155;">${scriptCode}</textarea>
+                        <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('appsScriptCodeArea').value); Components.showToast('¡Código copiado al portapapeles! 📋', 'success');" style="position:absolute; top:8px; right:8px; font-weight:700;">📋 Copiar Código</button>
+                    </div>
+                    <ol start="4" style="margin-left:20px; color:var(--text-primary);">
+                        <li>Haz clic en el botón azul <strong>Implementar &gt; Nueva implementación</strong>.</li>
+                        <li>En <i>Seleccionar tipo</i> elige <strong>Aplicación web</strong>.</li>
+                        <li>En <i>¿Quién tiene acceso?</i> selecciona <strong>Cualquier persona (Anyone)</strong>.</li>
+                        <li>Haz clic en <strong>Implementar</strong>, autoriza los permisos y <strong>copia la URL de la Aplicación web</strong>.</li>
+                        <li>Pega esa URL en el campo <i>Google Sheets Webhook URL</i> y presiona Guardar.</li>
+                    </ol>
+                </div>
+            `,
+            `<button class="btn btn-primary" onclick="Components.closeModal()">¡Entendido!</button>`
+        );
+    }
+
+    async function testGoogleSheetsConnection() {
+        const sheetId = document.getElementById('googleSheetIdInput')?.value.trim() || await DB.getSetting('google_sheet_id');
+        if (!sheetId) {
+            Components.showToast('Primero ingresá y guardá la URL del Webhook de Google Sheets.', 'warning');
+            return;
+        }
+        Components.showToast('Enviando fila de prueba a Google Sheets... ⏳', 'info');
+        try {
+            const res = await fetch('/api/sheets/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ google_sheet_id: sheetId })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast('¡Conexión Exitosa! Revisá tu planilla de Google Sheets 📊✅', 'success');
+            } else {
+                Components.showToast('Error: ' + (data.error || 'No se pudo conectar'), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error al probar conexión: ' + e.message, 'danger');
+        }
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1685,6 +1774,7 @@ const SettingsModule = (() => {
         saveVapidKey, toggleVoice,
         startVoiceEnrollment, recordSample,
         loadInstallationsList,
-        toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId
+        toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId,
+        showGoogleSheetsScriptModal, testGoogleSheetsConnection
     };
 })();

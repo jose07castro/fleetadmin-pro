@@ -55,6 +55,9 @@ const BalancesModule = (() => {
                             <button class="btn btn-secondary" onclick="BalancesModule.syncAllSheets()" style="font-weight:600; font-size:0.88rem;">
                                 📊 Sincronizar Historial a Sheet
                             </button>` : ''}
+                            <button class="btn btn-secondary" onclick="SettingsModule.showGoogleSheetsScriptModal()" style="font-weight:600; font-size:0.88rem;">
+                                📋 Conectar Google Sheet
+                            </button>
                             <button class="btn btn-primary" onclick="BalancesModule.showAddMovementModal()" style="font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
                                 ➕ Registrar Movimiento
                             </button>
@@ -407,12 +410,17 @@ const BalancesModule = (() => {
 
     async function _syncWithGoogleSheets(sheetId, movement) {
         try {
-            await fetch('/api/sheets/append', {
+            const res = await fetch('/api/sheets/append', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sheetId, movement })
+                body: JSON.stringify({ google_sheet_id: sheetId, sheetId, movement })
             });
-            console.log('📊 Sincronizado con Google Sheets ✅');
+            const data = await res.json();
+            if (data.ok) {
+                console.log('📊 Sincronizado con Google Sheets ✅');
+            } else {
+                console.warn('⚠️ Error al enviar a Google Sheets:', data.error);
+            }
         } catch (e) {
             console.warn('⚠️ Error al enviar a Google Sheets:', e);
         }
