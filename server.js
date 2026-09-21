@@ -258,19 +258,42 @@ async function getGoogleAccessToken() {
         let certData = null;
         let possiblePaths = [
             path.join(__dirname, 'fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
-            path.join(__dirname, '../../fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json')
+            path.join(__dirname, '../../fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
+            path.join(__dirname, 'data/firebase-service-account.json')
         ];
 
         for (const p of possiblePaths) {
             if (fs.existsSync(p)) {
                 try { certData = JSON.parse(fs.readFileSync(p, 'utf8')); break; } catch(e){}
             }
+            if (fs.existsSync(p + '.base64')) {
+                try {
+                    const b64Str = fs.readFileSync(p + '.base64', 'utf8').trim();
+                    certData = JSON.parse(Buffer.from(b64Str, 'base64').toString('utf8'));
+                    break;
+                } catch(e){}
+            }
         }
 
         if (!certData && process.env.FIREBASE_SERVICE_ACCOUNT) {
+            const raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
             try {
-                certData = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8'));
+                if (raw.startsWith('{')) {
+                    certData = JSON.parse(raw);
+                } else {
+                    certData = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+                }
             } catch(e){}
+        }
+
+        if (!certData) {
+            const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^"|"$/g, '');
+            let privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^"|"$/g, '');
+            if (privateKey) privateKey = privateKey.replace(/\\n/g, '\n');
+
+            if (clientEmail && privateKey.length > 50) {
+                certData = { client_email: clientEmail, private_key: privateKey };
+            }
         }
 
         if (!certData || !certData.client_email || !certData.private_key) {
@@ -320,67 +343,76 @@ async function autoCreateGoogleSpreadsheet(fleetId = 'jose07') {
     const axios = require('axios');
 
     // 1. Crear la planilla vía Google Sheets REST API
-    const createRes = await axios.post('https://sheets.googleapis.com/v4/spreadsheets', {
-        properties: {
-            title: `FleetAdmin Pro - Balances y Comprobantes (${new Date().toLocaleDateString('es-AR')})`
-        },
-        sheets: [
-            {
-                properties: { title: 'Movimientos' },
-                data: [
-                    {
-                        startRow: 0,
-                        startColumn: 0,
-                        rowData: [
-                            {
-                                values: [
-                                    { userEnteredValue: { stringValue: "ID Movimiento" } },
-                                    { userEnteredValue: { stringValue: "Fecha" } },
-                                    { userEnteredValue: { stringValue: "Tipo" } },
-                                    { userEnteredValue: { stringValue: "Monto ($)" } },
-                                    { userEnteredValue: { stringValue: "Concepto" } },
-                                    { userEnteredValue: { stringValue: "Emisor / Receptor" } },
-                                    { userEnteredValue: { stringValue: "Origen" } }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }, {
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000
-    });
-
-    const spreadsheetId = createRes.data?.spreadsheetId;
-    const spreadsheetUrl = createRes.data?.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-
-    if (!spreadsheetId) {
-        throw new Error('Google Sheets API no devolvió ID de la planilla.');
-    }
-
-    // 2. Hacer pública la planilla en Google Drive (permiso de lectura/escritura)
     try {
-        await axios.post(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`, {
-            role: 'writer',
-            type: 'anyone'
+        const createRes = await axios.post('https://sheets.googleapis.com/v4/spreadsheets', {
+            properties: {
+                title: `FleetAdmin Pro - Balances y Comprobantes (${new Date().toLocaleDateString('es-AR')})`
+            },
+            sheets: [
+                {
+                    properties: { title: 'Movimientos' },
+                    data: [
+                        {
+                            startRow: 0,
+                            startColumn: 0,
+                            rowData: [
+                                {
+                                    values: [
+                                        { userEnteredValue: { stringValue: "ID Movimiento" } },
+                                        { userEnteredValue: { stringValue: "Fecha" } },
+                                        { userEnteredValue: { stringValue: "Tipo" } },
+                                        { userEnteredValue: { stringValue: "Monto ($)" } },
+                                        { userEnteredValue: { stringValue: "Concepto" } },
+                                        { userEnteredValue: { stringValue: "Emisor / Receptor" } },
+                                        { userEnteredValue: { stringValue: "Origen" } }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         }, {
             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-            timeout: 10000
+            timeout: 15000
         });
-    } catch(permErr) {
-        console.warn('⚠️ No se pudo compartir públicamente la planilla:', permErr.message);
-    }
 
-    // 3. Guardar URL en la base de datos Firebase de la flota
-    const db = WhatsappBot.getDb();
-    if (db && fleetId) {
-        await db.ref(`fleets/${fleetId}/settings/google_sheet_id`).set(spreadsheetUrl);
-    }
+        const spreadsheetId = createRes.data?.spreadsheetId;
+        const spreadsheetUrl = createRes.data?.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
-    console.log(`✨ [GOOGLE-SHEETS] Planilla creada y configurada con éxito: ${spreadsheetUrl}`);
-    return { spreadsheetId, spreadsheetUrl };
+        if (!spreadsheetId) {
+            throw new Error('Google Sheets API no devolvió ID de la planilla.');
+        }
+
+        // 2. Hacer pública la planilla en Google Drive (permiso de lectura/escritura)
+        try {
+            await axios.post(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`, {
+                role: 'writer',
+                type: 'anyone'
+            }, {
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                timeout: 10000
+            });
+        } catch(permErr) {
+            console.warn('⚠️ No se pudo compartir públicamente la planilla:', permErr.message);
+        }
+
+        // 3. Guardar URL en la base de datos Firebase de la flota
+        const db = WhatsappBot.getDb();
+        if (db && fleetId) {
+            await db.ref(`fleets/${fleetId}/settings/google_sheet_id`).set(spreadsheetUrl);
+        }
+
+        console.log(`✨ [GOOGLE-SHEETS] Planilla creada y configurada con éxito: ${spreadsheetUrl}`);
+        return { spreadsheetId, spreadsheetUrl };
+    } catch(apiErr) {
+        console.error('❌ [GOOGLE-SHEETS-API] Error al crear la planilla:', apiErr.response?.data || apiErr.message);
+        const gMessage = apiErr.response?.data?.error?.message || apiErr.message;
+        if (gMessage.includes('Google Sheets API') || gMessage.includes('disabled')) {
+            throw new Error(`Google Sheets API no está activada en Google Cloud Console (Project ID: 289124272326). Para usar la creación directa, activá la API en Google Cloud Console, o vinculá tu planilla usando la URL de Apps Script Webhook (botón Ver Apps Script).`);
+        }
+        throw new Error(`Error de Google API: ${gMessage}`);
+    }
 }
 
 // Endpoint para auto-crear planilla de Google Sheets
