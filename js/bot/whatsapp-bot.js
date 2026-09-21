@@ -1008,14 +1008,18 @@ const WhatsappBot = (() => {
 
                 for (const msg of messages) {
                     try {
-                    // VALIDACIÓN DE FRESCURA: Ignorar mensajes más viejos de 20 minutos 
-                    // para evitar procesar toneladas de alertas fantasma viejas tras una caída.
+                    // VALIDACIÓN DE FRESCURA PARA ALERTAS DE TRÁNSITO:
+                    // Ignorar reportes de voz/texto antiguos de más de 20 min para no ensuciar el mapa.
+                    // IMPORTANTE: Los comprobantes e imágenes de transferencias NO tienen límite de fecha (escaneo histórico).
+                    const mRaw = msg.message;
+                    const hasImageMsg = !!(mRaw && (mRaw.imageMessage || (typeof _recursiveFindImage === 'function' && _recursiveFindImage(mRaw, 0))));
+                    
                     const msgSec = Number(msg.messageTimestamp) || 0;
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    if (msgSec > 0 && ageSec > 1200) { // 20 minutos (1200 seg)
-                        console.log(`⏭️ [SKIP] Mensaje antiguo de buffer saltado (${ageSec}s de antigüedad).`);
+                    if (msgSec > 0 && ageSec > 1200 && !hasImageMsg) {
+                        console.log(`⏭️ [SKIP] Mensaje de texto/voz antiguo saltado (${ageSec}s de antigüedad).`);
                         continue;
                     }
 
@@ -1425,6 +1429,40 @@ const WhatsappBot = (() => {
                         }
                     }
 
+                    // --- COMANDO ADMIN/USUARIO: .escanear / .scan ---
+                    if (text.trim().toLowerCase() === '.escanear' || text.trim().toLowerCase() === '.scan') {
+                        const sender = msg.key.participant || msg.key.remoteJid;
+                        if (msg.key.fromMe || isFromTrustedAdmin) {
+                            console.log(`🔍 [ESCANEAR] Iniciando escaneo de comprobantes por comando para chat: ${jid}`);
+                            await sock.sendMessage(jid, { 
+                                text: '🔍 *FleetAdmin Pro:* Escaneando comprobantes e imágenes de transferencias...\n\nSincronizando automáticamente con la planilla de Google Sheets 📊' 
+                            }, { quoted: msg });
+
+                            try {
+                                const senderNum = (sender || '').replace(/[^0-9]/g, '');
+                                const fleetMatch = await _findFleetForPhone(senderNum);
+                                const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
+
+                                await axios.post(`http://localhost:${process.env.PORT || 10000}/api/bot/scan-historical`, { fleetId }, { timeout: 30000 });
+                                
+                                const dbInstance = db;
+                                let sheetUrl = null;
+                                if (dbInstance) {
+                                    const snap = await dbInstance.ref(`fleets/${fleetId}/settings/google_sheet_id`).once('value');
+                                    sheetUrl = snap.val();
+                                }
+
+                                const replyText = `✅ *Escaneo e Integración Completados*\n\n` +
+                                                  `📊 *Planilla de Google Sheets:* ${sheetUrl || 'Vinculada'}\n\n` +
+                                                  `_Todas las transferencias procesadas han sido enviadas a la planilla de Google Sheets._ 🚗💰`;
+                                await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                            } catch(scanErr) {
+                                await sock.sendMessage(jid, { text: '⚠️ Error durante el escaneo: ' + scanErr.message }, { quoted: msg });
+                            }
+                            continue;
+                        }
+                    }
+
                     // --- 2. PROCESAR IMAGEN DE COMPROBANTE DE COMPRA/TRANSFERENCIA / ALERTA ---
                     if (isImage && GEMINI_KEY) {
                         try {
@@ -1479,27 +1517,26 @@ const WhatsappBot = (() => {
                                 }
 
                                 const sheetId = fleetMatch.settings?.google_sheet_id;
-                                if (sheetId && sheetId.trim()) {
-                                    try {
-                                        const targetUrl = sheetId.trim();
-                                        if (targetUrl.startsWith('https://script.google.com/')) {
-                                            await axios.post(targetUrl, JSON.stringify(newMov), {
-                                                headers: { 'Content-Type': 'application/json' },
-                                                maxRedirects: 5,
-                                                timeout: 10000
-                                            });
-                                            console.log(`📊 [RECEIPT-SHEETS] Movimiento $${newMov.amount} sincronizado con Google Sheet ✅`);
-                                        } else {
-                                            await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
-                                                google_sheet_id: targetUrl,
-                                                sheetId: targetUrl,
-                                                movement: newMov
-                                            }, { timeout: 10000 });
-                                            console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a /api/sheets/append.`);
-                                        }
-                                    } catch(sErr) {
-                                        console.warn(`⚠️ [RECEIPT-SHEETS] Error sincronizando con Google Sheets:`, sErr.message);
+                                try {
+                                    const targetUrl = (sheetId || '').trim();
+                                    if (targetUrl.startsWith('https://script.google.com/')) {
+                                        await axios.post(targetUrl, JSON.stringify(newMov), {
+                                            headers: { 'Content-Type': 'application/json' },
+                                            maxRedirects: 5,
+                                            timeout: 10000
+                                        });
+                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento $${newMov.amount} sincronizado con Google Sheet ✅`);
+                                    } else {
+                                        // Si no hay sheetId o es URL de Spreadsheet, invocar /api/sheets/append (crea la planilla automáticamente si falta)
+                                        const resSheet = await axios.post(`http://localhost:${process.env.PORT || 10000}/api/sheets/append`, {
+                                            google_sheet_id: targetUrl,
+                                            fleetId: fleetMatch.fleetId,
+                                            movement: newMov
+                                        }, { timeout: 15000 });
+                                        console.log(`📊 [RECEIPT-SHEETS] Movimiento enviado a /api/sheets/append. Res:`, resSheet.data?.message);
                                     }
+                                } catch(sErr) {
+                                    console.warn(`⚠️ [RECEIPT-SHEETS] Error sincronizando con Google Sheets:`, sErr.message);
                                 }
 
                                 const replyMsg = `✅ *Comprobante Procesado Exitosamente*\n\n` +

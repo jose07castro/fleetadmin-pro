@@ -278,12 +278,12 @@ const SettingsModule = (() => {
                     </div>
                     <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
                         <div>
-                            <div class="settings-item-label">📊 Google Sheets Webhook URL (Sincronización Automática)</div>
+                            <div class="settings-item-label">📊 Google Sheets & Hoja de Cálculo (Sincronización Automática)</div>
                             <div class="settings-item-desc">Sincroniza cada transferencia escaneada o movimiento financiero en tiempo real con tu planilla de Google Sheets.</div>
                         </div>
                         <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">
                             <input type="text" class="form-input" id="googleSheetIdInput"
-                                placeholder="https://script.google.com/macros/s/.../exec"
+                                placeholder="URL o ID de planilla (ej: https://docs.google.com/spreadsheets/d/...)"
                                 value="${googleSheetId}"
                                 style="flex:1; min-width:240px; font-size:14px !important; font-weight:500 !important;">
                             <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveGoogleSheetId()" style="white-space:nowrap;">
@@ -291,8 +291,14 @@ const SettingsModule = (() => {
                             </button>
                         </div>
                         <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                            <button class="btn btn-success btn-sm" onclick="SettingsModule.autoCreateGoogleSheet()" style="font-weight:700; font-size:12px; background:#10b981; border-color:#10b981; color:#fff;">
+                                ✨ Auto-Crear Google Sheet
+                            </button>
+                            <button class="btn btn-warning btn-sm" onclick="SettingsModule.scanHistoricalWhatsApp()" style="font-weight:700; font-size:12px; background:#f59e0b; border-color:#f59e0b; color:#fff;">
+                                🔍 Escanear WhatsApp Histórico
+                            </button>
                             <button class="btn btn-secondary btn-sm" onclick="SettingsModule.showGoogleSheetsScriptModal()" style="font-weight:600; font-size:12px;">
-                                📋 Ver Código Google Apps Script & Instrucciones
+                                📋 Ver Apps Script Webhook
                             </button>
                             <button class="btn btn-secondary btn-sm" onclick="SettingsModule.testGoogleSheetsConnection()" style="font-weight:600; font-size:12px; color:#22c55e;">
                                 🧪 Probar Conexión
@@ -1764,6 +1770,80 @@ const SettingsModule = (() => {
         }
     }
 
+    async function autoCreateGoogleSheet() {
+        Components.showToast('Creando planilla de Google Sheets automáticamente... ⏳', 'info');
+        try {
+            const res = await fetch('/api/sheets/auto-create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fleetId: (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07' })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                await DB.setSetting('google_sheet_id', data.spreadsheetUrl);
+                const input = document.getElementById('googleSheetIdInput');
+                if (input) input.value = data.spreadsheetUrl;
+                
+                Components.showModal(
+                    '📊 Planilla de Google Sheets Creada',
+                    `
+                    <div style="text-align:center; padding:10px;">
+                        <div style="font-size:3rem; margin-bottom:10px;">✨📊</div>
+                        <h3 style="margin-bottom:10px; color:var(--text-primary);">¡Tu hoja de cálculo fue creada con éxito!</h3>
+                        <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:15px;">
+                            Se configuraron automáticamente todas las columnas (ID, Fecha, Tipo, Monto, Concepto, Emisor, Origen). Todos los comprobantes escaneados por WhatsApp se guardarán aquí.
+                        </p>
+                        <a href="${data.spreadsheetUrl}" target="_blank" class="btn btn-success" style="display:inline-block; font-weight:700; padding:10px 20px; background:#10b981; border-color:#10b981; color:#fff; text-decoration:none; border-radius:8px;">
+                            🔗 Abrir Google Sheet
+                        </a>
+                    </div>
+                    `,
+                    `<button class="btn btn-primary" onclick="Components.closeModal()">¡Entendido!</button>`
+                );
+            } else {
+                Components.showToast('Error al crear planilla: ' + (data.error || 'Error desconocido'), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error al conectar con el servidor: ' + e.message, 'danger');
+        }
+    }
+
+    async function scanHistoricalWhatsApp() {
+        Components.showToast('Iniciando escaneo automático de WhatsApp histórico... 🔍⏳', 'info');
+        try {
+            const res = await fetch('/api/bot/scan-historical', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fleetId: (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07' })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showModal(
+                    '🔍 Escaneo de WhatsApp Histórico Iniciado',
+                    `
+                    <div style="text-align:center; padding:10px;">
+                        <div style="font-size:3rem; margin-bottom:10px;">📲🤖</div>
+                        <h3 style="margin-bottom:10px; color:var(--text-primary);">¡El bot de WhatsApp está escaneando!</h3>
+                        <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:15px;">
+                            El bot está analizando todos los mensajes e imágenes antiguas de WhatsApp sin importar la fecha para extraer comprobantes de transferencias con IA y enviarlos a la planilla de Google Sheets.
+                        </p>
+                        ${data.sheetUrl ? `
+                            <a href="${data.sheetUrl}" target="_blank" class="btn btn-success" style="display:inline-block; font-weight:700; padding:10px 20px; background:#10b981; border-color:#10b981; color:#fff; text-decoration:none; border-radius:8px;">
+                                📊 Ver Planilla en Tiempo Real
+                            </a>
+                        ` : ''}
+                    </div>
+                    `,
+                    `<button class="btn btn-primary" onclick="Components.closeModal()">¡Genial!</button>`
+                );
+            } else {
+                Components.showToast('Error al iniciar escaneo: ' + (data.error || 'Error desconocido'), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error al solicitar escaneo: ' + e.message, 'danger');
+        }
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1775,6 +1855,8 @@ const SettingsModule = (() => {
         startVoiceEnrollment, recordSample,
         loadInstallationsList,
         toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId,
+        autoCreateGoogleSheet, scanHistoricalWhatsApp,
         showGoogleSheetsScriptModal, testGoogleSheetsConnection
     };
 })();
+

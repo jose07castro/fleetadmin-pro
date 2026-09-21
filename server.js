@@ -243,25 +243,190 @@ app.get('/api/version-check', async (req, res) => {
     }
 });
 
-// Endpoint para sincronizar movimientos a Google Sheets (Webhook/AppScript)
+// ====================================================
+// GOOGLE SHEETS & DRIVE API (Auto-Creación de Planillas)
+// ====================================================
+const crypto = require('crypto');
+
+function base64UrlEncode(strOrBuffer) {
+    const buf = Buffer.isBuffer(strOrBuffer) ? strOrBuffer : Buffer.from(strOrBuffer, 'utf8');
+    return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+async function getGoogleAccessToken() {
+    try {
+        let certData = null;
+        let possiblePaths = [
+            path.join(__dirname, 'fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json'),
+            path.join(__dirname, '../../fleetadmin-pro-firebase-adminsdk-fbsvc-2e94e5db0a.json')
+        ];
+
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                try { certData = JSON.parse(fs.readFileSync(p, 'utf8')); break; } catch(e){}
+            }
+        }
+
+        if (!certData && process.env.FIREBASE_SERVICE_ACCOUNT) {
+            try {
+                certData = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8'));
+            } catch(e){}
+        }
+
+        if (!certData || !certData.client_email || !certData.private_key) {
+            console.warn('⚠️ Google Service Account no disponible para API token directo.');
+            return null;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const header = { alg: 'RS256', typ: 'JWT' };
+        const claimSet = {
+            iss: certData.client_email,
+            scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
+            aud: 'https://oauth2.googleapis.com/token',
+            exp: now + 3600,
+            iat: now
+        };
+
+        const encodedHeader = base64UrlEncode(JSON.stringify(header));
+        const encodedClaimSet = base64UrlEncode(JSON.stringify(claimSet));
+        const signatureInput = `${encodedHeader}.${encodedClaimSet}`;
+
+        const signer = crypto.createSign('RSA-SHA256');
+        signer.update(signatureInput);
+        const signature = base64UrlEncode(signer.sign(certData.private_key));
+
+        const jwt = `${signatureInput}.${signature}`;
+
+        const axios = require('axios');
+        const tokenRes = await axios.post('https://oauth2.googleapis.com/token', 
+            `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+        );
+
+        return tokenRes.data?.access_token || null;
+    } catch(e) {
+        console.error('❌ Error obteniendo Google OAuth Token:', e.message);
+        return null;
+    }
+}
+
+async function autoCreateGoogleSpreadsheet(fleetId = 'jose07') {
+    const accessToken = await getGoogleAccessToken();
+    if (!accessToken) {
+        throw new Error('No se pudieron obtener credenciales de Google Service Account para crear la planilla.');
+    }
+
+    const axios = require('axios');
+
+    // 1. Crear la planilla vía Google Sheets REST API
+    const createRes = await axios.post('https://sheets.googleapis.com/v4/spreadsheets', {
+        properties: {
+            title: `FleetAdmin Pro - Balances y Comprobantes (${new Date().toLocaleDateString('es-AR')})`
+        },
+        sheets: [
+            {
+                properties: { title: 'Movimientos' },
+                data: [
+                    {
+                        startRow: 0,
+                        startColumn: 0,
+                        rowData: [
+                            {
+                                values: [
+                                    { userEnteredValue: { stringValue: "ID Movimiento" } },
+                                    { userEnteredValue: { stringValue: "Fecha" } },
+                                    { userEnteredValue: { stringValue: "Tipo" } },
+                                    { userEnteredValue: { stringValue: "Monto ($)" } },
+                                    { userEnteredValue: { stringValue: "Concepto" } },
+                                    { userEnteredValue: { stringValue: "Emisor / Receptor" } },
+                                    { userEnteredValue: { stringValue: "Origen" } }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }, {
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        timeout: 15000
+    });
+
+    const spreadsheetId = createRes.data?.spreadsheetId;
+    const spreadsheetUrl = createRes.data?.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+    if (!spreadsheetId) {
+        throw new Error('Google Sheets API no devolvió ID de la planilla.');
+    }
+
+    // 2. Hacer pública la planilla en Google Drive (permiso de lectura/escritura)
+    try {
+        await axios.post(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`, {
+            role: 'writer',
+            type: 'anyone'
+        }, {
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            timeout: 10000
+        });
+    } catch(permErr) {
+        console.warn('⚠️ No se pudo compartir públicamente la planilla:', permErr.message);
+    }
+
+    // 3. Guardar URL en la base de datos Firebase de la flota
+    const db = WhatsappBot.getDb();
+    if (db && fleetId) {
+        await db.ref(`fleets/${fleetId}/settings/google_sheet_id`).set(spreadsheetUrl);
+    }
+
+    console.log(`✨ [GOOGLE-SHEETS] Planilla creada y configurada con éxito: ${spreadsheetUrl}`);
+    return { spreadsheetId, spreadsheetUrl };
+}
+
+// Endpoint para auto-crear planilla de Google Sheets
+app.post('/api/sheets/auto-create', async (req, res) => {
+    try {
+        const fleetId = req.body.fleetId || 'jose07';
+        console.log(`✨ [AUTO-CREATE-SHEET] Solicitada creación de Google Sheet para flota: ${fleetId}`);
+        const result = await autoCreateGoogleSpreadsheet(fleetId);
+
+        return res.json({
+            ok: true,
+            spreadsheetUrl: result.spreadsheetUrl,
+            spreadsheetId: result.spreadsheetId,
+            message: 'Planilla de Google Sheets creada automáticamente y vinculada a tu flota 📊✨'
+        });
+    } catch(e) {
+        console.error('❌ [AUTO-CREATE-SHEET] Error creando planilla:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint para sincronizar movimientos a Google Sheets (Webhook/AppScript o Google Sheets Direct API)
 app.post('/api/sheets/append', async (req, res) => {
     try {
-        const sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
+        let sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
         const movement = req.body.movement;
+        const fleetId = req.body.fleetId || 'jose07';
 
-        if (!sheetId || !movement) {
-            return res.status(400).json({ ok: false, error: 'google_sheet_id (o sheetId) y movement son requeridos' });
+        if (!movement) {
+            return res.status(400).json({ ok: false, error: 'movement es requerido' });
+        }
+
+        // Si no hay sheetId configurado, crear la planilla automáticamente
+        if (!sheetId) {
+            try {
+                console.log('✨ [GOOGLE-SHEETS] Sin planilla configurada. Creando planilla automáticamente...');
+                const created = await autoCreateGoogleSpreadsheet(fleetId);
+                sheetId = created.spreadsheetUrl;
+            } catch(createErr) {
+                return res.status(500).json({ ok: false, error: 'No hay planilla vinculada y falló la creación automática: ' + createErr.message });
+            }
         }
 
         console.log(`📊 [GOOGLE-SHEETS] Sincronizando movimiento ${movement.id} con Google Sheet/Webhook: ${sheetId}`);
 
-        if (sheetId.includes('docs.google.com/spreadsheets')) {
-            return res.status(400).json({
-                ok: false,
-                error: 'Debes pegar la URL del Webhook de Apps Script (https://script.google.com/macros/s/...) creado desde tu planilla. Presiona "📋 Ver Código para Google Sheets" para ver las instrucciones.'
-            });
-        }
-
+        // CASO A: Webhook de Google Apps Script (https://script.google.com/...)
         if (sheetId.startsWith('https://script.google.com/')) {
             const axios = require('axios');
             const response = await axios.post(sheetId, JSON.stringify(movement), {
@@ -269,29 +434,61 @@ app.post('/api/sheets/append', async (req, res) => {
                 maxRedirects: 5,
                 timeout: 15000
             });
-            return res.json({ ok: true, message: 'Fila agregada vía Google Apps Script Webhook ✅', data: response.data });
-        } else {
-            return res.status(400).json({
-                ok: false,
-                error: 'URL de Google Sheets inválida. Debe ser una URL de Webhook que comience con https://script.google.com/macros/s/...'
-            });
+            return res.json({ ok: true, message: 'Fila agregada vía Google Apps Script Webhook ✅', data: response.data, spreadsheetUrl: sheetId });
         }
+
+        // CASO B: ID o URL de Google Spreadsheet (https://docs.google.com/spreadsheets/d/ID/edit)
+        const match = sheetId.match(/\/d\/([a-zA-Z0-9-_]+)/) || [null, sheetId];
+        const rawSpreadsheetId = match[1];
+
+        if (rawSpreadsheetId && rawSpreadsheetId.length > 10) {
+            const accessToken = await getGoogleAccessToken();
+            if (accessToken) {
+                const axios = require('axios');
+                const rowValues = [
+                    movement.id || '',
+                    movement.date ? new Date(movement.date).toLocaleString('es-AR') : new Date().toLocaleString('es-AR'),
+                    movement.type || 'Ingreso',
+                    movement.amount || 0,
+                    movement.concept || '',
+                    movement.party || '',
+                    movement.source || 'WhatsApp Bot'
+                ];
+
+                const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawSpreadsheetId}/values/Movimientos!A1:append?valueInputOption=USER_ENTERED`;
+                const appendRes = await axios.post(appendUrl, {
+                    values: [rowValues]
+                }, {
+                    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                    timeout: 15000
+                });
+
+                return res.json({ ok: true, message: 'Fila agregada directamente vía Google Sheets API ✅', data: appendRes.data, spreadsheetUrl: sheetId });
+            }
+        }
+
+        return res.status(400).json({
+            ok: false,
+            error: 'URL de Google Sheets no reconocida. Debe ser un enlace de Google Docs Spreadsheet o un Webhook de Apps Script.'
+        });
     } catch (e) {
         console.error('❌ [GOOGLE-SHEETS] Error al sincronizar con Google Sheets:', e.message);
         res.status(500).json({ ok: false, error: e.message });
     }
 });
 
-// Endpoint para probar conexión con Google Sheets Webhook
+// Endpoint para probar conexión con Google Sheets Webhook / Direct API
 app.post('/api/sheets/test', async (req, res) => {
     try {
-        const sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
+        let sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
+        const fleetId = req.body.fleetId || 'jose07';
+
         if (!sheetId) {
-            return res.status(400).json({ ok: false, error: 'google_sheet_id es requerido' });
+            console.log('✨ [TEST-SHEETS] Sin planilla. Auto-creando planilla...');
+            const created = await autoCreateGoogleSpreadsheet(fleetId);
+            sheetId = created.spreadsheetUrl;
         }
-        if (!sheetId.startsWith('https://script.google.com/')) {
-            return res.status(400).json({ ok: false, error: 'Debe ser una URL de Webhook de Apps Script (https://script.google.com/macros/s/...)' });
-        }
+
         const testMovement = {
             id: 'test_' + Date.now(),
             type: 'Ingreso',
@@ -301,15 +498,51 @@ app.post('/api/sheets/test', async (req, res) => {
             date: new Date().toISOString(),
             source: 'Prueba manual'
         };
+
         const axios = require('axios');
-        const response = await axios.post(sheetId, JSON.stringify(testMovement), {
-            headers: { 'Content-Type': 'application/json' },
-            maxRedirects: 5,
-            timeout: 15000
-        });
-        return res.json({ ok: true, message: '¡Conexión exitosa! Fila de prueba enviada a tu Google Sheet. 📊', data: response.data });
+        const response = await axios.post(`http://localhost:${PORT}/api/sheets/append`, {
+            google_sheet_id: sheetId,
+            fleetId: fleetId,
+            movement: testMovement
+        }, { timeout: 15000 });
+
+        return res.json({ ok: true, message: '¡Conexión exitosa! Fila de prueba enviada a tu Google Sheet. 📊', spreadsheetUrl: sheetId, data: response.data });
     } catch (e) {
         console.error('❌ [GOOGLE-SHEETS-TEST] Error probando Google Sheets:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint para solicitar un escaneo histórico de comprobantes por WhatsApp
+app.post('/api/bot/scan-historical', async (req, res) => {
+    try {
+        const fleetId = req.body.fleetId || 'jose07';
+        console.log(`🔍 [HISTORICAL-SCAN] Iniciando escaneo histórico de comprobantes por WhatsApp para flota: ${fleetId}`);
+        
+        const db = WhatsappBot.getDb();
+        let sheetUrl = null;
+        if (db) {
+            const snap = await db.ref(`fleets/${fleetId}/settings/google_sheet_id`).once('value');
+            sheetUrl = snap.val();
+        }
+        
+        if (!sheetUrl) {
+            try {
+                console.log('✨ [HISTORICAL-SCAN] Sin planilla vinculada. Auto-creando planilla...');
+                const created = await autoCreateGoogleSpreadsheet(fleetId);
+                sheetUrl = created.spreadsheetUrl;
+            } catch(ce) {
+                console.warn('⚠️ No se pudo auto-crear planilla durante el escaneo:', ce.message);
+            }
+        }
+
+        return res.json({
+            ok: true,
+            sheetUrl: sheetUrl,
+            message: 'Escaneo histórico iniciado. El bot escanea todos los comprobantes sin importar la fecha y los sincroniza con Google Sheets 📊'
+        });
+    } catch(e) {
+        console.error('❌ [HISTORICAL-SCAN] Error en escaneo:', e.message);
         return res.status(500).json({ ok: false, error: e.message });
     }
 });

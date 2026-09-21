@@ -56,13 +56,16 @@ const BalancesModule = (() => {
                             <button class="btn btn-secondary" onclick="BalancesModule.exportCSV()" style="font-weight:600; font-size:0.88rem;">
                                 📄 Exportar Excel/CSV
                             </button>
+                            <button class="btn btn-warning" onclick="SettingsModule.scanHistoricalWhatsApp()" style="font-weight:700; font-size:0.88rem; background:#f59e0b; border-color:#f59e0b; color:#fff;">
+                                🔍 Escanear WhatsApp
+                            </button>
                             ${sheetId ? `
                             <button class="btn btn-secondary" onclick="BalancesModule.syncAllSheets()" style="font-weight:600; font-size:0.88rem;">
-                                📊 Sincronizar Historial a Sheet
-                            </button>` : ''}
-                            <button class="btn btn-secondary" onclick="SettingsModule.showGoogleSheetsScriptModal()" style="font-weight:600; font-size:0.88rem;">
-                                📋 Conectar Google Sheet
-                            </button>
+                                📊 Sincronizar Historial
+                            </button>` : `
+                            <button class="btn btn-success" onclick="SettingsModule.autoCreateGoogleSheet()" style="font-weight:700; font-size:0.88rem; background:#10b981; border-color:#10b981; color:#fff;">
+                                ✨ Auto-Crear Google Sheet
+                            </button>`}
                             <button class="btn btn-primary" onclick="BalancesModule.showAddMovementModal()" style="font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
                                 ➕ Registrar Movimiento
                             </button>
@@ -470,10 +473,11 @@ const BalancesModule = (() => {
 
     async function syncAllSheets() {
         try {
-            const sheetId = (await DB.getSetting('google_sheet_id')) || '';
+            let sheetId = (await DB.getSetting('google_sheet_id')) || '';
             if (!sheetId) {
-                Components.showToast('No tenés ninguna planilla vinculada. Hace clic en ⚙️ Configurar Escáner.', 'warning');
-                return;
+                await SettingsModule.autoCreateGoogleSheet();
+                sheetId = (await DB.getSetting('google_sheet_id')) || '';
+                if (!sheetId) return;
             }
             const movements = await _getMovements();
             if (!movements || movements.length === 0) {
