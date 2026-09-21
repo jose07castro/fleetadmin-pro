@@ -753,7 +753,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 data.put("permissions_ok", permOk);
                 data.put("bg_location_ok", hasBgLoc);
                 data.put("battery_optimization_ok", isIgnoringBatt);
-                data.put("status", permOk ? "active" : "permissions_disabled");
+                if (!permOk) {
+                    data.put("status", "permissions_disabled");
+                }
                 data.put("gps_status", "active");
                 data.put("appVersion", appVersion);
 

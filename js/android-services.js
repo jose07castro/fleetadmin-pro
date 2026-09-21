@@ -428,8 +428,19 @@ const AndroidServices = (() => {
         if (!isNativeAndroid()) return;
         if (typeof Components === 'undefined') return;
 
-        // Siempre preguntar de la batería en Android en todos los modelos y versiones.
-        console.log('📱 AndroidServices: Mostrando diálogo de exención de batería (siempre requerido)');
+        // Si la exención de batería ya fue otorgada, omitir el diálogo
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+            try {
+                if (!window.NativeServiceBridge.isBatteryOptimized()) {
+                    console.log('📱 AndroidServices: ✅ Exención de batería ya otorgada — omitiendo diálogo');
+                    return;
+                }
+            } catch (e) {
+                console.warn('Error verificando exención de batería:', e);
+            }
+        }
+
+        console.log('📱 AndroidServices: Mostrando diálogo de exención de batería');
 
         const bodyHTML = `
             <div style="text-align:center; padding:8px 0;">

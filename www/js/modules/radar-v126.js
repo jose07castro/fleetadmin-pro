@@ -721,27 +721,38 @@ const RadarModule = (() => {
                         if (firstName.length > 20) firstName = 'Chofer';
                         const plateText = vehicle && vehicle.plate ? ` (${vehicle.plate})` : '';
 
+                        // Cooldown per driver and event type to prevent infinite warning popups
+                        if (!window._radarWarningCooldowns) window._radarWarningCooldowns = {};
+                        const warningCooldownKey = `${driverId}_${newStatus}`;
+                        const lastWarningTime = window._radarWarningCooldowns[warningCooldownKey] || 0;
+                        const nowMs = Date.now();
+
                         // Solo alertar si el estado CAMBIA hacia algo negativo (no al abrir radar por primera vez)
-                        if (prevStatus !== null) {
+                        // Y solo si transcurrieron más de 10 minutos (600,000ms) desde el último aviso igual para este chofer
+                        if (prevStatus !== null && (nowMs - lastWarningTime > 10 * 60 * 1000)) {
                             if (newStatus === 'gps_desactivado') {
+                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`, true);
                                 }
                                 showRadarWarning(`El conductor ${firstName}${plateText} ha desactivado el GPS de su dispositivo`, 'warning');
                             } else if (newStatus === 'suspicious_disconnect') {
+                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`, true);
                                 }
                                 showRadarWarning(`Desconexión sospechosa detectada para ${firstName}${plateText} (Sin señal)`, 'danger');
                             } else if (newStatus === 'permissions_disabled') {
+                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`, true);
                                 }
                                 showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}${plateText}`, 'warning');
                             } else if (newStatus === 'logout_voluntario') {
+                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
                                 if (typeof KittVoice !== 'undefined') {
                                     KittVoice.speak(`El conductor ${firstName} ha cerrado sesión voluntariamente.`, true);

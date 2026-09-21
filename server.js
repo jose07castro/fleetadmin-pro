@@ -706,10 +706,16 @@ app.post('/api/driver/location', async (req, res) => {
             driverName: driverName || 'Chofer',
             updated_at: new Date(eventTime).toISOString(),
             last_heartbeat: eventTime,
-            status: 'active',
             gps_status: 'active',
             _source: source || 'server_api'
         };
+
+        // Preservar el estado si ya era un aviso activo (como permissions_disabled o gps_desactivado)
+        const currentPosSnap = await db.ref(`driver_positions/${driver_id}/status`).once('value');
+        const currentStatus = currentPosSnap.val();
+        if (!currentStatus || currentStatus === 'active') {
+            updateData.status = 'active';
+        }
 
         await db.ref(`driver_positions/${driver_id}`).update(updateData);
         res.json({ ok: true, lat: finalLat, lng: finalLng, corrected });
