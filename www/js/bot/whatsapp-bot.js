@@ -12,30 +12,42 @@ const P = () => ({
     warn: () => {}, error: () => {}, fatal: () => {},
     child: () => P()
 });
+try {
+    require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+} catch (e) {
+    try { require('dotenv').config(); } catch (err) {}
+}
+
 const axios = require('axios');
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
-const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
-// Modelos estables actuales y validados de Google AI Studio para esta Key (Confirmados por diagnóstico)
+function getGeminiKey() {
+    return process.env.GEMINI_API_KEY || null;
+}
+const GEMINI_KEY = getGeminiKey();
+
+// Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
 
 
 async function callGemini(prompt) {
-    if (!GEMINI_KEY) return null;
+    const key = getGeminiKey();
+    if (!key) return null;
     const urls = GEMINI_URL ? [GEMINI_URL] : GEMINI_MODELS;
     for (const url of urls) {
         try {
-            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+            const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{ parts: [{ text: prompt }] }]
             }, { timeout: 8000 });
             const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
@@ -56,12 +68,13 @@ async function callGemini(prompt) {
  * @returns {Promise<{isTrafficAlert: boolean, transcription: string, type: string, address: string|null, reason: string}|null>}
  */
 async function callGeminiAudio(audioBuffer, mimeType, groupName = '') {
-    if (!GEMINI_KEY || !audioBuffer) {
+    const key = getGeminiKey();
+    if (!key || !audioBuffer) {
         if (db) {
             try {
                 await db.ref('bot_debug_logs').push({
                     event: 'gemini_audio_skipped',
-                    reason: !GEMINI_KEY ? 'missing_key' : 'missing_buffer',
+                    reason: !key ? 'missing_key' : 'missing_buffer',
                     timestamp: Date.now()
                 });
             } catch (dbErr) {}
@@ -112,18 +125,19 @@ Si el audio es: conversación personal, música, tutorial, broma, saludos, venta
 Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
-    // Los modelos Flash soportan audio inline. Intentamos primero el modelo cacheado si existe, de lo contrario los recomendados.
+    // Los modelos Flash soportan audio inline. gemini-2.5-flash es el modelo validado principal.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
 
     for (const url of audioModels) {
         try {
-            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+            const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{
                     parts: [
                         { inlineData: { mimeType: cleanMimeType, data: audioB64 } },

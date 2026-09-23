@@ -64,8 +64,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final String TAG = "FleetGPS";
     private static final String CHANNEL_ID = "fleet_gps_tracking";
     private static final int NOTIFICATION_ID = 7001;
-    private static final String PREFS_NAME = "fleet_gps_prefs";
     public static boolean isAppInForeground = false;
+    public static LocationTrackingService instance = null;
+    private static long lastSpokenTime = 0;
+    private static String lastSpokenText = "";
 
     // GPS Config
     private static final long MIN_TIME_MS = 1000;   // 1 segundo (agresivo para evitar suspension del GPS)
@@ -147,10 +149,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     // ================================================================
-    // LIFECYCLE
-    // ================================================================    @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         Log.i(TAG, "🚀 onCreate() — Inicializando motor GPS Indestructible v5.1");
         serviceStartTime = System.currentTimeMillis();
 
@@ -269,14 +270,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         acquireWakeLock();
 
+        instance = this;
         if (!isTracking) {
             startLocationUpdates();
             isTracking = true;
         }
 
-        if (fleetId != null) {
-            startTrafficAlertsListener();
-        }
+        // Siempre escuchar alertas globales de tránsito (con o sin flota)
+        startTrafficAlertsListener();
 
         startWatchdog();
 
@@ -302,6 +303,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onDestroy() {
         Log.w(TAG, "⛔ onDestroy() — El servicio está siendo destruido");
+        if (instance == this) instance = null;
         isTracking = false;
         stopLocationUpdates();
         releaseWakeLock();
@@ -526,65 +528,68 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         return val.toString();
     }
 
+    private final Map<String, TrafficAlert> activeAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void updateAlertsFromSnapshot(DataSnapshot snapshot) {
+        if (snapshot == null) return;
+        long now = System.currentTimeMillis();
+        int loadedCount = 0;
+
+        for (DataSnapshot child : snapshot.getChildren()) {
+            try {
+                String id = child.getKey();
+                String type = getStringValue(child.child("type"));
+                Double lat = getDoubleValue(child.child("lat"));
+                Double lng = getDoubleValue(child.child("lng"));
+                String location = getStringValue(child.child("location"));
+                String originalText = getStringValue(child.child("originalText"));
+                Long timestamp = getLongValue(child.child("timestamp"));
+                String status = getStringValue(child.child("status"));
+                Long expiresAt = getLongValue(child.child("expiresAt"));
+                String audioUrl = getStringValue(child.child("audioUrl"));
+
+                if (lat != null && lng != null && "active".equals(status) && (expiresAt == null || expiresAt > now)) {
+                    TrafficAlert alert = new TrafficAlert(
+                        id, 
+                        type, 
+                        lat, 
+                        lng, 
+                        location != null ? location : "", 
+                        originalText != null ? originalText : "", 
+                        timestamp != null ? timestamp : 0L,
+                        audioUrl != null ? audioUrl : ""
+                    );
+                    activeAlertsMap.put(id, alert);
+                    loadedCount++;
+
+                    // Alerta reciente: tolerancia ampliada a 5 minutos (300000ms)
+                    boolean isNewOrRecent = alert.timestamp == 0 || alert.timestamp >= serviceStartTime - 30000 || Math.abs(now - alert.timestamp) < 300000;
+                    if (isNewOrRecent && !spokenAlertIds.contains(id)) {
+                        spokenAlertIds.add(id);
+                        speakImmediateAlert(alert);
+                        if (spokenAlertIds.size() > 200) {
+                            spokenAlertIds.remove(0);
+                        }
+                    }
+                } else if (id != null) {
+                    activeAlertsMap.remove(id);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [ALERTS] Error parsing alert child: " + child.getKey(), e);
+            }
+        }
+
+        synchronized (activeAlerts) {
+            activeAlerts.clear();
+            activeAlerts.addAll(activeAlertsMap.values());
+        }
+        Log.i(TAG, "🔔 [ALERTS] Snapshot parsed (" + loadedCount + " items). Total in memory: " + activeAlerts.size());
+    }
+
     private final ValueEventListener alertsListener = new ValueEventListener() {
         @Override
         public void onDataChange(@NonNull DataSnapshot snapshot) {
-            Log.i(TAG, "🔔 [ALERTS] onDataChange: snapshot.getChildrenCount() = " + snapshot.getChildrenCount());
-            synchronized (activeAlerts) {
-                activeAlerts.clear();
-                long now = System.currentTimeMillis();
-                int loadedCount = 0;
-
-                for (DataSnapshot child : snapshot.getChildren()) {
-                    try {
-                        String id = child.getKey();
-                        String type = getStringValue(child.child("type"));
-                        Double lat = getDoubleValue(child.child("lat"));
-                        Double lng = getDoubleValue(child.child("lng"));
-                        String location = getStringValue(child.child("location"));
-                        String originalText = getStringValue(child.child("originalText"));
-                        Long timestamp = getLongValue(child.child("timestamp"));
-                        String status = getStringValue(child.child("status"));
-                        Long expiresAt = getLongValue(child.child("expiresAt"));
-                        String audioUrl = getStringValue(child.child("audioUrl"));
-
-                        Log.d(TAG, "🔔 [ALERTS] parsing alert id=" + id + ", type=" + type + ", lat=" + lat + ", lng=" + lng + ", status=" + status + ", expiresAt=" + expiresAt);
-
-                        if (lat != null && lng != null && "active".equals(status) && (expiresAt == null || expiresAt > now)) {
-                            TrafficAlert alert = new TrafficAlert(
-                                id, 
-                                type, 
-                                lat, 
-                                lng, 
-                                location != null ? location : "", 
-                                originalText != null ? originalText : "", 
-                                timestamp != null ? timestamp : 0L,
-                                audioUrl != null ? audioUrl : ""
-                            );
-                            activeAlerts.add(alert);
-                            loadedCount++;
-
-                            // Immediate announcement check
-                            boolean isNewOrRecent = alert.timestamp == 0 || alert.timestamp >= serviceStartTime - 30000 || Math.abs(now - alert.timestamp) < 120000;
-                            if (isNewOrRecent && !spokenAlertIds.contains(id)) {
-                                // Skip native TTS if the app is in the foreground
-                                if (isAppInForeground) {
-                                    Log.i(TAG, "📱 [ALERTS] Skipping native TTS because app is in the foreground: id=" + id);
-                                } else {
-                                    speakImmediateAlert(alert);
-                                }
-                                spokenAlertIds.add(id);
-                                if (spokenAlertIds.size() > 200) {
-                                    spokenAlertIds.remove(0);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "❌ [ALERTS] Error parsing alert child: " + child.getKey(), e);
-                    }
-                }
-                Log.i(TAG, "🔔 [ALERTS] Successfully parsed " + loadedCount + " active alerts. Total loaded in memory: " + activeAlerts.size());
-            }
+            updateAlertsFromSnapshot(snapshot);
         }
 
         @Override
@@ -619,6 +624,30 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // TEXT TO SPEECH
     // ================================================================
 
+    public static void speakText(String text, Context context) {
+        if (text == null || text.trim().isEmpty()) return;
+        if (instance != null && instance.isTtsInitialized && instance.tts != null) {
+            instance.speak(text);
+        } else {
+            Log.i(TAG, "🔊 [TTS] Service instance not ready, attempting fallback TTS for: " + text);
+            if (context != null) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    try {
+                        final TextToSpeech[] fallbackTts = new TextToSpeech[1];
+                        fallbackTts[0] = new TextToSpeech(context.getApplicationContext(), status -> {
+                            if (status == TextToSpeech.SUCCESS) {
+                                fallbackTts[0].setLanguage(new Locale("es", "ES"));
+                                fallbackTts[0].speak(text, TextToSpeech.QUEUE_FLUSH, null, "fallback_" + System.currentTimeMillis());
+                            }
+                        });
+                    } catch (Exception ex) {
+                        Log.e(TAG, "❌ Error initializing fallback TTS:", ex);
+                    }
+                });
+            }
+        }
+    }
+
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
@@ -639,7 +668,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
-    private void speak(String text) {
+    public void speak(String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        long now = System.currentTimeMillis();
+        // Evitar eco o repetición idéntica en menos de 10 segundos
+        if (text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 10000) {
+            Log.i(TAG, "🔊 [TTS] Duplicate text ignored within 10s: " + text);
+            return;
+        }
+        lastSpokenTime = now;
+        lastSpokenText = text;
+
         Log.i(TAG, "🔊 [TTS] speak: \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
             int result = tts.speak(text, TextToSpeech.QUEUE_ADD, null, "alert_" + System.currentTimeMillis());

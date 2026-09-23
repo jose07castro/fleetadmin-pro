@@ -415,6 +415,17 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void speak(String text) {
+            if (text == null || text.trim().isEmpty()) return;
+            Log.i(TAG, "📱 JS → speak: \"" + text + "\"");
+            try {
+                LocationTrackingService.speakText(text, MainActivity.this);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating speak to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
         public int getAppVersionCode() {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

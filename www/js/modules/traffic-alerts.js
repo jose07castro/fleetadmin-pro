@@ -226,25 +226,37 @@
 
         console.log(`🔊 [GLOBAL VOZ] Hablando: "${fullText}"`);
 
-        // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
+        // === VOZ PREMIUM KITT / NATIVO / FALLBACK ===
         if (typeof KittVoice !== 'undefined') {
             KittVoice.speak(fullText, true).then(() => {
                 playScannerSound();
             });
+        } else if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+            AndroidServices.speak(fullText);
+            playScannerSound();
+        } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+            try { window.NativeServiceBridge.speak(fullText); } catch(e) {}
+            playScannerSound();
         } else {
             // Fallback directo si KittVoice no cargó
             if (window.speechSynthesis) {
-                window.speechSynthesis.cancel();
-                const utter = new SpeechSynthesisUtterance(fullText);
-                utter.lang = 'es-AR';
-                utter.rate = 0.9;
-                utter.onend = () => {
+                try {
+                    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                    window.speechSynthesis.cancel();
+                    setTimeout(() => {
+                        const utter = new SpeechSynthesisUtterance(fullText);
+                        utter.lang = 'es-AR';
+                        utter.rate = 0.95;
+                        utter.onend = () => playScannerSound();
+                        window.speechSynthesis.speak(utter);
+                    }, 50);
+                } catch(e) {
                     playScannerSound();
-                };
-                window.speechSynthesis.speak(utter);
+                }
+            } else {
+                playScannerSound();
             }
         }
-        console.log(`🔊 [GLOBAL VOZ] "${fullText}"`);
     }
 
     /**

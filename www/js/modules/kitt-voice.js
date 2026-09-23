@@ -1,10 +1,10 @@
 /* ============================================
-   FleetAdmin Pro — Motor de Voz KITT (v1.0)
-   Sintetizador Premium con Fallback Inteligente
+   FleetAdmin Pro — Motor de Voz KITT (v1.1)
+   Sintetizador Premium con Fallback Inteligente Ultra-Rápido
    
-   Usa ElevenLabs (voz clonada de KITT Latino) cuando
-   está disponible, y cae automáticamente al TTS del
-   celular si el servidor no responde.
+   Usa ElevenLabs (voz clonada de KITT) cuando está
+   disponible, y cae instantáneamente al TTS nativo del
+   celular (Android) o navegador si el servidor no responde.
    ============================================ */
 
 const KittVoice = (() => {
@@ -12,10 +12,11 @@ const KittVoice = (() => {
     let _isSpeaking = false;
     let _audioQueue = [];  // Cola de frases pendientes
     let _currentAudio = null;
+    let _elevenLabsLastFailTime = 0; // Si falló en los últimos 5 min, evitar esperar timeout de red
 
     /**
      * Habla un texto usando la voz premium de KITT (ElevenLabs) si está
-     * disponible, o cae al sintetizador genérico del navegador/celular.
+     * disponible, o cae al sintetizador nativo del celular/navegador.
      * 
      * @param {string} text - El texto a vocalizar.
      * @param {boolean} priority - Si es true, cancela lo que esté sonando e interrumpe.
@@ -42,24 +43,27 @@ const KittVoice = (() => {
         _isSpeaking = true;
 
         try {
-            // Intentar KITT Premium
-            if (_isKittEnabled) {
+            // 1. Si estamos en Android Nativo (Capacitor/Java), priorizar la voz nativa del dispositivo
+            // para máxima velocidad, volumen y confiabilidad instantánea en ruta.
+            const isNative = (typeof window.NativeServiceBridge !== 'undefined' && typeof window.NativeServiceBridge.speak === 'function') ||
+                             (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function');
+
+            // Intentar KITT Premium por streaming solo si está habilitado y no hubo fallos recientes
+            const isElevenLabsCoolingDown = (Date.now() - _elevenLabsLastFailTime) < 300000; // 5 min cooldown si falló
+            if (_isKittEnabled && !isElevenLabsCoolingDown && !isNative) {
                 const success = await _speakWithElevenLabs(text);
                 if (success) {
-                    return; // finally se encarga de resetear _isSpeaking
+                    return;
                 }
-                // Si falló, cae al fallback local silenciosamente
-                console.warn('🎙️ [KITT] ElevenLabs no disponible, usando voz local...');
+                _elevenLabsLastFailTime = Date.now();
+                console.warn('🎙️ [KITT] ElevenLabs no disponible, cambiando a voz del sistema...');
             }
 
-            // Fallback: Voz local del celular/navegador
+            // Fallback directo: Voz nativa de Android o Web Speech API
             await _speakWithLocalTTS(text);
         } catch (e) {
-            // v192 FIX: Capturar error inesperado para evitar que _isSpeaking quede true
             console.error('🎙️ [KITT] Error inesperado en speak():', e);
         } finally {
-            // v192 FIX: Garantizar que _isSpeaking se resetea y la cola avanza
-            // sin importar si el audio tuvo éxito, falló, o lanzó una excepción
             _isSpeaking = false;
             _processQueue();
         }
@@ -74,6 +78,7 @@ const KittVoice = (() => {
 
     /**
      * Intenta reproducir el texto usando ElevenLabs via el proxy del servidor.
+     * Timeout defensivo ultra-rápido de 2.5s para no demorar al conductor.
      * @returns {Promise<boolean>} true si el audio se reprodujo correctamente.
      */
     function _speakWithElevenLabs(text) {
@@ -83,41 +88,40 @@ const KittVoice = (() => {
                 const baseUrl = _getApiBaseUrl();
                 const url = `${baseUrl}/api/voice/tts?text=${encodedText}`;
 
-                const audio = new Audio(url);
+                const audio = new Audio();
                 _currentAudio = audio;
 
-                audio.onended = () => {
-                    _currentAudio = null;
-                    resolve(true);
+                let finished = false;
+                const done = (ok) => {
+                    if (finished) return;
+                    finished = true;
+                    clearTimeout(timeout);
+                    if (_currentAudio === audio) _currentAudio = null;
+                    resolve(ok);
                 };
 
-                audio.onerror = () => {
-                    console.warn('🎙️ [KITT] Error cargando audio ElevenLabs');
-                    _currentAudio = null;
-                    resolve(false);
-                };
+                audio.onended = () => done(true);
+                audio.onerror = () => done(false);
 
-                // Timeout de seguridad: si en 12 segundos no arrancó, usar fallback
+                // Timeout de 2.5 segundos: si Render no responde rápido, pasar de inmediato a TTS local
                 const timeout = setTimeout(() => {
-                    if (_currentAudio === audio) {
+                    try {
                         audio.pause();
                         audio.src = '';
-                        _currentAudio = null;
-                        resolve(false);
-                    }
-                }, 12000);
+                    } catch (e) {}
+                    done(false);
+                }, 2500);
 
                 audio.onplay = () => clearTimeout(timeout);
 
+                audio.src = url;
                 const playPromise = (typeof window.playAudioWithBoost === 'function') 
                     ? window.playAudioWithBoost(audio, 3.0) 
                     : audio.play();
 
-                playPromise.catch(() => {
-                    clearTimeout(timeout);
-                    _currentAudio = null;
-                    resolve(false);
-                });
+                if (playPromise) {
+                    playPromise.catch(() => done(false));
+                }
             } catch (e) {
                 resolve(false);
             }
@@ -125,50 +129,98 @@ const KittVoice = (() => {
     }
 
     /**
-     * Fallback: Voz del sistema operativo (SpeechSynthesis).
+     * Fallback: Voz nativa de Android (vía NativeServiceBridge) o Web Speech API.
      */
     function _speakWithLocalTTS(text) {
         return new Promise((resolve) => {
+            // 1. Android Nativo via NativeServiceBridge
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+                if (AndroidServices.speak(text)) {
+                    console.log('🔊 [KITT] Hablando mediante AndroidServices.speak');
+                    resolve();
+                    return;
+                }
+            }
+            if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+                try {
+                    window.NativeServiceBridge.speak(text);
+                    console.log('🔊 [KITT] Hablando mediante NativeServiceBridge.speak');
+                    resolve();
+                    return;
+                } catch (e) {
+                    console.warn('⚠️ Error invocando NativeServiceBridge.speak:', e);
+                }
+            }
+
+            // 2. Navegador Web (Web Speech API)
             if (!window.speechSynthesis) {
+                console.warn('🔇 [KITT] TTS no soportado en este entorno');
                 resolve();
                 return;
             }
 
-            window.speechSynthesis.cancel();
+            try {
+                // Prevenir bloqueo en Chromium
+                if (window.speechSynthesis.paused) {
+                    window.speechSynthesis.resume();
+                }
+                window.speechSynthesis.cancel();
 
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'es-AR';
-            utter.rate = 0.95; 
-            utter.pitch = 0.85; // Tono más grave y masculino/robótico al estilo KITT
-            utter.volume = 1.0;
+                // Breve pausa para que Chromium libere el sintetizador
+                setTimeout(() => {
+                    try {
+                        const utter = new SpeechSynthesisUtterance(text);
+                        utter.lang = 'es-AR';
+                        utter.rate = 0.95; 
+                        utter.pitch = 0.90;
+                        utter.volume = 1.0;
 
-            const voices = window.speechSynthesis.getVoices();
-            // Priorizar una voz en español que contenga indicios de ser masculina en el sistema
-            let esVoice = voices.find(v => v.lang.startsWith('es') && 
-                (v.name.toLowerCase().includes('male') || 
-                 v.name.toLowerCase().includes('hombre') || 
-                 v.name.toLowerCase().includes('masculino') || 
-                 v.name.toLowerCase().includes('mexico') || 
-                 v.name.toLowerCase().includes('googlees'))); 
-            
-            if (!esVoice) esVoice = voices.find(v => v.lang.startsWith('es'));
-            if (esVoice) utter.voice = esVoice;
+                        const voices = window.speechSynthesis.getVoices() || [];
+                        let esVoice = voices.find(v => v.lang && v.lang.startsWith('es') && 
+                            (v.name.toLowerCase().includes('male') || 
+                             v.name.toLowerCase().includes('hombre') || 
+                             v.name.toLowerCase().includes('masculino') || 
+                             v.name.toLowerCase().includes('mexico') || 
+                             v.name.toLowerCase().includes('googlees'))); 
+                        
+                        if (!esVoice) esVoice = voices.find(v => v.lang && v.lang.startsWith('es'));
+                        if (esVoice) utter.voice = esVoice;
 
-            utter.onend = () => resolve();
-            utter.onerror = () => resolve();
+                        let resolved = false;
+                        const complete = () => {
+                            if (!resolved) {
+                                resolved = true;
+                                resolve();
+                            }
+                        };
 
-            window.speechSynthesis.speak(utter);
+                        utter.onend = complete;
+                        utter.onerror = complete;
+
+                        // Timeout de seguridad en caso de que onend no se invoque en Chrome
+                        setTimeout(complete, 8000);
+
+                        window.speechSynthesis.speak(utter);
+                    } catch (e) {
+                        resolve();
+                    }
+                }, 50);
+            } catch (err) {
+                resolve();
+            }
         });
     }
 
     function _stopCurrent() {
         if (_currentAudio) {
-            _currentAudio.pause();
-            _currentAudio.src = '';
+            try {
+                _currentAudio.pause();
+                _currentAudio.src = '';
+            } catch (e) {}
             _currentAudio = null;
         }
         if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
+            try { window.speechSynthesis.cancel(); } catch (e) {}
         }
         _isSpeaking = false;
     }
@@ -194,7 +246,7 @@ const KittVoice = (() => {
      * Test rápido: reproduce una frase de demostración.
      */
     function demo() {
-        speak('Atención José. Sistemas de copiloto activados. Fotomulta a trescientos metros en Avenida Pellegrini esquina Ovidio Lagos. Velocidad máxima sesenta kilómetros por hora.', true);
+        speak('Atención. Sistemas de alerta de tránsito activos en tiempo real. Buen viaje.', true);
     }
 
     return {

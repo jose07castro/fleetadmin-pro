@@ -563,6 +563,19 @@ const AndroidServices = (() => {
         }
     }
 
+    function speak(text) {
+        if (!text) return false;
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.speak === 'function') {
+            try {
+                window.NativeServiceBridge.speak(text);
+                return true;
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.speak:', e);
+            }
+        }
+        return false;
+    }
+
     // =============================================
     // API PÚBLICA
     // =============================================
@@ -580,6 +593,9 @@ const AndroidServices = (() => {
         // GPS nativo
         isNativeGPSAlive,
         
+        // Voz / TTS Nativo
+        speak,
+
         // Batería
         requestBackgroundLocationPermission,
         showBackgroundLocationDialog,
