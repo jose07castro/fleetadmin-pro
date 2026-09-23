@@ -660,15 +660,39 @@ const ShiftsModule = (() => {
             Router.navigate('shifts');
 
             // Gatillar permisos GPS post-inicio (v113)
+            // v192 FIX: Solo mostrar diálogos de permiso si realmente son necesarios,
+            // evitando que aparezcan en cada turno cuando el permiso ya fue concedido.
             setTimeout(() => {
                 if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) {
-                    // Primero Background Location (crítico para Google Play)
-                    AndroidServices.showBackgroundLocationDialog(() => {
-                        // Después Battery Exemption (para Inmortalidad)
-                        setTimeout(() => {
-                            AndroidServices.showBatteryExemptionDialog();
-                        }, 2000);
-                    });
+                    // --- Verificar si Background Location ya fue concedido ---
+                    let bgAlreadyGranted = localStorage.getItem('bg_location_perm_granted') === 'true';
+
+                    // Verificación directa con el bridge nativo (más confiable que localStorage)
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
+                        try {
+                            bgAlreadyGranted = window.NativeServiceBridge.isBackgroundLocationGranted();
+                            if (bgAlreadyGranted) {
+                                localStorage.setItem('bg_location_perm_granted', 'true');
+                            }
+                        } catch (e) {
+                            console.warn('📱 Shifts: Error al verificar isBackgroundLocationGranted:', e);
+                        }
+                    }
+
+                    if (!bgAlreadyGranted) {
+                        // Primero Background Location (crítico para Google Play)
+                        AndroidServices.showBackgroundLocationDialog(() => {
+                            // Marcar como concedido para futuros turnos
+                            localStorage.setItem('bg_location_perm_granted', 'true');
+                            // Después Battery Exemption (para Inmortalidad)
+                            setTimeout(() => {
+                                AndroidServices.showBatteryExemptionDialog();
+                            }, 2000);
+                        });
+                    } else {
+                        // BG location ya concedido: solo verificar batería si es necesario
+                        AndroidServices.showBatteryExemptionDialog();
+                    }
                 } else if (typeof GPSPermissions !== 'undefined' && typeof Auth !== 'undefined' && !Auth.isOwner()) {
                     GPSPermissions.requestWithDialog();
                 }

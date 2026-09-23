@@ -292,9 +292,10 @@
             // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
 
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app, o en los últimos 2 minutos / desfase de reloj.
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
+            // v192 FIX: Ventana ampliada a 5 minutos (300000ms) para tolerar desfases de reloj de Android
             const timeDiff = alert.timestamp ? Math.abs(Date.now() - alert.timestamp) : 0;
-            const isVeryRecent = alert.timestamp && (timeDiff < 120000 || alert.timestamp >= _appStartTime - 10000);
+            const isVeryRecent = alert.timestamp && (timeDiff < 300000 || alert.timestamp >= _appStartTime - 10000);
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 return; 
@@ -485,7 +486,13 @@
 
     function onNewAlert(callback) {
         if (typeof callback === 'function') {
-            _newAlertCallbacks.push(callback);
+            // v192 FIX: Evitar acumulación de callbacks duplicados (memory leak + alertas dobles)
+            if (!_newAlertCallbacks.includes(callback)) {
+                _newAlertCallbacks.push(callback);
+            }
+            if (_newAlertCallbacks.length > 10) {
+                _newAlertCallbacks = _newAlertCallbacks.slice(-10);
+            }
         }
     }
 

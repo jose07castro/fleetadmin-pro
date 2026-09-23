@@ -41,22 +41,28 @@ const KittVoice = (() => {
 
         _isSpeaking = true;
 
-        // Intentar KITT Premium
-        if (_isKittEnabled) {
-            const success = await _speakWithElevenLabs(text);
-            if (success) {
-                _isSpeaking = false;
-                _processQueue();
-                return;
+        try {
+            // Intentar KITT Premium
+            if (_isKittEnabled) {
+                const success = await _speakWithElevenLabs(text);
+                if (success) {
+                    return; // finally se encarga de resetear _isSpeaking
+                }
+                // Si falló, cae al fallback local silenciosamente
+                console.warn('🎙️ [KITT] ElevenLabs no disponible, usando voz local...');
             }
-            // Si falló, cae al fallback local silenciosamente
-            console.warn('🎙️ [KITT] ElevenLabs no disponible, usando voz local...');
-        }
 
-        // Fallback: Voz local del celular/navegador
-        await _speakWithLocalTTS(text);
-        _isSpeaking = false;
-        _processQueue();
+            // Fallback: Voz local del celular/navegador
+            await _speakWithLocalTTS(text);
+        } catch (e) {
+            // v192 FIX: Capturar error inesperado para evitar que _isSpeaking quede true
+            console.error('🎙️ [KITT] Error inesperado en speak():', e);
+        } finally {
+            // v192 FIX: Garantizar que _isSpeaking se resetea y la cola avanza
+            // sin importar si el audio tuvo éxito, falló, o lanzó una excepción
+            _isSpeaking = false;
+            _processQueue();
+        }
     }
 
     function _getApiBaseUrl() {
