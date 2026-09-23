@@ -9,11 +9,6 @@ const BalancesModule = (() => {
     let _currentPeriodFilter = 'all'; // 'all', 'today', 'week', 'month'
     let _currentTypeFilter = 'all';   // 'all', 'ingreso', 'egreso'
 
-    function _formatCurrency(amount) {
-        const val = parseFloat(amount || 0);
-        return isNaN(val) ? '0,00' : val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
     async function render() {
         try {
             const movements = await _getMovements();
@@ -59,13 +54,9 @@ const BalancesModule = (() => {
                             <button class="btn btn-warning" onclick="SettingsModule.scanHistoricalWhatsApp()" style="font-weight:700; font-size:0.88rem; background:#f59e0b; border-color:#f59e0b; color:#fff;">
                                 🔍 Escanear WhatsApp
                             </button>
-                            ${sheetId ? `
-                            <button class="btn btn-secondary" onclick="BalancesModule.syncAllSheets()" style="font-weight:600; font-size:0.88rem;">
-                                📊 Sincronizar Historial
-                            </button>` : `
-                            <button class="btn btn-success" onclick="SettingsModule.autoCreateGoogleSheet()" style="font-weight:700; font-size:0.88rem; background:#10b981; border-color:#10b981; color:#fff;">
-                                ✨ Auto-Crear Google Sheet
-                            </button>`}
+                            <button class="btn btn-success" onclick="BalancesModule.showGoogleSheetsOptions()" style="font-weight:700; font-size:0.88rem; background:#10b981; border-color:#10b981; color:#fff;">
+                                📊 Google Sheets
+                            </button>
                             <button class="btn btn-primary" onclick="BalancesModule.showAddMovementModal()" style="font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
                                 ➕ Registrar Movimiento
                             </button>
@@ -176,7 +167,10 @@ const BalancesModule = (() => {
             `;
         }
     }
-
+    function _formatCurrency(amount) {
+        const val = parseFloat(amount || 0);
+        return isNaN(val) ? '0,00' : val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
 
     async function _getMovements() {
         if (typeof DB === 'undefined') return [];
@@ -497,6 +491,53 @@ const BalancesModule = (() => {
         }
     }
 
+    function showGoogleSheetsOptions() {
+        const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+        const formula = `=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${fleetId}")`;
+
+        Components.showModal(
+            '📊 Balance en Google Sheets (Hoja de Cálculo)',
+            `
+            <div style="padding:10px;">
+                <div style="text-align:center; font-size:2.5rem; margin-bottom:10px;">📊✨</div>
+                <h3 style="text-align:center; margin-bottom:10px; color:var(--text-primary);">Balance Automático en Vivo</h3>
+                <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:15px; text-align:center;">
+                    Todas las transferencias, facturas y comprobantes escaneados por WhatsApp se reflejan automáticamente en tu hoja de cálculo.
+                </p>
+
+                <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px; margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-weight:700; color:#10b981; font-size:12px;">⚡ MÉTODO DIRECTO (100% Automático)</span>
+                        <button class="btn btn-sm btn-success" onclick="navigator.clipboard.writeText(document.getElementById('balanceSheetFormula').value); Components.showToast('¡Fórmula copiada! Pegala en la celda A1 📋', 'success');" style="font-weight:700; font-size:11px; padding:4px 8px; background:#10b981; border:none; color:#fff;">
+                            📋 Copiar Fórmula
+                        </button>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">
+                        1. Creá una hoja de cálculo en blanco (<a href="https://sheets.new" target="_blank" style="color:#10b981; font-weight:700; text-decoration:underline;">sheets.new</a>)<br>
+                        2. En la celda <strong>A1</strong> pegá esta fórmula:
+                    </p>
+                    <input type="text" id="balanceSheetFormula" readonly class="form-input" 
+                        style="font-family:monospace; font-size:11px !important; background:rgba(0,0,0,0.25); color:#10b981; font-weight:700; border:1px dashed #10b981;"
+                        value='${formula}'>
+                </div>
+
+                <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                    <a href="https://sheets.new" target="_blank" class="btn btn-primary" style="font-weight:700; padding:8px 14px; text-decoration:none; font-size:0.88rem;">
+                        ➕ Abrir Hoja en Blanco
+                    </a>
+                    <button class="btn btn-secondary" onclick="BalancesModule.exportCSV(); Components.closeModal();" style="font-weight:600; padding:8px 14px; font-size:0.88rem;">
+                        📥 Descargar Excel/CSV
+                    </button>
+                    <button class="btn btn-secondary" onclick="Components.closeModal(); Router.navigate('settings');" style="font-weight:600; padding:8px 14px; font-size:0.88rem;">
+                        ⚙️ Ajustes Avanzados
+                    </button>
+                </div>
+            </div>
+            `,
+            `<button class="btn btn-secondary" onclick="Components.closeModal()">Cerrar</button>`
+        );
+    }
+
     return {
         render,
         setFilter,
@@ -505,6 +546,7 @@ const BalancesModule = (() => {
         deleteMovement,
         viewReceipt,
         exportCSV,
-        syncAllSheets
+        syncAllSheets,
+        showGoogleSheetsOptions
     };
 })();

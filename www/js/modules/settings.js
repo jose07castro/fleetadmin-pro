@@ -278,12 +278,33 @@ const SettingsModule = (() => {
                     </div>
                     <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
                         <div>
-                            <div class="settings-item-label">📊 Google Sheets & Hoja de Cálculo (Sincronización Automática)</div>
-                            <div class="settings-item-desc">Sincroniza cada transferencia escaneada o movimiento financiero en tiempo real con tu planilla de Google Sheets.</div>
+                            <div class="settings-item-label">📊 Google Sheets & Hoja de Cálculo (Balance Automático)</div>
+                            <div class="settings-item-desc">Sincroniza transferencias, facturas y movimientos contables en tiempo real con Google Sheets.</div>
+                        </div>
+
+                        <!-- MÉTODO 1 RECOMENDADO: IMPORTDATA (Sin configuración ni APIs) -->
+                        <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-weight:700; color:#10b981; font-size:13px;">⚡ MÉTODO DIRECTO (100% Automático y Sin Errores)</span>
+                                <button class="btn btn-sm btn-success" onclick="SettingsModule.copyImportFormula()" style="font-weight:700; font-size:11px; padding:4px 10px; background:#10b981; border:none; color:#fff;">
+                                    📋 Copiar Fórmula
+                                </button>
+                            </div>
+                            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">
+                                Abrí una hoja nueva en <a href="https://sheets.new" target="_blank" style="color:#10b981; font-weight:700; text-decoration:underline;">sheets.new</a> y en la celda <strong>A1</strong> pegá esta fórmula:
+                            </p>
+                            <input type="text" id="sheetsImportFormulaInput" readonly class="form-input" 
+                                style="font-family:monospace; font-size:11px !important; background:rgba(0,0,0,0.2); color:#10b981; font-weight:700; border:1px dashed #10b981;"
+                                value='=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${(typeof Auth !== "undefined" && Auth.getFleetId) ? Auth.getFleetId() : "jose07"}")'>
+                        </div>
+
+                        <!-- MÉTODO 2: Webhook de Apps Script o Planilla ID -->
+                        <div>
+                            <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">🔗 Método Webhook / Spreadsheet URL</div>
                         </div>
                         <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap;">
                             <input type="text" class="form-input" id="googleSheetIdInput"
-                                placeholder="URL o ID de planilla (ej: https://docs.google.com/spreadsheets/d/...)"
+                                placeholder="Webhook Apps Script (https://script.google.com/...)"
                                 value="${googleSheetId}"
                                 style="flex:1; min-width:240px; font-size:14px !important; font-weight:500 !important;">
                             <button class="btn btn-primary btn-sm" onclick="SettingsModule.saveGoogleSheetId()" style="white-space:nowrap;">
@@ -291,14 +312,11 @@ const SettingsModule = (() => {
                             </button>
                         </div>
                         <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
-                            <button class="btn btn-success btn-sm" onclick="SettingsModule.autoCreateGoogleSheet()" style="font-weight:700; font-size:12px; background:#10b981; border-color:#10b981; color:#fff;">
-                                ✨ Auto-Crear Google Sheet
-                            </button>
                             <button class="btn btn-warning btn-sm" onclick="SettingsModule.scanHistoricalWhatsApp()" style="font-weight:700; font-size:12px; background:#f59e0b; border-color:#f59e0b; color:#fff;">
-                                🔍 Escanear WhatsApp Histórico
+                                🔍 Escanear WhatsApp Ahora
                             </button>
                             <button class="btn btn-secondary btn-sm" onclick="SettingsModule.showGoogleSheetsScriptModal()" style="font-weight:600; font-size:12px;">
-                                📋 Ver Apps Script Webhook
+                                📋 Ver Código Apps Script
                             </button>
                             <button class="btn btn-secondary btn-sm" onclick="SettingsModule.testGoogleSheetsConnection()" style="font-weight:600; font-size:12px; color:#22c55e;">
                                 🧪 Probar Conexión
@@ -1808,36 +1826,73 @@ const SettingsModule = (() => {
         }
     }
 
+    function copyImportFormula() {
+        const input = document.getElementById('sheetsImportFormulaInput');
+        if (input) {
+            navigator.clipboard.writeText(input.value);
+            Components.showToast('¡Fórmula copiada! Pegala en la celda A1 de tu Google Sheet 📋✨', 'success');
+        }
+    }
+
     async function scanHistoricalWhatsApp() {
-        Components.showToast('Iniciando escaneo automático de WhatsApp histórico... 🔍⏳', 'info');
+        Components.showToast('Escaneando WhatsApp en busca de transferencias y facturas... 🔍⏳', 'info');
         try {
+            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
             const res = await fetch('/api/bot/scan-historical', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fleetId: (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07' })
+                body: JSON.stringify({ fleetId })
             });
             const data = await res.json();
             if (data.ok) {
+                const total = data.scanResult?.totalMovements || 0;
+                const synced = data.scanResult?.syncedToSheets || 0;
+                const importFormula = data.importFormula || `=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${fleetId}")`;
+
                 Components.showModal(
-                    '🔍 Escaneo de WhatsApp Histórico Iniciado',
+                    '🔍 Escaneo de WhatsApp & Balance Completo',
                     `
                     <div style="text-align:center; padding:10px;">
-                        <div style="font-size:3rem; margin-bottom:10px;">📲🤖</div>
-                        <h3 style="margin-bottom:10px; color:var(--text-primary);">¡El bot de WhatsApp está escaneando!</h3>
+                        <div style="font-size:3rem; margin-bottom:10px;">📊🚗💰</div>
+                        <h3 style="margin-bottom:10px; color:var(--text-primary);">¡Escaneo Contable Finalizado!</h3>
                         <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:15px;">
-                            El bot está analizando todos los mensajes e imágenes antiguas de WhatsApp sin importar la fecha para extraer comprobantes de transferencias con IA y enviarlos a la planilla de Google Sheets.
+                            ${data.message || 'Se analizaron los comprobantes de transferencias y facturas en WhatsApp.'}
                         </p>
-                        ${data.sheetUrl ? `
-                            <a href="${data.sheetUrl}" target="_blank" class="btn btn-success" style="display:inline-block; font-weight:700; padding:10px 20px; background:#10b981; border-color:#10b981; color:#fff; text-decoration:none; border-radius:8px;">
-                                📊 Ver Planilla en Tiempo Real
+
+                        <div style="display:flex; justify-content:space-around; background:rgba(255,255,255,0.05); padding:12px; border-radius:10px; margin-bottom:15px;">
+                            <div>
+                                <div style="font-size:1.4rem; font-weight:800; color:var(--color-primary-light);">${total}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Movimientos en Balance</div>
+                            </div>
+                            <div>
+                                <div style="font-size:1.4rem; font-weight:800; color:#10b981;">${synced}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Sincronizados a Sheets</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align:left; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:10px; margin-bottom:15px;">
+                            <div style="font-size:12px; font-weight:700; color:#10b981; margin-bottom:4px;">📊 Para ver el balance en Google Sheets:</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">Pegá esta fórmula en la celda A1 de una hoja de cálculo en blanco:</div>
+                            <div style="display:flex; gap:6px;">
+                                <input type="text" readonly value='${importFormula}' id="modalFormulaInput" style="flex:1; font-family:monospace; font-size:10px; background:rgba(0,0,0,0.3); color:#10b981; padding:6px; border-radius:6px; border:1px solid #10b981;">
+                                <button class="btn btn-sm btn-success" onclick="navigator.clipboard.writeText(document.getElementById('modalFormulaInput').value); Components.showToast('¡Fórmula copiada! 📋', 'success');" style="font-size:11px; font-weight:700; background:#10b981;">📋 Copiar</button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                            <a href="https://sheets.new" target="_blank" class="btn btn-primary" style="font-weight:700; padding:8px 16px; text-decoration:none;">
+                                ➕ Abrir Google Sheets Nuevo
                             </a>
-                        ` : ''}
+                            <a href="/api/sheets/csv?fleetId=${fleetId}" download class="btn btn-secondary" style="font-weight:600; padding:8px 16px; text-decoration:none;">
+                                📥 Descargar CSV
+                            </a>
+                        </div>
                     </div>
                     `,
-                    `<button class="btn btn-primary" onclick="Components.closeModal()">¡Genial!</button>`
+                    `<button class="btn btn-secondary" onclick="Components.closeModal()">Cerrar</button>`
                 );
             } else {
-                Components.showToast('Error al iniciar escaneo: ' + (data.error || 'Error desconocido'), 'danger');
+                Components.showToast('Error al escanear: ' + (data.error || 'Error desconocido'), 'danger');
             }
         } catch(e) {
             Components.showToast('Error al solicitar escaneo: ' + e.message, 'danger');
@@ -1855,7 +1910,7 @@ const SettingsModule = (() => {
         startVoiceEnrollment, recordSample,
         loadInstallationsList,
         toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId,
-        autoCreateGoogleSheet, scanHistoricalWhatsApp,
+        autoCreateGoogleSheet, scanHistoricalWhatsApp, copyImportFormula,
         showGoogleSheetsScriptModal, testGoogleSheetsConnection
     };
 })();
