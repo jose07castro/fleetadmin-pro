@@ -367,6 +367,8 @@ const AndroidServices = (() => {
     /**
      * Muestra un diálogo explicativo de por qué necesitamos la ubicación "Todo el tiempo".
      * Exigido por las políticas de Google Play.
+     * v192 FIX: Agrega guardia de localStorage para evitar mostrar el diálogo
+     * si el permiso ya fue concedido en una sesión anterior.
      */
     function showBackgroundLocationDialog(onConfirm) {
         if (!isNativeAndroid()) {
@@ -374,11 +376,19 @@ const AndroidServices = (() => {
             return;
         }
 
-        // Si el permiso ya está otorgado en segundo plano, omitimos el diálogo del todo
+        // CAPA 1: Verificar localStorage (persiste entre sesiones)
+        if (localStorage.getItem('bg_location_perm_granted') === 'true') {
+            console.log('📱 AndroidServices: ✅ BG location ya concedida (localStorage) — omitiendo diálogo');
+            if (onConfirm) onConfirm();
+            return;
+        }
+
+        // CAPA 2: Si el permiso ya está otorgado en segundo plano (bridge nativo), omitimos el diálogo del todo
         if (_hasNativeBridge() && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
             try {
                 if (window.NativeServiceBridge.isBackgroundLocationGranted()) {
                     console.log('📱 AndroidServices: ✅ Ubicación en segundo plano ya concedida — omitiendo diálogo');
+                    localStorage.setItem('bg_location_perm_granted', 'true');
                     if (onConfirm) onConfirm();
                     return;
                 }
@@ -407,12 +417,16 @@ const AndroidServices = (() => {
             </div>
         `;
 
+        // v192 FIX: Guardar flag en localStorage cuando el usuario confirma,
+        // usando una función nombrada en lugar de serializar onConfirm.toString()
+        window._bgLocationConfirmCallback = onConfirm;
+
         Components.showModal(
             '📍 Permiso de Ubicación',
             bodyHTML,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal()">Después</button>
-                <button class="btn btn-primary" style="min-width:180px;" onclick="Components.closeModal(); AndroidServices.requestBackgroundLocationPermission(); if(${!!onConfirm}) { (${onConfirm.toString()})() }">
+                <button class="btn btn-primary" style="min-width:180px;" onclick="Components.closeModal(); AndroidServices.requestBackgroundLocationPermission(); localStorage.setItem('bg_location_perm_granted','true'); if(typeof window._bgLocationConfirmCallback === 'function') { window._bgLocationConfirmCallback(); window._bgLocationConfirmCallback = null; }">
                     Configurar Ahora
                 </button>
             `,

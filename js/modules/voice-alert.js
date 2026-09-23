@@ -1,5 +1,5 @@
 /* ============================================
-   Punto Alertas — Módulo de Alertas de Voz (v1.2.161)
+   Punto Alertas — Módulo de Alertas de Voz (v1.2.192)
    Permite al chofer grabar un audio de 15s desde la app,
    subirlo a Firebase Storage y publicarlo como alerta GPS.
    ============================================ */
@@ -233,6 +233,8 @@ const VoiceAlertModule = (() => {
 
     /**
      * Procesa, sube y publica la alerta con geolocalización.
+     * v192 FIX: base64Data declarada en scope superior del try para que sea
+     * accesible en el catch interno (cola offline). Evita ReferenceError silencioso.
      */
     async function _processRecordedAudio() {
         if (_audioChunks.length === 0) {
@@ -255,19 +257,20 @@ const VoiceAlertModule = (() => {
 
                     const blob = new Blob(_audioChunks, { type: _selectedMime || 'audio/webm' });
                     
-                    // Convertir el audio grabado (Blob) a base64
+                    // v192 FIX: Declarar base64Data en scope superior para acceso en catch
+                    let base64Data = null;
+
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
                         try {
-                            const base64Data = reader.result.split(',')[1];
+                            base64Data = reader.result.split(',')[1];
                             const currentUser = Auth.getUser();
                             const author = currentUser ? currentUser.name : 'Conductor';
                             const fleetId = Auth.getFleetId() || 'default_fleet';
 
                             if (statusEl) statusEl.innerText = 'Procesando con KITT...';
 
-                            // Determinar URL del servidor
                             const serverUrl = (window.location.hostname === 'localhost' || 
                                                window.location.hostname === '127.0.0.1' ||
                                                window.location.protocol === 'file:') 
@@ -276,9 +279,7 @@ const VoiceAlertModule = (() => {
 
                             const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
                                 method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     audio: base64Data,
                                     audioMimeType: _selectedMime || 'audio/webm',
@@ -297,22 +298,29 @@ const VoiceAlertModule = (() => {
 
                             console.log(`✅ [VOICE-ALERT] Procesada por backend KITT:`, result);
                             Components.closeModal();
-                            Components.showToast('🎙️ Alerta procesada y enviada a la flota por KITT', 'success');
+                            Components.showToast('🎤 Alerta procesada y enviada a la flota por KITT', 'success');
+
                         } catch (err) {
                             console.error('❌ Error enviando alerta de voz a KITT:', err);
-                            // Si falla por red, guardar en cola local offline para reintento automático
-                            _queueOfflineVoiceAlert({
-                                audio: base64Data,
-                                audioMimeType: _selectedMime || 'audio/webm',
-                                lat: lat,
-                                lng: lng,
-                                type: _selectedType,
-                                authorName: author,
-                                fleetId: fleetId,
-                                timestamp: Date.now()
-                            });
-                            Components.closeModal();
-                            Components.showToast('📶 Sin conexión. Alerta guardada; se enviará automáticamente al reconectarse.', 'warning');
+                            // v192 FIX: base64Data accesible desde scope superior
+                            if (base64Data) {
+                                const currentUser = Auth.getUser();
+                                _queueOfflineVoiceAlert({
+                                    audio: base64Data,
+                                    audioMimeType: _selectedMime || 'audio/webm',
+                                    lat: lat,
+                                    lng: lng,
+                                    type: _selectedType,
+                                    authorName: currentUser ? currentUser.name : 'Conductor',
+                                    fleetId: Auth.getFleetId() || 'default_fleet',
+                                    timestamp: Date.now()
+                                });
+                                Components.closeModal();
+                                Components.showToast('📶 Sin conexión. Alerta guardada; se enviará automáticamente al reconectarse.', 'warning');
+                            } else {
+                                Components.closeModal();
+                                Components.showToast(`❌ Error procesando audio: ${err.message || 'Error desconocido'}`, 'danger');
+                            }
                         }
                     };
                 } catch (err) {
