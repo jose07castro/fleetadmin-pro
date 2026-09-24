@@ -585,6 +585,8 @@ window.DashboardModule = (() => {
                     superAdminId = owners[0].id;
                 }
             }
+        } catch(e) {}
+
         let positionsMap = {};
         try {
             if (typeof firebase !== 'undefined' && firebase.database) {
@@ -592,6 +594,7 @@ window.DashboardModule = (() => {
                 positionsMap = posSnap.val() || {};
             }
         } catch (e) {}
+
 
         const userCards = users.map(u => {
             const safeName = u.name || 'Sin nombre';

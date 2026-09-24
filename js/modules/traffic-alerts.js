@@ -291,28 +291,29 @@
             }
         }
 
-        // Marca de tiempo JUSTO ANTES de abrir el listener para ignorar entradas preexistentes
-        // Se usa como startAt para que Firebase solo entregue alertas con timestamp >= _listenerOpenedAt
-        const _listenerOpenedAt = Date.now() - 2000; // -2s de margen para desfase de reloj Android
-        console.log(`📡 [VOZ-GLOBAL] Conectado a global_traffic_alerts (desde ts=${_listenerOpenedAt}).`);
-
+        console.log(`📡 [VOZ-GLOBAL] Conectado a global_traffic_alerts. Todos los alertas llegarán a este dispositivo.`);
+        const alertRef = firebaseDB.ref(`global_traffic_alerts`);
         _activeFleetId = '__GLOBAL__';
+        _activeVoiceRef = alertRef;
 
         _activeVoiceCallback = (snap) => {
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // FILTRO DE TIEMPO: Solo alertas nuevas (posteriores al momento en que abrimos el listener)
-            // v193: Ahora se filtra por orderByChild+startAt en Firebase, pero mantenemos
-            // un filtro local de respaldo para tolerancia de reloj.
-            const timeDiff = alert.timestamp ? (Date.now() - alert.timestamp) : 0;
-            if (alert.timestamp && alert.timestamp < (_listenerOpenedAt - 5000)) {
-                // La alerta es claramente anterior a cuando abrimos el listener → ignorar
-                console.log('📡 [VOZ-GLOBAL] Alerta preexistente ignorada. ts:', alert.timestamp, 'listenerAt:', _listenerOpenedAt);
-                return;
+            // NOTA: NO saltamos el anuncio en Android nativo — el servicio Java solo maneja GPS
+            // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
+
+            // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
+            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
+            // v192 FIX: Ventana ampliada a 5 minutos (300000ms) para tolerar desfases de reloj de Android
+            const timeDiff = alert.timestamp ? Math.abs(Date.now() - alert.timestamp) : 0;
+            const isVeryRecent = alert.timestamp && (timeDiff < 300000 || alert.timestamp >= _appStartTime - 10000);
+            if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
+                console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
+                return; 
             }
 
-            // FILTRO DE EXPIRACIÓN: Si la alerta ya venció, silenciarla
+            // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
                 console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
                 return;
@@ -320,7 +321,7 @@
 
             console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
 
-            // Si la alerta tiene un audio de KITT generado, reproducirlo tal cual (sin TTS)
+            // Si la alerta tiene un audio original de WhatsApp o audio de KITT generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
                 const serverUrl = (window.location.hostname === 'localhost' || 
                                    window.location.hostname === '127.0.0.1' ||
@@ -330,7 +331,7 @@
                 const fullAudioUrl = alert.audioUrl.startsWith('http') 
                     ? alert.audioUrl 
                     : `${serverUrl}${alert.audioUrl}`;
-                console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir: ${fullAudioUrl}`);
+                console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de alerta: ${fullAudioUrl}`);
                 
                 let audioPlayed = false;
                 let fallbackTriggered = false;
@@ -340,24 +341,29 @@
                 const triggerFallback = () => {
                     if (fallbackTriggered) return;
                     fallbackTriggered = true;
-                    console.warn('⚠️ [AUDIO-FALLBACK] Audio bloqueado → usando TTS local.');
-                    try { audio.pause(); audio.src = ''; } catch (e) {}
+                    console.warn('⚠️ [AUDIO-FALLBACK] El audio de la alerta falló o fue bloqueado. Usando Text-To-Speech local.');
+                    try {
+                        audio.pause();
+                        audio.src = '';
+                    } catch (e) {}
                     speakAlert(alert.type, alert.location, alert.originalText);
                 };
 
                 // Si no se reproduce tras 4 segundos, activar fallback de voz
                 const fallbackTimeout = setTimeout(() => {
-                    if (!audioPlayed) triggerFallback();
+                    if (!audioPlayed) {
+                        triggerFallback();
+                    }
                 }, 4000);
 
                 try {
-                    audio.crossOrigin = 'anonymous';
+                    audio.crossOrigin = 'anonymous'; // Necesario para boost
                     audio.src = fullAudioUrl;
                     audio.volume = 1.0;
                     audio.preload = 'auto';
 
                     audio.onerror = (err) => {
-                        console.error('❌ [AUDIO-ORIGINAL] Error cargando audio:', err);
+                        console.error('❌ [AUDIO-ORIGINAL] Error cargando el archivo de audio:', err);
                         clearTimeout(fallbackTimeout);
                         triggerFallback();
                     };
@@ -392,41 +398,47 @@
                                 window.speechSynthesis.speak(utter);
                             }
                         } else {
-                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada, sonido de escáner KITT...');
+                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada, reproduciendo escáner de KITT...');
                             playScannerSound();
                         }
                     };
 
-                    const tryPlayAudio = () => {
-                        const playFn = (typeof window.playAudioWithBoost === 'function')
-                            ? () => window.playAudioWithBoost(audio, 3.0)
-                            : () => audio.play();
+                    const playPromise = (typeof window.playAudioWithBoost === 'function')
+                        ? window.playAudioWithBoost(audio, 3.0)
+                        : audio.play();
 
-                        const p = playFn();
-                        if (p && typeof p.then === 'function') {
-                            p.then(() => {
-                                audioPlayed = true;
-                                clearTimeout(fallbackTimeout);
-                                console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada.');
-                            }).catch(err => {
-                                console.warn('⚠️ [AUDIO-ORIGINAL] Play falló (autoplay?):', err && err.message);
-                                // Último intento: audio.play() nativo
-                                audio.play().then(() => {
+                    // Intentar reproducir directamente
+                    playPromise
+                        .then(() => {
+                            audioPlayed = true;
+                            clearTimeout(fallbackTimeout);
+                            console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada directamente.');
+                        })
+                        .catch(audioErr => {
+                            console.warn('⚠️ [AUDIO-ORIGINAL] Play directo falló, esperando evento canplay...', audioErr.message);
+                        });
+
+                    // Evento canplay para móviles
+                    audio.addEventListener('canplay', () => {
+                        if (!audioPlayed) {
+                            const canPlayPromise = (typeof window.playAudioWithBoost === 'function')
+                                ? window.playAudioWithBoost(audio, 3.0)
+                                : audio.play();
+
+                            canPlayPromise
+                                .then(() => {
                                     audioPlayed = true;
                                     clearTimeout(fallbackTimeout);
-                                }).catch(() => triggerFallback());
-                            });
+                                    console.log('🎵 [AUDIO-ORIGINAL] Reproducción iniciada en evento canplay.');
+                                })
+                                .catch(err => {
+                                    console.error('❌ [AUDIO-ORIGINAL] Error en canplay:', err.message);
+                                });
                         }
-                    };
-
-                    audio.addEventListener('canplay', () => {
-                        if (!audioPlayed) tryPlayAudio();
-                    }, { once: true });
-
-                    tryPlayAudio();
+                    });
 
                 } catch (audioEx) {
-                    console.error('❌ [AUDIO-ORIGINAL] Error al instanciar audio:', audioEx.message);
+                    console.error('❌ [AUDIO-ORIGINAL] Error al instanciar o reproducir audio:', audioEx.message);
                     clearTimeout(fallbackTimeout);
                     triggerFallback();
                 }
@@ -440,13 +452,7 @@
             });
         };
 
-        // v193: Ordenar por timestamp y comenzar DESDE el momento actual
-        // Esto garantiza que Firebase solo entregue child_added para NUEVAS alertas
-        const alertRef = firebaseDB.ref('global_traffic_alerts')
-            .orderByChild('timestamp')
-            .startAt(_listenerOpenedAt);
-        _activeVoiceRef = alertRef;
-
+        // Escucha absoluta basada en Timestamps en tiempo real (100% libre de Race Conditions)
         alertRef.on('child_added', _activeVoiceCallback, (error) => {
             console.error('❌ [VOZ-GLOBAL] Error en listener de Firebase global_traffic_alerts:', error);
         });
