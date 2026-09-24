@@ -410,12 +410,25 @@ const ShiftsModule = (() => {
 
     async function renderActiveShiftsCards(shifts) {
         let html = '<div class="content-grid">';
+        
+        // Obtener versiones de app en tiempo real desde driver_positions
+        let positionsMap = {};
+        try {
+            if (typeof firebase !== 'undefined' && firebase.database) {
+                const posSnap = await firebase.database().ref('driver_positions').once('value');
+                positionsMap = posSnap.val() || {};
+            }
+        } catch (e) {
+            console.warn('No se pudieron obtener driver_positions para versiones:', e);
+        }
+
         for (const s of shifts) {
             const driver = await DB.get('users', s.driverId);
             const vehicle = await DB.get('vehicles', s.vehicleId);
             const driverDisplayName = driver?.name || s.driverName || 'Conductor desconocido';
 
-            const appVersion = driver?.appVersion || s.appVersion || 'Desconocida';
+            const posData = positionsMap[s.driverId] || {};
+            const appVersion = driver?.appVersion || s.appVersion || posData.appVersion || 'Desconocida';
             const versionBadge = typeof Components !== 'undefined' && Components.getVersionBadge
                 ? Components.getVersionBadge(appVersion)
                 : '';

@@ -585,12 +585,19 @@ window.DashboardModule = (() => {
                     superAdminId = owners[0].id;
                 }
             }
-        } catch (e) { /* ignore */ }
+        let positionsMap = {};
+        try {
+            if (typeof firebase !== 'undefined' && firebase.database) {
+                const posSnap = await firebase.database().ref('driver_positions').once('value');
+                positionsMap = posSnap.val() || {};
+            }
+        } catch (e) {}
 
         const userCards = users.map(u => {
             const safeName = u.name || 'Sin nombre';
             const initial = safeName[0] ? safeName[0].toUpperCase() : '?';
             const isSuperAdmin = superAdminId && (u.globalId === superAdminId || u.id === superAdminId);
+            const userVer = u.appVersion || positionsMap[u.id]?.appVersion || positionsMap[u.globalId]?.appVersion || 'Desconocida';
 
             // Delete button: Super Admin gets badge, everyone else gets trash button
             let deleteAction = '';
@@ -614,7 +621,7 @@ window.DashboardModule = (() => {
                 <div style="flex:1;">
                     <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
                         ${safeName}
-                        ${u.role === 'driver' && typeof Components !== 'undefined' && Components.getVersionBadge ? Components.getVersionBadge(u.appVersion || 'Desconocida') : ''}
+                        ${u.role === 'driver' && typeof Components !== 'undefined' && Components.getVersionBadge ? Components.getVersionBadge(userVer) : ''}
                     </div>
                     <span class="badge badge-${u.role === 'owner' ? 'primary' : u.role === 'driver' ? 'success' : 'warning'}">
                         ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
