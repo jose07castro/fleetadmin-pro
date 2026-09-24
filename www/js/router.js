@@ -173,5 +173,11 @@ const Router = (() => {
         }
     }
 
-    return { navigate, getCurrentRoute, getDefaultRoute };
+    async function loadModule(name) {
+        if (modulePaths[name]) {
+            await _loadModuleScript(modulePaths[name]);
+        }
+    }
+
+    return { navigate, getCurrentRoute, getDefaultRoute, loadModule };
 })();

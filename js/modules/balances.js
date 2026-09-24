@@ -51,7 +51,7 @@ const BalancesModule = (() => {
                             <button class="btn btn-secondary" onclick="BalancesModule.exportCSV()" style="font-weight:600; font-size:0.88rem;">
                                 📄 Exportar Excel/CSV
                             </button>
-                            <button class="btn btn-warning" onclick="SettingsModule.scanHistoricalWhatsApp()" style="font-weight:700; font-size:0.88rem; background:#f59e0b; border-color:#f59e0b; color:#fff;">
+                            <button class="btn btn-warning" id="btnScanWhatsapp" onclick="BalancesModule.scanWhatsApp()" style="font-weight:700; font-size:0.88rem; background:#f59e0b; border-color:#f59e0b; color:#fff;">
                                 🔍 Escanear WhatsApp
                             </button>
                             <button class="btn btn-success" onclick="BalancesModule.showGoogleSheetsOptions()" style="font-weight:700; font-size:0.88rem; background:#10b981; border-color:#10b981; color:#fff;">
@@ -465,11 +465,38 @@ const BalancesModule = (() => {
         }
     }
 
+    async function _autoCreateGoogleSheet() {
+        Components.showToast('Creando planilla de Google Sheets automáticamente... ⏳', 'info');
+        try {
+            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+            const res = await fetch('/api/sheets/auto-create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fleetId })
+            });
+            const data = await res.json();
+            if (data.ok && data.spreadsheetUrl) {
+                await DB.setSetting('google_sheet_id', data.spreadsheetUrl);
+                return data.spreadsheetUrl;
+            } else {
+                Components.showToast('Error al crear planilla: ' + (data.error || 'Error desconocido'), 'danger');
+                return null;
+            }
+        } catch(e) {
+            Components.showToast('Error al conectar con el servidor: ' + e.message, 'danger');
+            return null;
+        }
+    }
+
     async function syncAllSheets() {
         try {
             let sheetId = (await DB.getSetting('google_sheet_id')) || '';
             if (!sheetId) {
-                await SettingsModule.autoCreateGoogleSheet();
+                if (typeof SettingsModule !== 'undefined' && SettingsModule.autoCreateGoogleSheet) {
+                    await SettingsModule.autoCreateGoogleSheet();
+                } else {
+                    await _autoCreateGoogleSheet();
+                }
                 sheetId = (await DB.getSetting('google_sheet_id')) || '';
                 if (!sheetId) return;
             }
@@ -538,6 +565,104 @@ const BalancesModule = (() => {
         );
     }
 
+    async function scanWhatsApp() {
+        const btn = document.getElementById('btnScanWhatsapp');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Escaneando...';
+        }
+        Components.showToast('Escaneando WhatsApp en busca de transferencias y facturas... 🔍⏳', 'info');
+
+        try {
+            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+            const res = await fetch('/api/bot/scan-historical', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fleetId })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Error del servidor (${res.status})`);
+            }
+
+            const data = await res.json();
+            if (data.ok) {
+                const total = data.scanResult?.totalMovements || 0;
+                const newProcessed = data.scanResult?.newProcessed || 0;
+                const synced = data.scanResult?.syncedToSheets || 0;
+                const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'https://fleetadmin-web-nueva.onrender.com'
+                    : window.location.origin;
+                const importFormula = data.importFormula || `=IMPORTDATA("${origin}/api/sheets/csv?fleetId=${fleetId}")`;
+                const csvUrl = data.csvUrl || `${origin}/api/sheets/csv?fleetId=${fleetId}`;
+
+                Components.showToast(`¡Escaneo finalizado! ${newProcessed} nuevos comprobantes procesados ✅`, 'success');
+
+                Components.showModal(
+                    '🔍 Escaneo de WhatsApp & Balance Completo',
+                    `
+                    <div style="text-align:center; padding:10px;">
+                        <div style="font-size:3rem; margin-bottom:10px;">📊🚗💰</div>
+                        <h3 style="margin-bottom:10px; color:var(--text-primary);">¡Escaneo Contable Finalizado!</h3>
+                        <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:15px;">
+                            ${data.message || 'Se analizaron los comprobantes de transferencias y facturas en WhatsApp.'}
+                        </p>
+
+                        <div style="display:flex; justify-content:space-around; background:rgba(255,255,255,0.05); padding:12px; border-radius:10px; margin-bottom:15px; gap:8px;">
+                            <div style="flex:1;">
+                                <div style="font-size:1.4rem; font-weight:800; color:var(--color-primary-light);">${total}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Total en Balance</div>
+                            </div>
+                            <div style="flex:1;">
+                                <div style="font-size:1.4rem; font-weight:800; color:#f59e0b;">${newProcessed}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Nuevos Detectados</div>
+                            </div>
+                            <div style="flex:1;">
+                                <div style="font-size:1.4rem; font-weight:800; color:#10b981;">${synced}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Sincronizados a Sheets</div>
+                            </div>
+                        </div>
+
+                        <div style="text-align:left; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:10px; margin-bottom:15px;">
+                            <div style="font-size:12px; font-weight:700; color:#10b981; margin-bottom:4px;">📊 Para ver el balance en Google Sheets:</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">Pegá esta fórmula en la celda A1 de una hoja de cálculo en blanco:</div>
+                            <div style="display:flex; gap:6px;">
+                                <input type="text" readonly value='${importFormula}' id="modalFormulaInput" style="flex:1; font-family:monospace; font-size:10px; background:rgba(0,0,0,0.3); color:#10b981; padding:6px; border-radius:6px; border:1px solid #10b981;">
+                                <button class="btn btn-sm btn-success" onclick="navigator.clipboard.writeText(document.getElementById('modalFormulaInput').value); Components.showToast('¡Fórmula copiada! 📋', 'success');" style="font-size:11px; font-weight:700; background:#10b981;">📋 Copiar</button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                            <a href="https://sheets.new" target="_blank" class="btn btn-primary" style="font-weight:700; padding:8px 16px; text-decoration:none;">
+                                ➕ Abrir Google Sheets Nuevo
+                            </a>
+                            <a href="${csvUrl}" download class="btn btn-secondary" style="font-weight:600; padding:8px 16px; text-decoration:none;">
+                                📥 Descargar CSV
+                            </a>
+                        </div>
+                    </div>
+                    `,
+                    `<button class="btn btn-secondary" onclick="Components.closeModal(); Router.navigate('balances');">Cerrar y Actualizar</button>`
+                );
+
+                // Refrescar automáticamente la tabla de balances
+                Router.navigate('balances');
+            } else {
+                Components.showToast('Error al escanear: ' + (data.error || 'Error desconocido'), 'danger');
+            }
+        } catch(e) {
+            console.error('Error al solicitar escaneo de WhatsApp:', e);
+            Components.showToast('Error al escanear WhatsApp: ' + e.message, 'danger');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText || '🔍 Escanear WhatsApp';
+            }
+        }
+    }
+
     return {
         render,
         setFilter,
@@ -547,6 +672,8 @@ const BalancesModule = (() => {
         viewReceipt,
         exportCSV,
         syncAllSheets,
-        showGoogleSheetsOptions
+        showGoogleSheetsOptions,
+        scanWhatsApp,
+        scanHistoricalWhatsApp: scanWhatsApp
     };
 })();

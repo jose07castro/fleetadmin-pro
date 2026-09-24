@@ -72,7 +72,7 @@ const Components = (() => {
                             <span>${I18n.t(item.label)}</span>
                         </div>`;
                     }).join('')}
-                    ${role === 'owner' ? `<div class="nav-item" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); SettingsModule.showReportModal()">
+                    ${role === 'owner' ? `<div class="nav-item" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); (typeof SettingsModule !== 'undefined' ? SettingsModule.showReportModal() : Router.loadModule('settings').then(() => SettingsModule.showReportModal()))">
                             <span class="nav-icon">🚩</span>
                             <span>Veraz de Conductores</span>
                         </div>` : ''}

@@ -1846,8 +1846,13 @@ const SettingsModule = (() => {
             const data = await res.json();
             if (data.ok) {
                 const total = data.scanResult?.totalMovements || 0;
+                const newProcessed = data.scanResult?.newProcessed || 0;
                 const synced = data.scanResult?.syncedToSheets || 0;
-                const importFormula = data.importFormula || `=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${fleetId}")`;
+                const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'https://fleetadmin-web-nueva.onrender.com'
+                    : window.location.origin;
+                const importFormula = data.importFormula || `=IMPORTDATA("${origin}/api/sheets/csv?fleetId=${fleetId}")`;
+                const csvUrl = data.csvUrl || `${origin}/api/sheets/csv?fleetId=${fleetId}`;
 
                 Components.showModal(
                     '🔍 Escaneo de WhatsApp & Balance Completo',
@@ -1859,12 +1864,16 @@ const SettingsModule = (() => {
                             ${data.message || 'Se analizaron los comprobantes de transferencias y facturas en WhatsApp.'}
                         </p>
 
-                        <div style="display:flex; justify-content:space-around; background:rgba(255,255,255,0.05); padding:12px; border-radius:10px; margin-bottom:15px;">
-                            <div>
+                        <div style="display:flex; justify-content:space-around; background:rgba(255,255,255,0.05); padding:12px; border-radius:10px; margin-bottom:15px; gap:8px;">
+                            <div style="flex:1;">
                                 <div style="font-size:1.4rem; font-weight:800; color:var(--color-primary-light);">${total}</div>
-                                <div style="font-size:0.75rem; color:var(--text-secondary);">Movimientos en Balance</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Total en Balance</div>
                             </div>
-                            <div>
+                            <div style="flex:1;">
+                                <div style="font-size:1.4rem; font-weight:800; color:#f59e0b;">${newProcessed}</div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary);">Nuevos Detectados</div>
+                            </div>
+                            <div style="flex:1;">
                                 <div style="font-size:1.4rem; font-weight:800; color:#10b981;">${synced}</div>
                                 <div style="font-size:0.75rem; color:var(--text-secondary);">Sincronizados a Sheets</div>
                             </div>
@@ -1883,7 +1892,7 @@ const SettingsModule = (() => {
                             <a href="https://sheets.new" target="_blank" class="btn btn-primary" style="font-weight:700; padding:8px 16px; text-decoration:none;">
                                 ➕ Abrir Google Sheets Nuevo
                             </a>
-                            <a href="/api/sheets/csv?fleetId=${fleetId}" download class="btn btn-secondary" style="font-weight:600; padding:8px 16px; text-decoration:none;">
+                            <a href="${csvUrl}" download class="btn btn-secondary" style="font-weight:600; padding:8px 16px; text-decoration:none;">
                                 📥 Descargar CSV
                             </a>
                         </div>
