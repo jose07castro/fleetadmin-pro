@@ -416,8 +416,13 @@ const RadarModule = (() => {
         
         // Formato final "Nombre - Patente"
         let displayName = `${firstName} - ${vehiclePlate}`;
-        if (data.permissions_ok === false || data.bg_location_ok === false || data.battery_optimization_ok === false) {
-            displayName = `⚠️ ${firstName} - ${vehiclePlate} (Permisos/Batería desactivados)`;
+        const hasBatteryWarning = data.battery_optimization_ok === false;
+        const hasBgLocWarning = data.bg_location_ok === false;
+        
+        if (hasBgLocWarning) {
+            displayName = `⚠️ ${firstName} - ${vehiclePlate} (Falta ubicac. "Permitir siempre")`;
+        } else if (hasBatteryWarning) {
+            displayName = `🔋 ${firstName} - ${vehiclePlate} (Ahorro batería activo)`;
         }
 
         // v117 - Limpieza TOTAL de fantasmas
@@ -438,6 +443,7 @@ const RadarModule = (() => {
             return false; // Indicamos al caller que el chofer ya no está online
         }
 
+        // Si el chofer está enviando GPS fresco (últimos 60s), reflejar su estado real de movimiento
         let carMode = (speed > 5) ? 'moving' : 'stopped';
         if (data.status === 'logout_voluntario') {
             carMode = 'logout';
@@ -445,7 +451,8 @@ const RadarModule = (() => {
             carMode = 'suspicious';
         } else if (data.status === 'gps_desactivado') {
             carMode = 'gps-disabled';
-        } else if (data.status === 'permissions_disabled' || data.permissions_ok === false) {
+        } else if (timeAgoSecs > 60 && (data.status === 'permissions_disabled' || data.permissions_ok === false)) {
+            // Solo marcar permissions-disabled si además dejó de enviar GPS fresco
             carMode = 'permissions-disabled';
         }
         const statusClass = 'status-' + carMode;
@@ -462,7 +469,7 @@ const RadarModule = (() => {
         } else if (data.status === 'gps_desactivado') {
             statusLabelText = 'GPS Desactivado por el Conductor';
             statusColor = '#f97316'; // Naranja
-        } else if (data.status === 'permissions_disabled' || data.permissions_ok === false) {
+        } else if (carMode === 'permissions-disabled') {
             statusLabelText = 'Permisos de segundo plano / Batería desactivados';
             statusColor = '#f97316'; // Naranja
         } else if (carMode === 'moving') {
@@ -574,12 +581,12 @@ const RadarModule = (() => {
                     <strong style="color: ${statusColor}">${statusLabelText}</strong>
                 </div>
                 ${(data.permissions_ok === false || data.bg_location_ok === false || data.battery_optimization_ok === false) ? `
-                <div class="radar-popup-row" style="color: #f97316; font-weight: bold; background: rgba(249,115,22,0.1); padding: 6px 8px; border-radius: 6px; margin-top: 6px; border: 1px solid rgba(249,115,22,0.2); font-size: 11px;">
-                    <span>⚠️ Alerta Celular:</span>
-                    <span>Desactivado (${[
-                        data.bg_location_ok === false ? 'Ubicación 2° plano' : null,
-                        data.battery_optimization_ok === false ? 'Ahorro batería' : null
-                    ].filter(Boolean).join(', ') || 'Permisos/Batería'})</span>
+                <div class="radar-popup-row" style="color: #f97316; font-weight: bold; background: rgba(249,115,22,0.1); padding: 8px 10px; border-radius: 8px; margin-top: 6px; border: 1px solid rgba(249,115,22,0.25); font-size: 11px; flex-direction: column; align-items: flex-start; gap: 4px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span>⚠️ Configuración Celular Chofer:</span>
+                    </div>
+                    ${data.bg_location_ok === false ? '<div style="color:#ef4444; font-size:10.5px;">• Falta ubicación: Debe elegir "Permitir todo el tiempo" (en Ajustes → Permisos → Ubicación).</div>' : ''}
+                    ${data.battery_optimization_ok === false ? '<div style="color:#eab308; font-size:10.5px;">• Ahorro de batería activo: Debe elegir "Sin restricciones" (en Ajustes → Batería o tocar "Configurar Ahora" en su app).</div>' : ''}
                 </div>
                 ` : ''}
                 <div class="radar-popup-row">
