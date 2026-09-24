@@ -1226,12 +1226,66 @@ const WhatsappBot = (() => {
         }
     }
 
+    const INSTANCE_ID = process.env.RENDER_SERVICE_NAME 
+        ? `${process.env.RENDER_SERVICE_NAME}_${(process.env.RENDER_INSTANCE_ID || Math.random().toString(36).substring(2, 7))}`
+        : `local_${process.pid}_${Math.random().toString(36).substring(2, 7)}`;
+    let _leaderHeartbeatInterval = null;
+
     async function startSocket() {
         if (isConnecting) {
             console.log('🛡️ [LOCK] Bloqueando intento de conexión duplicado en paralelo.');
             return;
         }
         isConnecting = true;
+
+        // 0. CERROJO DISTRIBUIDO (ANTI-CONFLICTO 440 ENTRE MÚLTIPLES SERVICIOS DE RENDER)
+        // Evita que dos servicios en Render (ej: fleetadmin-pro-1 y fleetadmin-web-nueva)
+        // peleen por la misma sesión de WhatsApp y se desconecten mutuamente.
+        if (db) {
+            try {
+                const lockSnap = await db.ref('bot_active_leader').once('value');
+                const currentLeader = lockSnap.val();
+                const now = Date.now();
+                const isAnotherLeaderActive = currentLeader && 
+                    currentLeader.id !== INSTANCE_ID && 
+                    (now - (currentLeader.lastSeen || 0)) < 45000;
+
+                // Si este servicio es fleetadmin-pro-1 y existe fleetadmin-web-nueva activo, ceder de inmediato
+                const isLegacyService = (process.env.RENDER_SERVICE_NAME || '').includes('fleetadmin-pro-1');
+                if (isLegacyService && currentLeader && currentLeader.id?.includes('web-nueva')) {
+                    console.warn(`🛡️ [DISTRIBUTED-LOCK] Instancia legacy (${INSTANCE_ID}) cede el control a la instancia principal (${currentLeader.id}).`);
+                    isConnecting = false;
+                    return;
+                }
+
+                if (isAnotherLeaderActive) {
+                    console.warn(`🛡️ [DISTRIBUTED-LOCK] Otra instancia activa detectada: "${currentLeader.id}". Esta instancia (${INSTANCE_ID}) queda en standby sin iniciar WhatsApp para evitar expulsión 440.`);
+                    isConnecting = false;
+                    setTimeout(() => { if (!_isConnectedState) startSocket(); }, 35000);
+                    return;
+                }
+
+                // Asumir liderazgo activo
+                await db.ref('bot_active_leader').set({
+                    id: INSTANCE_ID,
+                    serviceName: process.env.RENDER_SERVICE_NAME || 'local',
+                    lastSeen: now,
+                    startedAt: now
+                });
+
+                if (!_leaderHeartbeatInterval) {
+                    _leaderHeartbeatInterval = setInterval(async () => {
+                        if (_isConnectedState && db) {
+                            try {
+                                await db.ref('bot_active_leader/lastSeen').set(Date.now());
+                            } catch(e) {}
+                        }
+                    }, 15000);
+                }
+            } catch(lockErr) {
+                console.warn('⚠️ [DISTRIBUTED-LOCK] Error verificando cerrojo en Firebase:', lockErr.message);
+            }
+        }
         
         // WATCHDOG SANITARIO DE CERROJO: Si tras 90 segundos no hay éxito ni fallo definitivo, 
         // forzamos liberación para evitar congelamiento absoluto en la RAM de Render.
