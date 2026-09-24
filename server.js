@@ -72,6 +72,11 @@ app.post('/api/whatsapp/webhook', (req, res) => {
 // ============================================
 // Bot Management Endpoints
 // ============================================
+// Endpoint de Health Check — usado por Render y por el keep-alive interno
+app.get('/health', (req, res) => {
+    res.json({ ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
 app.get('/api/bot/status', (req, res) => {
     const isConnected = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.isConnected === 'function' 
         ? WhatsappBot.isConnected() 
@@ -84,6 +89,7 @@ app.get('/api/bot/status', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+
 
 // Endpoint de diagnóstico para verificar los archivos de audio en Render
 app.get('/api/debug/audio-files', (req, res) => {
@@ -1460,7 +1466,30 @@ app.listen(PORT, () => {
     // Iniciar el monitoreo en segundo plano de latidos (heartbeats) de choferes
     console.log('⏳ Iniciando verificador de latidos de choferes cada 60s...');
     setInterval(checkActiveDriverHeartbeats, 60000);
+
+    // ============================================================
+    // KEEP-ALIVE: Auto-ping cada 10 minutos para evitar que Render
+    // (free plan) duerma el servidor. Sin esto, el bot de WhatsApp
+    // se desconecta y las alertas de tráfico se pierden.
+    // ============================================================
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    setInterval(async () => {
+        try {
+            const https = require('https');
+            const http = require('http');
+            const url = new URL(`${RENDER_URL}/health`);
+            const lib = url.protocol === 'https:' ? https : http;
+            lib.get(`${RENDER_URL}/health`, (res) => {
+                console.log(`💓 [KEEP-ALIVE] Auto-ping OK (${res.statusCode})`);
+            }).on('error', (e) => {
+                console.warn(`💓 [KEEP-ALIVE] Ping fallido: ${e.message}`);
+            });
+        } catch (pingErr) {
+            console.warn(`💓 [KEEP-ALIVE] Error: ${pingErr.message}`);
+        }
+    }, 10 * 60 * 1000); // cada 10 minutos
 });
+
 
 // Tarea periódica de verificación de latidos
 async function checkActiveDriverHeartbeats() {

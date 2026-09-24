@@ -1498,19 +1498,26 @@ const WhatsappBot = (() => {
                     }
 
                     // VALIDACIÓN DE FRESCURA PARA ALERTAS DE TRÁNSITO:
-                    // Ignorar reportes de voz/texto antiguos de más de 20 min para no ensuciar el mapa.
-                    // IMPORTANTE: Los comprobantes e imágenes de transferencias NO tienen límite de fecha (escaneo histórico).
+                    // - type='notify': mensajes en vivo → límite de 20 min (1200s)
+                    // - type='append': mensajes acumulados mientras el bot estaba offline → límite de 4 horas (14400s)
+                    //   Esto permite recuperar alertas perdidas cuando Render se durmió.
+                    // IMPORTANTE: Los comprobantes e imágenes NO tienen límite de fecha (escaneo histórico).
                     const mRaw = msg.message;
                     const hasImageMsg = !!(mRaw && (mRaw.imageMessage || (typeof _recursiveFindImage === 'function' && _recursiveFindImage(mRaw, 0))));
+                    const hasAudioMsg = !!(mRaw && (mRaw.audioMessage || mRaw.pttMessage));
                     
                     const msgSec = Number(msg.messageTimestamp) || 0;
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    if (msgSec > 0 && ageSec > 1200 && !hasImageMsg) {
-                        console.log(`⏭️ [SKIP] Mensaje de texto/voz antiguo saltado (${ageSec}s de antigüedad).`);
+                    // Límite flexible: 4h para mensajes pendientes offline, 20 min para mensajes en vivo
+                    const maxAgeSec = (type === 'append') ? 14400 : 1200;
+                    
+                    if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
+                        console.log(`⏭️ [SKIP] Mensaje de texto/voz muy antiguo saltado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
                         continue;
                     }
+
 
                     const isGroup = jid.endsWith('@g.us');
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
