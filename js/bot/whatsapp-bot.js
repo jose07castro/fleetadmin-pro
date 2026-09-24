@@ -625,6 +625,305 @@ const WhatsappBot = (() => {
         return TRUSTED_ADMIN_NUMBERS.some(t => num.endsWith(t) || t.endsWith(num));
     }
 
+    function _hasTransferKeywords(mRaw) {
+        if (!mRaw) return false;
+        try {
+            const str = typeof mRaw === 'string' ? mRaw.toLowerCase() : JSON.stringify(mRaw).toLowerCase();
+            return /(transfer[ií]|transferencia|comprobante|recibo|factura|ticket|pago|pagado|\$|cbu|alias|sube|mercadopago|banco|recaudaci[oó]n|turno|saldo|debito|débito|credito|crédito)/i.test(str);
+        } catch(e) {
+            return false;
+        }
+    }
+
+    function _recursiveFindImage(obj, depth = 0) {
+        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+        if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
+        for (const k of Object.keys(obj)) {
+            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
+            const val = obj[k];
+            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
+                const found = _recursiveFindImage(val, depth + 1);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    const _processedReceiptMsgIds = new Set();
+    const _recentHistoricalQueue = [];
+
+    async function _processPotentialReceipt(msg, origin = 'live') {
+        if (!msg || !msg.message) return false;
+        const msgId = msg.key?.id;
+        if (msgId && _processedReceiptMsgIds.has(msgId)) return false;
+
+        const m = msg.message;
+        const jid = msg.key?.remoteJid;
+        if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) return false;
+
+        // Detectar si contiene imagen o documento
+        const resolvedImageMsg = _recursiveFindImage(m, 0) || m.imageMessage;
+        const isImage = !!resolvedImageMsg;
+
+        const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage;
+        const isDocReceipt = !!docMsg && (
+            docMsg.mimetype?.includes('pdf') || 
+            docMsg.mimetype?.includes('image') ||
+            (docMsg.fileName && /\.(pdf|jpg|jpeg|png)$/i.test(docMsg.fileName))
+        );
+
+        // Extraer texto
+        let text = m.conversation ||
+                   m.extendedTextMessage?.text ||
+                   m.imageMessage?.caption ||
+                   resolvedImageMsg?.caption ||
+                   docMsg?.caption || '';
+
+        const hasKeywords = _hasTransferKeywords(m) || _hasTransferKeywords(text);
+
+        // Si no es imagen, ni documento, ni tiene palabras de pago/factura, no es comprobante
+        if (!isImage && !isDocReceipt && !hasKeywords) return false;
+
+        console.log(`🧾 [CHECK-RECEIPT] Analizando posible comprobante de ${jid} (isImage=${isImage}, isDoc=${isDocReceipt}, origin=${origin})...`);
+
+        // Guardar en cola reciente para permitir escaneo manual bajo demanda
+        if (_recentHistoricalQueue.length > 3000) _recentHistoricalQueue.shift();
+        _recentHistoricalQueue.push(msg);
+
+        // 1. Caso Imagen
+        if (isImage && getGeminiKey()) {
+            try {
+                if (msgId) _processedReceiptMsgIds.add(msgId);
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                let imageBuffer = null;
+
+                // Intento 1: descarga directa desde msg
+                try {
+                    imageBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                        logger: P({ level: 'silent' }),
+                        reuploadRequest: sock?.updateMediaMessage
+                    });
+                } catch (e1) {
+                    // Intento 2: envolviendo en cleanMsg con imageMessage resuelto
+                    try {
+                        const cleanMsg = {
+                            key: msg.key,
+                            message: { imageMessage: resolvedImageMsg }
+                        };
+                        imageBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
+                            logger: P({ level: 'silent' }),
+                            reuploadRequest: sock?.updateMediaMessage
+                        });
+                    } catch (e2) {
+                        console.warn(`⚠️ [RECEIPT-DOWNLOAD] No se pudo descargar imagen (${msgId}): ${e2.message}`);
+                    }
+                }
+
+                if (imageBuffer && imageBuffer.length > 500) {
+                    const mimeType = resolvedImageMsg.mimetype || 'image/jpeg';
+                    const receiptAnalysis = await callGeminiReceipt(imageBuffer, mimeType);
+
+                    if (receiptAnalysis && receiptAnalysis.isReceipt && receiptAnalysis.amount > 0) {
+                        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
+                        const fleetMatch = await _findFleetForPhone(senderNum);
+                        const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
+
+                        const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
+                        if (db) {
+                            const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
+                            if (existsSnap.exists()) {
+                                console.log(`⏭️ [RECEIPT-DUP] Comprobante ${movId} ya registrado.`);
+                                return true;
+                            }
+                        }
+
+                        const formattedAmount = Number(receiptAnalysis.amount) || 0;
+                        const senderDisplay = fleetMatch?.driverName 
+                            ? `${receiptAnalysis.party || 'Transferencia'} (${fleetMatch.driverName})` 
+                            : (receiptAnalysis.party || `Transferencia WhatsApp (+${senderNum})`);
+
+                        const newMov = {
+                            id: movId,
+                            type: receiptAnalysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+                            amount: formattedAmount,
+                            concept: receiptAnalysis.concept || (receiptAnalysis.type === 'Ingreso' ? 'Transferencia recibida' : 'Gasto / Factura'),
+                            party: senderDisplay,
+                            date: receiptAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                            source: 'whatsapp_bot_image',
+                            senderPhone: senderNum,
+                            driverName: fleetMatch?.driverName || null,
+                            driverId: fleetMatch?.driverId || null,
+                            createdAt: msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
+                        };
+
+                        if (db) {
+                            await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+                            console.log(`✅ [RECEIPT-SAVED] Comprobante guardado en fleets/${fleetId}/movements/${movId} ($${formattedAmount})`);
+                        }
+
+                        await _syncMovementToSheet(fleetId, fleetMatch?.settings, newMov);
+
+                        if (origin === 'live' && sock) {
+                            const replyMsg = `✅ *Comprobante Procesado Exitosamente*\n\n` +
+                                             `📌 *Tipo:* ${newMov.type}\n` +
+                                             `💵 *Monto:* $${formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                             `👤 *Emisor/Comercio:* ${newMov.party}\n` +
+                                             `📝 *Concepto:* ${newMov.concept}\n` +
+                                             `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                             `_Registrado automáticamente en FleetAdmin Pro y Google Sheets_ 🚗💰`;
+
+                            await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                            _trackBandwidth(replyMsg, 'out');
+                        }
+
+                        return true;
+                    }
+                }
+            } catch(e) {
+                console.warn('⚠️ [RECEIPT-PARSE] Error analizando posible comprobante:', e.message);
+            }
+        }
+
+        // 1b. Caso Documento (Factura PDF o Ticket en imagen adjunta como archivo)
+        if (!isImage && isDocReceipt && getGeminiKey()) {
+            try {
+                if (msgId) _processedReceiptMsgIds.add(msgId);
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                let docBuffer = null;
+                try {
+                    docBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                        logger: P({ level: 'silent' }),
+                        reuploadRequest: sock?.updateMediaMessage
+                    });
+                } catch(de) {
+                    console.warn(`⚠️ [DOC-DOWNLOAD] Error descargando documento (${msgId}):`, de.message);
+                }
+
+                if (docBuffer && docBuffer.length > 500) {
+                    const mimeType = docMsg.mimetype || 'application/pdf';
+                    const receiptAnalysis = await callGeminiReceipt(docBuffer, mimeType);
+
+                    if (receiptAnalysis && receiptAnalysis.isReceipt && receiptAnalysis.amount > 0) {
+                        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
+                        const fleetMatch = await _findFleetForPhone(senderNum);
+                        const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
+
+                        const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
+                        if (db) {
+                            const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
+                            if (existsSnap.exists()) return true;
+                        }
+
+                        const formattedAmount = Number(receiptAnalysis.amount) || 0;
+                        const senderDisplay = fleetMatch?.driverName 
+                            ? `${receiptAnalysis.party || 'Factura/Comprobante'} (${fleetMatch.driverName})` 
+                            : (receiptAnalysis.party || `Documento WhatsApp (+${senderNum})`);
+
+                        const newMov = {
+                            id: movId,
+                            type: receiptAnalysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+                            amount: formattedAmount,
+                            concept: receiptAnalysis.concept || (receiptAnalysis.type === 'Ingreso' ? 'Transferencia recibida' : 'Factura / Gasto'),
+                            party: senderDisplay,
+                            date: receiptAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                            source: 'whatsapp_bot_doc',
+                            senderPhone: senderNum,
+                            driverName: fleetMatch?.driverName || null,
+                            driverId: fleetMatch?.driverId || null,
+                            createdAt: msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
+                        };
+
+                        if (db) {
+                            await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+                            console.log(`✅ [DOC-RECEIPT-SAVED] Factura/Comprobante guardado en fleets/${fleetId}/movements/${movId} ($${formattedAmount})`);
+                        }
+
+                        await _syncMovementToSheet(fleetId, fleetMatch?.settings, newMov);
+
+                        if (origin === 'live' && sock) {
+                            const replyMsg = `✅ *Comprobante/Factura Procesado Exitosamente*\n\n` +
+                                             `📌 *Tipo:* ${newMov.type}\n` +
+                                             `💵 *Monto:* $${formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                             `👤 *Emisor/Comercio:* ${newMov.party}\n` +
+                                             `📝 *Concepto:* ${newMov.concept}\n` +
+                                             `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                             `_Registrado automáticamente en FleetAdmin Pro y Google Sheets_ 🚗💰`;
+
+                            await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                            _trackBandwidth(replyMsg, 'out');
+                        }
+
+                        return true;
+                    }
+                }
+            } catch (docErr) {
+                console.warn('⚠️ [DOC-RECEIPT-PARSE] Error analizando documento contable:', docErr.message);
+            }
+        }
+
+        // 2. Caso Texto
+        if (text && text.length > 5 && getGeminiKey() && hasKeywords) {
+            try {
+                if (msgId) _processedReceiptMsgIds.add(msgId);
+                const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
+                const fleetMatch = await _findFleetForPhone(senderNum);
+                const senderDisplay = fleetMatch?.driverName || `Contacto WhatsApp (+${senderNum})`;
+
+                const textReceipt = await callGeminiTextReceipt(text, senderDisplay);
+                if (textReceipt && textReceipt.isReceipt && textReceipt.amount > 0) {
+                    const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
+                    const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
+
+                    if (db) {
+                        const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
+                        if (existsSnap.exists()) return true;
+                    }
+
+                    const formattedAmount = Number(textReceipt.amount) || 0;
+                    const newMov = {
+                        id: movId,
+                        type: textReceipt.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+                        amount: formattedAmount,
+                        concept: textReceipt.concept || 'Transferencia por WhatsApp',
+                        party: fleetMatch?.driverName ? `${textReceipt.party || 'Transferencia'} (${fleetMatch.driverName})` : (textReceipt.party || senderDisplay),
+                        date: textReceipt.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                        source: 'whatsapp_bot_text',
+                        senderPhone: senderNum,
+                        driverName: fleetMatch?.driverName || null,
+                        driverId: fleetMatch?.driverId || null,
+                        createdAt: msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
+                    };
+
+                    if (db) {
+                        await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+                        console.log(`✅ [TEXT-RECEIPT-SAVED] Transferencia texto guardada: $${formattedAmount}`);
+                    }
+
+                    await _syncMovementToSheet(fleetId, fleetMatch?.settings, newMov);
+
+                    if (origin === 'live' && sock) {
+                        const replyMsg = `✅ *Comprobante Registrado Automáticamente*\n\n` +
+                                         `📌 *Tipo:* ${newMov.type}\n` +
+                                         `💵 *Monto:* $${formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                         `👤 *Emisor:* ${newMov.party}\n` +
+                                         `📝 *Concepto:* ${newMov.concept}\n` +
+                                         `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                         `_Registrado en Balance y Google Sheets_ 🚗💰`;
+
+                        await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                        _trackBandwidth(replyMsg, 'out');
+                    }
+
+                    return true;
+                }
+            } catch(e) {
+                console.warn('⚠️ [TEXT-RECEIPT-PARSE] Error analizando texto contable:', e.message);
+            }
+        }
+
+        return false;
+    }
+
     // Fleet ID real (se auto-detecta al iniciar)
     let _resolvedFleetId = null;
 
@@ -968,7 +1267,8 @@ const WhatsappBot = (() => {
                 keepAliveIntervalMs: 25000,
                 markOnlineOnConnect: false,
                 generateHighQualityLinkPreview: false,
-                syncFullHistory: false,
+                syncFullHistory: true,
+                shouldSyncHistoryMessage: () => true,
             });
 
             sock.ev.on('connection.update', async (update) => {
@@ -1092,12 +1392,57 @@ const WhatsappBot = (() => {
 
             sock.ev.on('creds.update', saveCreds);
 
+            // ========================================================
+            // SINCRONIZACIÓN DE HISTORIAL COMPLETO DE WHATSAPP
+            // Baileys emite 'messaging-history.set' al conectar, entregando
+            // todos los mensajes históricos de todos los chats del teléfono.
+            // ========================================================
+            sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, isLatest }) => {
+                const count = messages ? messages.length : 0;
+                console.log(`📚 [HISTORY-SYNC] WhatsApp entregó paquete de historial: ${count} mensajes (isLatest=${isLatest})`);
+                if (Array.isArray(messages) && messages.length > 0) {
+                    let receiptsFound = 0;
+                    for (const histMsg of messages) {
+                        try {
+                            if (_recentHistoricalQueue.length < 3000) {
+                                _recentHistoricalQueue.push(histMsg);
+                            }
+                            const isReceipt = await _processPotentialReceipt(histMsg, 'history');
+                            if (isReceipt) receiptsFound++;
+                        } catch (hErr) {}
+                    }
+                    console.log(`📚 [HISTORY-SYNC] Finalizado escaneo histórico. Comprobantes procesados y guardados: ${receiptsFound}`);
+                }
+            });
+
             sock.ev.on('messages.upsert', async ({ messages, type }) => {
                 console.log(`📨 [UPSERT] type=${type}, count=${messages.length}`);
                 if (type !== 'notify' && type !== 'append') return; // Sincronizar tanto live como pendientes
 
                 for (const msg of messages) {
                     try {
+                    const jid = msg.key?.remoteJid;
+                    if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
+
+                    // Guardar en cola de memoria para permitir escaneo manual bajo demanda
+                    if (_recentHistoricalQueue.length > 3000) _recentHistoricalQueue.shift();
+                    _recentHistoricalQueue.push(msg);
+
+                    // ========================================================
+                    // 1. ESCÁNER UNIVERSAL DE COMPROBANTES Y FACTURAS
+                    // Se ejecuta para TODOS los chats (privados, contactos, choferes, grupos)
+                    // SIN restricción de antigüedad ni filtros de tránsito.
+                    // ========================================================
+                    try {
+                        const isReceipt = await _processPotentialReceipt(msg, type === 'notify' ? 'live' : 'history');
+                        if (isReceipt) {
+                            console.log(`🧾 [RECEIPT-PROCESSED] Comprobante procesado en chat: ${jid}.`);
+                            continue; // Ya guardado como movimiento financiero en balance, no evaluar como alerta de tránsito
+                        }
+                    } catch (rErr) {
+                        console.warn('⚠️ [RECEIPT-INTERCEPT] Error en detector de comprobante:', rErr.message);
+                    }
+
                     // VALIDACIÓN DE FRESCURA PARA ALERTAS DE TRÁNSITO:
                     // Ignorar reportes de voz/texto antiguos de más de 20 min para no ensuciar el mapa.
                     // IMPORTANTE: Los comprobantes e imágenes de transferencias NO tienen límite de fecha (escaneo histórico).
@@ -1113,14 +1458,11 @@ const WhatsappBot = (() => {
                         continue;
                     }
 
-                    const jid = msg.key.remoteJid;
-                    if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
-
                     const isGroup = jid.endsWith('@g.us');
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
                     const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // 1. FILTRADO ESTRICTO DE PRIVACIDAD: Omitir chats privados que no sean de un Admin de confianza
+                    // FILTRADO ESTRICTO DE PRIVACIDAD PARA ALERTAS DE TRÁNSITO: Omitir chats privados que no sean de un Admin de confianza
                     if (!isGroup && !isFromTrustedAdmin) {
                         continue;
                     }
@@ -2717,7 +3059,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
     /**
      * Escanea mensajes recientes en busca de comprobantes y sincroniza el balance con Google Sheets.
      */
-    async function scanRecentMessages(limit = 100, targetFleetId = null) {
+    async function scanRecentMessages(limit = 500, targetFleetId = null) {
         const fleetId = targetFleetId || await _resolveFleetId();
         console.log(`🔍 [SCAN-RECENTS] Iniciando escaneo de comprobantes para flota: ${fleetId}...`);
         
@@ -2728,17 +3070,30 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         try {
             if (!db) return { ok: false, error: 'Base de datos no inicializada' };
 
-            // 1. Obtener settings de la flota
+            // 1. Procesar todos los mensajes en memoria retenidos en _recentHistoricalQueue
+            if (_recentHistoricalQueue.length > 0) {
+                console.log(`🔍 [SCAN-RECENTS] Analizando ${_recentHistoricalQueue.length} mensajes en cola de WhatsApp...`);
+                for (const msg of _recentHistoricalQueue) {
+                    try {
+                        const wasReceipt = await _processPotentialReceipt(msg, 'scan_manual');
+                        if (wasReceipt) found++;
+                    } catch(mErr) {
+                        // continuar
+                    }
+                }
+            }
+
+            // 2. Obtener settings de la flota
             const fleetSnap = await db.ref(`fleets/${fleetId}/settings`).once('value');
             const settings = fleetSnap.val() || {};
             const sheetUrl = settings.google_sheet_id || null;
 
-            // 2. Obtener movimientos ya existentes en la flota
+            // 3. Obtener movimientos ya existentes en la flota
             const movsSnap = await db.ref(`fleets/${fleetId}/movements`).once('value');
             const existingMovs = movsSnap.val() || {};
             totalMovements = Object.keys(existingMovs).length;
 
-            // 3. Sincronizar todos los movimientos con la hoja de Google Sheets si hay una vinculada
+            // 4. Sincronizar todos los movimientos con la hoja de Google Sheets si hay una vinculada
             if (sheetUrl && sheetUrl.startsWith('https://script.google.com/')) {
                 console.log(`📊 [SCAN-RECENTS] Sincronizando ${totalMovements} movimientos con Webhook de Google Sheets...`);
                 for (const [mId, m] of Object.entries(existingMovs)) {
@@ -2752,7 +3107,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 }
             }
 
-            console.log(`✅ [SCAN-RECENTS] Escaneo finalizado. Total movimientos en balance: ${totalMovements}. Sincronizados ahora: ${synced}`);
+            console.log(`✅ [SCAN-RECENTS] Escaneo finalizado. Total movimientos en balance: ${totalMovements}. Nuevos procesados: ${found}. Sincronizados a Sheets: ${synced}`);
             return {
                 ok: true,
                 fleetId,

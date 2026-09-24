@@ -603,7 +603,7 @@ app.post('/api/bot/scan-historical', async (req, res) => {
         
         let scanResult = { totalMovements: 0, newProcessed: 0, syncedToSheets: 0 };
         if (typeof WhatsappBot.scanRecentMessages === 'function') {
-            scanResult = await WhatsappBot.scanRecentMessages(100, fleetId);
+            scanResult = await WhatsappBot.scanRecentMessages(500, fleetId);
         }
 
         const host = req.get('host') || 'fleetadmin-web-nueva.onrender.com';
