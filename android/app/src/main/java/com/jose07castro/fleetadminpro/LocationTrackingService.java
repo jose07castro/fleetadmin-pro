@@ -64,6 +64,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final String TAG = "FleetGPS";
     private static final String CHANNEL_ID = "fleet_gps_tracking";
     private static final int NOTIFICATION_ID = 7001;
+    private static final String PREFS_NAME = "fleet_gps_prefs";
     public static boolean isAppInForeground = false;
     public static LocationTrackingService instance = null;
     private static long lastSpokenTime = 0;
