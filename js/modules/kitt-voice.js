@@ -49,7 +49,7 @@ const KittVoice = (() => {
                              (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function');
 
             // Intentar KITT Premium por streaming solo si está habilitado y no hubo fallos recientes
-            const isElevenLabsCoolingDown = (Date.now() - _elevenLabsLastFailTime) < 300000; // 5 min cooldown si falló
+            const isElevenLabsCoolingDown = (Date.now() - _elevenLabsLastFailTime) < 30000; // 30s cooldown si falló (era 5 min)
             if (_isKittEnabled && !isElevenLabsCoolingDown && !isNative) {
                 const success = await _speakWithElevenLabs(text);
                 if (success) {
@@ -101,28 +101,51 @@ const KittVoice = (() => {
                 };
 
                 audio.onended = () => done(true);
-                audio.onerror = () => done(false);
-
-                // Timeout de 2.5 segundos: si Render no responde rápido, pasar de inmediato a TTS local
-                const timeout = setTimeout(() => {
-                    try {
-                        audio.pause();
-                        audio.src = '';
-                    } catch (e) {}
+                audio.onerror = () => {
+                    console.warn('🎙️ [KITT] Error de audio ElevenLabs → fallback TTS');
                     done(false);
-                }, 2500);
+                };
 
+                // Timeout de 4 segundos: si Render no responde, pasar a TTS local
+                // (aumentado de 2.5s para tolerar el cold-start de Render)
+                const timeout = setTimeout(() => {
+                    console.warn('🎙️ [KITT] Timeout ElevenLabs → fallback TTS');
+                    try { audio.pause(); audio.src = ''; } catch (e) {}
+                    done(false);
+                }, 4000);
+
+                // Cuando el audio empieza a reproducirse, cancelar el timeout de conexión
                 audio.onplay = () => clearTimeout(timeout);
 
                 audio.src = url;
-                const playPromise = (typeof window.playAudioWithBoost === 'function') 
-                    ? window.playAudioWithBoost(audio, 3.0) 
-                    : audio.play();
 
-                if (playPromise) {
-                    playPromise.catch(() => done(false));
-                }
+                // Intentar reproducir usando boost si está disponible
+                const playFn = (typeof window.playAudioWithBoost === 'function')
+                    ? () => window.playAudioWithBoost(audio, 3.0)
+                    : () => audio.play();
+
+                const tryPlay = () => {
+                    const p = playFn();
+                    if (p && typeof p.catch === 'function') {
+                        p.catch(err => {
+                            // En Android WebView, autoplay puede ser bloqueado
+                            // En ese caso, intentar audio.play() directamente como último recurso
+                            console.warn('🎙️ [KITT] play() rechazado por autoplay policy:', err && err.message);
+                            audio.play().catch(() => done(false));
+                        });
+                    }
+                };
+
+                // En Android, esperar el evento 'canplay' para asegurarse que el audio está listo
+                audio.addEventListener('canplay', () => {
+                    if (!finished) tryPlay();
+                }, { once: true });
+
+                // También intentar reproducir de inmediato
+                tryPlay();
+
             } catch (e) {
+                console.error('🎙️ [KITT] Error inesperado en _speakWithElevenLabs:', e);
                 resolve(false);
             }
         });
