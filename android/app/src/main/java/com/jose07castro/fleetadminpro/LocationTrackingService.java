@@ -788,11 +788,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     }
                 }
 
-                boolean permOk = hasBgLoc && isIgnoringBatt;
+                boolean permOk = hasBgLoc;
                 data.put("permissions_ok", permOk);
                 data.put("bg_location_ok", hasBgLoc);
                 data.put("battery_optimization_ok", isIgnoringBatt);
-                if (!permOk) {
+                if (permOk) {
+                    data.put("status", "active");
+                } else {
                     data.put("status", "permissions_disabled");
                 }
                 data.put("gps_status", "active");
@@ -1078,7 +1080,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         }
 
-        boolean currentPermissionsOk = hasBgLocation && isIgnoringBattery;
+        boolean currentPermissionsOk = hasBgLocation;
 
         // Si cambia el estado de los permisos (eliminada la condición redundante que causaba reportes cada 1 minuto)
         if (currentPermissionsOk != lastPermissionsOk) {

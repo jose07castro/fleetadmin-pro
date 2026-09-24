@@ -1061,12 +1061,9 @@ app.post('/api/driver/location', async (req, res) => {
             _source: source || 'server_api'
         };
 
-        // Preservar el estado si ya era un aviso activo (como permissions_disabled o gps_desactivado)
-        const currentPosSnap = await db.ref(`driver_positions/${driver_id}/status`).once('value');
-        const currentStatus = currentPosSnap.val();
-        if (!currentStatus || currentStatus === 'active') {
-            updateData.status = 'active';
-        }
+        // Si el chofer reporta nueva ubicación GPS válida, su estado se reactiva inmediatamente
+        updateData.status = 'active';
+        updateData.last_heartbeat_gap = null;
 
         await db.ref(`driver_positions/${driver_id}`).update(updateData);
         res.json({ ok: true, lat: finalLat, lng: finalLng, corrected });
@@ -1493,16 +1490,27 @@ async function checkActiveDriverHeartbeats() {
                 const posData = positions[driverId];
                 if (!posData) continue;
 
-                // Skip if voluntarily logged out or already marked as suspicious/gps_desactivado
-                if (posData.status === 'logout_voluntario' || posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') {
-                    continue;
-                }
-
                 // Check heartbeat
                 const lastHeartbeat = posData.last_heartbeat || (posData.updated_at ? new Date(posData.updated_at).getTime() : 0);
                 if (!lastHeartbeat) continue;
 
                 const timeDiffMs = now - lastHeartbeat;
+
+                // Si el chofer estaba marcado como sospechoso o sin señal pero ahora volvió a transmitir (hace menos de 2 min)
+                if ((posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') && timeDiffMs < 2 * 60 * 1000) {
+                    console.log(`✅ [HEARTBEAT] Chofer ${driverId} (${posData.driverName || 'Chofer'}) reconectado. Restaurando estado a 'active'.`);
+                    await db.ref(`driver_positions/${driverId}`).update({
+                        status: 'active',
+                        last_heartbeat_gap: null
+                    });
+                    continue;
+                }
+
+                // Skip if voluntarily logged out or already marked as suspicious/gps_desactivado
+                if (posData.status === 'logout_voluntario' || posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') {
+                    continue;
+                }
+
                 if (timeDiffMs > 5 * 60 * 1000) { // 5 minutes
                     const driverName = posData.driverName || 'Chofer';
                     console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${driverName}) inactive for ${Math.round(timeDiffMs/1000)}s. Marking as suspicious disconnect.`);

@@ -414,16 +414,8 @@ const RadarModule = (() => {
         const vehicleName = vehicle ? vehicle.name : 'V. no asignado';
         const vehiclePlate = vehicle ? vehicle.plate : 'N/P';
         
-        // Formato final "Nombre - Patente"
+        // Formato final limpio "Nombre - Patente"
         let displayName = `${firstName} - ${vehiclePlate}`;
-        const hasBatteryWarning = data.battery_optimization_ok === false;
-        const hasBgLocWarning = data.bg_location_ok === false;
-        
-        if (hasBgLocWarning) {
-            displayName = `⚠️ ${firstName} - ${vehiclePlate} (Falta ubicac. "Permitir siempre")`;
-        } else if (hasBatteryWarning) {
-            displayName = `🔋 ${firstName} - ${vehiclePlate} (Ahorro batería activo)`;
-        }
 
         // v117 - Limpieza TOTAL de fantasmas
         // v126: Extendemos el límite de fantasmas para desconexiones sospechosas y cierres manuales
@@ -443,15 +435,28 @@ const RadarModule = (() => {
             return false; // Indicamos al caller que el chofer ya no está online
         }
 
-        // Si el chofer está enviando GPS fresco (últimos 60s), reflejar su estado real de movimiento
+        // Si el chofer está enviando GPS fresco (últimos 90s), reflejar su estado real de movimiento
+        const isFresh = timeAgoSecs <= 90;
         let carMode = (speed > 5) ? 'moving' : 'stopped';
-        if (data.status === 'logout_voluntario') {
+        let effectiveStatus = data.status || 'active';
+
+        // Auto-sanar choferes que volvieron a reportar ubicación pero tenían el status bloqueado en sospechoso
+        if (isFresh && (effectiveStatus === 'suspicious_disconnect' || effectiveStatus === 'gps_desactivado')) {
+            effectiveStatus = 'active';
+            if (typeof DB !== 'undefined' && DB.getRef) {
+                try {
+                    DB.getRef(`driver_positions/${driverId}`).update({ status: 'active', last_heartbeat_gap: null });
+                } catch (e) {}
+            }
+        }
+
+        if (effectiveStatus === 'logout_voluntario') {
             carMode = 'logout';
-        } else if (data.status === 'suspicious_disconnect') {
+        } else if (effectiveStatus === 'suspicious_disconnect') {
             carMode = 'suspicious';
-        } else if (data.status === 'gps_desactivado') {
+        } else if (effectiveStatus === 'gps_desactivado') {
             carMode = 'gps-disabled';
-        } else if (timeAgoSecs > 60 && (data.status === 'permissions_disabled' || data.permissions_ok === false)) {
+        } else if (timeAgoSecs > 60 && (effectiveStatus === 'permissions_disabled' || data.permissions_ok === false)) {
             // Solo marcar permissions-disabled si además dejó de enviar GPS fresco
             carMode = 'permissions-disabled';
         }
@@ -460,13 +465,13 @@ const RadarModule = (() => {
         let shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
         let statusLabelText = shiftStatusText;
         let statusColor = '#f59e0b';
-        if (data.status === 'logout_voluntario') {
+        if (effectiveStatus === 'logout_voluntario') {
             statusLabelText = 'Desconectado (Sesión Cerrada)';
             statusColor = '#94a3b8'; // Gris
-        } else if (data.status === 'suspicious_disconnect') {
+        } else if (effectiveStatus === 'suspicious_disconnect') {
             statusLabelText = 'Desconexión Sospechosa (Sin Señal o Cierre Forzado)';
             statusColor = '#ef4444'; // Rojo
-        } else if (data.status === 'gps_desactivado') {
+        } else if (effectiveStatus === 'gps_desactivado') {
             statusLabelText = 'GPS Desactivado por el Conductor';
             statusColor = '#f97316'; // Naranja
         } else if (carMode === 'permissions-disabled') {
@@ -612,7 +617,7 @@ const RadarModule = (() => {
         const carColor = vehicle ? (vehicle.color || 'gray') : 'gray';
 
         const latlng = new google.maps.LatLng(lat, lng);
-        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed, data.status, driverId);
+        const html = _createCarIcon(heading, displayName, statusClass, carColor, speed, effectiveStatus, driverId);
 
         if (_markers[driverId]) {
             // Update existing marker
