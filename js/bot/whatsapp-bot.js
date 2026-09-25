@@ -33,8 +33,8 @@ const GEMINI_KEY = getGeminiKey();
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
 ];
@@ -127,10 +127,10 @@ Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
     // Los modelos Flash soportan audio inline.
-        const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
+            const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
@@ -333,9 +333,9 @@ Si la imagen NO es ningún comprobante de transferencia, pago, factura ni ticket
 Respuesta EXACTAMENTE en este formato JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15450.00,"party":"MercadoPago - Juan Pérez","concept":"Recaudación de turno","date":"2026-09-09T14:30:00.000Z"}`;
 
-            const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                const models = [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
@@ -405,9 +405,9 @@ Respondé ÚNICAMENTE en formato JSON:
 Ejemplo JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15000,"party":"${senderName}","concept":"Recaudación de turno","date":"${new Date().toISOString()}"}`;
 
-            const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                const models = [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
@@ -461,9 +461,9 @@ Respondé ÚNICAMENTE en formato JSON:
 Ejemplo JSON:
 {"isCash":true,"amount":40000,"party":"${senderName}","concept":"Recaudación de turno en efectivo","date":"${new Date().toISOString()}"}`;
 
-            const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                const models = [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
@@ -522,9 +522,9 @@ Respondé ÚNICAMENTE en formato JSON válido (sin markdown):
 Ejemplo JSON:
 {"isPayment":true,"method":"Transferencia","type":"Ingreso","amount":30000,"party":"${senderName}","concept":"Recaudación de turno","date":"${new Date().toISOString()}"}`;
 
-            const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                const models = [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
@@ -650,6 +650,14 @@ if (!admin.apps.length) {
         console.log('✅ Firebase Admin: ¡Inicializado con éxito!');
     } catch (e) {
         console.error('❌ Firebase Admin:', e.message);
+    }
+}
+
+if (!db && admin.apps.length) {
+    try {
+        db = admin.database();
+    } catch(e) {
+        console.error('❌ Error obteniendo admin.database():', e.message);
     }
 }
 
