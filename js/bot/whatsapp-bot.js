@@ -33,11 +33,11 @@ const GEMINI_KEY = getGeminiKey();
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -127,12 +127,12 @@ Si el audio es: conversación personal, música, tutorial, broma, saludos, venta
 Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
-    // Los modelos Flash soportan audio inline. gemini-2.5-flash es el modelo validado principal.
+    // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -335,10 +335,10 @@ Respuesta EXACTAMENTE en este formato JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15450.00,"party":"MercadoPago - Juan Pérez","concept":"Recaudación de turno","date":"2026-09-09T14:30:00.000Z"}`;
 
     const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
@@ -406,9 +406,10 @@ Ejemplo JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15000,"party":"${senderName}","concept":"Recaudación de turno","date":"${new Date().toISOString()}"}`;
 
     const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     ];
 
     for (const url of models) {
