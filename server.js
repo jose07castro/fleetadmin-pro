@@ -232,6 +232,54 @@ app.get('/api/bot/queue-status', (req, res) => {
     }
 });
 
+// ============================================
+// Endpoints de Pagos y Efectivo Pendientes
+// ============================================
+
+// Listar pagos y avisos de efectivo pendientes de confirmación
+app.get('/api/bot/pending-payments', async (req, res) => {
+    try {
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const fleetId = req.query.fleetId || await WhatsappBot.getFleetId();
+        const payments = typeof WhatsappBot.listPendingPayments === 'function'
+            ? await WhatsappBot.listPendingPayments(fleetId)
+            : [];
+        res.json({ ok: true, payments });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Confirmar e ingresar pago al balance
+app.post('/api/bot/pending-payments/confirm', async (req, res) => {
+    try {
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const { code, fleetId } = req.body;
+        if (typeof WhatsappBot.confirmPendingPayment !== 'function') {
+            return res.status(500).json({ ok: false, error: 'Función no disponible en el bot.' });
+        }
+        const result = await WhatsappBot.confirmPendingPayment(code, fleetId, 'web_dashboard');
+        res.json(result);
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Rechazar pago pendiente
+app.post('/api/bot/pending-payments/reject', async (req, res) => {
+    try {
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const { code, fleetId } = req.body;
+        if (typeof WhatsappBot.rejectPendingPayment !== 'function') {
+            return res.status(500).json({ ok: false, error: 'Función no disponible en el bot.' });
+        }
+        const result = await WhatsappBot.rejectPendingPayment(code, fleetId, 'web_dashboard');
+        res.json(result);
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 
 // ============================================
 // In-App Update: Version Control Endpoints

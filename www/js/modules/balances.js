@@ -12,6 +12,7 @@ const BalancesModule = (() => {
     async function render() {
         try {
             const movements = await _getMovements();
+            const pendingPayments = await _getPendingPayments();
             const scannerEnabled = (await DB.getSetting('whatsapp_scanner_enabled')) ?? true;
             const authPhone = (await DB.getSetting('whatsapp_authorized_phone')) || '';
             const sheetId = (await DB.getSetting('google_sheet_id')) || '';
@@ -34,6 +35,74 @@ const BalancesModule = (() => {
             });
 
             const netBalance = totalIngresos - totalEgresos;
+
+            // Renderizar sección de pagos pendientes si existen avisos
+            let pendingSectionHtml = '';
+            if (pendingPayments && pendingPayments.length > 0) {
+                const pendingCardsHtml = pendingPayments.map(p => {
+                    const isCash = p.method === 'Efectivo';
+                    const montoFormatted = _formatCurrency(p.amount);
+                    const dateFormatted = p.date ? new Date(p.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+                    return `
+                        <div style="background:var(--bg-primary); border:1px solid ${isCash ? 'rgba(245, 158, 11, 0.4)' : 'rgba(59, 130, 246, 0.4)'}; border-radius:14px; padding:14px; display:flex; flex-direction:column; justify-content:space-between; gap:10px; box-shadow:var(--shadow-sm);">
+                            <div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <span class="badge" style="background:${isCash ? '#f59e0b' : '#3b82f6'}; color:#fff; font-weight:700; font-size:11px;">
+                                        ${isCash ? '💵 Efectivo en mano' : '🏦 Transferencia'}
+                                    </span>
+                                    <span style="font-family:monospace; font-weight:800; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:6px; font-size:12px;">
+                                        #${p.code}
+                                    </span>
+                                </div>
+                                <div style="font-weight:900; font-size:1.3rem; color:${isCash ? '#f59e0b' : '#3b82f6'};">
+                                    $${montoFormatted}
+                                </div>
+                                <div style="font-weight:700; font-size:0.92rem; color:var(--text-primary); margin-top:4px;">
+                                    👤 ${p.driverName || p.party || 'Chofer'}
+                                </div>
+                                <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:2px;">
+                                    📝 ${p.concept || '-'}
+                                </div>
+                                <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px; opacity:0.8;">
+                                    🕒 ${dateFormatted}
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; margin-top:6px;">
+                                <button class="btn btn-sm btn-success" onclick="BalancesModule.confirmPendingPayment('${p.code}')" style="flex:1; font-weight:700; font-size:12px; background:#10b981; border:none; color:#fff; justify-content:center; padding:7px 10px;">
+                                    ✅ Aprobar
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="BalancesModule.rejectPendingPayment('${p.code}')" style="font-weight:700; font-size:12px; background:#ef4444; border:none; color:#fff; justify-content:center; padding:7px 10px;">
+                                    ❌ Rechazar
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                pendingSectionHtml = `
+                    <div class="card" style="background:linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.04)); border:1px solid rgba(245, 158, 11, 0.35); border-radius:16px; padding:18px; margin-bottom:24px; box-shadow:0 4px 15px rgba(245, 158, 11, 0.1);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <span style="font-size:1.6rem;">🔔</span>
+                                <div>
+                                    <h3 style="margin:0; font-size:1.1rem; font-weight:800; color:#d97706;">
+                                        Avisos de Ingresos Pendientes de Confirmación (${pendingPayments.length})
+                                    </h3>
+                                    <p style="margin:2px 0 0 0; font-size:0.82rem; color:var(--text-secondary);">
+                                        Conductores informaron transferencias o entregas de efectivo. Podés aprobarlos aquí o respondiendo por WhatsApp con <strong>SI [código]</strong>.
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="badge" style="background:#f59e0b; color:#fff; font-weight:700; padding:6px 12px; border-radius:20px; font-size:0.82rem;">
+                                Esperando Aprobación
+                            </span>
+                        </div>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;">
+                            ${pendingCardsHtml}
+                        </div>
+                    </div>
+                `;
+            }
 
             return `
                 <div class="balances-container" style="animation: fadeIn 0.4s ease-out;">
@@ -85,6 +154,9 @@ const BalancesModule = (() => {
                             </button>
                         </div>
                     </div>
+
+                    <!-- Sección de Pagos Pendientes -->
+                    ${pendingSectionHtml}
 
                     <!-- Tarjetas de Resumen Financiero -->
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">
@@ -185,6 +257,27 @@ const BalancesModule = (() => {
             console.warn('⚠️ Error al obtener movimientos:', e);
             return [];
         }
+    }
+
+    async function _getPendingPayments() {
+        try {
+            const res = await fetch('/api/bot/pending-payments');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.ok && Array.isArray(data.payments)) {
+                    return data.payments;
+                }
+            }
+        } catch(e) {}
+        if (typeof DB !== 'undefined') {
+            try {
+                const list = await DB.getAll('pending_payments');
+                if (Array.isArray(list)) {
+                    return list.filter(p => p.status === 'pending').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                }
+            } catch(e2) {}
+        }
+        return [];
     }
 
     function _applyFilters(list, period, type) {
@@ -666,6 +759,48 @@ const BalancesModule = (() => {
         }
     }
 
+    async function confirmPendingPayment(code) {
+        if (!confirm(`¿Confirmás el ingreso del pago #${code} al balance de la flota?`)) return;
+        try {
+            Components.showToast('Confirmando ingreso y sincronizando... ⏳', 'info');
+            const res = await fetch('/api/bot/pending-payments/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast(`¡Pago #${code} confirmado y acreditado con éxito! 💰✅`, 'success');
+                Router.navigate('balances');
+            } else {
+                Components.showToast('Error al confirmar: ' + (data.message || data.error), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error de red al confirmar pago: ' + e.message, 'danger');
+        }
+    }
+
+    async function rejectPendingPayment(code) {
+        if (!confirm(`¿Estás seguro de que deseás rechazar el pago #${code}?`)) return;
+        try {
+            Components.showToast('Rechazando pago... ⏳', 'info');
+            const res = await fetch('/api/bot/pending-payments/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast(`Pago #${code} descartado correctamente.`, 'warning');
+                Router.navigate('balances');
+            } else {
+                Components.showToast('Error al rechazar: ' + (data.message || data.error), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error de red al rechazar pago: ' + e.message, 'danger');
+        }
+    }
+
     return {
         render,
         setFilter,
@@ -677,6 +812,8 @@ const BalancesModule = (() => {
         syncAllSheets,
         showGoogleSheetsOptions,
         scanWhatsApp,
-        scanHistoricalWhatsApp: scanWhatsApp
+        scanHistoricalWhatsApp: scanWhatsApp,
+        confirmPendingPayment,
+        rejectPendingPayment
     };
 })();

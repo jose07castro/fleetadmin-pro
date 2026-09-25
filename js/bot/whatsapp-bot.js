@@ -434,6 +434,62 @@ Ejemplo JSON:
     return null;
 }
 
+/**
+ * Analiza un mensaje de texto para detectar avisos o promesas de entrega de efectivo.
+ * @param {string} text
+ * @param {string} senderName
+ * @returns {Promise<{isCash: boolean, amount: number, party: string, concept: string, date: string}|null>}
+ */
+async function callGeminiCashReceipt(text, senderName = 'Chofer') {
+    if (!text || text.length < 5) return null;
+    const key = getGeminiKey();
+    if (!key) return null;
+
+    const prompt = `Sos un asistente contable para flotas de transporte y taxis en Argentina.
+Analizá este mensaje enviado por un chofer ("${senderName}"):
+"${text}"
+
+Determiná si el chofer informa una ENTREGA DE EFECTIVO (recaudación en mano, pago de turno en billetes, entrega de plata, etc.).
+Respondé ÚNICAMENTE en formato JSON:
+1. Si informa una entrega o pago en efectivo: "isCash": true. De lo contrario: "isCash": false.
+2. "amount": número decimal con el monto total en pesos (ej: si dice 40 mil, pon 40000; si dice 35.000 pon 35000).
+3. "party": nombre o alias del chofer ("${senderName}").
+4. "concept": breve descripción ("Entrega de efectivo", "Recaudación en mano", etc.).
+5. "date": fecha en formato ISO.
+
+Ejemplo JSON:
+{"isCash":true,"amount":40000,"party":"${senderName}","concept":"Recaudación de turno en efectivo","date":"${new Date().toISOString()}"}`;
+
+    const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+    ];
+
+    for (const url of models) {
+        try {
+            const res = await axios.post(`${url}?key=${key}`, {
+                contents: [{ parts: [{ text: prompt }] }]
+            }, { timeout: 12000 });
+
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) {
+                const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                const parsed = JSON.parse(clean);
+                if (parsed.isCash && parsed.amount > 0) {
+                    console.log(`💵 [CASH-REPORT] Entrega de efectivo detectada: $${parsed.amount} (${parsed.concept})`);
+                    return parsed;
+                }
+            }
+        } catch(e) {
+            console.warn(`⚠️ [GEMINI-CASH] Falló modelo: ${e.message}`);
+        }
+    }
+    return null;
+}
+
+
 
 // 1. Inicialización de Firebase Admin
 
@@ -638,6 +694,320 @@ const WhatsappBot = (() => {
         }
     }
 
+    function _hasCashKeywords(text) {
+        if (!text || typeof text !== 'string') return false;
+        try {
+            const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const hasCashWords = /(efectivo|en mano|en billetes|billetes|te llevo la plata|te llevo el efectivo|te entrego|te paso a dejar|te dejo la plata|te llevo los|te acerco|te pago en mano|te pago en efectivo|recaudacion en mano|rindo la plata|rendicion en mano|te rindo|entrega de plata|entrega de efectivo|te llevo \d|te dejo \d|pago de turno en mano)/i.test(lower);
+            const hasAmount = /[\$]?\s*\d+([.,]\d+)?(\s*k|\s*mil)?/i.test(lower);
+            return hasCashWords && hasAmount;
+        } catch(e) {
+            return false;
+        }
+    }
+
+    /**
+     * Registra un pago/entrega pendiente de confirmación y notifica al administrador de flota vía WhatsApp
+     */
+    async function _createPendingPayment({ fleetId, driverName, driverId, senderNum, amount, method, concept, date, originalMsgId, jid, msg, origin = 'live' }) {
+        if (!amount || amount <= 0) return null;
+        const targetFleet = fleetId || await _resolveFleetId();
+
+        // Generar código numérico de 4 dígitos para confirmación rápida (1000 - 9999)
+        const code = Math.floor(1000 + Math.random() * 9000).toString();
+        const pendingId = 'pend_' + Date.now() + '_' + code;
+
+        const senderDisplay = driverName 
+            ? `${method} (${driverName})` 
+            : (senderNum ? `${method} (+${senderNum})` : `${method}`);
+
+        const pendingData = {
+            id: pendingId,
+            code: code,
+            fleetId: targetFleet,
+            type: 'Ingreso',
+            amount: Number(amount) || 0,
+            method: method || 'Transferencia', // 'Transferencia' | 'Efectivo'
+            concept: concept || (method === 'Efectivo' ? 'Entrega de efectivo en mano' : 'Transferencia recibida'),
+            party: senderDisplay,
+            driverName: driverName || null,
+            driverId: driverId || null,
+            senderPhone: senderNum || null,
+            date: date || new Date().toISOString(),
+            status: 'pending', // 'pending' | 'confirmed' | 'rejected'
+            createdAt: Date.now(),
+            chatJid: jid || null,
+            originalMsgId: originalMsgId || null,
+            source: method === 'Efectivo' ? 'whatsapp_bot_cash' : 'whatsapp_bot_transfer'
+        };
+
+        if (db) {
+            try {
+                await db.ref(`fleets/${targetFleet}/pending_payments/${pendingId}`).set(pendingData);
+                console.log(`⏳ [PENDING-PAYMENT] Pago #${code} registrado como pendiente en flota ${targetFleet} ($${pendingData.amount}, ${method})`);
+            } catch(e) {
+                console.error(`⚠️ [PENDING-PAYMENT] Error guardando pago pendiente en RTDB:`, e.message);
+            }
+        }
+
+        const formattedMonto = Number(amount).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+
+        // Notificar al Administrador de confianza solicitando confirmación interactiva
+        const adminAlert = 
+            `🔔 *NUEVO INGRESO PARA CONFIRMAR*\n\n` +
+            `👤 *Chofer:* ${driverName ? driverName : 'Chofer'} (+${senderNum || 'Sin número'})\n` +
+            `💵 *Monto:* $${formattedMonto}\n` +
+            `💳 *Medio:* ${method === 'Efectivo' ? '💵 Efectivo en mano' : '🏦 Transferencia bancaria'}\n` +
+            `📝 *Concepto:* ${pendingData.concept}\n` +
+            `🔢 *Código de Aprobación:* *${code}*\n\n` +
+            `¿Confirmás el ingreso de este dinero al balance de la flota?\n` +
+            `👉 Respondé *SI ${code}* para aprobar y acreditar al balance.\n` +
+            `👉 Respondé *NO ${code}* para rechazarlo.`;
+
+        if (sock) {
+            for (const adminNum of TRUSTED_ADMIN_NUMBERS) {
+                try {
+                    await sock.sendMessage(`${adminNum}@s.whatsapp.net`, { text: adminAlert });
+                    _trackBandwidth(adminAlert, 'out');
+                } catch(eAlert) {
+                    console.warn(`⚠️ [ADMIN-ALERT] No se pudo enviar alerta al admin (+${adminNum}):`, eAlert.message);
+                }
+            }
+        }
+
+        // Responder al chofer en su chat (si es un mensaje en vivo)
+        if (sock && jid && origin === 'live') {
+            const driverReply = 
+                `👍 *Aviso Recibido*\n\n` +
+                `Registramos tu aviso de *${method === 'Efectivo' ? 'entrega de efectivo' : 'transferencia'}* por *$${formattedMonto}*.\n` +
+                `⏳ Quedó *pendiente de confirmación* por el administrador.\n` +
+                `Una vez verificado y confirmado, se acreditará automáticamente en el balance de la flota. 🚗💰`;
+            try {
+                await sock.sendMessage(jid, { text: driverReply }, { quoted: msg });
+                _trackBandwidth(driverReply, 'out');
+            } catch(eReply) {}
+        }
+
+        return pendingData;
+    }
+
+    /**
+     * Confirma un pago pendiente: lo registra en balance, lo sincroniza con Google Sheets y notifica a las partes
+     */
+    async function _confirmPendingPayment(code = null, targetFleetId = null, confirmedBy = 'whatsapp_admin') {
+        if (!db) return { ok: false, message: 'Base de datos no conectada.' };
+        const fleetId = targetFleetId || await _resolveFleetId();
+
+        try {
+            const snap = await db.ref(`fleets/${fleetId}/pending_payments`).once('value');
+            const payments = snap.val() || {};
+            
+            let targetPayment = null;
+            let targetKey = null;
+
+            if (code) {
+                const cleanCode = String(code).replace(/[^0-9]/g, '');
+                for (const [k, p] of Object.entries(payments)) {
+                    if (p.status === 'pending' && String(p.code) === cleanCode) {
+                        targetPayment = p;
+                        targetKey = k;
+                        break;
+                    }
+                }
+            } else {
+                // Si no se especificó código, tomar el más reciente que siga pendiente
+                const pendingList = Object.entries(payments)
+                    .map(([k, p]) => ({ key: k, ...p }))
+                    .filter(p => p.status === 'pending')
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+                if (pendingList.length > 0) {
+                    targetPayment = pendingList[0];
+                    targetKey = pendingList[0].key;
+                }
+            }
+
+            if (!targetPayment) {
+                return {
+                    ok: false,
+                    message: code 
+                        ? `⚠️ No se encontró ningún pago pendiente con el código #${code}.` 
+                        : `⚠️ No hay pagos pendientes para confirmar en este momento.`
+                };
+            }
+
+            // Marcar como confirmado en Firebase
+            await db.ref(`fleets/${fleetId}/pending_payments/${targetKey}`).update({
+                status: 'confirmed',
+                confirmedAt: Date.now(),
+                confirmedBy: confirmedBy
+            });
+
+            // Registrar movimiento en el balance financiero
+            const movId = 'mov_' + (targetPayment.id || Date.now());
+            const formattedAmount = Number(targetPayment.amount) || 0;
+            const newMov = {
+                id: movId,
+                type: 'Ingreso',
+                amount: formattedAmount,
+                concept: targetPayment.concept || (targetPayment.method === 'Efectivo' ? 'Cobro en efectivo' : 'Transferencia bancaria'),
+                party: targetPayment.party || (targetPayment.driverName ? `${targetPayment.method} (${targetPayment.driverName})` : 'Ingreso Chofer'),
+                date: new Date().toISOString(),
+                source: targetPayment.source || 'whatsapp_bot_pending',
+                senderPhone: targetPayment.senderPhone || null,
+                driverName: targetPayment.driverName || null,
+                driverId: targetPayment.driverId || null,
+                method: targetPayment.method || 'Transferencia',
+                pendingPaymentId: targetPayment.id,
+                createdAt: Date.now()
+            };
+
+            await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+            console.log(`✅ [PENDING-CONFIRMED] Pago #${targetPayment.code} de $${formattedAmount} confirmado y acreditado en balance de flota ${fleetId}`);
+
+            // Sincronizar con Google Sheets
+            try {
+                const settingsSnap = await db.ref(`fleets/${fleetId}/settings`).once('value');
+                const settings = settingsSnap.val();
+                await _syncMovementToSheet(fleetId, settings, newMov);
+            } catch(eSheet) {
+                console.warn('⚠️ [PENDING-SHEETS] Error sincronizando a Google Sheets:', eSheet.message);
+            }
+
+            const montoStr = formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 });
+
+            // Notificar al chofer si tenemos su chat JID
+            if (sock && targetPayment.chatJid) {
+                const driverMsg = 
+                    `🎉 *¡Pago Confirmado y Acreditado!*\n\n` +
+                    `Hola ${targetPayment.driverName || 'estimado chofer'},\n` +
+                    `El administrador confirmó la recepción de tu ${targetPayment.method?.toLowerCase() || 'pago'}:\n` +
+                    `💵 *Monto:* $${montoStr}\n` +
+                    `📝 *Concepto:* ${newMov.concept}\n\n` +
+                    `✅ El importe ya fue acreditado en el balance de la flota y en Google Sheets. ¡Muchas gracias! 🚗✨`;
+                try {
+                    await sock.sendMessage(targetPayment.chatJid, { text: driverMsg });
+                    _trackBandwidth(driverMsg, 'out');
+                } catch(ed) {}
+            }
+
+            const replyAdmin = 
+                `✅ *Ingreso #${targetPayment.code} Confirmado y Acreditado*\n\n` +
+                `💵 *Monto:* $${montoStr}\n` +
+                `👤 *Chofer:* ${targetPayment.party}\n` +
+                `💳 *Medio:* ${targetPayment.method}\n` +
+                `📝 *Concepto:* ${newMov.concept}\n\n` +
+                `_Registrado correctamente en el balance de la flota y Google Sheets._ 📊💰`;
+
+            return {
+                ok: true,
+                message: replyAdmin,
+                payment: targetPayment,
+                movement: newMov
+            };
+
+        } catch(e) {
+            console.error('❌ [PENDING-CONFIRM-ERR]', e.message);
+            return { ok: false, error: e.message };
+        }
+    }
+
+    /**
+     * Rechaza un pago pendiente
+     */
+    async function _rejectPendingPayment(code = null, targetFleetId = null, rejectedBy = 'whatsapp_admin') {
+        if (!db) return { ok: false, message: 'Base de datos no conectada.' };
+        const fleetId = targetFleetId || await _resolveFleetId();
+
+        try {
+            const snap = await db.ref(`fleets/${fleetId}/pending_payments`).once('value');
+            const payments = snap.val() || {};
+
+            let targetPayment = null;
+            let targetKey = null;
+
+            if (code) {
+                const cleanCode = String(code).replace(/[^0-9]/g, '');
+                for (const [k, p] of Object.entries(payments)) {
+                    if (p.status === 'pending' && String(p.code) === cleanCode) {
+                        targetPayment = p;
+                        targetKey = k;
+                        break;
+                    }
+                }
+            } else {
+                const pendingList = Object.entries(payments)
+                    .map(([k, p]) => ({ key: k, ...p }))
+                    .filter(p => p.status === 'pending')
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+                if (pendingList.length > 0) {
+                    targetPayment = pendingList[0];
+                    targetKey = pendingList[0].key;
+                }
+            }
+
+            if (!targetPayment) {
+                return {
+                    ok: false,
+                    message: code 
+                        ? `⚠️ No se encontró ningún pago pendiente con el código #${code}.` 
+                        : `⚠️ No hay pagos pendientes para rechazar en este momento.`
+                };
+            }
+
+            await db.ref(`fleets/${fleetId}/pending_payments/${targetKey}`).update({
+                status: 'rejected',
+                rejectedAt: Date.now(),
+                rejectedBy: rejectedBy
+            });
+
+            const montoStr = Number(targetPayment.amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+
+            if (sock && targetPayment.chatJid) {
+                const driverMsg = 
+                    `⚠️ *Aviso sobre tu pago / entrega*\n\n` +
+                    `Hola ${targetPayment.driverName || 'estimado chofer'}, el aviso de ${targetPayment.method?.toLowerCase() || 'pago'} por $${montoStr} no pudo ser confirmado o fue descartado por el administrador.\n` +
+                    `Por favor comunicate con administración para regularizar el estado.`;
+                try {
+                    await sock.sendMessage(targetPayment.chatJid, { text: driverMsg });
+                    _trackBandwidth(driverMsg, 'out');
+                } catch(ed) {}
+            }
+
+            const replyAdmin = `❌ *Pago #${targetPayment.code} Rechazado*\n\nEl aviso de $${montoStr} (${targetPayment.party}) fue descartado y NO se ingresó al balance.`;
+
+            return {
+                ok: true,
+                message: replyAdmin,
+                payment: targetPayment
+            };
+
+        } catch(e) {
+            console.error('❌ [PENDING-REJECT-ERR]', e.message);
+            return { ok: false, error: e.message };
+        }
+    }
+
+    /**
+     * Lista pagos pendientes de confirmación
+     */
+    async function _listPendingPayments(targetFleetId = null) {
+        if (!db) return [];
+        const fleetId = targetFleetId || await _resolveFleetId();
+        try {
+            const snap = await db.ref(`fleets/${fleetId}/pending_payments`).once('value');
+            const payments = snap.val() || {};
+            return Object.entries(payments)
+                .map(([k, p]) => ({ key: k, ...p }))
+                .filter(p => p.status === 'pending')
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        } catch(e) {
+            console.error('❌ [PENDING-LIST-ERR]', e.message);
+            return [];
+        }
+    }
+
     function _recursiveFindImage(obj, depth = 0) {
         if (!obj || typeof obj !== 'object' || depth > 8) return null;
         if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
@@ -714,17 +1084,22 @@ const WhatsappBot = (() => {
                    docMsg?.caption || '';
 
         const hasKeywords = _hasTransferKeywords(m) || _hasTransferKeywords(text);
+        const hasCashKeywords = _hasCashKeywords(text);
 
-        // Si no es imagen, ni documento, ni tiene palabras de pago/factura, no es comprobante
-        if (!isImage && !isDocReceipt && !hasKeywords) return false;
+        // Si no es imagen, ni documento, ni tiene palabras de pago/factura/efectivo, no es comprobante
+        if (!isImage && !isDocReceipt && !hasKeywords && !hasCashKeywords) return false;
 
-        console.log(`🧾 [CHECK-RECEIPT] Analizando posible comprobante de ${jid} (isImage=${isImage}, isDoc=${isDocReceipt}, origin=${origin})...`);
+        console.log(`🧾 [CHECK-RECEIPT] Analizando posible comprobante/efectivo de ${jid} (isImage=${isImage}, isDoc=${isDocReceipt}, hasCash=${hasCashKeywords}, origin=${origin})...`);
 
         // Encolar candidato para persistencia y escaneos futuros
         _enqueueCandidateMessage(msg);
 
+        // Determinar remitente y verificar si es administrador
+        const senderJid = msg.key.participant || msg.key.remoteJid || '';
+        const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
+        const senderNum = (senderJid || '').replace(/[^0-9]/g, '');
+
         // Determinar flota correspondiente
-        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
         const fleetMatch = await _findFleetForPhone(senderNum);
         const fleetId = targetFleetId || fleetMatch?.fleetId || await _resolveFleetId();
 
@@ -740,6 +1115,37 @@ const WhatsappBot = (() => {
                     return true;
                 }
             } catch(eSnap) {}
+        }
+
+        // 0. Caso Entrega de Efectivo (aviso en texto por parte del chofer)
+        if (hasCashKeywords && text && text.length > 5 && getGeminiKey()) {
+            try {
+                const senderDisplay = fleetMatch?.driverName || `Chofer (+${senderNum})`;
+                const cashAnalysis = await callGeminiCashReceipt(text, senderDisplay);
+
+                if (cashAnalysis && cashAnalysis.isCash && cashAnalysis.amount > 0) {
+                    if (msgId) _processedReceiptMsgIds.add(msgId);
+                    console.log(`💵 [CASH-INTERCEPT] Chofer ${senderDisplay} avisó entrega de efectivo: $${cashAnalysis.amount}`);
+
+                    await _createPendingPayment({
+                        fleetId,
+                        driverName: fleetMatch?.driverName || null,
+                        driverId: fleetMatch?.driverId || null,
+                        senderNum,
+                        amount: cashAnalysis.amount,
+                        method: 'Efectivo',
+                        concept: cashAnalysis.concept || 'Entrega de efectivo en mano',
+                        date: cashAnalysis.date || new Date().toISOString(),
+                        originalMsgId: msgId,
+                        jid,
+                        msg,
+                        origin
+                    });
+                    return true;
+                }
+            } catch(eCash) {
+                console.warn('⚠️ [CASH-PARSE] Error analizando posible entrega de efectivo:', eCash.message);
+            }
         }
 
         // 1. Caso Imagen
@@ -781,6 +1187,27 @@ const WhatsappBot = (() => {
                             ? `${receiptAnalysis.party || 'Transferencia'} (${fleetMatch.driverName})` 
                             : (receiptAnalysis.party || `Transferencia WhatsApp (+${senderNum})`);
 
+                        // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                        if (!isFromTrustedAdmin) {
+                            console.log(`⏳ [DRIVER-TRANSFER] Transferencia de chofer detectada ($${formattedAmount}). Creando pago pendiente...`);
+                            await _createPendingPayment({
+                                fleetId,
+                                driverName: fleetMatch?.driverName || null,
+                                driverId: fleetMatch?.driverId || null,
+                                senderNum,
+                                amount: formattedAmount,
+                                method: 'Transferencia',
+                                concept: receiptAnalysis.concept || (receiptAnalysis.type === 'Ingreso' ? 'Transferencia bancaria recibida' : 'Comprobante'),
+                                date: receiptAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                                originalMsgId: msgId,
+                                jid,
+                                msg,
+                                origin
+                            });
+                            return true;
+                        }
+
+                        // Si proviene directamente del administrador de confianza, se acredita de inmediato
                         const newMov = {
                             id: movId,
                             type: receiptAnalysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
@@ -850,6 +1277,26 @@ const WhatsappBot = (() => {
                             ? `${receiptAnalysis.party || 'Factura/Comprobante'} (${fleetMatch.driverName})` 
                             : (receiptAnalysis.party || `Documento WhatsApp (+${senderNum})`);
 
+                        // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                        if (!isFromTrustedAdmin) {
+                            console.log(`⏳ [DRIVER-DOC] Documento de chofer detectado ($${formattedAmount}). Creando pago pendiente...`);
+                            await _createPendingPayment({
+                                fleetId,
+                                driverName: fleetMatch?.driverName || null,
+                                driverId: fleetMatch?.driverId || null,
+                                senderNum,
+                                amount: formattedAmount,
+                                method: 'Transferencia',
+                                concept: receiptAnalysis.concept || 'Comprobante/Factura en documento',
+                                date: receiptAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                                originalMsgId: msgId,
+                                jid,
+                                msg,
+                                origin
+                            });
+                            return true;
+                        }
+
                         const newMov = {
                             id: movId,
                             type: receiptAnalysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
@@ -897,14 +1344,33 @@ const WhatsappBot = (() => {
         // 2. Caso Texto
         if (text && text.length > 5 && getGeminiKey() && hasKeywords) {
             try {
-                const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
-                const fleetMatch = await _findFleetForPhone(senderNum);
                 const senderDisplay = fleetMatch?.driverName || `Contacto WhatsApp (+${senderNum})`;
-
                 const textReceipt = await callGeminiTextReceipt(text, senderDisplay);
+
                 if (textReceipt && textReceipt.isReceipt && textReceipt.amount > 0) {
                     if (msgId) _processedReceiptMsgIds.add(msgId);
                     const formattedAmount = Number(textReceipt.amount) || 0;
+
+                    // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                    if (!isFromTrustedAdmin) {
+                        console.log(`⏳ [DRIVER-TEXT-TRANSFER] Transferencia en texto de chofer detectada ($${formattedAmount}). Creando pago pendiente...`);
+                        await _createPendingPayment({
+                            fleetId,
+                            driverName: fleetMatch?.driverName || null,
+                            driverId: fleetMatch?.driverId || null,
+                            senderNum,
+                            amount: formattedAmount,
+                            method: 'Transferencia',
+                            concept: textReceipt.concept || 'Transferencia por WhatsApp',
+                            date: textReceipt.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                            originalMsgId: msgId,
+                            jid,
+                            msg,
+                            origin
+                        });
+                        return true;
+                    }
+
                     const newMov = {
                         id: movId,
                         type: textReceipt.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
@@ -1986,6 +2452,51 @@ const WhatsappBot = (() => {
                             continue;
                         } else {
                             console.log(`⚠️ [TEST-AUDIO] Comando ignorado: el remitente no es admin.`);
+                        }
+                    }
+
+                    // --- COMANDOS ADMIN: CONFIRMACIÓN Y RECHAZO DE PAGOS / EFECTIVO ---
+                    if (isFromTrustedAdmin && text) {
+                        const cleanAdminText = text.trim().toLowerCase();
+                        const confirmMatch = cleanAdminText.match(/^(si|confirmar|aprobar|ok|recibido)(\s+[0-9]{3,6})?$/i);
+                        const rejectMatch = cleanAdminText.match(/^(no|rechazar|cancelar|descartar)(\s+[0-9]{3,6})?$/i);
+                        const listPendingMatch = cleanAdminText.match(/^\.(pendientes|pagos|espera)$/i);
+
+                        if (confirmMatch) {
+                            const codeMatch = cleanAdminText.match(/\b([0-9]{3,6})\b/);
+                            const code = codeMatch ? codeMatch[1] : null;
+                            console.log(`👍 [ADMIN-CMD] Aprobación de pago solicitada (código=${code || 'último'})...`);
+                            const res = await _confirmPendingPayment(code, null, 'whatsapp_admin');
+                            await sock.sendMessage(jid, { text: res.message || (res.ok ? '✅ Pago confirmado y acreditado.' : '⚠️ No se pudo confirmar.') }, { quoted: msg });
+                            continue;
+                        }
+
+                        if (rejectMatch) {
+                            const codeMatch = cleanAdminText.match(/\b([0-9]{3,6})\b/);
+                            const code = codeMatch ? codeMatch[1] : null;
+                            console.log(`👎 [ADMIN-CMD] Rechazo de pago solicitado (código=${code || 'último'})...`);
+                            const res = await _rejectPendingPayment(code, null, 'whatsapp_admin');
+                            await sock.sendMessage(jid, { text: res.message || (res.ok ? '❌ Pago rechazado.' : '⚠️ No se pudo rechazar.') }, { quoted: msg });
+                            continue;
+                        }
+
+                        if (listPendingMatch) {
+                            console.log(`📋 [ADMIN-CMD] Listando pagos pendientes...`);
+                            const list = await _listPendingPayments();
+                            if (list.length === 0) {
+                                await sock.sendMessage(jid, { text: '✨ *FleetAdmin Pro:* No tenés pagos ni entregas de efectivo pendientes de confirmación en este momento.' }, { quoted: msg });
+                            } else {
+                                let msgList = `📋 *PAGOS Y ENTREGAS PENDIENTES (${list.length})*\n\n`;
+                                list.forEach((p, idx) => {
+                                    const monto = Number(p.amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+                                    msgList += `${idx + 1}. *#${p.code}* - $${monto} (${p.method})\n`;
+                                    msgList += `   👤 ${p.party}\n`;
+                                    msgList += `   📝 ${p.concept}\n`;
+                                    msgList += `   👉 Respondé *SI ${p.code}* para aprobar o *NO ${p.code}* para rechazar\n\n`;
+                                });
+                                await sock.sendMessage(jid, { text: msgList.trim() }, { quoted: msg });
+                            }
+                            continue;
                         }
                     }
 
@@ -3307,7 +3818,11 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         sendPushToAdmins,
         scanRecentMessages,
         syncMovementToSheet: _syncMovementToSheet,
-        getQueueStatus
+        getQueueStatus,
+        createPendingPayment: _createPendingPayment,
+        confirmPendingPayment: _confirmPendingPayment,
+        rejectPendingPayment: _rejectPendingPayment,
+        listPendingPayments: _listPendingPayments
     };
 })();
 
