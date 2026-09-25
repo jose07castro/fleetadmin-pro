@@ -1863,11 +1863,23 @@ const WhatsappBot = (() => {
                     (now - (currentLeader.lastSeen || 0)) < 45000;
 
                 // Si este servicio es fleetadmin-pro-1 y existe fleetadmin-web-nueva activo, ceder de inmediato
-                const isLegacyService = (process.env.RENDER_SERVICE_NAME || '').includes('fleetadmin-pro-1');
+                const isWebNueva = (process.env.RENDER_SERVICE_NAME || '').includes('web-nueva');
+                const isLegacyService = (process.env.RENDER_SERVICE_NAME || '').startsWith('fleetadmin-pro');
                 if (isLegacyService && currentLeader && currentLeader.id?.includes('web-nueva')) {
                     console.warn(`🛡️ [DISTRIBUTED-LOCK] Instancia legacy (${INSTANCE_ID}) cede el control a la instancia principal (${currentLeader.id}).`);
                     isConnecting = false;
                     return;
+                }
+
+                if (isAnotherLeaderActive) {
+                    if (isWebNueva && currentLeader && (currentLeader.id?.includes('fleetadmin-pro') || currentLeader.serviceName?.startsWith('fleetadmin-pro'))) {
+                        console.log(`👑 [DISTRIBUTED-LOCK] ${INSTANCE_ID} (web-nueva) tiene máxima prioridad sobre la instancia secundaria ${currentLeader.id}. Reclamando liderazgo.`);
+                    } else {
+                        console.warn(`🛡️ [DISTRIBUTED-LOCK] Otra instancia activa detectada: "${currentLeader.id}". Esta instancia (${INSTANCE_ID}) queda en standby sin iniciar WhatsApp para evitar expulsión 440.`);
+                        isConnecting = false;
+                        setTimeout(() => { if (!_isConnectedState) startSocket(); }, 35000);
+                        return;
+                    }
                 }
 
                 if (isAnotherLeaderActive) {
