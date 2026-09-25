@@ -408,7 +408,8 @@ async function getGoogleAccessToken() {
     }
 }
 
-async function autoCreateGoogleSpreadsheet(fleetId = 'jose07') {
+async function autoCreateGoogleSpreadsheet(fleetId = '-OnPd8HaV1VZWBnYQQX7') {
+    fleetId = await _resolveServerFleetId(fleetId);
     const accessToken = await getGoogleAccessToken();
     if (!accessToken) {
         throw new Error('No se pudieron obtener credenciales de Google Service Account para crear la planilla.');
@@ -489,10 +490,33 @@ async function autoCreateGoogleSpreadsheet(fleetId = 'jose07') {
     }
 }
 
+async function _resolveServerFleetId(providedId) {
+    if (providedId && providedId !== 'jose07' && providedId !== 'default' && providedId !== 'null' && providedId !== 'undefined') {
+        return providedId;
+    }
+    if (typeof WhatsappBot.getFleetId === 'function') {
+        try {
+            const fid = await WhatsappBot.getFleetId();
+            if (fid && fid !== 'jose07') return fid;
+        } catch(e) {}
+    }
+    return '-OnPd8HaV1VZWBnYQQX7';
+}
+
+// Endpoint para consultar fleetId activo
+app.get('/api/bot/fleet-id', async (req, res) => {
+    try {
+        const fleetId = await _resolveServerFleetId(req.query.fleetId);
+        return res.json({ ok: true, fleetId });
+    } catch(e) {
+        return res.json({ ok: true, fleetId: '-OnPd8HaV1VZWBnYQQX7' });
+    }
+});
+
 // Endpoint CSV para sincronización automática instantánea en Google Sheets con =IMPORTDATA(...)
 app.get('/api/sheets/csv', async (req, res) => {
     try {
-        const fleetId = req.query.fleetId || 'jose07';
+        const fleetId = await _resolveServerFleetId(req.query.fleetId);
         const db = WhatsappBot.getDb();
         if (!db) {
             return res.status(503).send('Base de datos no disponible');
@@ -530,7 +554,7 @@ app.get('/api/sheets/csv', async (req, res) => {
 // Endpoint para auto-crear planilla de Google Sheets
 app.post('/api/sheets/auto-create', async (req, res) => {
     try {
-        const fleetId = req.body.fleetId || 'jose07';
+        const fleetId = await _resolveServerFleetId(req.body.fleetId);
         console.log(`✨ [AUTO-CREATE-SHEET] Solicitada creación de Google Sheet para flota: ${fleetId}`);
         const result = await autoCreateGoogleSpreadsheet(fleetId);
 
@@ -544,7 +568,7 @@ app.post('/api/sheets/auto-create', async (req, res) => {
         console.error('❌ [AUTO-CREATE-SHEET] Error creando planilla:', e.message);
         const host = req.get('host') || 'fleetadmin-web-nueva.onrender.com';
         const proto = req.protocol === 'https' || host.includes('render.com') ? 'https' : 'http';
-        const importFormula = `=IMPORTDATA("${proto}://${host}/api/sheets/csv?fleetId=${req.body.fleetId || 'jose07'}")`;
+        const importFormula = `=IMPORTDATA("${proto}://${host}/api/sheets/csv?fleetId=${fleetId}")`;
         return res.status(500).json({ 
             ok: false, 
             error: e.message,
@@ -559,7 +583,7 @@ app.post('/api/sheets/append', async (req, res) => {
     try {
         let sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
         const movement = req.body.movement;
-        const fleetId = req.body.fleetId || 'jose07';
+        const fleetId = await _resolveServerFleetId(req.body.fleetId);
 
         if (!movement) {
             return res.status(400).json({ ok: false, error: 'movement es requerido' });
@@ -639,7 +663,7 @@ app.post('/api/sheets/append', async (req, res) => {
 app.post('/api/sheets/test', async (req, res) => {
     try {
         let sheetId = (req.body.google_sheet_id || req.body.sheetId || '').trim();
-        const fleetId = req.body.fleetId || 'jose07';
+        const fleetId = await _resolveServerFleetId(req.body.fleetId);
 
         if (!sheetId) {
             return res.status(400).json({ ok: false, error: 'Ingresá la URL del Webhook de Apps Script o vinculá tu planilla.' });
@@ -672,7 +696,7 @@ app.post('/api/sheets/test', async (req, res) => {
 // Endpoint para solicitar un escaneo histórico de comprobantes por WhatsApp
 app.post('/api/bot/scan-historical', async (req, res) => {
     try {
-        const fleetId = req.body.fleetId || 'jose07';
+        const fleetId = await _resolveServerFleetId(req.body.fleetId);
         console.log(`🔍 [HISTORICAL-SCAN] Iniciando escaneo de comprobantes por WhatsApp para flota: ${fleetId}`);
         
         let scanResult = { totalMovements: 0, newProcessed: 0, syncedToSheets: 0 };

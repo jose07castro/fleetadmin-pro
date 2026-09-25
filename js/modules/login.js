@@ -814,8 +814,8 @@ const LoginModule = (() => {
 
             // --- FLUJO DE REGISTRO ---
             
-            // 3. Resolve active fleetId (default to 'jose07' if not set)
-            const fleetId = DB.getFleet() || 'jose07';
+            // 3. Resolve active fleetId (default to '-OnPd8HaV1VZWBnYQQX7' if not set)
+            const fleetId = (DB.getFleet && DB.getFleet() && DB.getFleet() !== 'jose07') ? DB.getFleet() : '-OnPd8HaV1VZWBnYQQX7';
 
             // 4. Hash PIN before saving
             let hashedPin = pin;

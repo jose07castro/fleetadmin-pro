@@ -295,7 +295,7 @@ const SettingsModule = (() => {
                             </p>
                             <input type="text" id="sheetsImportFormulaInput" readonly class="form-input" 
                                 style="font-family:monospace; font-size:11px !important; background:rgba(0,0,0,0.2); color:#10b981; font-weight:700; border:1px dashed #10b981;"
-                                value='=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${(typeof Auth !== "undefined" && Auth.getFleetId) ? Auth.getFleetId() : "jose07"}")'>
+                                value='=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${(typeof Auth !== 'undefined' && Auth.getFleetId && Auth.getFleetId() && Auth.getFleetId() !== 'jose07') ? Auth.getFleetId() : '-OnPd8HaV1VZWBnYQQX7'}")'>
                         </div>
 
                         <!-- MÉTODO 2: Webhook de Apps Script o Planilla ID -->
@@ -1788,13 +1788,25 @@ const SettingsModule = (() => {
         }
     }
 
+        function _resolveFleetId() {
+        if (typeof Auth !== 'undefined' && Auth.getFleetId && Auth.getFleetId() && Auth.getFleetId() !== 'jose07') {
+            return Auth.getFleetId();
+        }
+        if (typeof DB !== 'undefined' && DB.getFleet && DB.getFleet() && DB.getFleet() !== 'jose07') {
+            return DB.getFleet();
+        }
+        const stored = localStorage.getItem('last_fleet_id');
+        if (stored && stored !== 'jose07') return stored;
+        return '-OnPd8HaV1VZWBnYQQX7';
+    }
+
     async function autoCreateGoogleSheet() {
         Components.showToast('Creando planilla de Google Sheets automáticamente... ⏳', 'info');
         try {
             const res = await fetch('/api/sheets/auto-create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fleetId: (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07' })
+                body: JSON.stringify({ fleetId: _resolveFleetId() })
             });
             const data = await res.json();
             if (data.ok) {
@@ -1837,7 +1849,7 @@ const SettingsModule = (() => {
     async function scanHistoricalWhatsApp() {
         Components.showToast('Escaneando WhatsApp en busca de transferencias y facturas... 🔍⏳', 'info');
         try {
-            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+            const fleetId = _resolveFleetId();
             const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                 ? 'https://fleetadmin-web-nueva.onrender.com'
                 : window.location.origin;

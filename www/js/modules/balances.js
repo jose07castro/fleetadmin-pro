@@ -558,10 +558,22 @@ const BalancesModule = (() => {
         }
     }
 
+        function _resolveFleetId() {
+        if (typeof Auth !== 'undefined' && Auth.getFleetId && Auth.getFleetId() && Auth.getFleetId() !== 'jose07') {
+            return Auth.getFleetId();
+        }
+        if (typeof DB !== 'undefined' && DB.getFleet && DB.getFleet() && DB.getFleet() !== 'jose07') {
+            return DB.getFleet();
+        }
+        const stored = localStorage.getItem('last_fleet_id');
+        if (stored && stored !== 'jose07') return stored;
+        return '-OnPd8HaV1VZWBnYQQX7';
+    }
+
     async function _autoCreateGoogleSheet() {
         Components.showToast('Creando planilla de Google Sheets automáticamente... ⏳', 'info');
         try {
-            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+            const fleetId = _resolveFleetId();
             const res = await fetch('/api/sheets/auto-create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -612,7 +624,7 @@ const BalancesModule = (() => {
     }
 
     function showGoogleSheetsOptions() {
-        const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+        const fleetId = _resolveFleetId();
         const formula = `=IMPORTDATA("${window.location.origin}/api/sheets/csv?fleetId=${fleetId}")`;
 
         Components.showModal(
@@ -668,7 +680,7 @@ const BalancesModule = (() => {
         Components.showToast('Escaneando WhatsApp en busca de transferencias y facturas... 🔍⏳', 'info');
 
         try {
-            const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
+            const fleetId = _resolveFleetId();
             const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                 ? 'https://fleetadmin-web-nueva.onrender.com'
                 : window.location.origin;

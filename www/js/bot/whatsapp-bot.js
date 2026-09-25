@@ -1026,6 +1026,19 @@ const WhatsappBot = (() => {
     const _nonReceiptMsgIds = new Set();
     const _recentHistoricalQueue = [];
 
+    function _sanitizeForFirebase(obj, depth = 0) {
+        if (!obj || depth > 6) return null;
+        if (typeof obj !== 'object') return obj;
+        if (Buffer.isBuffer(obj)) return obj.toString('base64');
+        if (Array.isArray(obj)) return obj.slice(0, 10).map(i => _sanitizeForFirebase(i, depth + 1));
+        const clean = {};
+        for (const [k, v] of Object.entries(obj)) {
+            if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue;
+            clean[k] = _sanitizeForFirebase(v, depth + 1);
+        }
+        return clean;
+    }
+
     function _enqueueCandidateMessage(msg) {
         if (!msg || !msg.key || !msg.message) return;
         const msgId = msg.key.id;
@@ -1040,7 +1053,7 @@ const WhatsappBot = (() => {
             if (db) {
                 try {
                     const safeKey = msgId.replace(/[^a-zA-Z0-9_-]/g, '_');
-                    db.ref(`bot_receipt_queue/${safeKey}`).set({
+                    const cleanItem = {
                         key: {
                             id: msg.key.id,
                             remoteJid: msg.key.remoteJid,
@@ -1048,8 +1061,9 @@ const WhatsappBot = (() => {
                             participant: msg.key.participant || null
                         },
                         messageTimestamp: msg.messageTimestamp,
-                        message: msg.message
-                    }).catch(() => {});
+                        message: _sanitizeForFirebase(msg.message)
+                    };
+                    db.ref(`bot_receipt_queue/${safeKey}`).set(cleanItem).catch(() => {});
                 } catch(e) {}
             }
         }
@@ -1125,22 +1139,60 @@ const WhatsappBot = (() => {
 
                 if (cashAnalysis && cashAnalysis.isCash && cashAnalysis.amount > 0) {
                     if (msgId) _processedReceiptMsgIds.add(msgId);
-                    console.log(`💵 [CASH-INTERCEPT] Chofer ${senderDisplay} avisó entrega de efectivo: $${cashAnalysis.amount}`);
+                    console.log(`💵 [CASH-INTERCEPT] Chofer ${senderDisplay} avisó entrega de efectivo: $${cashAnalysis.amount} (origin=${origin})`);
 
-                    await _createPendingPayment({
-                        fleetId,
+                    // Solo solicitar confirmación interactiva si es mensaje en vivo
+                    if (origin === 'live' && !isFromTrustedAdmin) {
+                        await _createPendingPayment({
+                            fleetId,
+                            driverName: fleetMatch?.driverName || null,
+                            driverId: fleetMatch?.driverId || null,
+                            senderNum,
+                            amount: cashAnalysis.amount,
+                            method: 'Efectivo',
+                            concept: cashAnalysis.concept || 'Entrega de efectivo en mano',
+                            date: cashAnalysis.date || new Date().toISOString(),
+                            originalMsgId: msgId,
+                            jid,
+                            msg,
+                            origin
+                        });
+                        return true;
+                    }
+
+                    // En escaneo manual/histórico o admin, registrar directamente en balance
+                    const newMov = {
+                        id: movId,
+                        type: 'Ingreso',
+                        amount: cashAnalysis.amount,
+                        concept: cashAnalysis.concept || 'Entrega de efectivo en mano',
+                        party: senderDisplay,
+                        date: cashAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                        source: 'whatsapp_bot_cash',
+                        senderPhone: senderNum,
                         driverName: fleetMatch?.driverName || null,
                         driverId: fleetMatch?.driverId || null,
-                        senderNum,
-                        amount: cashAnalysis.amount,
-                        method: 'Efectivo',
-                        concept: cashAnalysis.concept || 'Entrega de efectivo en mano',
-                        date: cashAnalysis.date || new Date().toISOString(),
-                        originalMsgId: msgId,
-                        jid,
-                        msg,
-                        origin
-                    });
+                        createdAt: msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
+                    };
+
+                    if (db) {
+                        await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+                        console.log(`✅ [CASH-SAVED] Efectivo guardado en fleets/${fleetId}/movements/${movId} ($${cashAnalysis.amount})`);
+                    }
+
+                    await _syncMovementToSheet(fleetId, fleetMatch?.settings, newMov);
+
+                    if (origin === 'live' && sock) {
+                        const replyMsg = `✅ *Entrega de Efectivo Registrada*\n\n` +
+                                         `💵 *Monto:* $${cashAnalysis.amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                         `👤 *Chofer:* ${senderDisplay}\n` +
+                                         `📝 *Concepto:* ${newMov.concept}\n` +
+                                         `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                         `_Registrado automáticamente en Balance y Google Sheets_ 🚗💰`;
+                        await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                        _trackBandwidth(replyMsg, 'out');
+                    }
+
                     return true;
                 }
             } catch(eCash) {
@@ -1187,9 +1239,9 @@ const WhatsappBot = (() => {
                             ? `${receiptAnalysis.party || 'Transferencia'} (${fleetMatch.driverName})` 
                             : (receiptAnalysis.party || `Transferencia WhatsApp (+${senderNum})`);
 
-                        // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
-                        if (!isFromTrustedAdmin) {
-                            console.log(`⏳ [DRIVER-TRANSFER] Transferencia de chofer detectada ($${formattedAmount}). Creando pago pendiente...`);
+                        // SI ES MENSAJE EN VIVO Y PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                        if (origin === 'live' && !isFromTrustedAdmin) {
+                            console.log(`⏳ [DRIVER-TRANSFER] Transferencia de chofer detectada en vivo ($${formattedAmount}). Creando pago pendiente...`);
                             await _createPendingPayment({
                                 fleetId,
                                 driverName: fleetMatch?.driverName || null,
@@ -1277,9 +1329,9 @@ const WhatsappBot = (() => {
                             ? `${receiptAnalysis.party || 'Factura/Comprobante'} (${fleetMatch.driverName})` 
                             : (receiptAnalysis.party || `Documento WhatsApp (+${senderNum})`);
 
-                        // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
-                        if (!isFromTrustedAdmin) {
-                            console.log(`⏳ [DRIVER-DOC] Documento de chofer detectado ($${formattedAmount}). Creando pago pendiente...`);
+                        // SI ES MENSAJE EN VIVO Y PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                        if (origin === 'live' && !isFromTrustedAdmin) {
+                            console.log(`⏳ [DRIVER-DOC] Documento de chofer detectado en vivo ($${formattedAmount}). Creando pago pendiente...`);
                             await _createPendingPayment({
                                 fleetId,
                                 driverName: fleetMatch?.driverName || null,
@@ -1351,9 +1403,9 @@ const WhatsappBot = (() => {
                     if (msgId) _processedReceiptMsgIds.add(msgId);
                     const formattedAmount = Number(textReceipt.amount) || 0;
 
-                    // SI PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
-                    if (!isFromTrustedAdmin) {
-                        console.log(`⏳ [DRIVER-TEXT-TRANSFER] Transferencia en texto de chofer detectada ($${formattedAmount}). Creando pago pendiente...`);
+                    // SI ES MENSAJE EN VIVO Y PROVIENE DE UN CONDUCTOR (NO ES ADMIN DIRECTO): Solicitar confirmación interactiva
+                    if (origin === 'live' && !isFromTrustedAdmin) {
+                        console.log(`⏳ [DRIVER-TEXT-TRANSFER] Transferencia en texto de chofer detectada en vivo ($${formattedAmount}). Creando pago pendiente...`);
                         await _createPendingPayment({
                             fleetId,
                             driverName: fleetMatch?.driverName || null,
@@ -1421,7 +1473,7 @@ const WhatsappBot = (() => {
     let _resolvedFleetId = null;
 
     async function _resolveFleetId() {
-        if (_resolvedFleetId) return _resolvedFleetId;
+        if (_resolvedFleetId && _resolvedFleetId !== 'jose07') return _resolvedFleetId;
         
         // Si hay variable de entorno explícita, usarla
         if (process.env.DEFAULT_FLEET_ID) {
@@ -1437,7 +1489,7 @@ const WhatsappBot = (() => {
                 const val = snap.val();
                 if (val) {
                     const keys = Object.keys(val);
-                    if (keys.length > 0) {
+                    if (keys.length > 0 && keys[0] !== 'jose07') {
                         _resolvedFleetId = keys[0];
                         console.log(`🏢 [FLEET] ✅ Auto-detectada flota: ${_resolvedFleetId}`);
                         return _resolvedFleetId;
@@ -1448,10 +1500,21 @@ const WhatsappBot = (() => {
             }
         }
 
-        // Último fallback
-        _resolvedFleetId = 'jose07';
-        console.log(`🏢 [FLEET] ⚠️ Usando fallback: ${_resolvedFleetId}`);
+        // Fallback seguro a la flota principal de José
+        _resolvedFleetId = '-OnPd8HaV1VZWBnYQQX7';
+        console.log(`🏢 [FLEET] ⚠️ Usando fallback seguro: ${_resolvedFleetId}`);
         return _resolvedFleetId;
+    }
+
+    function _phoneMatches(p1, p2) {
+        if (!p1 || !p2) return false;
+        const c1 = String(p1).replace(/[^0-9]/g, '');
+        const c2 = String(p2).replace(/[^0-9]/g, '');
+        if (!c1 || !c2) return false;
+        if (c1 === c2) return true;
+        if (c1.endsWith(c2) || c2.endsWith(c1)) return true;
+        if (c1.length >= 8 && c2.length >= 8 && c1.slice(-8) === c2.slice(-8)) return true;
+        return false;
     }
 
     async function _findFleetForPhone(senderPhone) {
@@ -1463,31 +1526,56 @@ const WhatsappBot = (() => {
 
             // 1. Buscar en configuraciones explícitas de flotas
             for (const [fleetId, fleetData] of Object.entries(fleets)) {
+                if (fleetId === 'jose07') continue;
                 const settings = fleetData.settings || {};
                 const scannerEnabled = settings.whatsapp_scanner_enabled !== false;
                 const authPhone = (settings.whatsapp_authorized_phone || '').replace(/[^0-9]/g, '');
                 
-                if (authPhone && cleanSender && (cleanSender.endsWith(authPhone) || authPhone.endsWith(cleanSender))) {
+                if (authPhone && cleanSender && _phoneMatches(authPhone, cleanSender)) {
                     return { fleetId, settings, scannerEnabled, isAuthorizedAdmin: true };
                 }
 
-                // 2. Buscar si coincide con el teléfono de algún chofer registrado en la flota
+                // 2. Buscar si coincide con algún usuario/chofer registrado en fleetData.users
+                const users = fleetData.users || {};
+                for (const [userId, user] of Object.entries(users)) {
+                    if (user && (user.role === 'driver' || !user.role)) {
+                        const uPhone = (user.phone || user.telefono || user.whatsapp || '').replace(/[^0-9]/g, '');
+                        if (uPhone && cleanSender && _phoneMatches(uPhone, cleanSender)) {
+                            return {
+                                fleetId,
+                                settings,
+                                scannerEnabled,
+                                driverName: user.name || user.nombre || 'Chofer Registrado',
+                                driverId: userId
+                            };
+                        }
+                    }
+                }
+
+                // 3. Buscar si coincide con el teléfono de algún chofer registrado en fleetData.drivers
                 const drivers = fleetData.drivers || {};
                 for (const [driverId, driver] of Object.entries(drivers)) {
-                    const dPhone = (driver.phone || driver.telefono || driver.whatsapp || '').replace(/[^0-9]/g, '');
-                    if (dPhone && cleanSender && (cleanSender.endsWith(dPhone) || dPhone.endsWith(cleanSender))) {
-                        return { fleetId, settings, scannerEnabled, driverName: driver.name || driver.nombre || 'Chofer Registrado', driverId };
+                    if (driver) {
+                        const dPhone = (driver.phone || driver.telefono || driver.whatsapp || '').replace(/[^0-9]/g, '');
+                        if (dPhone && cleanSender && _phoneMatches(dPhone, cleanSender)) {
+                            return {
+                                fleetId,
+                                settings,
+                                scannerEnabled,
+                                driverName: driver.name || driver.nombre || 'Chofer Registrado',
+                                driverId
+                            };
+                        }
                     }
                 }
             }
             
-            // 3. Fallback a la flota activa del sistema
+            // 4. Fallback a la flota activa del sistema
             const defaultFleetId = await _resolveFleetId();
             const defaultFleetSnap = await db.ref(`fleets/${defaultFleetId}/settings`).once('value');
             const defaultSettings = defaultFleetSnap.val() || {};
             const scannerEnabled = defaultSettings.whatsapp_scanner_enabled !== false;
             
-            // Si el escáner de la flota está activado, procesar siempre el comprobante para no perder transferencias ni gastos
             if (scannerEnabled) {
                 return { fleetId: defaultFleetId, settings: defaultSettings, scannerEnabled: true };
             }
@@ -1835,7 +1923,7 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
+                browser: ['Mac OS', 'Chrome', '14.4.1'],
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
@@ -1976,6 +2064,7 @@ const WhatsappBot = (() => {
                 console.log(`📚 [HISTORY-SYNC] WhatsApp entregó paquete de historial: ${count} mensajes (isLatest=${isLatest})`);
                 if (Array.isArray(messages) && messages.length > 0) {
                     let candidatesCount = 0;
+                    const fleetId = await _resolveFleetId();
                     for (const histMsg of messages) {
                         try {
                             if (!histMsg || !histMsg.message) continue;
@@ -1993,9 +2082,11 @@ const WhatsappBot = (() => {
                             let text = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || docMsg?.caption || '';
                             const hasKeywords = _hasTransferKeywords(m) || _hasTransferKeywords(text);
 
-                            if (isImage || isDoc || hasKeywords) {
+                            const hasCashKeywords = _hasCashKeywords(text);
+                            if (isImage || isDoc || hasKeywords || hasCashKeywords) {
                                 _enqueueCandidateMessage(histMsg);
                                 candidatesCount++;
+                                _processPotentialReceipt(histMsg, 'history', fleetId).catch(() => {});
                             }
                         } catch (hErr) {}
                     }
@@ -3699,7 +3790,10 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
      * Escanea mensajes recientes en busca de comprobantes y sincroniza el balance con Google Sheets.
      */
     async function scanRecentMessages(limit = 500, targetFleetId = null) {
-        const fleetId = targetFleetId || await _resolveFleetId();
+        let fleetId = targetFleetId;
+        if (!fleetId || fleetId === 'jose07' || fleetId === 'default') {
+            fleetId = await _resolveFleetId();
+        }
         console.log(`🔍 [SCAN-RECENTS] Iniciando escaneo de comprobantes para flota: ${fleetId}...`);
         
         let found = 0;
