@@ -1838,7 +1838,10 @@ const SettingsModule = (() => {
         Components.showToast('Escaneando WhatsApp en busca de transferencias y facturas... 🔍⏳', 'info');
         try {
             const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
-            const res = await fetch('/api/bot/scan-historical', {
+            const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'https://fleetadmin-web-nueva.onrender.com'
+                : window.location.origin;
+            const res = await fetch(`${origin}/api/bot/scan-historical`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fleetId })
@@ -1848,9 +1851,6 @@ const SettingsModule = (() => {
                 const total = data.scanResult?.totalMovements || 0;
                 const newProcessed = data.scanResult?.newProcessed || 0;
                 const synced = data.scanResult?.syncedToSheets || 0;
-                const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? 'https://fleetadmin-web-nueva.onrender.com'
-                    : window.location.origin;
                 const importFormula = data.importFormula || `=IMPORTDATA("${origin}/api/sheets/csv?fleetId=${fleetId}")`;
                 const csvUrl = data.csvUrl || `${origin}/api/sheets/csv?fleetId=${fleetId}`;
 

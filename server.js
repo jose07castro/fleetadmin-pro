@@ -190,7 +190,8 @@ app.get('/api/bot/fleet-id', async (req, res) => {
 app.get('/api/bot/list-models', async (req, res) => {
     try {
         const axios = require('axios');
-        const key = process.env.GEMINI_API_KEY;
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const key = process.env.GEMINI_API_KEY || (typeof WhatsappBot.getGeminiKey === 'function' ? WhatsappBot.getGeminiKey() : null);
         if (!key) return res.status(400).json({ error: 'No key' });
         
         const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
@@ -212,6 +213,25 @@ app.get('/api/bot/fleets', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+// Diagnóstico de cola de WhatsApp y estado de comprobantes
+app.get('/api/bot/queue-status', (req, res) => {
+    try {
+        const WhatsappBot = require('./js/bot/whatsapp-bot');
+        const status = typeof WhatsappBot.getQueueStatus === 'function'
+            ? WhatsappBot.getQueueStatus()
+            : { queueSize: 0, sample: [] };
+        const key = typeof WhatsappBot.getGeminiKey === 'function' ? WhatsappBot.getGeminiKey() : process.env.GEMINI_API_KEY;
+        res.json({
+            ok: true,
+            hasGeminiKey: !!key,
+            ...status
+        });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 
 // ============================================
 // In-App Update: Version Control Endpoints

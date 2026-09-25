@@ -576,7 +576,10 @@ const BalancesModule = (() => {
 
         try {
             const fleetId = (typeof Auth !== 'undefined' && Auth.getFleetId) ? Auth.getFleetId() : 'jose07';
-            const res = await fetch('/api/bot/scan-historical', {
+            const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'https://fleetadmin-web-nueva.onrender.com'
+                : window.location.origin;
+            const res = await fetch(`${origin}/api/bot/scan-historical`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fleetId })

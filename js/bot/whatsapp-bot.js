@@ -24,8 +24,10 @@ const fs = require('fs');
 const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
+let _dynamicGeminiKey = null;
+
 function getGeminiKey() {
-    return process.env.GEMINI_API_KEY || null;
+    return process.env.GEMINI_API_KEY || _dynamicGeminiKey || null;
 }
 const GEMINI_KEY = getGeminiKey();
 
@@ -650,12 +652,43 @@ const WhatsappBot = (() => {
     }
 
     const _processedReceiptMsgIds = new Set();
+    const _nonReceiptMsgIds = new Set();
     const _recentHistoricalQueue = [];
 
-    async function _processPotentialReceipt(msg, origin = 'live') {
+    function _enqueueCandidateMessage(msg) {
+        if (!msg || !msg.key || !msg.message) return;
+        const msgId = msg.key.id;
+        if (!msgId) return;
+
+        const already = _recentHistoricalQueue.some(m => m.key?.id === msgId);
+        if (!already) {
+            if (_recentHistoricalQueue.length >= 1000) _recentHistoricalQueue.shift();
+            _recentHistoricalQueue.push(msg);
+
+            // Persistir mensaje candidato en Firebase RTDB para recuperarlo tras reinicios de Render
+            if (db) {
+                try {
+                    const safeKey = msgId.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    db.ref(`bot_receipt_queue/${safeKey}`).set({
+                        key: {
+                            id: msg.key.id,
+                            remoteJid: msg.key.remoteJid,
+                            fromMe: !!msg.key.fromMe,
+                            participant: msg.key.participant || null
+                        },
+                        messageTimestamp: msg.messageTimestamp,
+                        message: msg.message
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+        }
+    }
+
+    async function _processPotentialReceipt(msg, origin = 'live', targetFleetId = null) {
         if (!msg || !msg.message) return false;
         const msgId = msg.key?.id;
-        if (msgId && _processedReceiptMsgIds.has(msgId)) return false;
+        if (msgId && _nonReceiptMsgIds.has(msgId)) return false;
+        if (origin !== 'scan_manual' && msgId && _processedReceiptMsgIds.has(msgId)) return false;
 
         const m = msg.message;
         const jid = msg.key?.remoteJid;
@@ -686,14 +719,31 @@ const WhatsappBot = (() => {
 
         console.log(`🧾 [CHECK-RECEIPT] Analizando posible comprobante de ${jid} (isImage=${isImage}, isDoc=${isDocReceipt}, origin=${origin})...`);
 
-        // Guardar en cola reciente para permitir escaneo manual bajo demanda
-        if (_recentHistoricalQueue.length > 3000) _recentHistoricalQueue.shift();
-        _recentHistoricalQueue.push(msg);
+        // Encolar candidato para persistencia y escaneos futuros
+        _enqueueCandidateMessage(msg);
+
+        // Determinar flota correspondiente
+        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
+        const fleetMatch = await _findFleetForPhone(senderNum);
+        const fleetId = targetFleetId || fleetMatch?.fleetId || await _resolveFleetId();
+
+        const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
+
+        // Chequeo temprano en Firebase: si ya existe en balance, no gastar descarga ni Gemini
+        if (db) {
+            try {
+                const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
+                if (existsSnap.exists()) {
+                    console.log(`⏭️ [RECEIPT-DUP] Comprobante ${movId} ya registrado en balance de flota ${fleetId}.`);
+                    if (msgId) _processedReceiptMsgIds.add(msgId);
+                    return true;
+                }
+            } catch(eSnap) {}
+        }
 
         // 1. Caso Imagen
         if (isImage && getGeminiKey()) {
             try {
-                if (msgId) _processedReceiptMsgIds.add(msgId);
                 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
                 let imageBuffer = null;
 
@@ -724,19 +774,7 @@ const WhatsappBot = (() => {
                     const receiptAnalysis = await callGeminiReceipt(imageBuffer, mimeType);
 
                     if (receiptAnalysis && receiptAnalysis.isReceipt && receiptAnalysis.amount > 0) {
-                        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
-                        const fleetMatch = await _findFleetForPhone(senderNum);
-                        const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
-
-                        const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
-                        if (db) {
-                            const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
-                            if (existsSnap.exists()) {
-                                console.log(`⏭️ [RECEIPT-DUP] Comprobante ${movId} ya registrado.`);
-                                return true;
-                            }
-                        }
-
+                        if (msgId) _processedReceiptMsgIds.add(msgId);
                         const formattedAmount = Number(receiptAnalysis.amount) || 0;
                         const senderDisplay = fleetMatch?.driverName 
                             ? `${receiptAnalysis.party || 'Transferencia'} (${fleetMatch.driverName})` 
@@ -777,6 +815,8 @@ const WhatsappBot = (() => {
                         }
 
                         return true;
+                    } else if (receiptAnalysis && receiptAnalysis.isReceipt === false) {
+                        if (msgId) _nonReceiptMsgIds.add(msgId);
                     }
                 }
             } catch(e) {
@@ -787,7 +827,6 @@ const WhatsappBot = (() => {
         // 1b. Caso Documento (Factura PDF o Ticket en imagen adjunta como archivo)
         if (!isImage && isDocReceipt && getGeminiKey()) {
             try {
-                if (msgId) _processedReceiptMsgIds.add(msgId);
                 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
                 let docBuffer = null;
                 try {
@@ -804,16 +843,7 @@ const WhatsappBot = (() => {
                     const receiptAnalysis = await callGeminiReceipt(docBuffer, mimeType);
 
                     if (receiptAnalysis && receiptAnalysis.isReceipt && receiptAnalysis.amount > 0) {
-                        const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
-                        const fleetMatch = await _findFleetForPhone(senderNum);
-                        const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
-
-                        const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
-                        if (db) {
-                            const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
-                            if (existsSnap.exists()) return true;
-                        }
-
+                        if (msgId) _processedReceiptMsgIds.add(msgId);
                         const formattedAmount = Number(receiptAnalysis.amount) || 0;
                         const senderDisplay = fleetMatch?.driverName 
                             ? `${receiptAnalysis.party || 'Factura/Comprobante'} (${fleetMatch.driverName})` 
@@ -854,6 +884,8 @@ const WhatsappBot = (() => {
                         }
 
                         return true;
+                    } else if (receiptAnalysis && receiptAnalysis.isReceipt === false) {
+                        if (msgId) _nonReceiptMsgIds.add(msgId);
                     }
                 }
             } catch (docErr) {
@@ -864,21 +896,13 @@ const WhatsappBot = (() => {
         // 2. Caso Texto
         if (text && text.length > 5 && getGeminiKey() && hasKeywords) {
             try {
-                if (msgId) _processedReceiptMsgIds.add(msgId);
                 const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
                 const fleetMatch = await _findFleetForPhone(senderNum);
                 const senderDisplay = fleetMatch?.driverName || `Contacto WhatsApp (+${senderNum})`;
 
                 const textReceipt = await callGeminiTextReceipt(text, senderDisplay);
                 if (textReceipt && textReceipt.isReceipt && textReceipt.amount > 0) {
-                    const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
-                    const movId = 'mov_' + (msgId ? msgId.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now());
-
-                    if (db) {
-                        const existsSnap = await db.ref(`fleets/${fleetId}/movements/${movId}`).once('value');
-                        if (existsSnap.exists()) return true;
-                    }
-
+                    if (msgId) _processedReceiptMsgIds.add(msgId);
                     const formattedAmount = Number(textReceipt.amount) || 0;
                     const newMov = {
                         id: movId,
@@ -915,6 +939,8 @@ const WhatsappBot = (() => {
                     }
 
                     return true;
+                } else if (textReceipt && textReceipt.isReceipt === false) {
+                    if (msgId) _nonReceiptMsgIds.add(msgId);
                 }
             } catch(e) {
                 console.warn('⚠️ [TEXT-RECEIPT-PARSE] Error analizando texto contable:', e.message);
@@ -1042,7 +1068,34 @@ const WhatsappBot = (() => {
         console.log('🚀 INICIANDO BOT v236 (BAILEYS + GEMINI HTTP + AUTO-PING)...');
         console.log('📡 Sin navegador - conexión directa a WhatsApp');
         console.log(`🔥 Firebase DB: ${db ? '✅ CONECTADO' : '❌ NULL - LAS ALERTAS NO SE GUARDARÁN'}`);
-        console.log(`🧠 Gemini IA: ${GEMINI_KEY ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
+        
+        // Cargar clave dinámica de Gemini y restaurar cola de comprobantes desde Firebase
+        if (db) {
+            try {
+                const keySnap = await db.ref('bot_config/gemini_api_key').once('value');
+                if (keySnap.val()) {
+                    _dynamicGeminiKey = keySnap.val();
+                    console.log('🧠 [GEMINI] Clave de Gemini cargada desde Firebase RTDB ✅');
+                }
+                db.ref('bot_config/gemini_api_key').on('value', (s) => {
+                    if (s.val()) _dynamicGeminiKey = s.val();
+                });
+
+                const queueSnap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
+                const savedQueue = queueSnap.val();
+                if (savedQueue && typeof savedQueue === 'object') {
+                    for (const item of Object.values(savedQueue)) {
+                        if (item && item.key && item.message) {
+                            _recentHistoricalQueue.push(item);
+                        }
+                    }
+                    console.log(`📦 [QUEUE-RESTORE] Restaurados ${_recentHistoricalQueue.length} mensajes candidatos a comprobantes desde Firebase ✅`);
+                }
+            } catch(initErr) {
+                console.warn('⚠️ [INIT] Error inicializando config/cola desde Firebase:', initErr.message);
+            }
+        }
+        console.log(`🧠 Gemini IA: ${getGeminiKey() ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
         
         // Esperar 50s al inicio para que el proceso anterior de Render muera
         console.log('⏳ Esperando 50s para que el proceso anterior libere la sesión...');
@@ -1455,17 +1508,31 @@ const WhatsappBot = (() => {
                 const count = messages ? messages.length : 0;
                 console.log(`📚 [HISTORY-SYNC] WhatsApp entregó paquete de historial: ${count} mensajes (isLatest=${isLatest})`);
                 if (Array.isArray(messages) && messages.length > 0) {
-                    let receiptsFound = 0;
+                    let candidatesCount = 0;
                     for (const histMsg of messages) {
                         try {
-                            if (_recentHistoricalQueue.length < 3000) {
-                                _recentHistoricalQueue.push(histMsg);
+                            if (!histMsg || !histMsg.message) continue;
+                            const m = histMsg.message;
+                            const jid = histMsg.key?.remoteJid;
+                            if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
+
+                            const isImage = !!(_recursiveFindImage(m, 0) || m.imageMessage);
+                            const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage;
+                            const isDoc = !!docMsg && (
+                                docMsg.mimetype?.includes('pdf') || 
+                                docMsg.mimetype?.includes('image') ||
+                                (docMsg.fileName && /\.(pdf|jpg|jpeg|png)$/i.test(docMsg.fileName))
+                            );
+                            let text = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || docMsg?.caption || '';
+                            const hasKeywords = _hasTransferKeywords(m) || _hasTransferKeywords(text);
+
+                            if (isImage || isDoc || hasKeywords) {
+                                _enqueueCandidateMessage(histMsg);
+                                candidatesCount++;
                             }
-                            const isReceipt = await _processPotentialReceipt(histMsg, 'history');
-                            if (isReceipt) receiptsFound++;
                         } catch (hErr) {}
                     }
-                    console.log(`📚 [HISTORY-SYNC] Finalizado escaneo histórico. Comprobantes procesados y guardados: ${receiptsFound}`);
+                    console.log(`📚 [HISTORY-SYNC] Historial analizado. Candidatos encolados: ${candidatesCount}. Total en cola: ${_recentHistoricalQueue.length}`);
                 }
             });
 
@@ -1478,9 +1545,8 @@ const WhatsappBot = (() => {
                     const jid = msg.key?.remoteJid;
                     if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
 
-                    // Guardar en cola de memoria para permitir escaneo manual bajo demanda
-                    if (_recentHistoricalQueue.length > 3000) _recentHistoricalQueue.shift();
-                    _recentHistoricalQueue.push(msg);
+                    // Guardar en cola si es candidato a comprobante
+                    _enqueueCandidateMessage(msg);
 
                     // ========================================================
                     // 1. ESCÁNER UNIVERSAL DE COMPROBANTES Y FACTURAS
@@ -3131,12 +3197,30 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         try {
             if (!db) return { ok: false, error: 'Base de datos no inicializada' };
 
-            // 1. Procesar todos los mensajes en memoria retenidos en _recentHistoricalQueue
+            // Si la cola en memoria está vacía, intentar restaurar desde Firebase bot_receipt_queue
+            if (_recentHistoricalQueue.length === 0) {
+                try {
+                    const snap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
+                    const savedQueue = snap.val();
+                    if (savedQueue && typeof savedQueue === 'object') {
+                        for (const item of Object.values(savedQueue)) {
+                            if (item && item.key && item.message) {
+                                _recentHistoricalQueue.push(item);
+                            }
+                        }
+                        console.log(`📦 [SCAN-RECENTS] Restaurados ${_recentHistoricalQueue.length} mensajes desde bot_receipt_queue.`);
+                    }
+                } catch(loadErr) {
+                    console.warn('⚠️ [SCAN-RECENTS] Error recargando cola:', loadErr.message);
+                }
+            }
+
+            // 1. Procesar todos los mensajes candidatos retenidos en _recentHistoricalQueue
             if (_recentHistoricalQueue.length > 0) {
-                console.log(`🔍 [SCAN-RECENTS] Analizando ${_recentHistoricalQueue.length} mensajes en cola de WhatsApp...`);
+                console.log(`🔍 [SCAN-RECENTS] Analizando ${_recentHistoricalQueue.length} mensajes en cola de WhatsApp para flota ${fleetId}...`);
                 for (const msg of _recentHistoricalQueue) {
                     try {
-                        const wasReceipt = await _processPotentialReceipt(msg, 'scan_manual');
+                        const wasReceipt = await _processPotentialReceipt(msg, 'scan_manual', fleetId);
                         if (wasReceipt) found++;
                     } catch(mErr) {
                         // continuar
@@ -3195,16 +3279,34 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         setTimeout(() => process.exit(0), 500);
     });
 
+    function getQueueStatus() {
+        return {
+            queueSize: _recentHistoricalQueue.length,
+            processedReceiptsCount: _processedReceiptMsgIds.size,
+            nonReceiptsCount: _nonReceiptMsgIds.size,
+            hasGeminiKey: !!getGeminiKey(),
+            sample: _recentHistoricalQueue.slice(0, 3).map(m => ({
+                id: m.key?.id,
+                jid: m.key?.remoteJid?.substring(0, 25),
+                timestamp: m.messageTimestamp,
+                hasMsg: !!m.message,
+                keys: Object.keys(m.message || {}).slice(0, 5)
+            }))
+        };
+    }
+
     return { 
         init, 
         resetSession,
         softResetSession,
         getFleetId: _resolveFleetId,
         getDb: () => db,
+        getGeminiKey,
         isConnected: () => _isConnectedState,
         sendPushToAdmins,
         scanRecentMessages,
-        syncMovementToSheet: _syncMovementToSheet
+        syncMovementToSheet: _syncMovementToSheet,
+        getQueueStatus
     };
 })();
 
