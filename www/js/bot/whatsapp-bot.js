@@ -600,14 +600,18 @@ const WhatsappBot = (() => {
     const groupAddressContext = {}; // key: jid, value: { address: string, timestamp: number }
     const groupNameCache = {}; // key: jid, value: groupName (string)
 
-    function _syncBotStatus() {
+    let _lastDisconnectInfo = null;
+
+    function _syncBotStatus(extra = {}) {
         if (db) {
             db.ref('bot_status').set({
                 connected: _isConnectedState,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                ...extra
             }).catch(e => console.error('⚠️ [STATUS] Error syncing bot status:', e.message));
         }
     }
+    
 
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
@@ -1923,7 +1927,7 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                browser: ['Mac OS', 'Chrome', '14.4.1'],
+                browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
@@ -1944,12 +1948,15 @@ const WhatsappBot = (() => {
                     clearTimeout(lockWatchdog); // Detener watchdog al finalizar el intento
                     isConnecting = false; // Liberar cerrojo
                     _isConnectedState = false;
-                    _syncBotStatus();
+                    const statusCode = lastDisconnect?.error?.output?.statusCode;
+                    _lastDisconnectInfo = {
+                        statusCode: statusCode || null,
+                        error: lastDisconnect?.error?.message || null
+                    };
+                    _syncBotStatus(_lastDisconnectInfo);
                     
                     // Cancelar validador de salud inmediatamente al desconectar
                     if (_stableTimer) { clearTimeout(_stableTimer); _stableTimer = null; }
-
-                    const statusCode = lastDisconnect?.error?.output?.statusCode;
                     const reason = DisconnectReason;
                     
                     console.log(`⚠️ Conexión cerrada. Código: ${statusCode}`);
