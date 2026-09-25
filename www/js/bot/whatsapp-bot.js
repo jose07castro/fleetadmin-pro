@@ -33,11 +33,10 @@ const GEMINI_KEY = getGeminiKey();
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -128,11 +127,11 @@ Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
     // Los modelos Flash soportan audio inline.
-    const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -334,11 +333,11 @@ Si la imagen NO es ningún comprobante de transferencia, pago, factura ni ticket
 Respuesta EXACTAMENTE en este formato JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15450.00,"party":"MercadoPago - Juan Pérez","concept":"Recaudación de turno","date":"2026-09-09T14:30:00.000Z"}`;
 
-    const models = [
+            const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
@@ -384,8 +383,8 @@ async function callGeminiTextReceipt(text, senderName = 'Chofer') {
     if (!key) return null;
 
     const lower = text.toLowerCase();
-    const hasTransferKw = /(transfer[ií]|transferencia|transferido|te pase|te pasé|deposito|depósito|comprobante|pago|pagado|cbu|alias|mp|mercadopago|recaudaci[oó]n|turno|seña)/i.test(lower);
-    const hasAmount = /[\$]?\s*\d+([.,]\d+)?/.test(lower);
+    const hasTransferKw = /(transfer[ií]|transferencia|transferido|te pase|te pasé|te mande|te mandé|deposito|depósito|deposite|deposité|comprobante|recibo|factura|ticket|pago|pagado|cbu|alias|mp|mercadopago|recaudaci[oó]n|turno|seña|liquidaci[oó]n|liquid[eé]|rinde|rendici[oó]n)/i.test(lower);
+    const hasAmount = /(?:[\$]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)|(?:\d+\s*(?:mil|k|lucas?|palos?)))/i.test(lower);
 
     if (!hasTransferKw || !hasAmount) return null;
 
@@ -394,6 +393,7 @@ Analizá este mensaje de WhatsApp enviado por "${senderName}":
 "${text}"
 
 Determiná si este mensaje informa una transferencia de dinero, pago de recaudación, entrega de dinero o gasto operativo de la flota.
+Ten en cuenta que en Argentina "lucas", "mil" o "k" significan miles de pesos (ej: 35 lucas = 35000, 1 palo = 1000000).
 Respondé ÚNICAMENTE en formato JSON:
 1. Si informa una transferencia/pago/gasto real: "isReceipt": true. De lo contrario: "isReceipt": false.
 2. "type": "Ingreso" (si es recaudación, transferencia recibida o pago de chofer) o "Egreso" (si es gasto de nafta, taller, etc.).
@@ -405,30 +405,30 @@ Respondé ÚNICAMENTE en formato JSON:
 Ejemplo JSON:
 {"isReceipt":true,"type":"Ingreso","amount":15000,"party":"${senderName}","concept":"Recaudación de turno","date":"${new Date().toISOString()}"}`;
 
-    const models = [
+            const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
 
     for (const url of models) {
         try {
             const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{ parts: [{ text: prompt }] }]
-            }, { timeout: 12000 });
+            }, { timeout: 25000 });
 
             const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
             if (rawText) {
                 const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
                 const parsed = JSON.parse(clean);
                 if (parsed.isReceipt && parsed.amount > 0) {
-                    console.log(`💬 [TEXT-RECEIPT] Transferencia detectada en texto: $${parsed.amount} (${parsed.concept})`);
+                    console.log(`💬 [TEXT-RECEIPT] Transferencia detectada en texto: ${parsed.amount} (${parsed.concept})`);
                     return parsed;
                 }
             }
         } catch (e) {
-            console.warn(`⚠️ [GEMINI-TEXT-RECEIPT] Falló modelo: ${e.message}`);
+            console.warn(`⚠️ [GEMINI-TEXT-RECEIPT] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
         }
     }
     return null;
@@ -450,6 +450,7 @@ Analizá este mensaje enviado por un chofer ("${senderName}"):
 "${text}"
 
 Determiná si el chofer informa una ENTREGA DE EFECTIVO (recaudación en mano, pago de turno en billetes, entrega de plata, etc.).
+Ten en cuenta que en Argentina "lucas", "mil" o "k" significan miles de pesos (ej: 40 mil o 40 lucas = 40000, 1 palo = 1000000).
 Respondé ÚNICAMENTE en formato JSON:
 1. Si informa una entrega o pago en efectivo: "isCash": true. De lo contrario: "isCash": false.
 2. "amount": número decimal con el monto total en pesos (ej: si dice 40 mil, pon 40000; si dice 35.000 pon 35000).
@@ -460,36 +461,102 @@ Respondé ÚNICAMENTE en formato JSON:
 Ejemplo JSON:
 {"isCash":true,"amount":40000,"party":"${senderName}","concept":"Recaudación de turno en efectivo","date":"${new Date().toISOString()}"}`;
 
-    const models = [
+            const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
     ];
 
     for (const url of models) {
         try {
             const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{ parts: [{ text: prompt }] }]
-            }, { timeout: 12000 });
+            }, { timeout: 25000 });
 
             const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
             if (rawText) {
                 const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
                 const parsed = JSON.parse(clean);
                 if (parsed.isCash && parsed.amount > 0) {
-                    console.log(`💵 [CASH-REPORT] Entrega de efectivo detectada: $${parsed.amount} (${parsed.concept})`);
+                    console.log(`💵 [CASH-REPORT] Entrega de efectivo detectada: ${parsed.amount} (${parsed.concept})`);
                     return parsed;
                 }
             }
         } catch(e) {
-            console.warn(`⚠️ [GEMINI-CASH] Falló modelo: ${e.message}`);
+            console.warn(`⚠️ [GEMINI-CASH] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
         }
     }
     return null;
 }
 
 
+
+
+/**
+ * Analiza un mensaje de audio (nota de voz de WhatsApp) para detectar avisos de pago, transferencia o efectivo.
+ * @param {Buffer} audioBuffer
+ * @param {string} mimeType
+ * @param {string} senderName
+ * @returns {Promise<{isPayment: boolean, method: string, type: string, amount: number, party: string, concept: string, date: string}|null>}
+ */
+async function callGeminiAudioReceipt(audioBuffer, mimeType, senderName = 'Chofer') {
+    const key = getGeminiKey();
+    if (!key || !audioBuffer) return null;
+    const audioB64 = audioBuffer.toString('base64');
+    if (audioB64.length > 12 * 1024 * 1024) return null;
+
+    const prompt = `Sos un asistente contable para flotas de transporte, taxis y remises en Rosario, Argentina.
+Escuchá atentamente este mensaje de audio (nota de voz) enviado por el chofer "${senderName}".
+Determiná si el chofer informa un pago, transferencia bancaria, liquidación de turno, rendición de recaudación o entrega de efectivo en mano.
+Ten en cuenta la jerga argentina: "lucas" o "k" o "mil" significan miles (ej: 35 lucas = 35000, 1 palo = 1000000).
+Respondé ÚNICAMENTE en formato JSON válido (sin markdown):
+1. "isPayment": true si informa un pago, transferencia o entrega de dinero real. De lo contrario false.
+2. "method": "Transferencia" o "Efectivo".
+3. "type": "Ingreso" (si paga recaudación o turno) o "Egreso" (si reporta un gasto como nafta o arreglo).
+4. "amount": número decimal con el monto en pesos (sin signo $).
+5. "party": "${senderName}".
+6. "concept": breve descripción ("Recaudación de turno", "Liquidación de chofer", "Combustible", etc.).
+7. "date": fecha en formato ISO.
+
+Ejemplo JSON:
+{"isPayment":true,"method":"Transferencia","type":"Ingreso","amount":30000,"party":"${senderName}","concept":"Recaudación de turno","date":"${new Date().toISOString()}"}`;
+
+            const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
+    ];
+
+    const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
+
+    for (const url of models) {
+        try {
+            const res = await axios.post(`${url}?key=${key}`, {
+                contents: [{
+                    parts: [
+                        { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
+                        { text: prompt }
+                    ]
+                }]
+            }, { timeout: 25000 });
+
+            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (rawText) {
+                const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                const parsed = JSON.parse(clean);
+                if (parsed.isPayment && parsed.amount > 0) {
+                    console.log(`🎙️ [AUDIO-RECEIPT] Pago detectado en audio: ${parsed.amount} (${parsed.method}, ${parsed.concept})`);
+                    return parsed;
+                }
+            }
+        } catch(e) {
+            console.warn(`⚠️ [GEMINI-AUDIO-RECEIPT] Falló modelo: ${e.message}`);
+        }
+    }
+    return null;
+}
 
 // 1. Inicialización de Firebase Admin
 
@@ -692,7 +759,7 @@ const WhatsappBot = (() => {
         if (!mRaw) return false;
         try {
             const str = typeof mRaw === 'string' ? mRaw.toLowerCase() : JSON.stringify(mRaw).toLowerCase();
-            return /(transfer[ií]|transferencia|comprobante|recibo|factura|ticket|pago|pagado|\$|cbu|alias|sube|mercadopago|banco|recaudaci[oó]n|turno|saldo|debito|débito|credito|crédito)/i.test(str);
+            return /(transfer[ií]|transferencia|transferido|comprobante|recibo|factura|ticket|pago|pagado|\$|cbu|alias|sube|mercadopago|banco|recaudaci[oó]n|turno|saldo|debito|débito|credito|crédito|te pase|te pasé|te mande|te mandé|deposite|deposité|deposito|depósito|liquidaci[oó]n|liquid[eé]|rinde|rendici[oó]n)/i.test(str);
         } catch(e) {
             return false;
         }
@@ -702,8 +769,8 @@ const WhatsappBot = (() => {
         if (!text || typeof text !== 'string') return false;
         try {
             const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            const hasCashWords = /(efectivo|en mano|en billetes|billetes|te llevo la plata|te llevo el efectivo|te entrego|te paso a dejar|te dejo la plata|te llevo los|te acerco|te pago en mano|te pago en efectivo|recaudacion en mano|rindo la plata|rendicion en mano|te rindo|entrega de plata|entrega de efectivo|te llevo \d|te dejo \d|pago de turno en mano)/i.test(lower);
-            const hasAmount = /[\$]?\s*\d+([.,]\d+)?(\s*k|\s*mil)?/i.test(lower);
+            const hasCashWords = /(efectivo|en mano|en billetes|billetes|te llevo la plata|te llevo el efectivo|te entrego|te paso a dejar|te dejo la plata|te llevo los|te acerco|te pago en mano|te pago en efectivo|recaudacion en mano|rindo la plata|rendicion en mano|te rindo|entrega de plata|entrega de efectivo|te llevo|te dejo|pago de turno|liquidacion en mano|liquidar)/i.test(lower);
+            const hasAmount = /(?:[\$]?\s*(?:\d+(?:[.,]\d+)?|[.,]\d+)|(?:\d+\s*(?:mil|k|lucas?|palos?)))/i.test(lower);
             return hasCashWords && hasAmount;
         } catch(e) {
             return false;
@@ -1104,8 +1171,11 @@ const WhatsappBot = (() => {
         const hasKeywords = _hasTransferKeywords(m) || _hasTransferKeywords(text);
         const hasCashKeywords = _hasCashKeywords(text);
 
-        // Si no es imagen, ni documento, ni tiene palabras de pago/factura/efectivo, no es comprobante
-        if (!isImage && !isDocReceipt && !hasKeywords && !hasCashKeywords) return false;
+        const audioMsg = m.audioMessage || m.pttMessage;
+        const isAudio = !!audioMsg && !jid.endsWith('@g.us');
+
+        // Si no es imagen, ni documento, ni audio de chofer, ni tiene palabras de pago/factura/efectivo, no es comprobante
+        if (!isImage && !isDocReceipt && !isAudio && !hasKeywords && !hasCashKeywords) return false;
 
         console.log(`🧾 [CHECK-RECEIPT] Analizando posible comprobante/efectivo de ${jid} (isImage=${isImage}, isDoc=${isDocReceipt}, hasCash=${hasCashKeywords}, origin=${origin})...`);
 
@@ -1467,6 +1537,93 @@ const WhatsappBot = (() => {
                 }
             } catch(e) {
                 console.warn('⚠️ [TEXT-RECEIPT-PARSE] Error analizando texto contable:', e.message);
+            }
+        }
+
+        // 3. Caso Audio / Nota de Voz (chofer avisando transferencia o entrega de efectivo)
+        if (isAudio && getGeminiKey()) {
+            try {
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                let audioBuffer = null;
+                try {
+                    audioBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                        logger: P({ level: 'silent' }),
+                        reuploadRequest: sock?.updateMediaMessage
+                    });
+                } catch(ae) {
+                    console.warn(`⚠️ [AUDIO-RECEIPT-DOWNLOAD] Error descargando audio (${msgId}):`, ae.message);
+                }
+
+                if (audioBuffer && audioBuffer.length > 500) {
+                    const senderDisplay = fleetMatch?.driverName || `Chofer (+ ${senderNum})`;
+                    const mimeType = audioMsg.mimetype || 'audio/ogg; codecs=opus';
+                    const audioAnalysis = await callGeminiAudioReceipt(audioBuffer, mimeType, senderDisplay);
+
+                    if (audioAnalysis && audioAnalysis.isPayment && audioAnalysis.amount > 0) {
+                        if (msgId) _processedReceiptMsgIds.add(msgId);
+                        const formattedAmount = Number(audioAnalysis.amount) || 0;
+                        const paymentMethod = audioAnalysis.method || 'Transferencia';
+
+                        // Si es mensaje en vivo y proviene de un chofer (no es admin): solicitar confirmación interactiva
+                        if (origin === 'live' && !isFromTrustedAdmin) {
+                            console.log(`⏳ [DRIVER-AUDIO-PAYMENT] Pago por audio de chofer (${formattedAmount}, ${paymentMethod}). Creando pago pendiente...`);
+                            await _createPendingPayment({
+                                fleetId,
+                                driverName: fleetMatch?.driverName || null,
+                                driverId: fleetMatch?.driverId || null,
+                                senderNum,
+                                amount: formattedAmount,
+                                method: paymentMethod,
+                                concept: audioAnalysis.concept || (paymentMethod === 'Efectivo' ? 'Entrega de efectivo en mano' : 'Transferencia por audio'),
+                                date: audioAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                                originalMsgId: msgId,
+                                jid,
+                                msg,
+                                origin
+                            });
+                            return true;
+                        }
+
+                        const newMov = {
+                            id: movId,
+                            type: audioAnalysis.type || 'Ingreso',
+                            amount: formattedAmount,
+                            concept: audioAnalysis.concept || (paymentMethod === 'Efectivo' ? 'Entrega de efectivo en mano' : 'Transferencia por audio'),
+                            party: senderDisplay,
+                            date: audioAnalysis.date || (msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toISOString() : new Date().toISOString()),
+                            source: 'whatsapp_bot_audio',
+                            senderPhone: senderNum,
+                            driverName: fleetMatch?.driverName || null,
+                            driverId: fleetMatch?.driverId || null,
+                            createdAt: msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
+                        };
+
+                        if (db) {
+                            await db.ref(`fleets/${fleetId}/movements/${movId}`).set(newMov);
+                            console.log(`✅ [AUDIO-RECEIPT-SAVED] Pago en audio guardado: ${formattedAmount} (${paymentMethod})`);
+                        }
+
+                        await _syncMovementToSheet(fleetId, fleetMatch?.settings, newMov);
+
+                        if (origin === 'live' && sock) {
+                            const replyMsg = `✅ *Comprobante Registrado Automáticamente*\n\n` +
+                                             `📌 *Tipo:* ${newMov.type}\n` +
+                                             `💵 *Monto:* ${formattedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}\n` +
+                                             `👤 *Emisor:* ${newMov.party}\n` +
+                                             `💳 *Medio:* ${paymentMethod}\n` +
+                                             `📝 *Concepto:* ${newMov.concept}\n` +
+                                             `📅 *Fecha:* ${newMov.date.substring(0, 10)}\n\n` +
+                                             `_Registrado en Balance y Google Sheets_ 🚗💰`;
+
+                            await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
+                            _trackBandwidth(replyMsg, 'out');
+                        }
+
+                        return true;
+                    }
+                }
+            } catch(aErr) {
+                console.warn('⚠️ [AUDIO-RECEIPT-PARSE] Error analizando audio contable:', aErr.message);
             }
         }
 
@@ -3795,7 +3952,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     google_sheet_id: sheetId,
                     fleetId: fleetId,
                     movement: newMov
-                }, { timeout: 12000 });
+                }, { timeout: 15000 });
                 console.log(`📊 [RECEIPT-SHEETS] Movimiento $${newMov.amount} sincronizado vía servidor ✅`);
                 return true;
             }
@@ -3822,25 +3979,68 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         try {
             if (!db) return { ok: false, error: 'Base de datos no inicializada' };
 
-            // Si la cola en memoria está vacía, intentar restaurar desde Firebase bot_receipt_queue
-            if (_recentHistoricalQueue.length === 0) {
-                try {
-                    const snap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
-                    const savedQueue = snap.val();
-                    if (savedQueue && typeof savedQueue === 'object') {
-                        for (const item of Object.values(savedQueue)) {
-                            if (item && item.key && item.message) {
-                                _recentHistoricalQueue.push(item);
-                            }
-                        }
-                        console.log(`📦 [SCAN-RECENTS] Restaurados ${_recentHistoricalQueue.length} mensajes desde bot_receipt_queue.`);
+            // 1. Obtener choferes y contactos de la flota para escanear sus chats de WhatsApp
+            const usersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
+            const users = usersSnap.val() || {};
+            const driversSnap = await db.ref(`fleets/${fleetId}/drivers`).once('value');
+            const drivers = driversSnap.val() || {};
+
+            const targetJids = new Set();
+            const allMembers = { ...users, ...drivers };
+            for (const [id, u] of Object.entries(allMembers)) {
+                const raw = (u.phone || u.telefono || u.whatsapp || u.celular || '').replace(/[^0-9]/g, '');
+                if (raw) {
+                    if (raw.startsWith('549')) {
+                        targetJids.add(raw + '@s.whatsapp.net');
+                        targetJids.add('54' + raw.slice(3) + '@s.whatsapp.net');
+                    } else if (raw.startsWith('54')) {
+                        targetJids.add(raw + '@s.whatsapp.net');
+                        targetJids.add('549' + raw.slice(2) + '@s.whatsapp.net');
+                    } else if (raw.length === 10) {
+                        targetJids.add('549' + raw + '@s.whatsapp.net');
+                        targetJids.add('54' + raw + '@s.whatsapp.net');
                     }
-                } catch(loadErr) {
-                    console.warn('⚠️ [SCAN-RECENTS] Error recargando cola:', loadErr.message);
                 }
             }
+            for (const adm of TRUSTED_ADMIN_NUMBERS) {
+                targetJids.add(adm + '@s.whatsapp.net');
+            }
 
-            // 1. Procesar todos los mensajes candidatos retenidos en _recentHistoricalQueue
+            console.log(`📡 [SCAN-RECENTS] Solicitando historial de WhatsApp para ${targetJids.size} contactos/choferes registrados...`);
+
+            // 2. Si el socket está activo, solicitar sincronización de mensajes para los choferes
+            if (sock && _isConnectedState) {
+                for (const jid of targetJids) {
+                    try {
+                        if (typeof sock.fetchMessageHistory === 'function') {
+                            await sock.fetchMessageHistory(50, { remoteJid: jid, fromMe: false, id: '' }, Date.now());
+                        }
+                    } catch(histErr) {
+                        // Continuar si no hay historial para ese JID
+                    }
+                }
+                // Pausa breve para permitir la recepción y procesamiento de paquetes de WhatsApp
+                await new Promise(r => setTimeout(r, 4000));
+            }
+
+            // 3. Restaurar todos los candidatos persistidos en Firebase bot_receipt_queue
+            try {
+                const snap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
+                const savedQueue = snap.val();
+                if (savedQueue && typeof savedQueue === 'object') {
+                    for (const item of Object.values(savedQueue)) {
+                        if (item && item.key && item.message) {
+                            const already = _recentHistoricalQueue.some(m => m.key?.id === item.key.id);
+                            if (!already) _recentHistoricalQueue.push(item);
+                        }
+                    }
+                    console.log(`📦 [SCAN-RECENTS] Total mensajes en cola histórica para procesar: ${_recentHistoricalQueue.length}`);
+                }
+            } catch(loadErr) {
+                console.warn('⚠️ [SCAN-RECENTS] Error recargando cola:', loadErr.message);
+            }
+
+            // 4. Procesar todos los mensajes candidatos retenidos en _recentHistoricalQueue
             if (_recentHistoricalQueue.length > 0) {
                 console.log(`🔍 [SCAN-RECENTS] Analizando ${_recentHistoricalQueue.length} mensajes en cola de WhatsApp para flota ${fleetId}...`);
                 for (const msg of _recentHistoricalQueue) {
