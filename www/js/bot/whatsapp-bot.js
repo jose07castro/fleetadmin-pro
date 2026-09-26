@@ -2104,7 +2104,7 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                browser: Browsers.macOS('Desktop'),
+                browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
