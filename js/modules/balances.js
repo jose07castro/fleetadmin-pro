@@ -123,6 +123,9 @@ const BalancesModule = (() => {
                             <button class="btn btn-warning" id="btnScanWhatsapp" onclick="BalancesModule.scanWhatsApp()" style="font-weight:700; font-size:0.88rem; background:#f59e0b; border-color:#f59e0b; color:#fff;">
                                 🔍 Escanear WhatsApp
                             </button>
+                            <button class="btn btn-primary" onclick="BalancesModule.showImportModal()" style="font-weight:700; font-size:0.88rem; background:#6366f1; border-color:#6366f1; color:#fff;">
+                                📥 Importar Comprobantes & Facturas
+                            </button>
                             <button class="btn btn-success" onclick="BalancesModule.showGoogleSheetsOptions()" style="font-weight:700; font-size:0.88rem; background:#10b981; border-color:#10b981; color:#fff;">
                                 📊 Google Sheets
                             </button>
@@ -742,6 +745,18 @@ const BalancesModule = (() => {
                             </div>
                         </div>
 
+                        ${newProcessed === 0 ? `
+                        <div style="text-align:left; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); border-radius:8px; padding:10px; margin-bottom:15px;">
+                            <div style="font-size:12px; font-weight:700; color:#818cf8; margin-bottom:4px;">💡 ¿Buscás comprobantes antiguos o facturas en PDF?</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px;">
+                                Si WhatsApp no envió los mensajes antiguos de tu celular por ser una sesión previa, podés subir directamente las fotos de transferencias y PDFs de facturas o importar el chat con la IA contable.
+                            </div>
+                            <button class="btn btn-sm" onclick="Components.closeModal(); BalancesModule.showImportModal();" style="width:100%; font-size:11px; font-weight:700; background:#6366f1; color:#fff; border:none; padding:7px 10px; border-radius:6px; cursor:pointer;">
+                                📥 Subir Comprobantes y Facturas con IA
+                            </button>
+                        </div>
+                        ` : ''}
+
                         <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
                             <a href="https://sheets.new" target="_blank" class="btn btn-primary" style="font-weight:700; padding:8px 16px; text-decoration:none;">
                                 ➕ Abrir Google Sheets Nuevo
@@ -813,6 +828,334 @@ const BalancesModule = (() => {
         }
     }
 
+    // ============================================
+    // MÓDULO DE IMPORTACIÓN DIRECTA CON IA
+    // ============================================
+    let _selectedFiles = [];
+
+    function handleFilesSelect(files) {
+        if (!files || !files.length) return;
+        _selectedFiles = Array.from(files);
+        _renderSelectedFiles();
+    }
+
+    function handleFilesDrop(files) {
+        if (!files || !files.length) return;
+        _selectedFiles = Array.from(files);
+        _renderSelectedFiles();
+    }
+
+    function clearSelectedFiles() {
+        _selectedFiles = [];
+        _renderSelectedFiles();
+    }
+
+    function _renderSelectedFiles() {
+        const container = document.getElementById('selectedFilesContainer');
+        const countSpan = document.getElementById('selectedFilesCount');
+        const listDiv = document.getElementById('selectedFilesList');
+        const btnStart = document.getElementById('btnStartImport');
+        if (!container || !listDiv || !btnStart) return;
+
+        if (_selectedFiles.length === 0) {
+            container.style.display = 'none';
+            btnStart.disabled = true;
+            return;
+        }
+
+        container.style.display = 'block';
+        countSpan.textContent = `Archivos seleccionados: ${_selectedFiles.length}`;
+        btnStart.disabled = false;
+
+        listDiv.innerHTML = _selectedFiles.map((f, i) => {
+            const isPdf = f.name.toLowerCase().endsWith('.pdf');
+            const sizeKb = (f.size / 1024).toFixed(1);
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">${isPdf ? '📄' : '🖼️'} <strong>${f.name}</strong> (${sizeKb} KB)</span>
+                    <span class="badge" style="background:${isPdf ? '#ef4444' : '#3b82f6'}; font-size:10px; color:#fff; padding:2px 6px; border-radius:4px;">${isPdf ? 'PDF' : 'IMAGEN'}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function switchImportTab(tab) {
+        const tabFiles = document.getElementById('tabContentFiles');
+        const tabText = document.getElementById('tabContentText');
+        const tabQR = document.getElementById('tabContentQR');
+        const btnFiles = document.getElementById('tabBtnFiles');
+        const btnText = document.getElementById('tabBtnText');
+        const btnQR = document.getElementById('tabBtnQR');
+
+        if (tabFiles) tabFiles.style.display = (tab === 'files') ? 'block' : 'none';
+        if (tabText) tabText.style.display = (tab === 'text') ? 'block' : 'none';
+        if (tabQR) tabQR.style.display = (tab === 'qr') ? 'block' : 'none';
+
+        if (btnFiles) btnFiles.className = (tab === 'files') ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+        if (btnText) btnText.className = (tab === 'text') ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+        if (btnQR) btnQR.className = (tab === 'qr') ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+    }
+
+    async function _readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function startFileImport() {
+        if (!_selectedFiles.length) {
+            Components.showToast('Seleccioná al menos un archivo para procesar', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btnStartImport');
+        const progressBar = document.getElementById('importProgressBar');
+        const progressFill = document.getElementById('importProgressFill');
+        const progressStatus = document.getElementById('importProgressStatus');
+        const driverName = document.getElementById('importDriverSelect')?.value || null;
+
+        if (btn) btn.disabled = true;
+        if (progressBar) progressBar.style.display = 'block';
+
+        const fleetId = _resolveFleetId();
+        const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'https://fleetadmin-web-nueva.onrender.com'
+            : window.location.origin;
+
+        try {
+            const total = _selectedFiles.length;
+            let totalProcessed = 0;
+            let totalIngresos = 0;
+            let totalEgresos = 0;
+
+            for (let i = 0; i < total; i++) {
+                const file = _selectedFiles[i];
+                if (progressStatus) progressStatus.textContent = `Procesando con IA (${i + 1}/${total}): ${file.name}... ⏳`;
+                if (progressFill) progressFill.style.width = `${Math.round(((i) / total) * 100)}%`;
+
+                const base64Data = await _readFileAsBase64(file);
+                const payload = {
+                    fleetId,
+                    files: [{
+                        name: file.name,
+                        mimeType: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                        base64: base64Data,
+                        driverName: driverName
+                    }]
+                };
+
+                const res = await fetch(`${origin}/api/bot/import-receipts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.ok && data.processedCount > 0) {
+                        totalProcessed += data.processedCount;
+                        totalIngresos += (data.totalIngresos || 0);
+                        totalEgresos += (data.totalEgresos || 0);
+                    }
+                }
+            }
+
+            if (progressFill) progressFill.style.width = '100%';
+            if (progressStatus) progressStatus.textContent = `¡Completado! ${totalProcessed} comprobantes/facturas procesados.`;
+
+            Components.showToast(`¡Procesamiento finalizado! ${totalProcessed} movimientos registrados ✅`, 'success');
+            setTimeout(() => {
+                Components.closeModal();
+                Router.navigate('balances');
+            }, 1200);
+
+        } catch(e) {
+            console.error('Error importando archivos:', e);
+            Components.showToast('Error procesando archivos: ' + e.message, 'danger');
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function startTextImport() {
+        const text = document.getElementById('importChatText')?.value || '';
+        if (!text.trim()) {
+            Components.showToast('Pegá el texto de WhatsApp a analizar', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btnProcessChatText');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = 'Analizando texto con IA... ⏳';
+        }
+
+        const fleetId = _resolveFleetId();
+        const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'https://fleetadmin-web-nueva.onrender.com'
+            : window.location.origin;
+
+        try {
+            const res = await fetch(`${origin}/api/bot/import-receipts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fleetId, rawText: text })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast(`¡Listo! Se extrajeron ${data.processedCount || 0} movimientos del chat ✅`, 'success');
+                setTimeout(() => {
+                    Components.closeModal();
+                    Router.navigate('balances');
+                }, 1000);
+            } else {
+                Components.showToast('Error al procesar chat: ' + (data.error || 'Error desconocido'), 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error al analizar texto: ' + e.message, 'danger');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🔍 Extraer Movimientos del Chat con IA';
+            }
+        }
+    }
+
+    async function requestQRFullSync() {
+        if (!confirm('Esto reiniciará temporalmente la sesión de WhatsApp del Bot para que puedas escanear un nuevo código QR con sincronización completa de historial. ¿Deseás continuar?')) return;
+        try {
+            Components.showToast('Solicitando reinicio para Desktop Full Sync... ⏳', 'info');
+            const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'https://fleetadmin-web-nueva.onrender.com'
+                : window.location.origin;
+            const res = await fetch(`${origin}/api/bot/request-qr-fullsync`, { method: 'POST' });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast('Sesión lista. Redirigiendo a Configuración para escanear el QR...', 'success');
+                Components.closeModal();
+                Router.navigate('settings');
+            } else {
+                Components.showToast('Error: ' + data.error, 'danger');
+            }
+        } catch(e) {
+            Components.showToast('Error: ' + e.message, 'danger');
+        }
+    }
+
+    async function showImportModal() {
+        let users = [];
+        try {
+            users = (await DB.getAll('users')) || [];
+        } catch(e) {}
+        const driverOptions = users.map(u => `<option value="${u.name || u.nombre}">${u.name || u.nombre} (${u.phone || u.telefono || 'Sin tel'})</option>`).join('');
+
+        _selectedFiles = [];
+
+        Components.showModal(
+            '📥 Importador de Comprobantes, Facturas y Chats con IA',
+            `
+            <div style="padding:10px;">
+                <div style="display:flex; gap:8px; border-bottom:1px solid var(--border-color); margin-bottom:15px; padding-bottom:8px; flex-wrap:wrap;">
+                    <button id="tabBtnFiles" class="btn btn-sm btn-primary" onclick="BalancesModule.switchImportTab('files')" style="font-weight:700; font-size:12px;">
+                        📂 Subir Imágenes y PDFs
+                    </button>
+                    <button id="tabBtnText" class="btn btn-sm btn-secondary" onclick="BalancesModule.switchImportTab('text')" style="font-weight:700; font-size:12px;">
+                        📝 Pegar Chat de WhatsApp
+                    </button>
+                    <button id="tabBtnQR" class="btn btn-sm btn-secondary" onclick="BalancesModule.switchImportTab('qr')" style="font-weight:700; font-size:12px;">
+                        📲 Sincronización QR
+                    </button>
+                </div>
+
+                <!-- Tab 1: Archivos -->
+                <div id="tabContentFiles">
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
+                        Arrastrá o seleccioná uno o varios comprobantes de transferencia (Mercado Pago, Cuenta DNI, bancos) o facturas en PDF (AFIP A/B/C, tickets de nafta, mecánico).
+                    </p>
+
+                    <div id="dropZone" style="border:2px dashed #6366f1; border-radius:12px; padding:25px; text-align:center; background:rgba(99,102,241,0.05); cursor:pointer; margin-bottom:15px;"
+                         onclick="document.getElementById('receiptFileInput').click()"
+                         ondragover="event.preventDefault(); this.style.background='rgba(99,102,241,0.15)';"
+                         ondragleave="this.style.background='rgba(99,102,241,0.05)';"
+                         ondrop="event.preventDefault(); BalancesModule.handleFilesDrop(event.dataTransfer.files);">
+                        <div style="font-size:2.5rem; margin-bottom:8px;">📄📸</div>
+                        <div style="font-weight:700; font-size:0.95rem; color:var(--text-primary);">
+                            Hacé clic o arrastrá aquí tus comprobantes y facturas
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">
+                            Formatos soportados: JPG, PNG, WEBP, PDF (AFIP, bancos, billeteras)
+                        </div>
+                        <input type="file" id="receiptFileInput" multiple accept="image/*,.pdf" style="display:none;" onchange="BalancesModule.handleFilesSelect(this.files)">
+                    </div>
+
+                    <div style="margin-bottom:15px;">
+                        <label style="font-size:0.85rem; font-weight:700; display:block; margin-bottom:4px; color:var(--text-primary);">
+                            👤 Chofer Asociado (Opcional):
+                        </label>
+                        <select id="importDriverSelect" class="form-control" style="width:100%; font-size:0.85rem; padding:8px; border-radius:8px; background:var(--bg-primary); color:var(--text-primary); border:1px solid var(--border-color);">
+                            <option value="">Detectar automáticamente por IA</option>
+                            ${driverOptions}
+                        </select>
+                    </div>
+
+                    <div id="selectedFilesContainer" style="display:none; margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);" id="selectedFilesCount">Archivos seleccionados: 0</span>
+                            <button class="btn btn-sm btn-danger" onclick="BalancesModule.clearSelectedFiles()" style="font-size:11px; padding:2px 8px;">Limpiar</button>
+                        </div>
+                        <div id="selectedFilesList" style="max-height:120px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:8px; padding:8px; font-size:0.8rem;"></div>
+                    </div>
+
+                    <div id="importProgressBar" style="display:none; margin-bottom:15px;">
+                        <div style="font-size:0.85rem; font-weight:700; color:#6366f1; margin-bottom:6px;" id="importProgressStatus">
+                            Analizando con Gemini IA... ⏳
+                        </div>
+                        <div style="background:rgba(255,255,255,0.1); border-radius:6px; height:8px; overflow:hidden;">
+                            <div id="importProgressFill" style="background:#6366f1; width:0%; height:100%; transition:width 0.3s;"></div>
+                        </div>
+                    </div>
+
+                    <button id="btnStartImport" class="btn btn-primary" onclick="BalancesModule.startFileImport()" style="width:100%; font-weight:700; padding:10px; background:#6366f1; border:none; color:#fff;" disabled>
+                        🚀 Procesar con Inteligencia Artificial
+                    </button>
+                </div>
+
+                <!-- Tab 2: Pegar Chat de WhatsApp -->
+                <div id="tabContentText" style="display:none;">
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">
+                        Pegá aquí mensajes de WhatsApp o el archivo de texto exportado de un chat. La IA extraerá todas las transferencias, pagos de choferes y gastos automáticamente:
+                    </p>
+                    <textarea id="importChatText" rows="6" class="form-control" placeholder="Ej:&#10;[25/9 14:30] Kiara: Jose te transferí 45000 de la recaudación&#10;[25/9 16:15] Lucas: Pagué $18.500 de nafta en YPF&#10;[25/9 18:00] Taller: Te paso la factura de 65000 por el cambio de pastillas" style="width:100%; font-size:0.85rem; padding:10px; border-radius:8px; background:var(--bg-primary); color:var(--text-primary); border:1px solid var(--border-color); margin-bottom:12px; font-family:monospace;"></textarea>
+
+                    <button id="btnProcessChatText" class="btn btn-primary" onclick="BalancesModule.startTextImport()" style="width:100%; font-weight:700; padding:10px; background:#6366f1; border:none; color:#fff;">
+                        🔍 Extraer Movimientos del Chat con IA
+                    </button>
+                </div>
+
+                <!-- Tab 3: Sincronización QR -->
+                <div id="tabContentQR" style="display:none; text-align:center;">
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
+                        Para descargar todo el archivo histórico directamente de WhatsApp a tu base de datos, podés re-vincular tu WhatsApp en <strong>Modo Desktop Completo</strong>.
+                    </p>
+                    <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:12px; margin-bottom:15px; text-align:left; font-size:0.85rem;">
+                        <strong>Pasos:</strong><br>
+                        1. Hacé clic en "Solicitar Nuevo QR de Sincronización Total".<br>
+                        2. En tu WhatsApp del celular andá a <em>Dispositivos vinculados</em> → <em>Vincular un dispositivo</em>.<br>
+                        3. Escaneá el QR generado. WhatsApp enviará todo el historial histórico a FleetAdmin Pro.
+                    </div>
+                    <button class="btn btn-warning" onclick="BalancesModule.requestQRFullSync()" style="font-weight:700; padding:10px 18px; background:#f59e0b; border:none; color:#fff;">
+                        🔄 Solicitar Nuevo QR de Sincronización Total
+                    </button>
+                </div>
+            </div>
+            `,
+            `<button class="btn btn-secondary" onclick="Components.closeModal()">Cerrar</button>`
+        );
+    }
+
     return {
         render,
         setFilter,
@@ -826,6 +1169,14 @@ const BalancesModule = (() => {
         scanWhatsApp,
         scanHistoricalWhatsApp: scanWhatsApp,
         confirmPendingPayment,
-        rejectPendingPayment
+        rejectPendingPayment,
+        showImportModal,
+        switchImportTab,
+        handleFilesSelect,
+        handleFilesDrop,
+        clearSelectedFiles,
+        startFileImport,
+        startTextImport,
+        requestQRFullSync
     };
 })();

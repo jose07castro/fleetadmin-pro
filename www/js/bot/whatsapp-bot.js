@@ -4,7 +4,7 @@
    Usa Baileys (ultra-liviano, sin navegador).
    ============================================ */
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers, proto } = require('@whiskeysockets/baileys');
 // Logger completamente silencioso para Baileys (evita spam de llaves criptográficas)
 const P = () => ({
     level: 'silent',
@@ -2104,7 +2104,7 @@ const WhatsappBot = (() => {
                 auth: state,
                 printQRInTerminal: true,
                 logger: P({ level: 'silent' }),
-                browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
+                browser: Browsers.macOS('Desktop'),
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
@@ -3978,7 +3978,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         if (!fleetId || fleetId === 'jose07' || fleetId === 'default') {
             fleetId = await _resolveFleetId();
         }
-        console.log(`🔍 [SCAN-RECENTS] Iniciando escaneo de comprobantes para flota: ${fleetId}...`);
+        console.log(`🔍 [SCAN-RECENTS] Iniciando escaneo profundo de comprobantes para flota: ${fleetId}...`);
         
         let found = 0;
         let synced = 0;
@@ -4014,21 +4014,64 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 targetJids.add(adm + '@s.whatsapp.net');
             }
 
-            console.log(`📡 [SCAN-RECENTS] Solicitando historial de WhatsApp para ${targetJids.size} contactos/choferes registrados...`);
-
-            // 2. Si el socket está activo, solicitar sincronización de mensajes para los choferes
+            // 1b. INCLUIR TODOS LOS GRUPOS PARTICIPANTES (@g.us)
             if (sock && _isConnectedState) {
+                try {
+                    const groups = await sock.groupFetchAllParticipating();
+                    for (const gJid of Object.keys(groups || {})) {
+                        targetJids.add(gJid);
+                    }
+                    console.log(`👥 [SCAN-RECENTS] Añadidos ${Object.keys(groups || {}).length} grupos de WhatsApp al escaneo.`);
+                } catch(gErr) {
+                    console.warn('⚠️ [SCAN-RECENTS] Error obteniendo grupos para escaneo:', gErr.message);
+                }
+            }
+
+            console.log(`📡 [SCAN-RECENTS] Solicitando sincronización histórica para ${targetJids.size} chats y grupos...`);
+
+            // 2. Si el socket está activo, solicitar sincronización PDO de mensajes
+            if (sock && _isConnectedState) {
+                // Solicitar FULL_HISTORY_SYNC si es posible
+                try {
+                    if (typeof sock.sendPeerDataOperationMessage === 'function') {
+                        const fullPdo = {
+                            fullHistorySyncOnDemandRequest: {
+                                requestMetadata: {},
+                                historySyncConfig: {
+                                    fullSyncDaysLimit: 365,
+                                    fullSyncSizeMbLimit: 150,
+                                    storageQuotaMb: 1000
+                                }
+                            },
+                            peerDataOperationRequestType: proto.Message.PeerDataOperationRequestType.FULL_HISTORY_SYNC_ON_DEMAND
+                        };
+                        await sock.sendPeerDataOperationMessage(fullPdo);
+                        console.log('📡 [SCAN-RECENTS] Solicitud FULL_HISTORY_SYNC_ON_DEMAND enviada con éxito.');
+                    }
+                } catch (fullErr) {
+                    console.warn('⚠️ [SCAN-RECENTS] FULL_HISTORY_SYNC notice:', fullErr.message);
+                }
+
+                // Solicitar HISTORY_SYNC_ON_DEMAND para cada chat individual y grupo
                 for (const jid of targetJids) {
                     try {
-                        if (typeof sock.fetchMessageHistory === 'function') {
-                            await sock.fetchMessageHistory(50, { remoteJid: jid, fromMe: false, id: '' }, Date.now());
+                        if (typeof sock.sendPeerDataOperationMessage === 'function') {
+                            const pdo = {
+                                historySyncOnDemandRequest: {
+                                    chatJid: jid,
+                                    onDemandMsgCount: 50,
+                                    oldestMsgTimestampMs: Date.now()
+                                },
+                                peerDataOperationRequestType: proto.Message.PeerDataOperationRequestType.HISTORY_SYNC_ON_DEMAND
+                            };
+                            await sock.sendPeerDataOperationMessage(pdo);
                         }
-                    } catch(histErr) {
-                        // Continuar si no hay historial para ese JID
-                    }
+                    } catch(histErr) {}
                 }
-                // Pausa breve para permitir la recepción y procesamiento de paquetes de WhatsApp
-                await new Promise(r => setTimeout(r, 4000));
+                
+                // Espera racional de 12 segundos para permitir llegada de paquetes criptográficos de WhatsApp
+                console.log('⏳ [SCAN-RECENTS] Esperando recepción de paquetes de WhatsApp...');
+                await new Promise(r => setTimeout(r, 12000));
             }
 
             // 3. Restaurar todos los candidatos persistidos en Firebase bot_receipt_queue
@@ -4061,17 +4104,17 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 }
             }
 
-            // 2. Obtener settings de la flota
+            // 5. Obtener settings de la flota
             const fleetSnap = await db.ref(`fleets/${fleetId}/settings`).once('value');
             const settings = fleetSnap.val() || {};
             const sheetUrl = settings.google_sheet_id || null;
 
-            // 3. Obtener movimientos ya existentes en la flota
+            // 6. Obtener movimientos ya existentes en la flota
             const movsSnap = await db.ref(`fleets/${fleetId}/movements`).once('value');
             const existingMovs = movsSnap.val() || {};
             totalMovements = Object.keys(existingMovs).length;
 
-            // 4. Sincronizar todos los movimientos con la hoja de Google Sheets si hay una vinculada
+            // 7. Sincronizar todos los movimientos con la hoja de Google Sheets si hay una vinculada
             if (sheetUrl && sheetUrl.startsWith('https://script.google.com/')) {
                 console.log(`📊 [SCAN-RECENTS] Sincronizando ${totalMovements} movimientos con Webhook de Google Sheets...`);
                 for (const [mId, m] of Object.entries(existingMovs)) {
@@ -4098,6 +4141,147 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             console.error('❌ [SCAN-RECENTS] Error en escaneo:', e.message);
             return { ok: false, error: e.message };
         }
+    }
+
+    /**
+     * Procesa un archivo directo (imagen o PDF de transferencia/factura) subido por el usuario
+     * y lo analiza con IA contable para insertarlo en el balance y sincronizar con Google Sheets.
+     */
+    async function processDirectReceiptFile({ buffer, mimeType, fileName, customDriverName, fleetId }) {
+        if (!buffer || buffer.length < 100) throw new Error('Archivo inválido o vacío');
+        const targetFleet = fleetId || await _resolveFleetId();
+        const key = getGeminiKey();
+        if (!key) throw new Error('Clave de Gemini IA no configurada');
+
+        const analysis = await callGeminiReceipt(buffer, mimeType);
+        if (!analysis || !analysis.isReceipt || !analysis.amount || analysis.amount <= 0) {
+            return {
+                ok: false,
+                fileName,
+                error: 'La IA no detectó un comprobante de transferencia, factura o ticket de gasto válido en este archivo.'
+            };
+        }
+
+        const movId = 'mov_up_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        const formattedAmount = Number(analysis.amount) || 0;
+        const partyName = customDriverName 
+            ? `${analysis.party || (analysis.type === 'Ingreso' ? 'Transferencia' : 'Factura')} (${customDriverName})`
+            : (analysis.party || (analysis.type === 'Ingreso' ? 'Transferencia Recibida' : 'Gasto de Operación'));
+
+        const newMov = {
+            id: movId,
+            type: analysis.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+            amount: formattedAmount,
+            concept: analysis.concept || (analysis.type === 'Ingreso' ? 'Transferencia registrada' : 'Factura / Comprobante'),
+            party: partyName,
+            date: analysis.date || new Date().toISOString(),
+            source: (mimeType && mimeType.includes('pdf')) ? 'upload_pdf_invoice' : 'upload_image_receipt',
+            fileName: fileName || null,
+            createdAt: Date.now()
+        };
+
+        if (db) {
+            await db.ref(`fleets/${targetFleet}/movements/${movId}`).set(newMov);
+            console.log(`✅ [DIRECT-UPLOAD] Guardado movimiento ${movId} en flota ${targetFleet}: ${newMov.type} $${newMov.amount}`);
+        }
+
+        // Sincronizar con Google Sheets si existe
+        try {
+            const fleetSnap = await db.ref(`fleets/${targetFleet}/settings`).once('value');
+            const settings = fleetSnap.val() || {};
+            await _syncMovementToSheet(targetFleet, settings, newMov);
+        } catch(sErr) {}
+
+        return {
+            ok: true,
+            movement: newMov
+        };
+    }
+
+    /**
+     * Procesa texto plano pegado o exportado de un chat de WhatsApp para extraer múltiples transferencias o facturas
+     */
+    async function processDirectChatText({ chatText, fleetId }) {
+        if (!chatText || chatText.trim().length < 5) throw new Error('Texto de chat vacío');
+        const targetFleet = fleetId || await _resolveFleetId();
+        const key = getGeminiKey();
+        if (!key) throw new Error('Clave de Gemini IA no configurada');
+
+        const prompt = `Sos un auditor contable experto en flotas de transporte en Argentina.
+Analizá este texto exportado de WhatsApp o lista de mensajes que contiene avisos de transferencias, pagos de recaudaciones de choferes, o gastos/facturas (combustibles, talleres, repuestos):
+"""
+${chatText.substring(0, 15000)}
+"""
+
+Extraé TODOS los movimientos financieros válidos (transferencias recibidas, pagos en efectivo, facturas de compras, tickets de combustible, repuestos).
+En Argentina "k", "mil", "lucas" significan miles de pesos (ej: 40 lucas = 40000, 1 palo = 1000000).
+Respondé ÚNICAMENTE con un array JSON de objetos (sin markdown ni bloques ni explicaciones):
+[
+  {
+    "type": "Ingreso" o "Egreso",
+    "amount": 45000.0,
+    "party": "Nombre del chofer o proveedor/comercio",
+    "concept": "Descripción del pago o factura",
+    "date": "2026-09-25T14:00:00.000Z"
+  }
+]
+Si no hay movimientos financieros detectados, respondé: []`;
+
+        let detectedMovements = [];
+        const models = [
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        ];
+
+        for (const url of models) {
+            try {
+                const res = await axios.post(`${url}?key=${key}`, {
+                    contents: [{ parts: [{ text: prompt }] }]
+                }, { timeout: 30000 });
+                const raw = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (raw) {
+                    const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                    const parsed = JSON.parse(clean);
+                    if (Array.isArray(parsed)) {
+                        detectedMovements = parsed;
+                        break;
+                    }
+                }
+            } catch(e) {
+                console.warn(`⚠️ [CHAT-PARSE] Error con ${url}:`, e.message);
+            }
+        }
+
+        const savedMovements = [];
+        if (db && detectedMovements.length > 0) {
+            const fleetSnap = await db.ref(`fleets/${targetFleet}/settings`).once('value');
+            const settings = fleetSnap.val() || {};
+
+            for (const mov of detectedMovements) {
+                if (!mov.amount || mov.amount <= 0) continue;
+                const movId = 'mov_chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                const newMov = {
+                    id: movId,
+                    type: mov.type === 'Ingreso' ? 'Ingreso' : 'Egreso',
+                    amount: Number(mov.amount) || 0,
+                    concept: mov.concept || 'Movimiento extraído de chat',
+                    party: mov.party || 'WhatsApp Chat',
+                    date: mov.date || new Date().toISOString(),
+                    source: 'whatsapp_chat_export',
+                    createdAt: Date.now()
+                };
+
+                await db.ref(`fleets/${targetFleet}/movements/${movId}`).set(newMov);
+                await _syncMovementToSheet(targetFleet, settings, newMov);
+                savedMovements.push(newMov);
+            }
+        }
+
+        return {
+            ok: true,
+            count: savedMovements.length,
+            movements: savedMovements
+        };
     }
 
     // Escuchar señales de terminación del SO (evita colisiones 440 Zombies durante redeploys)
@@ -4138,6 +4322,9 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         isConnected: () => _isConnectedState,
         sendPushToAdmins,
         scanRecentMessages,
+        processDirectReceiptFile,
+        processDirectChatText,
+        callGeminiReceipt,
         syncMovementToSheet: _syncMovementToSheet,
         getQueueStatus,
         createPendingPayment: _createPendingPayment,

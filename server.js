@@ -35,7 +35,8 @@ app.use('/audio', express.static(audioDir, {
     }
 }));
 
-app.use(express.json({ limit: '10mb' })); // Aumentado para soportar base64 de imágenes
+app.use(express.json({ limit: '60mb' }));
+app.use(express.urlencoded({ limit: '60mb', extended: true }));
 
 // Ruta de Salud rápida para Render (evita el "Port binding timeout")
 app.get('/', (req, res) => {
@@ -720,6 +721,104 @@ app.post('/api/bot/scan-historical', async (req, res) => {
         });
     } catch(e) {
         console.error('❌ [HISTORICAL-SCAN] Error en escaneo:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint para importación masiva directa de comprobantes, facturas (PDF / Imágenes) o texto de chat
+app.post('/api/bot/import-receipts', async (req, res) => {
+    try {
+        const fleetId = await _resolveServerFleetId(req.body.fleetId);
+        const { files, rawText } = req.body;
+        console.log(`📥 [RECEIPT-IMPORT] Iniciando procesamiento de comprobantes/facturas para flota ${fleetId}...`);
+
+        let processedMovements = [];
+        let errors = [];
+
+        // 1. Procesar archivos (imágenes y PDFs)
+        if (Array.isArray(files) && files.length > 0) {
+            console.log(`📁 [RECEIPT-IMPORT] Procesando ${files.length} archivos recibidos...`);
+            for (const file of files) {
+                try {
+                    if (!file.base64) continue;
+                    const cleanB64 = file.base64.replace(/^data:[^;]+;base64,/, '');
+                    const buf = Buffer.from(cleanB64, 'base64');
+                    const mimeType = file.mimeType || (file.name && file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+                    const result = await WhatsappBot.processDirectReceiptFile({
+                        buffer: buf,
+                        mimeType: mimeType,
+                        fileName: file.name,
+                        customDriverName: file.driverName || null,
+                        fleetId: fleetId
+                    });
+
+                    if (result && result.ok && result.movement) {
+                        processedMovements.push(result.movement);
+                    } else if (result && result.error) {
+                        errors.push({ file: file.name, error: result.error });
+                    }
+                } catch(fErr) {
+                    console.warn(`⚠️ [RECEIPT-IMPORT] Error procesando archivo ${file.name}:`, fErr.message);
+                    errors.push({ file: file.name, error: fErr.message });
+                }
+            }
+        }
+
+        // 2. Procesar texto plano o chat exportado
+        if (rawText && typeof rawText === 'string' && rawText.trim().length > 5) {
+            console.log(`📝 [RECEIPT-IMPORT] Procesando texto de chat exportado (${rawText.length} caracteres)...`);
+            try {
+                const chatRes = await WhatsappBot.processDirectChatText({
+                    chatText: rawText,
+                    fleetId: fleetId
+                });
+                if (chatRes && chatRes.movements) {
+                    processedMovements.push(...chatRes.movements);
+                }
+            } catch(tErr) {
+                console.warn('⚠️ [RECEIPT-IMPORT] Error procesando texto de chat:', tErr.message);
+                errors.push({ file: 'chat_text', error: tErr.message });
+            }
+        }
+
+        let totalIngresos = 0;
+        let totalEgresos = 0;
+        processedMovements.forEach(m => {
+            const amt = Number(m.amount) || 0;
+            if (m.type === 'Ingreso') totalIngresos += amt;
+            else if (m.type === 'Egreso') totalEgresos += amt;
+        });
+
+        console.log(`✅ [RECEIPT-IMPORT] Finalizado: ${processedMovements.length} movimientos procesados (Ingresos: $${totalIngresos}, Egresos: $${totalEgresos}).`);
+
+        return res.json({
+            ok: true,
+            fleetId: fleetId,
+            processedCount: processedMovements.length,
+            totalIngresos: totalIngresos,
+            totalEgresos: totalEgresos,
+            movements: processedMovements,
+            errors: errors,
+            message: `¡Se procesaron ${processedMovements.length} comprobantes y facturas con éxito!`
+        });
+    } catch(e) {
+        console.error('❌ [RECEIPT-IMPORT] Error general en importación:', e.message);
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint para solicitar QR de sincronización histórica completa
+app.post('/api/bot/request-qr-fullsync', async (req, res) => {
+    try {
+        console.log('🔄 [QR-FULLSYNC] Solicitando reinicio suave para sincronización completa de historial...');
+        await WhatsappBot.softResetSession();
+        return res.json({
+            ok: true,
+            message: 'Sesión reiniciada en modo Desktop Full Sync. Escaneá el código QR en Pantalla para sincronizar todo el historial.'
+        });
+    } catch(e) {
+        console.error('❌ [QR-FULLSYNC] Error:', e.message);
         return res.status(500).json({ ok: false, error: e.message });
     }
 });
