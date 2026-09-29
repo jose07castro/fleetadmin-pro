@@ -1189,13 +1189,19 @@ const LoginModule = (() => {
         _acquireLoginWakeLock();
 
         // Hablar para desbloquear Autoplay en el browser
-        if (typeof KittVoice !== 'undefined') {
-            KittVoice.speak("Copiloto activo. Recibiendo alertas de tránsito en tiempo real.", true);
+        const welcomeText = "Copiloto activo. Recibiendo alertas de tránsito en tiempo real.";
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+            AndroidServices.speak(welcomeText);
+        } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+            try { window.NativeServiceBridge.speak(welcomeText); } catch(e) {}
         } else if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            const utter = new SpeechSynthesisUtterance("Copiloto activo");
-            utter.lang = 'es-AR';
-            window.speechSynthesis.speak(utter);
+            try {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(welcomeText);
+                utter.lang = 'es-AR';
+                window.speechSynthesis.speak(utter);
+            } catch(e) {}
         }
     }
 

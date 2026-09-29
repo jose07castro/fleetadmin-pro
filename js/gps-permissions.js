@@ -98,7 +98,7 @@ const GPSPermissions = (() => {
                     Ubicación en Segundo Plano
                 </div>
                 <div style="font-size:0.95rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:left; padding:0 8px;">
-                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico de KITT en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
+                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico por voz en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#86efac; font-weight:600; margin-bottom:6px;">⚠️ Por favor seleccioná:</div>
@@ -408,7 +408,7 @@ const GPSPermissions = (() => {
                     Ubicación Permanente Requerida
                 </div>
                 <div style="font-size:0.95rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; text-align:left; padding:0 8px;">
-                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico de KITT en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
+                    FleetAdmin Pro recopila datos de ubicación para habilitar el rastreo de rutas de la flota, el cálculo de kilómetros y las alertas de tráfico por voz en tiempo real, incluso cuando la aplicación está cerrada o no se está usando.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.2); border-radius:12px; text-align:left;">
                     <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚠️ Pasos obligatorios:</div>

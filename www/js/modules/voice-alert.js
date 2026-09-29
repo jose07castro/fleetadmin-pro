@@ -269,13 +269,9 @@ const VoiceAlertModule = (() => {
                             const author = currentUser ? currentUser.name : 'Conductor';
                             const fleetId = Auth.getFleetId() || 'default_fleet';
 
-                            if (statusEl) statusEl.innerText = 'Procesando con KITT...';
+                            if (statusEl) statusEl.innerText = 'Procesando alerta...';
 
-                            const serverUrl = (window.location.hostname === 'localhost' || 
-                                               window.location.hostname === '127.0.0.1' ||
-                                               window.location.protocol === 'file:') 
-                                               ? 'https://fleetadmin-web-nueva.onrender.com' 
-                                               : window.location.origin;
+                            const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
 
                             const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
                                 method: 'POST',
@@ -296,12 +292,12 @@ const VoiceAlertModule = (() => {
                                 throw new Error(result.error || 'Error en el procesamiento del servidor');
                             }
 
-                            console.log(`✅ [VOICE-ALERT] Procesada por backend KITT:`, result);
+                            console.log(`✅ [VOICE-ALERT] Procesada por backend:`, result);
                             Components.closeModal();
-                            Components.showToast('🎤 Alerta procesada y enviada a la flota por KITT', 'success');
+                            Components.showToast('🎤 Alerta procesada y enviada a la flota', 'success');
 
                         } catch (err) {
-                            console.error('❌ Error enviando alerta de voz a KITT:', err);
+                            console.error('❌ Error enviando alerta de voz:', err);
                             // v192 FIX: base64Data accesible desde scope superior
                             if (base64Data) {
                                 const currentUser = Auth.getUser();

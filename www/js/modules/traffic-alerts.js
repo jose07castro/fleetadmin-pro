@@ -151,34 +151,8 @@
     // para ignorar alertas viejas y cantar únicamente lo que sea de este segundo en adelante.
     const _appStartTime = Date.now() - 3000;
 
-    function playScannerSound() {
-        try {
-            const serverUrl = (window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' ||
-                               window.location.protocol === 'file:') 
-                               ? 'https://fleetadmin-web-nueva.onrender.com' 
-                               : window.location.origin;
-            
-            const scannerUrl = (window.location.protocol === 'file:' || window.Capacitor)
-                ? 'woosh-woosh.mp3'
-                : `${serverUrl}/woosh-woosh.mp3`;
-            
-            console.log(`🎵 [SCANNER-SOUND] Reproduciendo sonido del escáner KITT: ${scannerUrl}`);
-            const scannerAudio = new Audio(scannerUrl);
-            scannerAudio.volume = 0.8;
-            
-            if (typeof window.playAudioWithBoost === 'function') {
-                window.playAudioWithBoost(scannerAudio, 2.0).catch(e => console.warn('Boost de escáner falló:', e));
-            } else {
-                scannerAudio.play().catch(e => console.warn('Play de escáner falló:', e));
-            }
-        } catch (e) {
-            console.error('Error al reproducir sonido del escáner:', e);
-        }
-    }
-
     /**
-     * Anuncia la alerta por voz usando Web Speech API de manera GLOBAL.
+     * Anuncia la alerta por voz usando el motor nativo del dispositivo (Android TTS o Web Speech).
      * Funciona con mapa abierto, cerrado y con la app corriendo de fondo.
      */
     function speakAlert(type, location, originalText = '') {
@@ -224,37 +198,25 @@
             fullText = (loc && loc !== 'Ubicación desconocida') ? `${msg} en ${loc}.` : `${msg}.`;
         }
 
-        console.log(`🔊 [GLOBAL VOZ] Hablando: "${fullText}"`);
+        console.log(`🔊 [GLOBAL VOZ] Hablando (Voz nativa): "${fullText}"`);
 
-        // === VOZ PREMIUM KITT / NATIVO / FALLBACK ===
-        if (typeof KittVoice !== 'undefined') {
-            KittVoice.speak(fullText, true).then(() => {
-                playScannerSound();
-            });
-        } else if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+        // === VOZ NATIVA DIRECTA (Android TTS / Web Speech) ===
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
             AndroidServices.speak(fullText);
-            playScannerSound();
         } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
             try { window.NativeServiceBridge.speak(fullText); } catch(e) {}
-            playScannerSound();
-        } else {
-            // Fallback directo si KittVoice no cargó
-            if (window.speechSynthesis) {
-                try {
-                    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-                    window.speechSynthesis.cancel();
-                    setTimeout(() => {
-                        const utter = new SpeechSynthesisUtterance(fullText);
-                        utter.lang = 'es-AR';
-                        utter.rate = 0.95;
-                        utter.onend = () => playScannerSound();
-                        window.speechSynthesis.speak(utter);
-                    }, 50);
-                } catch(e) {
-                    playScannerSound();
-                }
-            } else {
-                playScannerSound();
+        } else if (window.speechSynthesis) {
+            try {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                window.speechSynthesis.cancel();
+                setTimeout(() => {
+                    const utter = new SpeechSynthesisUtterance(fullText);
+                    utter.lang = 'es-AR';
+                    utter.rate = 1.0;
+                    window.speechSynthesis.speak(utter);
+                }, 50);
+            } catch(e) {
+                console.warn('SpeechSynthesis error:', e);
             }
         }
     }
@@ -321,16 +283,12 @@
 
             console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
 
-            // Si la alerta tiene un audio original de WhatsApp o audio de KITT generado, reproducirlo tal cual (sin TTS)
+            // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
-                const serverUrl = (window.location.hostname === 'localhost' || 
-                                   window.location.hostname === '127.0.0.1' ||
-                                   window.location.protocol === 'file:') 
-                                   ? 'https://fleetadmin-web-nueva.onrender.com' 
-                                   : window.location.origin;
+                const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
                 const fullAudioUrl = alert.audioUrl.startsWith('http') 
                     ? alert.audioUrl 
-                    : `${serverUrl}${alert.audioUrl}`;
+                    : `${serverUrl}${alert.audioUrl.startsWith('/') ? '' : '/'}${alert.audioUrl}`;
                 console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de alerta: ${fullAudioUrl}`);
                 
                 let audioPlayed = false;
@@ -373,33 +331,31 @@
                         if (!repeated) {
                             repeated = true;
                             console.log('🎵 [AUDIO-ORIGINAL] Finalizado, iniciando repetición...');
-                            if (typeof KittVoice !== 'undefined') {
-                                KittVoice.speak('Repito', true).then(() => {
-                                    const repeatPromise = (typeof window.playAudioWithBoost === 'function')
-                                        ? window.playAudioWithBoost(audio, 3.0)
-                                        : audio.play();
-                                    repeatPromise.catch(e => {
-                                        console.error('Error al repetir audio:', e);
-                                        playScannerSound();
-                                    });
+                            const playRepeat = () => {
+                                const repeatPromise = (typeof window.playAudioWithBoost === 'function')
+                                    ? window.playAudioWithBoost(audio, 3.0)
+                                    : audio.play();
+                                repeatPromise.catch(e => {
+                                    console.error('Error al repetir audio:', e);
                                 });
+                            };
+
+                            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+                                AndroidServices.speak('Repito');
+                                setTimeout(playRepeat, 1000);
+                            } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+                                try { window.NativeServiceBridge.speak('Repito'); } catch(e) {}
+                                setTimeout(playRepeat, 1000);
                             } else if (window.speechSynthesis) {
                                 const utter = new SpeechSynthesisUtterance('Repito');
                                 utter.lang = 'es-AR';
-                                utter.onend = () => {
-                                    const repeatPromise = (typeof window.playAudioWithBoost === 'function')
-                                        ? window.playAudioWithBoost(audio, 3.0)
-                                        : audio.play();
-                                    repeatPromise.catch(e => {
-                                        console.error('Error al repetir audio:', e);
-                                        playScannerSound();
-                                    });
-                                };
+                                utter.onend = playRepeat;
                                 window.speechSynthesis.speak(utter);
+                            } else {
+                                playRepeat();
                             }
                         } else {
-                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada, reproduciendo escáner de KITT...');
-                            playScannerSound();
+                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada.');
                         }
                     };
 
@@ -499,9 +455,11 @@
     function onNewAlert(callback) {
         if (typeof callback === 'function') {
             // v192 FIX: Evitar acumulación de callbacks duplicados (memory leak + alertas dobles)
+            // Si el mismo callback ya está registrado, no lo agregamos de nuevo
             if (!_newAlertCallbacks.includes(callback)) {
                 _newAlertCallbacks.push(callback);
             }
+            // Limitar a máximo 10 callbacks para evitar fugas de memoria extremas
             if (_newAlertCallbacks.length > 10) {
                 _newAlertCallbacks = _newAlertCallbacks.slice(-10);
             }

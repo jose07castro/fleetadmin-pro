@@ -108,7 +108,7 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Vocaliza el aviso usando la voz premium KITT (con fallback automático).
+     * Vocaliza el aviso usando voz nativa del dispositivo.
      */
     function _speakWarning(radar, distance) {
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
@@ -118,19 +118,19 @@ const CopilotModule = (() => {
         const radarName = radar.name.replace(' y ', ' esquina ');
         const text = `Atención. Fotomulta a 300 metros en ${radarName}. Velocidad máxima ${radar.limit} kilómetros por hora.`;
         
-        // === VOZ PREMIUM KITT (con fallback automático a voz local) ===
-        if (typeof KittVoice !== 'undefined') {
-            KittVoice.speak(text, true);
-        } else {
-            // Fallback directo si KittVoice no cargó
+        // === VOZ NATIVA DIRECTA (Android TTS / Web Speech) ===
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+            AndroidServices.speak(text);
+        } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+            try { window.NativeServiceBridge.speak(text); } catch(e) {}
+        } else if (window.speechSynthesis) {
             try {
-                if (window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
-                    const utter = new SpeechSynthesisUtterance(text);
-                    utter.lang = 'es-AR';
-                    utter.rate = 0.95;
-                    window.speechSynthesis.speak(utter);
-                }
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'es-AR';
+                utter.rate = 1.0;
+                window.speechSynthesis.speak(utter);
             } catch (e) {
                 console.error('Error vocalizando advertencia de copiloto:', e);
             }

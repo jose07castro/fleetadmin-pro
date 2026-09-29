@@ -745,30 +745,22 @@ const RadarModule = (() => {
                             if (newStatus === 'gps_desactivado') {
                                 window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
-                                if (typeof KittVoice !== 'undefined') {
-                                    KittVoice.speak(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`, true);
-                                }
+                                speakRadarAlert(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`);
                                 showRadarWarning(`El conductor ${firstName}${plateText} ha desactivado el GPS de su dispositivo`, 'warning');
                             } else if (newStatus === 'suspicious_disconnect') {
                                 window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
-                                if (typeof KittVoice !== 'undefined') {
-                                    KittVoice.speak(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`, true);
-                                }
+                                speakRadarAlert(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`);
                                 showRadarWarning(`Desconexión sospechosa detectada para ${firstName}${plateText} (Sin señal)`, 'danger');
                             } else if (newStatus === 'permissions_disabled') {
                                 window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
-                                if (typeof KittVoice !== 'undefined') {
-                                    KittVoice.speak(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`, true);
-                                }
+                                speakRadarAlert(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`);
                                 showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}${plateText}`, 'warning');
                             } else if (newStatus === 'logout_voluntario') {
                                 window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
-                                if (typeof KittVoice !== 'undefined') {
-                                    KittVoice.speak(`El conductor ${firstName} ha cerrado sesión voluntariamente.`, true);
-                                }
+                                speakRadarAlert(`El conductor ${firstName} ha cerrado sesión voluntariamente.`);
                                 showRadarWarning(`El conductor ${firstName}${plateText} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
                             }
                         }
@@ -1190,6 +1182,26 @@ const RadarModule = (() => {
     }
 
     // ============ ALARM & WARNING HACKS ============
+
+    function speakRadarAlert(text) {
+        if (!text) return;
+        try {
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
+                AndroidServices.speak(text);
+            } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+                try { window.NativeServiceBridge.speak(text); } catch(e) {}
+            } else if (window.speechSynthesis) {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'es-AR';
+                utter.rate = 1.0;
+                window.speechSynthesis.speak(utter);
+            }
+        } catch (e) {
+            console.warn('Radar TTS failed:', e);
+        }
+    }
 
     function playWarningBeep() {
         try {

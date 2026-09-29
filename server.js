@@ -1272,99 +1272,25 @@ app.post('/api/driver/location', async (req, res) => {
 
 
 // ============================================
-// KITT Voice — ElevenLabs TTS Proxy
-// Protege la API Key en el servidor y cachea audios
-// ============================================
-const _ttsCache = new Map(); // { textHash: { buffer, timestamp } }
-const TTS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
-
-app.get('/api/voice/tts', async (req, res) => {
-    const text = req.query.text;
-    if (!text) return res.status(400).json({ error: 'Missing ?text= parameter' });
-
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    // Voice ID: configurable via env, defaults to our verified KITT voice fqAXkcoIyMAGiQt53oFg
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'fqAXkcoIyMAGiQt53oFg';
-
-    if (!apiKey) {
-        return res.status(503).json({ error: 'ELEVENLABS_API_KEY not configured on server' });
-    }
-
-    // Simple hash for cache key
-    const cacheKey = `${voiceId}_${text}`;
-    const cached = _ttsCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < TTS_CACHE_TTL)) {
-        console.log(`🎙️ [KITT-TTS] Cache HIT for: "${text.substring(0, 40)}..."`);
-        res.set('Content-Type', 'audio/mpeg');
-        res.set('Cache-Control', 'public, max-age=86400');
-        return res.send(cached.buffer);
-    }
-
-    try {
-        console.log(`🎙️ [KITT-TTS] Generating: "${text.substring(0, 60)}..."`);
-        const axios = require('axios');
-        const response = await axios({
-            method: 'POST',
-            url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-            headers: {
-                'xi-api-key': apiKey,
-                'Content-Type': 'application/json',
-                'Accept': 'audio/mpeg'
-            },
-            data: {
-                text: text,
-                model_id: 'eleven_multilingual_v2',
-                voice_settings: {
-                    stability: 0.75,
-                    similarity_boost: 0.80,
-                    style: 0.45,
-                    use_speaker_boost: true
-                }
-            },
-            responseType: 'arraybuffer',
-            timeout: 15000
-        });
-
-        const audioBuffer = Buffer.from(response.data);
-
-        // Cache the result
-        _ttsCache.set(cacheKey, { buffer: audioBuffer, timestamp: Date.now() });
-
-        // Limit cache size (max 100 entries)
-        if (_ttsCache.size > 100) {
-            const oldest = _ttsCache.keys().next().value;
-            _ttsCache.delete(oldest);
-        }
-
-        res.set('Content-Type', 'audio/mpeg');
-        res.set('Cache-Control', 'public, max-age=86400');
-        res.send(audioBuffer);
-    } catch (e) {
-        console.error('🎙️ [KITT-TTS] ElevenLabs error:', e.response?.status, e.response?.data?.toString?.()?.substring(0, 200) || e.message);
-        res.status(502).json({ error: 'ElevenLabs TTS failed', details: e.message });
-    }
-});
-
-// ============================================
-// Funciones Auxiliares para Alertas Dinámicas (Gemini & ElevenLabs)
+// Funciones Auxiliares para Alertas Dinámicas
 // ============================================
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
 ];
 
 async function callGeminiAudio(audioBuffer, mimeType) {
-    if (!GEMINI_KEY || !audioBuffer) return null;
+    const key = process.env.GEMINI_API_KEY || (typeof WhatsappBot.getGeminiKey === 'function' ? WhatsappBot.getGeminiKey() : null);
+    if (!key || !audioBuffer) return null;
     const audioB64 = audioBuffer.toString('base64');
     const prompt = `Transcribí de forma exacta el audio de este mensaje de tránsito. Devolvé únicamente el texto transcrito, sin añadir ningún comentario, nota ni formato.`;
     const axios = require('axios');
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
     for (const url of GEMINI_MODELS) {
         try {
-            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+            const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{
                     parts: [
                         { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
@@ -1381,79 +1307,7 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     return null;
 }
 
-async function adaptToKittStyle(originalText, authorName = '') {
-    // Extraer primer nombre (nombre de pila) del chofer si está provisto
-    let nameGreeting = "Conductor";
-    if (authorName && typeof authorName === 'string') {
-        const cleanName = authorName.trim().split(' ')[0];
-        if (cleanName && 
-            cleanName.toLowerCase() !== 'chofer' && 
-            cleanName.toLowerCase() !== 'test' && 
-            cleanName.toLowerCase() !== 'conductor' && 
-            cleanName.toLowerCase() !== 'usuario') {
-            nameGreeting = cleanName;
-        }
-    }
-
-    if (!GEMINI_KEY) return `Atención ${nameGreeting}. Alerta reportada: ${originalText}.`;
-    const prompt = `Adaptá la siguiente alerta de tránsito al estilo formal, robótico, cortés y analítico de KITT (el auto increíble de Knight Rider).
-Debes dirigirte de forma personalizada al usuario usando su nombre de pila: "${nameGreeting}".
-Debe comenzar siempre con "Atención ${nameGreeting}." u otra frase formal similar que lo salude por su nombre. Ser claro, conciso, directo y en español.
-No devuelvas explicaciones, notas, ni marcas de código Markdown (como \`\`\`). Devuelve ÚNICAMENTE la frase terminada lista para ser leída por un sintetizador de voz.
-
-Alerta original: "${originalText}"
-
-Ejemplo de salida: "Atención ${nameGreeting}. He detectado un operativo policial activo en Avenida Pellegrini esquina Corrientes. Proceda con extrema precaución."`;
-
-    const axios = require('axios');
-    for (const url of GEMINI_MODELS) {
-        try {
-            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
-                contents: [{ parts: [{ text: prompt }] }]
-            }, { timeout: 15000 });
-            const rawText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-            if (rawText) return rawText.trim();
-        } catch (e) {
-            console.warn(`⚠️ [GEMINI-KITT] ${url.split('/models/')[1]?.split(':')[0]} falló: ${e.message}`);
-        }
-    }
-    return `Atención ${nameGreeting}. Alerta reportada: ${originalText}.`;
-}
-
-async function generateElevenLabsTTS(text) {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'fqAXkcoIyMAGiQt53oFg';
-    if (!apiKey) {
-        throw new Error('ELEVENLABS_API_KEY not configured on server');
-    }
-
-    const axios = require('axios');
-    const response = await axios({
-        method: 'POST',
-        url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        headers: {
-            'xi-api-key': apiKey,
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-        },
-        data: {
-            text: text,
-            model_id: 'eleven_multilingual_v2',
-            voice_settings: {
-                stability: 0.75,
-                similarity_boost: 0.80,
-                style: 0.45,
-                use_speaker_boost: true
-            }
-        },
-        responseType: 'arraybuffer',
-        timeout: 15000
-    });
-
-    return Buffer.from(response.data);
-}
-
-// Endpoint de Alertas Dinámicas en Tiempo Real con voz de KITT (Gemini + ElevenLabs)
+// Endpoint de Alertas Dinámicas en Tiempo Real
 app.post('/api/alerts/dynamic', async (req, res) => {
     try {
         const { text, audio, audioMimeType, lat, lng, type, authorName, fleetId } = req.body;
@@ -1490,49 +1344,31 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             return res.status(400).json({ error: 'Debes proporcionar un parámetro "text" o un archivo de "audio" base64' });
         }
 
-        // 2. Procesar con Gemini para adaptar al estilo de KITT
-        console.log(`🤖 [DYNAMIC-ALERT] Adaptando texto al estilo KITT para ${authorName || 'Desconocido'}: "${originalText}"`);
-        const adaptedText = await adaptToKittStyle(originalText, authorName);
-        console.log(`🤖 [DYNAMIC-ALERT] Texto adaptado: "${adaptedText}"`);
+        const alertText = originalText;
 
-        // 3. Generar la voz con ElevenLabs usando la API Key y Voice ID del servidor
-        let audioFileName = `alert_kitt_${Date.now()}.mp3`;
-        let audioFilePath = path.join(__dirname, 'audio', audioFileName);
-        let audioUrl = `/audio/${audioFileName}`;
-
-        try {
-            const audioBuffer = await generateElevenLabsTTS(adaptedText);
-            fs.writeFileSync(audioFilePath, audioBuffer);
-            console.log(`🔊 [DYNAMIC-ALERT] Audio de KITT generado y guardado en ${audioFilePath}`);
-        } catch (ttsError) {
-            console.error('❌ [DYNAMIC-ALERT] Error generando voz ElevenLabs:', ttsError.message);
-            // Si falla ElevenLabs, guardamos con audioUrl null y el cliente usará su fallback de TTS local
-            audioUrl = null;
-        }
-
-        // 4. Publicar la alerta en Firebase
+        // 2. Publicar la alerta en Firebase (los dispositivos la vocalizan mediante TTS nativo local)
         const alertId = `alert_dynamic_${Date.now()}`;
         const finalFleetId = fleetId || await WhatsappBot.getFleetId() || 'default_fleet';
 
         const alertData = {
             id: alertId,
             type: type,
-            location: adaptedText,
+            location: alertText,
             lat: Number(lat),
             lng: Number(lng),
             timestamp: Date.now(),
             expiresAt: Date.now() + (60 * 60 * 1000), // Expiración: 60 minutos
             authorName: authorName,
             status: 'active',
-            audioUrl: audioUrl,
-            originalText: originalText,
-            description: `Alerta dinámica procesada por KITT para ${authorName}`
+            audioUrl: null,
+            originalText: alertText,
+            description: `Alerta dinámica reportada por ${authorName}`
         };
 
         // Guardar en fleets/${fleetId}/traffic_alerts/
         await db.ref(`fleets/${finalFleetId}/traffic_alerts/${alertId}`).set(alertData);
 
-        // Guardar en el nodo global global_traffic_alerts/ para que todos los dispositivos sin loguear la escuchen también
+        // Guardar en el nodo global global_traffic_alerts/ para que todos los dispositivos la escuchen
         await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
 
         console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId}`);
@@ -1541,8 +1377,8 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             alertId,
             fleetId: finalFleetId,
             transcription: transcribedText,
-            location: adaptedText,
-            audioUrl
+            location: alertText,
+            audioUrl: null
         });
 
     } catch (e) {
