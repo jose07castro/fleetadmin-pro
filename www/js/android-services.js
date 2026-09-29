@@ -220,7 +220,7 @@ const AndroidServices = (() => {
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo) ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(lat, lng);
+                CopilotModule.checkProximity(lat, lng, speed);
             }
 
             // Validar que estemos en turno activo para enviar a Firebase

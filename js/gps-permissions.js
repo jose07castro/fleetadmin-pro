@@ -604,7 +604,7 @@ const GPSPermissions = (() => {
 
                     // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo, sin importar turno) ---
                     if (typeof CopilotModule !== 'undefined') {
-                        CopilotModule.checkProximity(location.latitude, location.longitude);
+                        CopilotModule.checkProximity(location.latitude, location.longitude, location.speed);
                     }
 
                     if (!inShift) return;
@@ -834,7 +834,7 @@ const GPSPermissions = (() => {
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(pos.lat, pos.lng);
+                CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed);
             }
 
             await window.sendLocationToServer(
@@ -875,7 +875,7 @@ const GPSPermissions = (() => {
             _copilotWatchId = navigator.geolocation.watchPosition(
                 (pos) => {
                     // Siempre avisar de radares, sin importar turno ni rol
-                    CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude);
+                    CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed);
                 },
                 (err) => {
                     // Silencioso en errores intermitentes de GPS

@@ -304,6 +304,23 @@ const ShiftsModule = (() => {
                 </div>
             </div>
 
+            <!-- Widget Estado Copiloto de Fotomultas -->
+            <div class="card" style="padding: 12px 14px; margin-bottom: var(--space-4); background: linear-gradient(135deg, rgba(15,23,42,0.03), rgba(239,68,68,0.06)); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 22px;">📷</span>
+                    <div>
+                        <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            Copiloto Fotomultas
+                            <span style="background: #10b981; color: white; font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 800;">ACTIVO</span>
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales de Rosario en vigilancia</div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert()" style="padding: 6px 12px; font-size: 12px; font-weight: 700; border-color: rgba(239,68,68,0.4); color: #ef4444; border-radius: 8px; white-space: nowrap;">
+                    🔔 Probar
+                </button>
+            </div>
+
             <!-- Botón SOS de Emergencia (solo chofer en turno activo) -->
             ${Auth.isDriver() && typeof SOSModule !== 'undefined' ? SOSModule.renderSOSButton(shift.id, shift.vehicleId, vehicle ? `${vehicle.name} — ${vehicle.plate}` : '') : ''}
 

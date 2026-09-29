@@ -20,6 +20,8 @@ const RadarModule = (() => {
     let _watchId = null;
     let _voiceEnabled = localStorage.getItem('radarVoice') !== 'off'; // ON por defecto
     let _mapStyle = localStorage.getItem('radarMapStyle') || 'dark'; // Estilo por defecto
+    let _showCameras = localStorage.getItem('radarShowCameras') !== 'off'; // ON por defecto (Fotomultas)
+    let _cameraMarkers = [];
 
     // JSON STYLES PARA GOOGLE MAPS API
     const GOOGLE_MAP_DARK_STYLE = [
@@ -157,6 +159,12 @@ const RadarModule = (() => {
                         <span class="radar-status-dot"></span>
                         Conectando...
                     </span>
+                    <button class="radar-cameras-btn" id="radarCamerasBtn"
+                        onclick="RadarModule.toggleCameras()"
+                        title="Mostrar u ocultar fotomultas en el mapa"
+                        style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border:1px solid ${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};border-radius:8px;padding:6px 11px;color:white;font-size:13px;font-weight:700;cursor:pointer;margin-right:8px;display:flex;align-items:center;gap:4px;">
+                        📷 Cámaras (80)
+                    </button>
                     <button class="radar-voice-btn" id="radarVoiceBtn"
                         onclick="RadarModule.toggleVoice()"
                         title="Activar/desactivar voz"
@@ -176,6 +184,7 @@ const RadarModule = (() => {
             </button>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
+                <span class="radar-legend-item">📷 Fotomultas: <strong id="radarCameraCount">80 oficiales</strong></span>
                 <span class="radar-legend-item">🕐 Actualización: <strong>Tiempo real (2s)</strong></span>
             </div>
         `;
@@ -206,6 +215,7 @@ const RadarModule = (() => {
         _stopAlertListener();
 
         // Destroy map
+        _clearCameraMarkers();
         if (_map) {
             _map = null;
         }
@@ -240,6 +250,9 @@ const RadarModule = (() => {
             streetViewControl: false,
             fullscreenControl: false
         });
+
+        // Cargar pines de cámaras de fotomultas oficiales de Rosario
+        _renderCameraMarkers();
     }
 
     // ============ CREATE CAR MARKER ============
@@ -1307,9 +1320,77 @@ const RadarModule = (() => {
         }
     }
 
+    // ============ CÁMARAS Y FOTOMULTAS OFICIALES ============
+
+    function _renderCameraMarkers() {
+        _clearCameraMarkers();
+        if (!_showCameras || !_map || typeof CopilotModule === 'undefined') return;
+
+        const radars = CopilotModule.getAllRadars ? CopilotModule.getAllRadars() : [];
+        if (!radars || !radars.length) return;
+
+        const MarkerClass = _getHTMLMapMarkerClass();
+
+        radars.forEach(radar => {
+            const pinHtml = `
+                <div class="radar-cam-pin" title="${radar.name} (Máx ${radar.limit} km/h)" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.6));">
+                    <div style="background:#ffffff;border:3px solid #dc2626;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);">
+                        <span style="font-size:11px;font-weight:900;color:#0f172a;line-height:1;">${radar.limit}</span>
+                    </div>
+                    <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #dc2626;margin-top:-1px;"></div>
+                </div>
+            `;
+
+            const popupHtml = `
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;padding:8px 10px;max-width:240px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                        <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;">📷 FOTOMULTA</span>
+                        <span style="font-size:11px;font-weight:700;color:#dc2626;">MÁX ${radar.limit} km/h</span>
+                    </div>
+                    <div style="font-size:13px;font-weight:800;line-height:1.2;color:#0f172a;margin-bottom:4px;">${radar.name}</div>
+                    <div style="font-size:11px;color:#64748b;line-height:1.3;">${radar.desc || 'Videocontrol municipal de tránsito'}</div>
+                </div>
+            `;
+
+            const marker = new MarkerClass(
+                new google.maps.LatLng(radar.lat, radar.lng),
+                pinHtml,
+                popupHtml,
+                13,
+                32
+            );
+            marker.setMap(_map);
+            _cameraMarkers.push(marker);
+        });
+    }
+
+    function _clearCameraMarkers() {
+        if (_cameraMarkers && _cameraMarkers.length) {
+            _cameraMarkers.forEach(m => {
+                if (m && m.setMap) m.setMap(null);
+            });
+            _cameraMarkers = [];
+        }
+    }
+
+    function toggleCameras() {
+        _showCameras = !_showCameras;
+        localStorage.setItem('radarShowCameras', _showCameras ? 'on' : 'off');
+        const btn = document.getElementById('radarCamerasBtn');
+        if (btn) {
+            btn.style.background = _showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)';
+            btn.style.borderColor = _showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)';
+        }
+        if (_showCameras) {
+            _renderCameraMarkers();
+        } else {
+            _clearCameraMarkers();
+        }
+    }
+
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, playAudio
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio
     };
 })();
