@@ -110,6 +110,7 @@ const Components = (() => {
             owner: [
                 { icon: '📊', label: 'nav_dashboard', route: 'dashboard', section: 'ops' },
                 { icon: '💰', label: 'nav_balances', route: 'balances', section: 'ops' },
+                { icon: '📈', label: 'nav_vehicle_costs', route: 'vehicle-costs', section: 'ops' },
                 { icon: '🚗', label: 'nav_vehicles', route: 'vehicles', section: 'ops' },
                 { icon: '📝', label: 'Candidatos', route: 'applicants', section: 'ops' },
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
@@ -210,6 +211,7 @@ const Components = (() => {
         const titles = {
             dashboard: 'nav_dashboard',
             balances: 'nav_balances',
+            'vehicle-costs': 'nav_vehicle_costs',
             vehicles: 'nav_vehicles',
             shifts: 'nav_shifts',
             maintenance: 'nav_maintenance',

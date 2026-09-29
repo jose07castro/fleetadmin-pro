@@ -2997,3 +2997,48 @@
         box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
     }
 }
+
+/* ============================================
+   FleetAdmin Pro — Estilos de Balance de Costos x Km
+   ============================================ */
+
+.vehicle-costs-container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.vehicle-cost-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.vehicle-cost-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+    border-color: rgba(56, 189, 248, 0.4) !important;
+}
+
+.badge-gnc {
+    background: #3b82f6 !important;
+    color: #ffffff !important;
+}
+
+.badge-electric {
+    background: #10b981 !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+.badge-hybrid {
+    background: #06b6d4 !important;
+    color: #ffffff !important;
+}
+
+.badge-nafta {
+    background: #64748b !important;
+    color: #ffffff !important;
+}
+
+.badge-diesel {
+    background: #78716c !important;
+    color: #ffffff !important;
+}

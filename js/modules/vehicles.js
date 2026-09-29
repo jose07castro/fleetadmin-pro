@@ -152,6 +152,10 @@ const VehiclesModule = (() => {
                                     <span style="background:var(--bg-tertiary); padding:1px 6px; border-radius:4px; font-weight:700; color:var(--text-primary); border:1px solid rgba(255,255,255,0.05);">${v.plate || '-'}</span>
                                     <span>•</span>
                                     <span>${v.year || '-'}</span>
+                                    <span>•</span>
+                                    <span class="badge" style="font-size:0.68rem; padding:1px 6px; font-weight:700; ${v.motorType === 'electric' ? 'background:#10b981; color:#fff;' : (v.motorType === 'hybrid' ? 'background:#06b6d4; color:#fff;' : (v.motorType === 'nafta' ? 'background:#64748b; color:#fff;' : 'background:#3b82f6; color:#fff;'))}">
+                                        ${v.motorType === 'electric' ? '⚡ Eléctrico' : (v.motorType === 'hybrid' ? '🔋 Híbrido' : (v.motorType === 'nafta' ? '🛢️ Nafta' : '⛽ GNC'))}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -168,7 +172,10 @@ const VehiclesModule = (() => {
                     <!-- BODY: The expanded full card view (hidden by default) -->
                     <div id="veh-body-${v.id}" class="veh-expanded-body" style="display:none; padding:0 var(--space-5) var(--space-5) var(--space-5); border-top:1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.15);">
                         
-                        <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin:var(--space-4) 0 var(--space-4) 0;">
+                        <div style="display:flex; flex-wrap:wrap; gap:var(--space-2); margin:var(--space-4) 0 var(--space-4) 0; align-items:center;">
+                            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); Router.navigate('vehicle-costs'); setTimeout(() => VehicleCostsModule.selectVehicle('${v.id}'), 150);" style="font-size:0.75rem; font-weight:700; background:rgba(56, 189, 248, 0.15); border:1px solid rgba(56, 189, 248, 0.4); color:#38bdf8;">
+                                📊 Ver Costos x Km
+                            </button>
                             ${v.companiaSeguro ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary); border:1px solid rgba(255,255,255,0.1);">🛡️ ${v.companiaSeguro}</span>` : ''}
                             ${financialBadge}
                             ${alertsBadge}
@@ -356,9 +363,15 @@ const VehiclesModule = (() => {
                     <div style="font-weight:600; margin-top:var(--space-4); margin-bottom:var(--space-3); color:var(--color-primary);">
                         ${I18n.t('veh_insurance_title')}
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_insurance_company')} *</label>
-                        <input type="text" class="form-input" id="vehCompaniaSeguro" value="${vehicle?.companiaSeguro || ''}" placeholder="La Caja, Sancor, etc.">
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">${I18n.t('veh_insurance_company')} *</label>
+                            <input type="text" class="form-input" id="vehCompaniaSeguro" value="${vehicle?.companiaSeguro || ''}" placeholder="La Caja, Sancor, etc.">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Costo Seguro Mensual ($)</label>
+                            <input type="number" class="form-input" id="vehCostoSeguroMensual" value="${vehicle?.costoSeguroMensual !== undefined ? vehicle.costoSeguroMensual : 70000}" placeholder="70000">
+                        </div>
                     </div>
                     <div class="repair-form-grid">
                         <div class="form-group">
@@ -369,6 +382,57 @@ const VehiclesModule = (() => {
                             <label class="form-label">${I18n.t('veh_emergency_phone')}</label>
                             <input type="tel" class="form-input" id="vehTelefonoAuxilio" value="${vehicle?.telefonoAuxilio || ''}" placeholder="0800...">
                         </div>
+                    </div>
+                </div>
+
+                <!-- Propulsión y Costos Operativos por Km -->
+                <div style="border-top:1px solid var(--border-color); padding-top:var(--space-4); margin-top:var(--space-2);">
+                    <div style="font-weight:700; margin-bottom:var(--space-3); color:var(--color-primary); display:flex; align-items:center; gap:8px;">
+                        <span>⚡ Propulsión y Costos Operativos por Km</span>
+                    </div>
+
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Tipo de Motorización *</label>
+                            <select class="form-select" id="vehMotorType" onchange="VehiclesModule.onMotorTypeChanged()">
+                                <option value="gnc" ${vehicle?.motorType === 'gnc' || !vehicle?.motorType ? 'selected' : ''}>⛽ Nafta + GNC</option>
+                                <option value="electric" ${vehicle?.motorType === 'electric' ? 'selected' : ''}>⚡ 100% Eléctrico (EV)</option>
+                                <option value="hybrid" ${vehicle?.motorType === 'hybrid' ? 'selected' : ''}>🔋 Híbrido (HEV / PHEV)</option>
+                                <option value="nafta" ${vehicle?.motorType === 'nafta' ? 'selected' : ''}>🛢️ Nafta Tradicional</option>
+                                <option value="diesel" ${vehicle?.motorType === 'diesel' ? 'selected' : ''}>🚜 Diésel / Gasoil</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Costo Combustible/GNC/Energía ($/km)</label>
+                            <input type="number" step="0.5" class="form-input" id="vehCostoCombustibleKm" 
+                                value="${vehicle?.costoCombustibleKm !== undefined ? vehicle.costoCombustibleKm : (vehicle?.motorType === 'electric' ? 20 : (vehicle?.motorType === 'hybrid' ? 55 : (vehicle?.motorType === 'nafta' ? 115 : 48)))}" 
+                                placeholder="Ej: 48">
+                        </div>
+                    </div>
+
+                    <div class="repair-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Costo 4 Neumáticos c/60.000 km ($)</label>
+                            <input type="number" class="form-input" id="vehCostoNeumaticos" 
+                                value="${vehicle?.costoNeumaticos !== undefined ? vehicle.costoNeumaticos : 540000}" 
+                                placeholder="540000">
+                        </div>
+                        <div class="form-group" id="vehAceiteGroup">
+                            <label class="form-label">Cambio Aceite c/10.000 km ($)</label>
+                            <input type="number" class="form-input" id="vehCostoCambioAceite" 
+                                value="${vehicle?.motorType === 'electric' ? 0 : (vehicle?.costoCambioAceite !== undefined ? vehicle.costoCambioAceite : 85000)}" 
+                                ${vehicle?.motorType === 'electric' ? 'disabled style="background:var(--bg-tertiary); opacity:0.6;"' : ''} 
+                                placeholder="85000">
+                            <div id="vehAceiteHint" style="font-size:0.75rem; color:${vehicle?.motorType === 'electric' ? '#10b981' : 'var(--text-tertiary)'}; margin-top:2px;">
+                                ${vehicle?.motorType === 'electric' ? '⚡ $0/km (Autos eléctricos no usan aceite de motor)' : 'Service completo cada 10.000 km'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Kilómetros Mensuales Estimados</label>
+                        <input type="number" class="form-input" id="vehKmMensualesEstimados" 
+                            value="${vehicle?.kmMensualesEstimados || 5000}" placeholder="5000">
                     </div>
                 </div>
 
@@ -500,6 +564,25 @@ const VehiclesModule = (() => {
             tipoCobertura,
             telefonoAuxilio
         };
+
+        // Costos Operativos por Km y Propulsión
+        const costoSeguroMensual = parseFloat(document.getElementById('vehCostoSeguroMensual')?.value);
+        if (!isNaN(costoSeguroMensual)) data.costoSeguroMensual = costoSeguroMensual;
+
+        const motorType = document.getElementById('vehMotorType')?.value || 'gnc';
+        data.motorType = motorType;
+
+        const costoCombustibleKm = parseFloat(document.getElementById('vehCostoCombustibleKm')?.value);
+        if (!isNaN(costoCombustibleKm)) data.costoCombustibleKm = costoCombustibleKm;
+
+        const costoNeumaticos = parseFloat(document.getElementById('vehCostoNeumaticos')?.value);
+        if (!isNaN(costoNeumaticos)) data.costoNeumaticos = costoNeumaticos;
+
+        const costoCambioAceite = motorType === 'electric' ? 0 : parseFloat(document.getElementById('vehCostoCambioAceite')?.value);
+        if (!isNaN(costoCambioAceite)) data.costoCambioAceite = costoCambioAceite;
+
+        const kmMensualesEstimados = parseInt(document.getElementById('vehKmMensualesEstimados')?.value);
+        if (!isNaN(kmMensualesEstimados)) data.kmMensualesEstimados = kmMensualesEstimados;
         
         if (fechaOtorgamiento) data.fechaOtorgamiento = fechaOtorgamiento;
         if (diaVencimiento !== null) data.diaVencimiento = diaVencimiento;
@@ -666,8 +749,43 @@ const VehiclesModule = (() => {
         }
     }
 
+    function onMotorTypeChanged() {
+        const type = document.getElementById('vehMotorType')?.value;
+        const isElectric = type === 'electric';
+        const inputCombustible = document.getElementById('vehCostoCombustibleKm');
+        const inputAceite = document.getElementById('vehCostoCambioAceite');
+        const hintAceite = document.getElementById('vehAceiteHint');
+
+        if (inputCombustible) {
+            if (type === 'electric') inputCombustible.value = 20;
+            else if (type === 'hybrid') inputCombustible.value = 55;
+            else if (type === 'nafta') inputCombustible.value = 115;
+            else if (type === 'diesel') inputCombustible.value = 105;
+            else inputCombustible.value = 48;
+        }
+
+        if (inputAceite && hintAceite) {
+            if (isElectric) {
+                inputAceite.value = 0;
+                inputAceite.disabled = true;
+                inputAceite.style.background = 'var(--bg-tertiary)';
+                inputAceite.style.opacity = '0.6';
+                hintAceite.innerHTML = '⚡ $0/km (Autos eléctricos no usan aceite de motor)';
+                hintAceite.style.color = '#10b981';
+            } else {
+                if (parseFloat(inputAceite.value) === 0) inputAceite.value = 85000;
+                inputAceite.disabled = false;
+                inputAceite.style.background = '';
+                inputAceite.style.opacity = '';
+                hintAceite.innerHTML = 'Service completo cada 10.000 km';
+                hintAceite.style.color = 'var(--text-tertiary)';
+            }
+        }
+    }
+
     return { 
         render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv,
-        calcRemaining, toggleFinanceFields, togglePrendario, toggleExpand
+        calcRemaining, toggleFinanceFields, togglePrendario, toggleExpand,
+        onMotorTypeChanged
     };
 })();

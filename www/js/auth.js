@@ -266,8 +266,8 @@ const Auth = (() => {
         if (!role) return false;
 
         const permissions = {
-            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants', 'balances'],
-            titular: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants', 'balances'],
+            owner: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants', 'balances', 'vehicle-costs'],
+            titular: ['dashboard', 'vehicles', 'shifts', 'maintenance', 'oil', 'gps', 'settings', 'community', 'applicants', 'balances', 'vehicle-costs'],
             driver: ['shifts', 'oil', 'settings', 'community', 'gps', 'balances'],
             mechanic: ['maintenance', 'settings'],
             passenger: ['gps', 'settings']

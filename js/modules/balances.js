@@ -106,6 +106,16 @@ const BalancesModule = (() => {
 
             return `
                 <div class="balances-container" style="animation: fadeIn 0.4s ease-out;">
+                    <!-- Pestañas de Sección de Finanzas -->
+                    <div style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:12px; overflow-x:auto;">
+                        <button class="btn btn-sm btn-primary" style="font-weight:700; border-radius:20px; padding:6px 16px;">
+                            💰 Movimientos & WhatsApp
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="Router.navigate('vehicle-costs')" style="font-weight:700; border-radius:20px; padding:6px 16px; background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color);">
+                            🚗 Costos Fijos x Km (GNC, Eléctricos, Neumáticos)
+                        </button>
+                    </div>
+
                     <!-- Cabecera -->
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
                         <div>

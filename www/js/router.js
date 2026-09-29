@@ -19,7 +19,8 @@ const Router = (() => {
         settings: 'js/modules/settings.js',
         community: 'js/modules/community.js',
         applicants: 'js/modules/applicants.js',
-        balances: 'js/modules/balances.js'
+        balances: 'js/modules/balances.js',
+        'vehicle-costs': 'js/modules/vehicle-costs.js'
     };
 
     // Función auxiliar para importar scripts de forma asíncrona
@@ -48,6 +49,7 @@ const Router = (() => {
         settings: async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.render() },
         community: async () => { await _loadModuleScript(modulePaths.community); return CommunityModule.render() },
         balances: async () => { await _loadModuleScript(modulePaths.balances); return BalancesModule.render() },
+        'vehicle-costs': async () => { await _loadModuleScript(modulePaths['vehicle-costs']); return VehicleCostsModule.render() },
         'complete-profile': async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.renderCompleteProfile() },
         apply: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderApply() },
         applicants: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderAdmin() },
