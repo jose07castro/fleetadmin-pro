@@ -9,10 +9,113 @@
    ============================================ */
 
 const VehicleCostsModule = (() => {
-    let _simulatedKm = 5000; // Kilómetros mensuales por defecto para la simulación
+    let _simulatedKm = 5000; // Kilómetros mensuales por defecto para la simulación manual
+    let _useRealKm = true; // Por defecto: usar los km reales ingresados por choferes en la app
+    let _selectedYearMonth = new Date().toISOString().substring(0, 7); // 'YYYY-MM'
+    let _realKmData = null; // Caché del cálculo de kilómetros reales
+    let _shiftsCache = [];
     let _selectedFilter = 'all'; // 'all', 'gnc', 'electric', 'hybrid', 'nafta', 'diesel'
     let _searchQuery = '';
     let _selectedVehicleId = null;
+
+    /**
+     * Calcula los kilómetros reales diarios y mensuales de cada vehículo
+     * basándose en los turnos cerrados por los choferes en la app (endOdometer - startOdometer)
+     */
+    function _calculateRealKmFromShifts(shifts, targetYearMonth) {
+        const ym = targetYearMonth || new Date().toISOString().substring(0, 7);
+        const todayStr = new Date().toISOString().substring(0, 10);
+        const vehicleStats = {};
+        let totalFleetMonthKm = 0;
+        let totalFleetTodayKm = 0;
+        let totalCompletedShifts = 0;
+
+        (shifts || []).forEach(s => {
+            if (!s || s.status !== 'completed') return;
+            const startOdo = parseFloat(s.startOdometer);
+            const endOdo = parseFloat(s.endOdometer);
+            if (isNaN(startOdo) || isNaN(endOdo)) return;
+
+            const diff = endOdo - startOdo;
+            if (diff <= 0 || diff > 2500) return; // Descartar anomalías o errores de tipeo
+
+            const dateRaw = s.endTime || s.startTime || s.date || s.createdAt;
+            if (!dateRaw) return;
+            const d = new Date(dateRaw);
+            if (isNaN(d.getTime())) return;
+
+            const dateStr = d.toISOString().substring(0, 10);
+            const shiftYm = dateStr.substring(0, 7);
+            const vId = s.vehicleId || 'unknown';
+
+            if (!vehicleStats[vId]) {
+                vehicleStats[vId] = {
+                    totalMonthKm: 0,
+                    totalTodayKm: 0,
+                    shiftCount: 0,
+                    dailyKm: {},
+                    shifts: []
+                };
+            }
+
+            if (shiftYm === ym) {
+                vehicleStats[vId].totalMonthKm += diff;
+                vehicleStats[vId].shiftCount++;
+                vehicleStats[vId].dailyKm[dateStr] = (vehicleStats[vId].dailyKm[dateStr] || 0) + diff;
+                vehicleStats[vId].shifts.push({
+                    shiftId: s.id,
+                    date: dateStr,
+                    dateTime: d,
+                    diffKm: diff,
+                    startOdometer: startOdo,
+                    endOdometer: endOdo,
+                    driverName: s.driverName || 'Chofer'
+                });
+                totalFleetMonthKm += diff;
+                totalCompletedShifts++;
+            }
+
+            if (dateStr === todayStr) {
+                vehicleStats[vId].totalTodayKm += diff;
+                totalFleetTodayKm += diff;
+            }
+        });
+
+        // Ordenar turnos de cada auto cronológicamente descendente
+        Object.values(vehicleStats).forEach(st => {
+            st.shifts.sort((a, b) => b.dateTime - a.dateTime);
+        });
+
+        return {
+            targetYearMonth: ym,
+            totalFleetMonthKm,
+            totalFleetTodayKm,
+            totalCompletedShifts,
+            vehicleStats
+        };
+    }
+
+    /**
+     * Obtiene la lista de meses disponibles con turnos en el historial
+     */
+    function _getAvailableMonths(shifts) {
+        const monthsSet = new Set();
+        const currentYm = new Date().toISOString().substring(0, 7);
+        monthsSet.add(currentYm);
+
+        (shifts || []).forEach(s => {
+            const dateRaw = s.endTime || s.startTime || s.date || s.createdAt;
+            if (dateRaw) {
+                const d = new Date(dateRaw);
+                if (!isNaN(d.getTime())) {
+                    monthsSet.add(d.toISOString().substring(0, 7));
+                }
+            }
+        });
+
+        return Array.from(monthsSet).sort().reverse();
+    }
+
 
     // Valores de referencia por defecto para la flota
     const DEFAULT_COSTS = {
@@ -169,8 +272,20 @@ const VehicleCostsModule = (() => {
      */
     async function render() {
         try {
-            const vehicles = (await DB.getAll('vehicles')) || [];
-            const globalSettings = (await DB.getSetting('fleet_cost_defaults')) || {};
+            const [vehicles, shifts, globalSettings] = await Promise.all([
+                DB.getAll('vehicles').catch(() => []),
+                DB.getAll('shifts').catch(() => []),
+                DB.getSetting('fleet_cost_defaults').catch(() => ({}))
+            ]);
+
+            _shiftsCache = shifts || [];
+            _realKmData = _calculateRealKmFromShifts(_shiftsCache, _selectedYearMonth);
+
+            // Meses disponibles y nombres
+            const availableMonths = _getAvailableMonths(_shiftsCache);
+            const [curYear, curMonth] = _selectedYearMonth.split('-');
+            const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const curMonthName = monthNames[parseInt(curMonth, 10) - 1] || _selectedYearMonth;
 
             // Aplicar configuraciones globales si existen
             if (globalSettings.gnc) Object.assign(DEFAULT_COSTS.gnc, globalSettings.gnc);
@@ -191,11 +306,28 @@ const VehicleCostsModule = (() => {
                 );
             }
 
-            // Calcular métricas de cada vehículo
-            const vehicleMetrics = vehicles.map(v => ({
-                vehicle: v,
-                metrics: calculateVehicleCostMetrics(v, _simulatedKm)
-            }));
+            // Calcular métricas de cada vehículo (usando km reales de turnos si el modo está activo)
+            const vehicleMetrics = vehicles.map(v => {
+                const realStats = (_realKmData && _realKmData.vehicleStats[v.id]) || {
+                    totalMonthKm: 0,
+                    totalTodayKm: 0,
+                    shiftCount: 0,
+                    dailyKm: {},
+                    shifts: []
+                };
+                const hasRealData = realStats.totalMonthKm > 0;
+                const kmToUse = (_useRealKm && hasRealData) ? realStats.totalMonthKm : _simulatedKm;
+                const metrics = calculateVehicleCostMetrics(v, kmToUse);
+
+                return {
+                    vehicle: v,
+                    realStats,
+                    hasRealData,
+                    metrics,
+                    effectiveKm: kmToUse,
+                    isRealKm: _useRealKm && hasRealData
+                };
+            });
 
             // Calcular KPIs de la flota
             let totalCostoKm = 0;
@@ -219,12 +351,16 @@ const VehicleCostsModule = (() => {
             const avgCostoKm = vehicleMetrics.length > 0 ? (totalCostoKm / vehicleMetrics.length) : 0;
 
             // Ahorro teórico de flota comparando el promedio con Nafta pura
+            const kmBaseReferencia = _useRealKm && _realKmData.totalFleetMonthKm > 0 
+                ? (_realKmData.totalFleetMonthKm / (vehicles.length || 1)) 
+                : _simulatedKm;
+
             const naftaRefCost = (DEFAULT_COSTS.nafta.combustibleKm + 
                                  (DEFAULT_COSTS.nafta.neumaticos / 60000) + 
                                  (DEFAULT_COSTS.nafta.aceite / 10000) + 
-                                 (DEFAULT_COSTS.nafta.seguro / _simulatedKm));
+                                 (DEFAULT_COSTS.nafta.seguro / kmBaseReferencia));
             const ahorroXKmVsNafta = Math.max(0, naftaRefCost - avgCostoKm);
-            const ahorroMensualFlota = ahorroXKmVsNafta * _simulatedKm * (vehicleMetrics.length || 1);
+            const ahorroMensualFlota = ahorroXKmVsNafta * kmBaseReferencia * (vehicleMetrics.length || 1);
 
             return `
                 <div class="vehicle-costs-container" style="animation: fadeIn 0.4s ease-out; padding-bottom: 60px;">
@@ -239,7 +375,7 @@ const VehicleCostsModule = (() => {
                     </div>
 
                     <!-- Header -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
                         <div>
                             <h2 style="font-size:var(--font-size-2xl); font-weight:800; margin:0; color:var(--text-primary); display:flex; align-items:center; gap:10px;">
                                 <span>📊 Balance de Costos Fijos por Km</span>
@@ -264,6 +400,25 @@ const VehicleCostsModule = (() => {
                         </div>
                     </div>
 
+                    <!-- Banner de Integración con WhatsApp Bot -->
+                    <div class="card" style="background:linear-gradient(135deg, rgba(37, 211, 102, 0.12), rgba(18, 140, 126, 0.05)); border:1px solid rgba(37, 211, 102, 0.35); border-radius:16px; padding:16px 20px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;">
+                        <div style="display:flex; align-items:center; gap:14px;">
+                            <div style="font-size:2rem; background:rgba(37, 211, 102, 0.2); width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center;">🤖</div>
+                            <div>
+                                <div style="font-weight:800; font-size:0.98rem; color:#25D366; display:flex; align-items:center; gap:8px;">
+                                    <span>Bot de WhatsApp: Lectura Automática de Odómetros</span>
+                                    <span class="badge" style="background:rgba(37,211,102,0.25); color:#25D366; font-size:11px; padding:2px 8px; border-radius:8px;">Activo</span>
+                                </div>
+                                <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:2px;">
+                                    Los choferes ingresan el odómetro al iniciar y cerrar turno en la app. El bot y este módulo calculan los km exactos día x día. Escribile <code>!km</code>, <code>!km hoy</code> o <code>!km [patente]</code> (ej: <code>!km PNJ898</code>).
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm" onclick="VehicleCostsModule.showBotKmCommandsModal()" style="background:#25D366; color:#0b2e13; font-weight:800; border-radius:12px; padding:8px 14px; font-size:12px; display:flex; align-items:center; gap:6px;">
+                            📲 Ver Comandos WhatsApp
+                        </button>
+                    </div>
+
                     <!-- KPI Cards Summary -->
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">
                         <!-- Costo Promedio Flota -->
@@ -276,7 +431,9 @@ const VehicleCostsModule = (() => {
                                 $${avgCostoKm.toFixed(2)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ km</span>
                             </div>
                             <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                Basado en ${_formatNumber(_simulatedKm)} km/mes por vehículo
+                                ${_useRealKm && _realKmData.totalFleetMonthKm > 0 
+                                    ? `Basado en turnos reales (${_formatNumber(_realKmData.totalFleetMonthKm)} km en ${curMonthName})`
+                                    : `Basado en ${_formatNumber(_simulatedKm)} km/mes por vehículo`}
                             </div>
                         </div>
 
@@ -294,100 +451,115 @@ const VehicleCostsModule = (() => {
                             </div>
                         </div>
 
-                        <!-- Ahorro Mensual Estimado vs Nafta -->
+                        <!-- Kilometraje Real o Ahorro Estimado -->
                         <div class="card" style="background:linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(37, 99, 235, 0.04)); border:1px solid rgba(59, 130, 246, 0.35); border-radius:16px; padding:18px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">Ahorro Flota vs Nafta</span>
-                                <span style="font-size:1.4rem;">💡</span>
+                                <span style="font-size:0.85rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
+                                    ${_useRealKm ? 'Km Reales de la Flota' : 'Ahorro Flota vs Nafta'}
+                                </span>
+                                <span style="font-size:1.4rem;">${_useRealKm ? '📍' : '💡'}</span>
                             </div>
                             <div style="font-size:2rem; font-weight:900; color:#60a5fa; font-family:monospace;">
-                                $${_formatNumber(Math.round(ahorroMensualFlota))} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ mes</span>
+                                ${_useRealKm 
+                                    ? `${_formatNumber(_realKmData.totalFleetMonthKm)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">km</span>` 
+                                    : `$${_formatNumber(Math.round(ahorroMensualFlota))} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ mes</span>`}
                             </div>
                             <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                Gracias al uso de GNC, Híbridos y Eléctricos
+                                ${_useRealKm 
+                                    ? `${curMonthName} ${curYear} • ${_realKmData.totalCompletedShifts} turnos registrados` 
+                                    : 'Gracias al uso de GNC, Híbridos y Eléctricos'}
                             </div>
                         </div>
 
-                        <!-- Gasto Operativo Mensual Proyectado -->
+                        <!-- Gasto Operativo Mensual Proyectado / Real -->
                         <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:18px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Gasto Mensual Flota</span>
+                                <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">
+                                    ${_useRealKm ? 'Gasto Operativo Mes' : 'Gasto Mensual Proyectado'}
+                                </span>
                                 <span style="font-size:1.4rem;">💼</span>
                             </div>
                             <div style="font-size:2rem; font-weight:900; color:var(--text-primary); font-family:monospace;">
                                 $${_formatNumber(Math.round(totalCostoMensual))}
                             </div>
                             <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                Costo total operativo proyectado al mes
+                                ${_useRealKm ? `Costo integral consumido en ${curMonthName}` : 'Costo total operativo proyectado al mes'}
                             </div>
                         </div>
                     </div>
 
-                    <!-- Panel de Control Interactivo: Simulador de KM y Filtros -->
+                    <!-- Panel de Control Interactivo: Modo de Cálculo, Mes & Filtros -->
                     <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:20px; margin-bottom:24px; box-shadow:var(--shadow-md);">
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:16px;">
                             <div>
-                                <h3 style="margin:0; font-size:1.1rem; font-weight:800; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
-                                    <span>🎚️ Simulador de Kilómetros Mensuales</span>
-                                    <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">(Impacto del seguro y costos fijos)</span>
+                                <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                                    <span>${_useRealKm ? '🟢 Kilómetros Reales por Auto (Turnos App)' : '🎚️ Simulador Manual de Kilómetros'}</span>
+                                    <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">${_useRealKm ? `(${curMonthName} ${curYear})` : '(Impacto del seguro y costos fijos)'}</span>
                                 </h3>
                                 <p style="margin:4px 0 0 0; font-size:0.82rem; color:var(--text-secondary);">
-                                    A mayor kilometraje recorrido en el mes, el costo del seguro y la patente se diluyen, bajando el costo por kilómetro.
+                                    ${_useRealKm 
+                                        ? 'Calculando el balance y amortización de seguros y services con los kilómetros exactos ingresados por cada chofer al cerrar turno en la app.' 
+                                        : 'Simulá un kilometraje mensual hipotético para estimar costos antes de comprar o cambiar de vehículo.'}
                                 </p>
                             </div>
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <span style="font-size:1.4rem; font-weight:900; color:#38bdf8; font-family:monospace;" id="simulatedKmDisplay">
-                                    ${_formatNumber(_simulatedKm)} km / mes
-                                </span>
+                            
+                            <!-- Mode Pill Switcher -->
+                            <div style="display:flex; background:var(--bg-tertiary); padding:4px; border-radius:14px; border:1px solid var(--border-color); gap:4px;">
+                                <button class="btn btn-sm" onclick="VehicleCostsModule.setMode(true)" style="font-size:12px; font-weight:800; border-radius:10px; padding:6px 14px; display:flex; align-items:center; gap:6px; ${_useRealKm ? 'background:#10b981; color:#fff; border-color:#10b981;' : 'background:transparent; color:var(--text-secondary);'}">
+                                    <span>🟢 Km Reales de Turnos</span>
+                                </button>
+                                <button class="btn btn-sm" onclick="VehicleCostsModule.setMode(false)" style="font-size:12px; font-weight:800; border-radius:10px; padding:6px 14px; display:flex; align-items:center; gap:6px; ${!_useRealKm ? 'background:var(--color-primary); color:#fff;' : 'background:transparent; color:var(--text-secondary);'}">
+                                    <span>🎚️ Simulación Manual</span>
+                                </button>
                             </div>
                         </div>
 
-                        <!-- Slider -->
-                        <div style="display:flex; align-items:center; gap:16px; margin-bottom:14px;">
-                            <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:700;">1.000 km</span>
-                            <input type="range" id="kmSlider" min="1000" max="15000" step="500" value="${_simulatedKm}" 
-                                oninput="VehicleCostsModule.onKmSliderInput(this.value)" 
-                                onchange="VehicleCostsModule.onKmSliderChange(this.value)"
-                                style="flex:1; cursor:pointer; accent-color:#38bdf8; height:8px; border-radius:4px;">
-                            <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:700;">15.000 km</span>
-                        </div>
-
-                        <!-- Botones Rápidos de Km & Filtros de Motorización -->
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                            <!-- Botones rápidos de km -->
-                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 3000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(3000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    3.000 km/m
-                                </button>
-                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 5000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(5000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    5.000 km/m
-                                </button>
-                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 7500 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(7500)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    7.500 km/m
-                                </button>
-                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 10000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(10000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    10.000 km/m
-                                </button>
+                        ${_useRealKm ? `
+                            <!-- Selector de Mes y Estadísticas de Flota en el Mes -->
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:12px; padding:12px 16px;">
+                                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                    <span style="font-size:13px; font-weight:700; color:var(--text-secondary);">📅 Mes a Analizar:</span>
+                                    <select class="form-select" onchange="VehicleCostsModule.setSelectedMonth(this.value)" style="padding:6px 12px; font-size:13px; font-weight:700; border-radius:10px; width:auto; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border-color);">
+                                        ${availableMonths.map(ym => {
+                                            const [y, m] = ym.split('-');
+                                            const mName = monthNames[parseInt(m, 10) - 1] || ym;
+                                            return `<option value="${ym}" ${ym === _selectedYearMonth ? 'selected' : ''}>${mName} ${y}</option>`;
+                                        }).join('')}
+                                    </select>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; font-size:13px;">
+                                    <span style="color:var(--text-secondary);">Turnos procesados: <strong style="color:var(--text-primary); font-family:monospace;">${_realKmData.totalCompletedShifts}</strong></span>
+                                    <span style="color:var(--text-secondary);">Km totales flota: <strong style="color:#10b981; font-family:monospace; font-size:1.1rem;">${_formatNumber(_realKmData.totalFleetMonthKm)} km</strong></span>
+                                    ${_realKmData.totalFleetTodayKm > 0 ? `<span style="background:rgba(56, 189, 248, 0.15); color:#38bdf8; padding:3px 10px; border-radius:8px; font-weight:800; font-size:12px;">Hoy: ${_formatNumber(_realKmData.totalFleetTodayKm)} km</span>` : ''}
+                                </div>
+                            </div>
+                        ` : `
+                            <!-- Slider para modo manual -->
+                            <div style="display:flex; align-items:center; gap:16px; margin-bottom:14px;">
+                                <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:700;">1.000 km</span>
+                                <input type="range" id="kmSlider" min="1000" max="15000" step="500" value="${_simulatedKm}" 
+                                    oninput="VehicleCostsModule.onKmSliderInput(this.value)" 
+                                    onchange="VehicleCostsModule.onKmSliderChange(this.value)"
+                                    style="flex:1; cursor:pointer; accent-color:#38bdf8; height:8px; border-radius:4px;">
+                                <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:700;">15.000 km</span>
                             </div>
 
-                            <!-- Filtro de tipo de motor -->
+                            <!-- Botones Rápidos de Km -->
                             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                <button class="btn btn-sm ${_selectedFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('all')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    Todos (${vehicles.length})
-                                </button>
-                                <button class="btn btn-sm ${_selectedFilter === 'gnc' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('gnc')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    ⛽ GNC
-                                </button>
-                                <button class="btn btn-sm ${_selectedFilter === 'electric' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('electric')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    ⚡ Eléctricos 100%
-                                </button>
-                                <button class="btn btn-sm ${_selectedFilter === 'hybrid' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('hybrid')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    🔋 Híbridos
-                                </button>
-                                <button class="btn btn-sm ${_selectedFilter === 'nafta' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('nafta')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">
-                                    🛢️ Nafta
-                                </button>
+                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 3000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(3000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">3.000 km/m</button>
+                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 5000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(5000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">5.000 km/m</button>
+                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 7500 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(7500)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">7.500 km/m</button>
+                                <button class="btn btn-sm ${Math.round(_simulatedKm) === 10000 ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setSimulatedKm(10000)" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">10.000 km/m</button>
                             </div>
+                        `}
+
+                        <!-- Filtro de tipo de motor -->
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:14px; border-top:1px solid var(--border-color); padding-top:14px;">
+                            <button class="btn btn-sm ${_selectedFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('all')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">Todos (${vehicles.length})</button>
+                            <button class="btn btn-sm ${_selectedFilter === 'gnc' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('gnc')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">⛽ GNC</button>
+                            <button class="btn btn-sm ${_selectedFilter === 'electric' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('electric')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">⚡ Eléctricos 100%</button>
+                            <button class="btn btn-sm ${_selectedFilter === 'hybrid' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('hybrid')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">🔋 Híbridos</button>
+                            <button class="btn btn-sm ${_selectedFilter === 'nafta' ? 'btn-primary' : 'btn-secondary'}" onclick="VehicleCostsModule.setFilter('nafta')" style="font-size:12px; font-weight:700; border-radius:12px; padding:4px 10px;">🛢️ Nafta</button>
                         </div>
                     </div>
 
@@ -406,7 +578,10 @@ const VehicleCostsModule = (() => {
 
                         ${filteredVehicles.length > 0 ? `
                             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:20px;">
-                                ${filteredVehicles.map(v => _renderVehicleCostCard(v)).join('')}
+                                ${filteredVehicles.map(v => {
+                                    const vItem = vehicleMetrics.find(vm => vm.vehicle.id === v.id);
+                                    return _renderVehicleCostCard(vItem || v);
+                                }).join('')}
                             </div>
                         ` : Components.renderEmptyState(
                             '🚗',
@@ -415,6 +590,7 @@ const VehicleCostsModule = (() => {
                             `<button class="btn btn-primary" onclick="VehiclesModule.showForm()">➕ Agregar Vehículo</button>`
                         )}
                     </div>
+
 
                     <!-- Tabla Comparativa Global de la Flota -->
                     ${vehicles.length > 0 ? `
@@ -592,9 +768,20 @@ const VehicleCostsModule = (() => {
     /**
      * Renderiza la tarjeta detallada de un vehículo
      */
-    function _renderVehicleCostCard(vehicle) {
-        const m = calculateVehicleCostMetrics(vehicle, _simulatedKm);
-        const v = vehicle;
+    function _renderVehicleCostCard(itemOrVehicle) {
+        const v = itemOrVehicle.vehicle || itemOrVehicle;
+        const realStats = itemOrVehicle.realStats || (_realKmData && _realKmData.vehicleStats[v.id]) || {
+            totalMonthKm: 0,
+            totalTodayKm: 0,
+            shiftCount: 0,
+            dailyKm: {},
+            shifts: []
+        };
+        const hasRealData = realStats.totalMonthKm > 0;
+        const isRealKm = itemOrVehicle.isRealKm !== undefined 
+            ? itemOrVehicle.isRealKm 
+            : (_useRealKm && hasRealData);
+        const m = itemOrVehicle.metrics || calculateVehicleCostMetrics(v, isRealKm ? realStats.totalMonthKm : _simulatedKm);
 
         return `
             <div class="card vehicle-cost-card" id="vCostCard_${v.id}" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:18px; padding:20px; display:flex; flex-direction:column; justify-content:space-between; gap:16px; box-shadow:var(--shadow-sm); position:relative; overflow:hidden;">
@@ -617,6 +804,29 @@ const VehicleCostsModule = (() => {
                             ${m.defaults.badge}
                         </span>
                     </div>
+
+                    <!-- Badge de Kilometraje Real vs Simulado -->
+                    ${isRealKm ? `
+                        <div style="background:rgba(16, 185, 129, 0.12); border:1px solid rgba(16, 185, 129, 0.35); border-radius:12px; padding:10px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <div>
+                                <div style="font-size:12px; font-weight:800; color:#10b981; display:flex; align-items:center; gap:6px;">
+                                    <span>📍 ${_formatNumber(realStats.totalMonthKm)} km reales</span>
+                                    <span style="font-size:10px; font-weight:700; color:var(--text-secondary); background:rgba(0,0,0,0.2); padding:1px 6px; border-radius:6px;">${realStats.shiftCount} turnos</span>
+                                </div>
+                                <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+                                    ${realStats.totalTodayKm > 0 ? `Hoy: <strong style="color:#38bdf8;">${_formatNumber(realStats.totalTodayKm)} km</strong> • ` : ''}Promedio: <strong>~${Math.round(realStats.totalMonthKm / Math.max(1, Object.keys(realStats.dailyKm).length))} km/día</strong>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-secondary" onclick="VehicleCostsModule.showDailyKmModal('${v.id}')" style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:10px; border:1px solid rgba(16, 185, 129, 0.4); color:#10b981; background:rgba(16, 185, 129, 0.15); display:flex; align-items:center; gap:4px; white-space:nowrap;">
+                                <span>📅 Ver Días</span>
+                            </button>
+                        </div>
+                    ` : `
+                        <div style="background:rgba(234, 179, 8, 0.08); border:1px solid rgba(234, 179, 8, 0.25); border-radius:12px; padding:8px 12px; margin-bottom:12px; font-size:11px; color:#eab308; display:flex; justify-content:space-between; align-items:center;">
+                            <span>${_useRealKm ? '⚠️ Sin turnos en el mes (base simulada)' : '🎚️ Base simulada'}</span>
+                            <span style="font-family:monospace; font-weight:700;">${_formatNumber(m.kmBase)} km/m</span>
+                        </div>
+                    `}
 
                     <!-- Gran Métrica de Costo por Km -->
                     <div style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8)); border:1px solid var(--border-color); border-radius:14px; padding:14px; margin-bottom:14px; text-align:center;">
@@ -706,6 +916,11 @@ const VehicleCostsModule = (() => {
                     <button class="btn btn-sm btn-primary" onclick="VehicleCostsModule.showEditCostsModal('${v.id}')" style="flex:1; font-weight:700; font-size:12px; justify-content:center;">
                         ✏️ Ajustar Costos
                     </button>
+                    ${hasRealData ? `
+                        <button class="btn btn-sm btn-secondary" onclick="VehicleCostsModule.showDailyKmModal('${v.id}')" style="font-weight:700; font-size:12px; justify-content:center; border:1px solid rgba(16, 185, 129, 0.4); color:#10b981;" title="Ver registro día por día">
+                            📅 Días (${realStats.shiftCount})
+                        </button>
+                    ` : ''}
                     <button class="btn btn-sm btn-secondary" onclick="VehicleCostsModule.showMotorComparisonModal('${v.id}')" style="font-weight:700; font-size:12px; justify-content:center;" title="Comparar con otros motores">
                         ⚖️ Comparar
                     </button>
@@ -713,6 +928,7 @@ const VehicleCostsModule = (() => {
             </div>
         `;
     }
+
 
     /**
      * Modal para editar los costos específicos de un vehículo
@@ -1137,6 +1353,235 @@ const VehicleCostsModule = (() => {
         Components.showToast('✅ Archivo CSV descargado con éxito', 'success');
     }
 
+    /**
+     * Muestra el modal con el desglose día por día de kilómetros del auto
+     */
+    async function showDailyKmModal(vehicleId) {
+        const vehicle = await DB.get('vehicles', vehicleId);
+        if (!vehicle) {
+            Components.showToast('No se encontró el vehículo', 'warning');
+            return;
+        }
+
+        const realStats = (_realKmData && _realKmData.vehicleStats[vehicleId]) || {
+            totalMonthKm: 0,
+            totalTodayKm: 0,
+            shiftCount: 0,
+            dailyKm: {},
+            shifts: []
+        };
+
+        const m = calculateVehicleCostMetrics(vehicle, realStats.totalMonthKm > 0 ? realStats.totalMonthKm : _simulatedKm);
+        const [year, month] = _selectedYearMonth.split('-');
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const monthName = monthNames[parseInt(month, 10) - 1] || _selectedYearMonth;
+
+        const dailyEntries = Object.entries(realStats.dailyKm || {}).sort((a, b) => b[0].localeCompare(a[0]));
+        const totalGastoMes = realStats.totalMonthKm * m.costoTotalKm;
+        const avgKmDia = dailyEntries.length > 0 ? Math.round(realStats.totalMonthKm / dailyEntries.length) : 0;
+
+        let content = `
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                <!-- Header Resumen Auto -->
+                <div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:14px; padding:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                            <span>${vehicle.name || 'Vehículo'}</span>
+                            <span style="font-family:monospace; font-size:12px; background:var(--bg-secondary); padding:2px 8px; border-radius:6px; border:1px solid var(--border-color);">${vehicle.plate || 'Sin patente'}</span>
+                        </h3>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
+                            ${m.defaults.badge} • Costo operativo real: <strong style="color:#38bdf8;">$${m.costoTotalKm.toFixed(2)}/km</strong>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-secondary); font-weight:700;">Mes Consultado</div>
+                        <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">${monthName} ${year}</div>
+                    </div>
+                </div>
+
+                <!-- Mini KPIs del Auto en el Mes -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+                    <div style="background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:12px; padding:12px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); font-weight:700; text-transform:uppercase;">Km Recorridos</div>
+                        <div style="font-size:1.5rem; font-weight:900; color:#10b981; font-family:monospace; margin-top:2px;">
+                            ${_formatNumber(realStats.totalMonthKm)}
+                        </div>
+                        <div style="font-size:10px; color:var(--text-secondary);">${realStats.shiftCount} turnos cargados</div>
+                    </div>
+
+                    <div style="background:rgba(56, 189, 248, 0.1); border:1px solid rgba(56, 189, 248, 0.3); border-radius:12px; padding:12px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); font-weight:700; text-transform:uppercase;">Promedio Diario</div>
+                        <div style="font-size:1.5rem; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
+                            ~${avgKmDia}
+                        </div>
+                        <div style="font-size:10px; color:var(--text-secondary);">en ${dailyEntries.length} días activos</div>
+                    </div>
+
+                    <div style="background:rgba(168, 85, 247, 0.1); border:1px solid rgba(168, 85, 247, 0.3); border-radius:12px; padding:12px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); font-weight:700; text-transform:uppercase;">Gasto Operativo Mes</div>
+                        <div style="font-size:1.5rem; font-weight:900; color:#a855f7; font-family:monospace; margin-top:2px;">
+                            $${_formatNumber(Math.round(totalGastoMes))}
+                        </div>
+                        <div style="font-size:10px; color:var(--text-secondary);">($${m.costoTotalKm.toFixed(2)} x km)</div>
+                    </div>
+                </div>
+
+                <!-- Tabla Día por Día -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">
+                    <div style="padding:12px 16px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                        <h4 style="margin:0; font-size:13px; font-weight:800; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.5px;">
+                            🗓️ Detalle de Kilómetros por Día
+                        </h4>
+                        <span style="font-size:11px; color:var(--text-secondary);">${dailyEntries.length} fechas registradas</span>
+                    </div>
+
+                    <div style="max-height:320px; overflow-y:auto;">
+                        ${dailyEntries.length === 0 ? `
+                            <div style="padding:32px; text-align:center; color:var(--text-secondary); font-size:13px;">
+                                No hay turnos con kilometraje cerrado para este auto en ${monthName} ${year}.
+                            </div>
+                        ` : `
+                            <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+                                <thead>
+                                    <tr style="background:var(--bg-tertiary); color:var(--text-secondary); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-color);">
+                                        <th style="padding:8px 12px;">Fecha</th>
+                                        <th style="padding:8px 12px; text-align:right;">Km del Día</th>
+                                        <th style="padding:8px 12px; text-align:right;">Gasto Estimado</th>
+                                        <th style="padding:8px 12px;">Detalle Turnos / Choferes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${dailyEntries.map(([dateStr, km]) => {
+                                        const dayShifts = realStats.shifts.filter(s => s.date === dateStr);
+                                        const dayCost = km * m.costoTotalKm;
+                                        const [y, mo, d] = dateStr.split('-');
+                                        return `
+                                            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                                                <td style="padding:10px 12px; font-weight:700; color:var(--text-primary);">
+                                                    📅 ${d}/${mo}/${y}
+                                                </td>
+                                                <td style="padding:10px 12px; text-align:right; font-family:monospace; font-weight:800; color:#10b981; font-size:14px;">
+                                                    ${_formatNumber(km)} km
+                                                </td>
+                                                <td style="padding:10px 12px; text-align:right; font-family:monospace; font-weight:700; color:var(--text-secondary);">
+                                                    $${_formatNumber(Math.round(dayCost))}
+                                                </td>
+                                                <td style="padding:10px 12px; font-size:11px; color:var(--text-secondary);">
+                                                    ${dayShifts.map(s => `
+                                                        <div>
+                                                            👤 <strong>${s.driverName}</strong>: ${s.diffKm} km
+                                                            <span style="opacity:0.7;">(${_formatNumber(s.startOdometer)} → ${_formatNumber(s.endOdometer)})</span>
+                                                        </div>
+                                                    `).join('')}
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        `}
+                    </div>
+                </div>
+
+                <!-- WhatsApp Command Tip -->
+                <div style="background:rgba(37, 211, 102, 0.08); border:1px solid rgba(37, 211, 102, 0.25); border-radius:12px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <div style="font-size:12px; color:var(--text-secondary);">
+                        💡 Podés ver este mismo informe en WhatsApp escribiéndole al bot: <code style="color:#25D366; font-weight:700;">!km ${vehicle.plate || vehicle.name}</code>
+                    </div>
+                    <button class="btn btn-xs" style="background:#25D366; color:#000; font-weight:800; padding:4px 10px; border-radius:8px;" onclick="VehicleCostsModule.copyToClipboard('!km ${vehicle.plate || vehicle.name}')">
+                        📋 Copiar Comando
+                    </button>
+                </div>
+            </div>
+        `;
+
+        Components.showModal(
+            `📊 Historial Diario de Kilómetros: ${vehicle.name || 'Vehículo'}`,
+            content,
+            `<button class="btn btn-secondary" onclick="Components.closeModal()">Cerrar</button>`
+        );
+    }
+
+    /**
+     * Modal con ayuda de los comandos de WhatsApp para kilometraje
+     */
+    function showBotKmCommandsModal() {
+        Components.showModal(
+            '🤖 Comandos de Kilometraje en WhatsApp',
+            `
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                    <p style="margin:0; font-size:13px; color:var(--text-secondary);">
+                        El bot de WhatsApp lee automáticamente los odómetros ingresados por los choferes al iniciar y cerrar turno en la app. Podés escribirle cualquiera de estos comandos desde tu WhatsApp:
+                    </p>
+
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <!-- Comando !km -->
+                        <div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="background:rgba(37,211,102,0.2); color:#25D366; font-family:monospace; font-weight:800; padding:3px 8px; border-radius:6px; font-size:14px;">!km</span>
+                                    <span style="font-size:13px; font-weight:700; color:var(--text-primary);">Resumen Mensual de la Flota</span>
+                                </div>
+                                <button class="btn btn-xs btn-secondary" onclick="VehicleCostsModule.copyToClipboard('!km')" style="font-size:11px;">📋 Copiar</button>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-secondary);">
+                                Muestra todos los autos con sus km recorridos en el mes actual, cantidad de turnos completados, promedio diario y gasto operativo estimado por km.
+                            </div>
+                        </div>
+
+                        <!-- Comando !km hoy -->
+                        <div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="background:rgba(56,189,248,0.2); color:#38bdf8; font-family:monospace; font-weight:800; padding:3px 8px; border-radius:6px; font-size:14px;">!km hoy</span>
+                                    <span style="font-size:13px; font-weight:700; color:var(--text-primary);">Kilómetros de Hoy</span>
+                                </div>
+                                <button class="btn btn-xs btn-secondary" onclick="VehicleCostsModule.copyToClipboard('!km hoy')" style="font-size:11px;">📋 Copiar</button>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-secondary);">
+                                Muestra los kilómetros que rodó cada vehículo hoy y los turnos cerrados en la jornada.
+                            </div>
+                        </div>
+
+                        <!-- Comando !km [patente] -->
+                        <div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="background:rgba(168,85,247,0.2); color:#a855f7; font-family:monospace; font-weight:800; padding:3px 8px; border-radius:6px; font-size:14px;">!km [patente]</span>
+                                    <span style="font-size:13px; font-weight:700; color:var(--text-primary);">Detalle Día por Día de un Auto</span>
+                                </div>
+                                <button class="btn btn-xs btn-secondary" onclick="VehicleCostsModule.copyToClipboard('!km PNJ898')" style="font-size:11px;">📋 Copiar ej.</button>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-secondary);">
+                                Ejemplo: <code>!km PNJ898</code> o <code>!km Cobalt</code>. Devuelve el historial fecha por fecha de cuántos km hizo ese auto cada día y el último chofer que lo manejó.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            `<button class="btn btn-secondary" onclick="Components.closeModal()">Entendido</button>`
+        );
+    }
+
+    function copyToClipboard(text) {
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text);
+            Components.showToast(`✅ Copiado al portapapeles: "${text}"`, 'success');
+        } else {
+            Components.showToast(`Comando: ${text}`, 'info');
+        }
+    }
+
+    function setMode(useReal) {
+        _useRealKm = !!useReal;
+        Router.navigate('vehicle-costs');
+    }
+
+    function setSelectedMonth(ym) {
+        _selectedYearMonth = ym;
+        Router.navigate('vehicle-costs');
+    }
+
     // Helper de formato de números con separador de miles
     function _formatNumber(num) {
         if (num === null || num === undefined || isNaN(num)) return '0';
@@ -1158,8 +1603,14 @@ const VehicleCostsModule = (() => {
         setFilter,
         onSearchInput,
         selectVehicle,
-        exportComparisonCSV
+        exportComparisonCSV,
+        showDailyKmModal,
+        showBotKmCommandsModal,
+        copyToClipboard,
+        setMode,
+        setSelectedMonth
     };
 })();
 
 window.VehicleCostsModule = VehicleCostsModule;
+

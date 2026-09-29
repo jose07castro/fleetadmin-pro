@@ -186,6 +186,23 @@ app.get('/api/bot/fleet-id', async (req, res) => {
     }
 });
 
+// Obtener estadísticas exactas de kilómetros de cada auto calculadas desde los turnos de la app
+app.get('/api/fleet/km-stats', async (req, res) => {
+    try {
+        const fleetId = req.query.fleetId || (typeof WhatsappBot.getFleetId === 'function' ? await WhatsappBot.getFleetId() : '-OnPd8HaV1VZWBnYQQX7');
+        const yearMonth = req.query.month || new Date().toISOString().substring(0, 7);
+        if (typeof WhatsappBot.getVehicleKmStats === 'function') {
+            const stats = await WhatsappBot.getVehicleKmStats(fleetId, yearMonth);
+            res.json({ ok: true, stats });
+        } else {
+            res.status(500).json({ ok: false, error: 'WhatsappBot.getVehicleKmStats no está disponible' });
+        }
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+
 
 // List Gemini Models
 app.get('/api/bot/list-models', async (req, res) => {

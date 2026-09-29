@@ -1087,6 +1087,295 @@ const WhatsappBot = (() => {
         }
     }
 
+    function _formatNumber(num) {
+        if (num === null || num === undefined || isNaN(num)) return '0';
+        return Number(num).toLocaleString('es-AR');
+    }
+
+    let _shiftListenerFleetId = null;
+    function _setupShiftKmListener(fleetId) {
+        if (!db || !fleetId || _shiftListenerFleetId === fleetId) return;
+        _shiftListenerFleetId = fleetId;
+
+        const shiftsRef = db.ref(`fleets/${fleetId}/shifts`);
+        console.log(`📡 [KM-LISTENER] Escuchando turnos de la flota ${fleetId} para cálculo de km diarios y mensuales...`);
+
+        shiftsRef.on('child_changed', async (snap) => {
+            const shift = snap.val();
+            if (!shift || shift.status !== 'completed' || !shift.endOdometer || !shift.startOdometer) return;
+
+            const diff = parseFloat(shift.endOdometer) - parseFloat(shift.startOdometer);
+            if (isNaN(diff) || diff <= 0 || diff > 2000) return;
+
+            console.log(`🚗 [SHIFT-CLOSED] Turno cerrado en app (${shift.id}). Vehículo: ${shift.vehicleId}, Chofer: ${shift.driverName}, Km: ${diff}`);
+            
+            const now = new Date();
+            const ym = (shift.endTime || shift.startTime || now.toISOString()).substring(0, 7);
+            await _getVehicleKmStats(fleetId, ym);
+        });
+    }
+
+    /**
+     * Calcula los kilómetros diarios y mensuales de cada vehículo a partir de los turnos (shifts)
+     * ingresados por los choferes en la aplicación.
+     */
+    async function _getVehicleKmStats(targetFleetId = null, targetYearMonth = null) {
+        const fleetId = targetFleetId || await _resolveFleetId();
+        if (!db || !fleetId) return null;
+
+        const now = new Date();
+        const currentYearMonth = targetYearMonth || now.toISOString().substring(0, 7); // '2026-09'
+        const todayStr = now.toISOString().substring(0, 10); // '2026-09-29'
+
+        try {
+            const [vehSnap, shiftsSnap] = await Promise.all([
+                db.ref(`fleets/${fleetId}/vehicles`).once('value'),
+                db.ref(`fleets/${fleetId}/shifts`).once('value')
+            ]);
+
+            const vehicles = vehSnap.val() || {};
+            const shifts = shiftsSnap.val() || {};
+
+            const stats = {};
+            for (const [vId, v] of Object.entries(vehicles)) {
+                stats[vId] = {
+                    id: vId,
+                    name: v.name || 'Vehículo',
+                    plate: (v.plate || '').toUpperCase(),
+                    year: v.year || null,
+                    motorType: (v.motorType || 'gnc').toLowerCase(),
+                    costoCombustibleKm: parseFloat(v.costoCombustibleKm) || 48,
+                    costoNeumaticos: parseFloat(v.costoNeumaticos) || 540000,
+                    costoCambioAceite: v.motorType === 'electric' ? 0 : (parseFloat(v.costoCambioAceite) || 85000),
+                    costoSeguroMensual: parseFloat(v.costoSeguroMensual) || 70000,
+                    currentOdometer: v.currentOdometer || 0,
+                    todayKm: 0,
+                    todayShiftsCount: 0,
+                    monthKm: 0,
+                    monthShiftsCount: 0,
+                    allTimeKm: 0,
+                    allTimeShiftsCount: 0,
+                    dailyKm: {},
+                    driversThisMonth: new Set(),
+                    lastShift: null
+                };
+            }
+
+            for (const [sId, s] of Object.entries(shifts)) {
+                if (!s || s.status !== 'completed') continue;
+                const startOdo = parseFloat(s.startOdometer);
+                const endOdo = parseFloat(s.endOdometer);
+                if (isNaN(startOdo) || isNaN(endOdo) || endOdo <= startOdo) continue;
+
+                const diffKm = endOdo - startOdo;
+                if (diffKm <= 0 || diffKm > 2000) continue;
+
+                const vId = s.vehicleId;
+                if (!stats[vId]) {
+                    stats[vId] = {
+                        id: vId,
+                        name: 'Vehículo ' + (vId.substring(0, 6)),
+                        plate: '',
+                        motorType: 'gnc',
+                        costoCombustibleKm: 48,
+                        costoNeumaticos: 540000,
+                        costoCambioAceite: 85000,
+                        costoSeguroMensual: 70000,
+                        todayKm: 0,
+                        todayShiftsCount: 0,
+                        monthKm: 0,
+                        monthShiftsCount: 0,
+                        allTimeKm: 0,
+                        allTimeShiftsCount: 0,
+                        dailyKm: {},
+                        driversThisMonth: new Set(),
+                        lastShift: null
+                    };
+                }
+
+                const item = stats[vId];
+                item.allTimeKm += diffKm;
+                item.allTimeShiftsCount++;
+
+                const dateObj = new Date(s.endTime || s.startTime || Date.now());
+                const ym = dateObj.toISOString().substring(0, 7);
+                const ymd = dateObj.toISOString().substring(0, 10);
+
+                if (ym === currentYearMonth) {
+                    item.monthKm += diffKm;
+                    item.monthShiftsCount++;
+                    item.dailyKm[ymd] = (item.dailyKm[ymd] || 0) + diffKm;
+                    if (s.driverName) item.driversThisMonth.add(s.driverName);
+                }
+
+                if (ymd === todayStr) {
+                    item.todayKm += diffKm;
+                    item.todayShiftsCount++;
+                }
+
+                if (!item.lastShift || new Date(s.endTime || s.startTime) > new Date(item.lastShift.date)) {
+                    item.lastShift = {
+                        date: s.endTime || s.startTime,
+                        driverName: s.driverName || 'Chofer',
+                        startOdometer: startOdo,
+                        endOdometer: endOdo,
+                        diffKm
+                    };
+                }
+            }
+
+            let totalFlotaMonthKm = 0;
+            let totalFlotaTodayKm = 0;
+            const daysInMonthSoFar = Math.max(1, now.getDate());
+
+            const resultList = Object.values(stats).map(item => {
+                totalFlotaMonthKm += item.monthKm;
+                totalFlotaTodayKm += item.todayKm;
+
+                const avgDailyKm = item.monthKm > 0 ? (item.monthKm / daysInMonthSoFar) : 0;
+                const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                const projectedMonthKm = avgDailyKm * daysInMonth;
+
+                const kmBase = item.monthKm > 0 ? item.monthKm : 5000;
+                const neumaticosKm = item.costoNeumaticos / 60000;
+                const aceiteKm = item.motorType === 'electric' ? 0 : (item.costoCambioAceite / 10000);
+                const seguroKm = item.costoSeguroMensual / kmBase;
+                const costoTotalKm = item.costoCombustibleKm + neumaticosKm + aceiteKm + seguroKm;
+                const gastoRealMes = item.monthKm * costoTotalKm;
+
+                return {
+                    id: item.id,
+                    name: item.name,
+                    plate: item.plate,
+                    year: item.year,
+                    motorType: item.motorType,
+                    todayKm: item.todayKm,
+                    todayShiftsCount: item.todayShiftsCount,
+                    monthKm: item.monthKm,
+                    monthShiftsCount: item.monthShiftsCount,
+                    dailyKm: item.dailyKm,
+                    avgDailyKm: Math.round(avgDailyKm),
+                    projectedMonthKm: Math.round(projectedMonthKm),
+                    driversCount: item.driversThisMonth.size,
+                    lastShift: item.lastShift,
+                    costoCombustibleKm: item.costoCombustibleKm,
+                    costoTotalKm: Number(costoTotalKm.toFixed(2)),
+                    gastoRealMes: Math.round(gastoRealMes)
+                };
+            });
+
+            // Persistir resumen en Firebase para lectura ultra-rápida de la App
+            try {
+                await db.ref(`fleets/${fleetId}/vehicle_monthly_stats/${currentYearMonth}`).set({
+                    updatedAt: Date.now(),
+                    currentYearMonth,
+                    totalFlotaMonthKm,
+                    totalFlotaTodayKm,
+                    vehicles: resultList
+                });
+            } catch(persistErr) {
+                console.warn('⚠️ Error guardando vehicle_monthly_stats:', persistErr.message);
+            }
+
+            return {
+                fleetId,
+                currentYearMonth,
+                totalFlotaMonthKm,
+                totalFlotaTodayKm,
+                vehicles: resultList
+            };
+        } catch(e) {
+            console.error('❌ Error calculando vehicle_km_stats:', e);
+            return null;
+        }
+    }
+
+    function _formatKmReportWhatsApp(kmData, filterVehicleQuery = null, filterOnlyToday = false) {
+        if (!kmData || !kmData.vehicles || kmData.vehicles.length === 0) {
+            return '🚗 *FleetAdmin Pro:* No se encontraron vehículos registrados en la flota.';
+        }
+
+        const ym = kmData.currentYearMonth;
+        const [year, month] = ym.split('-');
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const monthName = monthNames[parseInt(month, 10) - 1] || ym;
+
+        let vehicles = kmData.vehicles;
+
+        if (filterVehicleQuery) {
+            const q = filterVehicleQuery.toLowerCase().trim();
+            vehicles = vehicles.filter(v => 
+                (v.plate && v.plate.toLowerCase().includes(q)) || 
+                (v.name && v.name.toLowerCase().includes(q))
+            );
+
+            if (vehicles.length === 0) {
+                return `🚗 *FleetAdmin Pro:* No se encontró ningún vehículo que coincida con "${filterVehicleQuery}".\n\n_Probá buscando por patente (ej: PNJ898) o modelo._`;
+            }
+
+            const v = vehicles[0];
+            const motorIcon = v.motorType === 'electric' ? '⚡' : (v.motorType === 'hybrid' ? '🔋' : (v.motorType === 'nafta' ? '🛢️' : '⛽'));
+            let text = `📋 *DETALLE DE KILÓMETROS: ${v.name}*\n`;
+            text += `🚘 *Patente:* ${v.plate || 'Sin patente'} • ${motorIcon} ${v.motorType.toUpperCase()}\n`;
+            text += `📅 *Mes:* ${monthName} ${year}\n\n`;
+
+            text += `📊 *Resumen del Mes:*\n`;
+            text += `• Total recorrido: *${_formatNumber(v.monthKm)} km*\n`;
+            text += `• Turnos cargados: *${v.monthShiftsCount}*\n`;
+            text += `• Promedio diario: *~${v.avgDailyKm} km/día*\n`;
+            text += `• Costo operativo est.: *$${v.costoTotalKm.toFixed(2)}/km*\n`;
+            text += `• Gasto del mes est.: *$${_formatNumber(v.gastoRealMes)}*\n\n`;
+
+            text += `🗓️ *Desglose Día por Día:*\n`;
+            const dailyEntries = Object.entries(v.dailyKm || {}).sort((a, b) => b[0].localeCompare(a[0]));
+            if (dailyEntries.length === 0) {
+                text += `_No se registraron turnos cerrados en ${monthName}._\n`;
+            } else {
+                dailyEntries.forEach(([dayStr, km]) => {
+                    const dayNum = dayStr.split('-')[2];
+                    text += `• *${dayNum}/${month}:* ${km} km\n`;
+                });
+            }
+
+            if (v.lastShift) {
+                const lastDate = new Date(v.lastShift.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                text += `\n🕒 *Último turno:* ${lastDate} por ${v.lastShift.driverName} (${v.lastShift.diffKm} km)\n`;
+            }
+
+            return text.trim();
+        }
+
+        let header = filterOnlyToday 
+            ? `🚗 *REPORTE DE KILÓMETROS DE HOY*\n📅 ${new Date().toLocaleDateString('es-AR')}\n\n`
+            : `🚗 *KILOMETRAJE MENSUAL DE LA FLOTA*\n📅 *${monthName} ${year}*\n\n`;
+
+        let body = '';
+        let totalKm = 0;
+
+        vehicles.sort((a, b) => (filterOnlyToday ? b.todayKm - a.todayKm : b.monthKm - a.monthKm));
+
+        vehicles.forEach(v => {
+            const motorIcon = v.motorType === 'electric' ? '⚡' : (v.motorType === 'hybrid' ? '🔋' : (v.motorType === 'nafta' ? '🛢️' : '⛽'));
+            if (filterOnlyToday) {
+                totalKm += v.todayKm;
+                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                body += `   • Hoy: *${v.todayKm > 0 ? `${v.todayKm} km` : 'Sin turnos hoy'}* (${v.todayShiftsCount} turno${v.todayShiftsCount === 1 ? '' : 's'})\n`;
+                body += `   • Acumulado mes: *${_formatNumber(v.monthKm)} km*\n\n`;
+            } else {
+                totalKm += v.monthKm;
+                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                body += `   • Hoy: *${v.todayKm} km* | Mes: *${_formatNumber(v.monthKm)} km* (${v.monthShiftsCount} turnos)\n`;
+                body += `   • Promedio: *~${v.avgDailyKm} km/día* (Proy: ${_formatNumber(v.projectedMonthKm)} km)\n`;
+                body += `   • Costo: *$${v.costoTotalKm.toFixed(2)}/km* | Gasto mes: *$${_formatNumber(v.gastoRealMes)}*\n\n`;
+            }
+        });
+
+        let footer = `📊 *TOTAL FLOTA ${filterOnlyToday ? 'HOY' : 'ESTE MES'}:* *${_formatNumber(totalKm)} km* recorridos\n\n`;
+        footer += `💡 _Escribí *!km [patente]* (ej: !km PNJ898) para ver el detalle día x día de un auto._`;
+
+        return (header + body + footer).trim();
+    }
+
     function _recursiveFindImage(obj, depth = 0) {
         if (!obj || typeof obj !== 'object' || depth > 8) return null;
         if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
@@ -1672,6 +1961,7 @@ const WhatsappBot = (() => {
         // Fallback seguro a la flota principal de José
         _resolvedFleetId = '-OnPd8HaV1VZWBnYQQX7';
         console.log(`🏢 [FLEET] ⚠️ Usando fallback seguro: ${_resolvedFleetId}`);
+        _setupShiftKmListener(_resolvedFleetId);
         return _resolvedFleetId;
     }
 
@@ -2798,6 +3088,31 @@ const WhatsappBot = (() => {
                             } catch(scanErr) {
                                 await sock.sendMessage(jid, { text: '⚠️ Error durante el escaneo: ' + scanErr.message }, { quoted: msg });
                             }
+                            continue;
+                        }
+                    }
+
+                    // --- COMANDO KILOMETRAJE: !km, .km, km, kilometros ---
+                    if (text) {
+                        const cleanLower = text.trim().toLowerCase();
+                        const kmRegex = /^([!.]?km|[!.]?kilometros|[!.]?kilometraje)(\s+(.+))?$/i;
+                        const isGeneralKmQuery = cleanLower === 'resumen km' || cleanLower === 'km de los autos' || cleanLower === 'kilometros del mes' || cleanLower === 'km hoy';
+
+                        if (kmRegex.test(cleanLower) || isGeneralKmQuery) {
+                            const match = cleanLower.match(kmRegex);
+                            const rawParam = match && match[3] ? match[3].trim() : (cleanLower === 'km hoy' ? 'hoy' : null);
+                            const isOnlyToday = rawParam === 'hoy' || rawParam === 'today';
+                            const filterVeh = (!isOnlyToday && rawParam) ? rawParam : null;
+
+                            console.log(`🚗 [KM-CMD] Solicitud de kilometraje recibida de ${jid} (param: ${rawParam || 'resumen'})...`);
+                            const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace(/[^0-9]/g, '');
+                            const fleetMatch = await _findFleetForPhone(senderNum);
+                            const fleetId = fleetMatch?.fleetId || await _resolveFleetId();
+
+                            const kmData = await _getVehicleKmStats(fleetId);
+                            const replyMsg = _formatKmReportWhatsApp(kmData, filterVeh, isOnlyToday);
+
+                            await sock.sendMessage(jid, { text: replyMsg }, { quoted: msg });
                             continue;
                         }
                     }
@@ -4323,8 +4638,11 @@ Si no hay movimientos financieros detectados, respondé: []`;
         createPendingPayment: _createPendingPayment,
         confirmPendingPayment: _confirmPendingPayment,
         rejectPendingPayment: _rejectPendingPayment,
-        listPendingPayments: _listPendingPayments
+        listPendingPayments: _listPendingPayments,
+        getVehicleKmStats: _getVehicleKmStats,
+        formatKmReportWhatsApp: _formatKmReportWhatsApp
     };
 })();
+
 
 module.exports = WhatsappBot;
