@@ -2047,13 +2047,6 @@ const WhatsappBot = (() => {
                     }
                 }
 
-                if (isAnotherLeaderActive) {
-                    console.warn(`🛡️ [DISTRIBUTED-LOCK] Otra instancia activa detectada: "${currentLeader.id}". Esta instancia (${INSTANCE_ID}) queda en standby sin iniciar WhatsApp para evitar expulsión 440.`);
-                    isConnecting = false;
-                    setTimeout(() => { if (!_isConnectedState) startSocket(); }, 35000);
-                    return;
-                }
-
                 // Asumir liderazgo activo
                 await db.ref('bot_active_leader').set({
                     id: INSTANCE_ID,
