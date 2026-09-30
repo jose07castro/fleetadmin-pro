@@ -29,6 +29,7 @@ const VehicleCostsModule = (() => {
         let totalFleetMonthKm = 0;
         let totalFleetTodayKm = 0;
         let totalCompletedShifts = 0;
+        let totalFleetMonthEarnings = 0;
 
         (shifts || []).forEach(s => {
             if (!s || s.status !== 'completed') return;
@@ -52,14 +53,18 @@ const VehicleCostsModule = (() => {
                 vehicleStats[vId] = {
                     totalMonthKm: 0,
                     totalTodayKm: 0,
+                    totalMonthEarnings: 0,
                     shiftCount: 0,
                     dailyKm: {},
                     shifts: []
                 };
             }
 
+            const shiftEarnings = parseFloat(s.earnings) || 0;
+
             if (shiftYm === ym) {
                 vehicleStats[vId].totalMonthKm += diff;
+                vehicleStats[vId].totalMonthEarnings = (vehicleStats[vId].totalMonthEarnings || 0) + shiftEarnings;
                 vehicleStats[vId].shiftCount++;
                 vehicleStats[vId].dailyKm[dateStr] = (vehicleStats[vId].dailyKm[dateStr] || 0) + diff;
                 vehicleStats[vId].shifts.push({
@@ -67,11 +72,13 @@ const VehicleCostsModule = (() => {
                     date: dateStr,
                     dateTime: d,
                     diffKm: diff,
+                    earnings: shiftEarnings,
                     startOdometer: startOdo,
                     endOdometer: endOdo,
                     driverName: s.driverName || 'Chofer'
                 });
                 totalFleetMonthKm += diff;
+                totalFleetMonthEarnings += shiftEarnings;
                 totalCompletedShifts++;
             }
 
@@ -91,6 +98,7 @@ const VehicleCostsModule = (() => {
             totalFleetMonthKm,
             totalFleetTodayKm,
             totalCompletedShifts,
+            totalFleetMonthEarnings,
             vehicleStats
         };
     }
@@ -208,27 +216,37 @@ const VehicleCostsModule = (() => {
         const intervaloAceite = parseInt(vehicle.kmIntervaloAceite) || 10000;
         const aceiteKm = (isElectric || intervaloAceite <= 0) ? 0 : (costoAceite / intervaloAceite);
 
-        // Seguro mensual prorrateado
+        // Seguro mensual
         const costoSeguroMensual = (vehicle.costoSeguroMensual !== undefined && vehicle.costoSeguroMensual !== null && vehicle.costoSeguroMensual !== '')
             ? parseFloat(vehicle.costoSeguroMensual)
             : defaults.seguro;
-        const kmBase = monthlyKm > 0 ? monthlyKm : 5000;
-        const seguroKm = costoSeguroMensual / kmBase;
 
         // Otros costos fijos opcionales (Patente, VTV, etc.)
         const costoPatenteMensual = parseFloat(vehicle.costoPatenteMensual) || 0;
-        const patenteKm = costoPatenteMensual / kmBase;
-
         const costoMantenimientoExtraKm = parseFloat(vehicle.costoMantenimientoExtraKm) || 0;
 
-        // Costo Total por Kilómetro
-        const costoTotalKm = combustibleKm + neumaticosKm + aceiteKm + seguroKm + patenteKm + costoMantenimientoExtraKm;
+        const isKmExplicit = (monthlyKm !== undefined && monthlyKm !== null);
+        const kmBase = isKmExplicit ? Math.max(0, monthlyKm) : _simulatedKm;
 
-        // Proyecciones
-        const costoMensual = costoTotalKm * kmBase;
+        // Costo variable por km (combustible, neumáticos, aceite)
+        const costoVariableKm = combustibleKm + neumaticosKm + aceiteKm + costoMantenimientoExtraKm;
+        const costosFijosMensuales = costoSeguroMensual + costoPatenteMensual;
+
+        // Prorrateo por km: sobre kmBase si rodó, o sobre base de 5.000 km como referencia si estuvo inactivo
+        const kmReferenciaFijos = kmBase > 0 ? kmBase : 5000;
+        const seguroKm = costoSeguroMensual / kmReferenciaFijos;
+        const patenteKm = costoPatenteMensual / kmReferenciaFijos;
+
+        // Costo Total por Kilómetro
+        const costoTotalKm = costoVariableKm + seguroKm + patenteKm;
+
+        // Gasto real del mes consumido por este vehículo:
+        // Si no rodó en el mes (kmBase === 0): el gasto es únicamente los costos fijos devengados (seguro + patente)
+        // Si rodó (kmBase > 0): gasto variable (km * $/km) + costos fijos mensuales
+        const costoMensual = (costoVariableKm * kmBase) + costosFijosMensuales;
         const costoAnual = costoMensual * 12;
-        const costo1000Km = costoTotalKm * 1000;
-        const costo60000Km = costoTotalKm * 60000;
+        const costo1000Km = (costoVariableKm * 1000) + (costosFijosMensuales / kmReferenciaFijos * 1000);
+        const costo60000Km = (costoVariableKm * 60000) + (costosFijosMensuales / kmReferenciaFijos * 60000);
 
         // Porcentajes para barra de distribución
         const pctCombustible = costoTotalKm > 0 ? (combustibleKm / costoTotalKm) * 100 : 0;
@@ -311,13 +329,20 @@ const VehicleCostsModule = (() => {
                 const realStats = (_realKmData && _realKmData.vehicleStats[v.id]) || {
                     totalMonthKm: 0,
                     totalTodayKm: 0,
+                    totalMonthEarnings: 0,
                     shiftCount: 0,
                     dailyKm: {},
                     shifts: []
                 };
                 const hasRealData = realStats.totalMonthKm > 0;
-                const kmToUse = (_useRealKm && hasRealData) ? realStats.totalMonthKm : _simulatedKm;
+                // En modo real: si el auto rodó, usa sus km reales; si no rodó en el mes, 0 km (costo variable 0 + costo fijo seguro)
+                // En modo simulado: usa _simulatedKm
+                const kmToUse = _useRealKm ? realStats.totalMonthKm : _simulatedKm;
                 const metrics = calculateVehicleCostMetrics(v, kmToUse);
+
+                const vehicleEarnings = _useRealKm ? (realStats.totalMonthEarnings || 0) : 0;
+                const vehicleNetProfit = vehicleEarnings - metrics.costoMensual;
+                const vehicleMarginPct = vehicleEarnings > 0 ? ((vehicleNetProfit / vehicleEarnings) * 100) : 0;
 
                 return {
                     vehicle: v,
@@ -325,7 +350,10 @@ const VehicleCostsModule = (() => {
                     hasRealData,
                     metrics,
                     effectiveKm: kmToUse,
-                    isRealKm: _useRealKm && hasRealData
+                    isRealKm: _useRealKm && hasRealData,
+                    vehicleEarnings,
+                    vehicleNetProfit,
+                    vehicleMarginPct
                 };
             });
 
@@ -348,7 +376,20 @@ const VehicleCostsModule = (() => {
                 });
             }
 
-            const avgCostoKm = vehicleMetrics.length > 0 ? (totalCostoKm / vehicleMetrics.length) : 0;
+            // Costo promedio por km de la flota:
+            // Si hay km reales rodados: totalCostoMensual / totalFleetMonthKm (gasto integral real de la flota por km)
+            // Si no hay km reales: promedio aritmético por vehículo
+            const avgCostoKm = (_useRealKm && _realKmData.totalFleetMonthKm > 0)
+                ? (totalCostoMensual / _realKmData.totalFleetMonthKm)
+                : (vehicleMetrics.length > 0 ? (totalCostoKm / vehicleMetrics.length) : 0);
+
+            // Facturación total del mes
+            const totalIngresosMes = _useRealKm ? (_realKmData.totalFleetMonthEarnings || 0) : 0;
+            const netProfit = totalIngresosMes - totalCostoMensual;
+            const marginPct = totalIngresosMes > 0 ? ((netProfit / totalIngresosMes) * 100) : 0;
+            const netPerKm = (_realKmData && _realKmData.totalFleetMonthKm > 0) 
+                ? (netProfit / _realKmData.totalFleetMonthKm) 
+                : (_simulatedKm > 0 ? (netProfit / (_simulatedKm * (vehicles.length || 1))) : 0);
 
             // Ahorro teórico de flota comparando el promedio con Nafta pura
             const kmBaseReferencia = _useRealKm && _realKmData.totalFleetMonthKm > 0 
@@ -419,9 +460,9 @@ const VehicleCostsModule = (() => {
                         </button>
                     </div>
 
-                    <!-- KPI Cards Summary -->
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">
-                        <!-- Costo Promedio Flota -->
+                    <!-- KPI Cards Summary: 6 Carteles Balanceados (2 filas de 3) -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:24px;">
+                        <!-- 1. Costo Promedio Flota -->
                         <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:18px; position:relative; overflow:hidden;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Costo Promedio Flota</span>
@@ -432,12 +473,12 @@ const VehicleCostsModule = (() => {
                             </div>
                             <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
                                 ${_useRealKm && _realKmData.totalFleetMonthKm > 0 
-                                    ? `Basado en turnos reales (${_formatNumber(_realKmData.totalFleetMonthKm)} km en ${curMonthName})`
+                                    ? `Costo integral real (${_formatNumber(_realKmData.totalFleetMonthKm)} km en ${curMonthName})`
                                     : `Basado en ${_formatNumber(_simulatedKm)} km/mes por vehículo`}
                             </div>
                         </div>
 
-                        <!-- Auto Más Económico -->
+                        <!-- 2. Auto Más Económico -->
                         <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <span style="font-size:0.85rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">Más Eficiente</span>
@@ -451,7 +492,7 @@ const VehicleCostsModule = (() => {
                             </div>
                         </div>
 
-                        <!-- Kilometraje Real o Ahorro Estimado -->
+                        <!-- 3. Kilometraje Real o Ahorro Estimado -->
                         <div class="card" style="background:linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(37, 99, 235, 0.04)); border:1px solid rgba(59, 130, 246, 0.35); border-radius:16px; padding:18px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <span style="font-size:0.85rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
@@ -471,19 +512,65 @@ const VehicleCostsModule = (() => {
                             </div>
                         </div>
 
-                        <!-- Gasto Operativo Mensual Proyectado / Real -->
-                        <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:18px;">
+                        <!-- 4. Facturación / Ingresos del Mes -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">
+                                <span style="font-size:0.85rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">
+                                    ${_useRealKm ? 'Facturación Turnos Mes' : 'Ingresos Estimados Mes'}
+                                </span>
+                                <span style="font-size:1.4rem;">💰</span>
+                            </div>
+                            <div style="font-size:2rem; font-weight:900; color:#10b981; font-family:monospace;">
+                                $${_formatNumber(Math.round(totalIngresosMes))}
+                            </div>
+                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
+                                ${_useRealKm 
+                                    ? `${_realKmData.totalCompletedShifts} turnos • Recaudación: $${_realKmData.totalFleetMonthKm > 0 ? (totalIngresosMes / _realKmData.totalFleetMonthKm).toFixed(2) : '0'}/km` 
+                                    : 'Recaudación bruta de turnos'}
+                            </div>
+                        </div>
+
+                        <!-- 5. Gasto Operativo Mensual -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(185, 28, 28, 0.03)); border:1px solid rgba(239, 68, 68, 0.3); border-radius:16px; padding:18px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:0.85rem; font-weight:700; color:#f87171; text-transform:uppercase; letter-spacing:0.5px;">
                                     ${_useRealKm ? 'Gasto Operativo Mes' : 'Gasto Mensual Proyectado'}
                                 </span>
                                 <span style="font-size:1.4rem;">💼</span>
                             </div>
-                            <div style="font-size:2rem; font-weight:900; color:var(--text-primary); font-family:monospace;">
+                            <div style="font-size:2rem; font-weight:900; color:#f87171; font-family:monospace;">
                                 $${_formatNumber(Math.round(totalCostoMensual))}
                             </div>
                             <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                ${_useRealKm ? `Costo integral consumido en ${curMonthName}` : 'Costo total operativo proyectado al mes'}
+                                ${_useRealKm ? `GNC, aceite, cubiertas y seguros consumidos en ${curMonthName}` : 'Costo total operativo proyectado al mes'}
+                            </div>
+                        </div>
+
+                        <!-- 6. GANANCIA NETA FLOTA (Cartel destacado pedido por el usuario) -->
+                        <div class="card" style="background:${netProfit >= 0 
+                            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.08))' 
+                            : 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.08))'}; 
+                            border:2px solid ${netProfit >= 0 ? '#10b981' : '#ef4444'}; 
+                            box-shadow:${netProfit >= 0 ? '0 8px 24px rgba(16, 185, 129, 0.25)' : '0 8px 24px rgba(239, 68, 68, 0.25)'}; 
+                            border-radius:16px; padding:18px; position:relative; overflow:hidden;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="font-size:0.85rem; font-weight:800; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; text-transform:uppercase; letter-spacing:0.5px;">
+                                        Ganancia Neta Flota
+                                    </span>
+                                    <span class="badge" style="background:${netProfit >= 0 ? '#10b981' : '#ef4444'}; color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:8px;">
+                                        ${netProfit >= 0 ? '✨ LIMPIO' : '⚠️ DÉFICIT'}
+                                    </span>
+                                </div>
+                                <span style="font-size:1.4rem;">${netProfit >= 0 ? '💵' : '📉'}</span>
+                            </div>
+                            <div style="font-size:2.2rem; font-weight:900; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; font-family:monospace; line-height:1.1;">
+                                ${netProfit >= 0 ? '+' : ''}$${_formatNumber(Math.round(netProfit))}
+                            </div>
+                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px; font-weight:600;">
+                                ${totalIngresosMes > 0 
+                                    ? `Margen Neto: <strong style="color:${netProfit >= 0 ? '#10b981' : '#ef4444'};">${marginPct.toFixed(1)}%</strong> • <span style="color:var(--text-primary);">$${netPerKm.toFixed(2)} / km limpio</span>`
+                                    : 'Pendiente de carga de recaudaciones'}
                             </div>
                         </div>
                     </div>
@@ -612,12 +699,17 @@ const VehicleCostsModule = (() => {
                                         <tr style="border-bottom:2px solid var(--border-color); color:var(--text-secondary); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">
                                             <th style="padding:10px 12px;">Vehículo</th>
                                             <th style="padding:10px 12px;">Propulsión</th>
+                                            <th style="padding:10px 12px; text-align:right;">Km Mes</th>
                                             <th style="padding:10px 12px; text-align:right;">Combustible/Km</th>
                                             <th style="padding:10px 12px; text-align:right;">Neumáticos (c/60k)</th>
                                             <th style="padding:10px 12px; text-align:right;">Aceite (c/10k)</th>
                                             <th style="padding:10px 12px; text-align:right;">Seguro/Km</th>
                                             <th style="padding:10px 12px; text-align:right; font-weight:800; color:var(--color-primary);">TOTAL / KM</th>
-                                            <th style="padding:10px 12px; text-align:right;">Costo Mensual</th>
+                                            <th style="padding:10px 12px; text-align:right; color:#f87171;">Gasto Mes</th>
+                                            ${_useRealKm ? `
+                                                <th style="padding:10px 12px; text-align:right; color:#10b981;">Facturación</th>
+                                                <th style="padding:10px 12px; text-align:right; color:#10b981; font-weight:800;">Ganancia Neta</th>
+                                            ` : ''}
                                             <th style="padding:10px 12px; text-align:center;">Acción</th>
                                         </tr>
                                     </thead>
@@ -626,6 +718,8 @@ const VehicleCostsModule = (() => {
                                             const v = item.vehicle;
                                             const m = item.metrics;
                                             const isTop1 = idx === 0;
+                                            const carNet = item.vehicleNetProfit;
+                                            const carEarn = item.vehicleEarnings;
                                             return `
                                                 <tr style="border-bottom:1px solid var(--border-color); ${isTop1 ? 'background:rgba(16, 185, 129, 0.05);' : ''}">
                                                     <td style="padding:12px; font-weight:700; color:var(--text-primary);">
@@ -636,6 +730,9 @@ const VehicleCostsModule = (() => {
                                                         <span class="badge" style="background:${m.defaults.color}; color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px;">
                                                             ${m.defaults.badge}
                                                         </span>
+                                                    </td>
+                                                    <td style="padding:12px; text-align:right; font-family:monospace; font-weight:700; color:var(--text-primary);">
+                                                        ${_formatNumber(m.kmBase)} km
                                                     </td>
                                                     <td style="padding:12px; text-align:right; font-family:monospace; color:#38bdf8;">
                                                         $${m.combustibleKm.toFixed(2)}
@@ -652,9 +749,17 @@ const VehicleCostsModule = (() => {
                                                     <td style="padding:12px; text-align:right; font-family:monospace; font-size:15px; font-weight:900; color:#38bdf8;">
                                                         $${m.costoTotalKm.toFixed(2)}
                                                     </td>
-                                                    <td style="padding:12px; text-align:right; font-family:monospace; font-weight:700; color:var(--text-primary);">
+                                                    <td style="padding:12px; text-align:right; font-family:monospace; font-weight:700; color:#f87171;">
                                                         $${_formatNumber(Math.round(m.costoMensual))}
                                                     </td>
+                                                    ${_useRealKm ? `
+                                                        <td style="padding:12px; text-align:right; font-family:monospace; font-weight:700; color:#10b981;">
+                                                            $${_formatNumber(Math.round(carEarn))}
+                                                        </td>
+                                                        <td style="padding:12px; text-align:right; font-family:monospace; font-weight:900; color:${carNet >= 0 ? '#10b981' : '#ef4444'};">
+                                                            ${carNet >= 0 ? '+' : ''}$${_formatNumber(Math.round(carNet))}
+                                                        </td>
+                                                    ` : ''}
                                                     <td style="padding:12px; text-align:center;">
                                                         <button class="btn btn-sm btn-secondary" onclick="VehicleCostsModule.showEditCostsModal('${v.id}')" style="font-size:11px; padding:4px 8px; font-weight:700;">
                                                             ✏️ Ajustar
@@ -664,6 +769,31 @@ const VehicleCostsModule = (() => {
                                             `;
                                         }).join('')}
                                     </tbody>
+                                    <tfoot>
+                                        <tr style="background:var(--bg-tertiary); border-top:2px solid var(--border-color); font-weight:800;">
+                                            <td style="padding:12px; color:var(--text-primary);">TOTALES FLOTA</td>
+                                            <td style="padding:12px; font-size:11px; color:var(--text-secondary);">${vehicleMetrics.length} autos</td>
+                                            <td style="padding:12px; text-align:right; font-family:monospace; color:var(--text-primary); font-size:14px;">
+                                                ${_useRealKm ? _formatNumber(_realKmData.totalFleetMonthKm) : _formatNumber(_simulatedKm * vehicleMetrics.length)} km
+                                            </td>
+                                            <td style="padding:12px;" colspan="4"></td>
+                                            <td style="padding:12px; text-align:right; font-family:monospace; font-size:15px; color:#38bdf8;">
+                                                $${avgCostoKm.toFixed(2)}/km
+                                            </td>
+                                            <td style="padding:12px; text-align:right; font-family:monospace; color:#f87171; font-size:15px;">
+                                                $${_formatNumber(Math.round(totalCostoMensual))}
+                                            </td>
+                                            ${_useRealKm ? `
+                                                <td style="padding:12px; text-align:right; font-family:monospace; color:#10b981; font-size:15px;">
+                                                    $${_formatNumber(Math.round(totalIngresosMes))}
+                                                </td>
+                                                <td style="padding:12px; text-align:right; font-family:monospace; font-size:16px; color:${netProfit >= 0 ? '#10b981' : '#ef4444'};">
+                                                    ${netProfit >= 0 ? '+' : ''}$${_formatNumber(Math.round(netProfit))}
+                                                </td>
+                                            ` : ''}
+                                            <td style="padding:12px;"></td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
@@ -773,6 +903,7 @@ const VehicleCostsModule = (() => {
         const realStats = itemOrVehicle.realStats || (_realKmData && _realKmData.vehicleStats[v.id]) || {
             totalMonthKm: 0,
             totalTodayKm: 0,
+            totalMonthEarnings: 0,
             shiftCount: 0,
             dailyKm: {},
             shifts: []
@@ -782,6 +913,14 @@ const VehicleCostsModule = (() => {
             ? itemOrVehicle.isRealKm 
             : (_useRealKm && hasRealData);
         const m = itemOrVehicle.metrics || calculateVehicleCostMetrics(v, isRealKm ? realStats.totalMonthKm : _simulatedKm);
+
+        const vehicleEarnings = itemOrVehicle.vehicleEarnings !== undefined 
+            ? itemOrVehicle.vehicleEarnings 
+            : (_useRealKm ? (realStats.totalMonthEarnings || 0) : 0);
+        const vehicleNetProfit = itemOrVehicle.vehicleNetProfit !== undefined 
+            ? itemOrVehicle.vehicleNetProfit 
+            : (vehicleEarnings - m.costoMensual);
+        const vehicleMarginPct = vehicleEarnings > 0 ? ((vehicleNetProfit / vehicleEarnings) * 100) : 0;
 
         return `
             <div class="card vehicle-cost-card" id="vCostCard_${v.id}" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:18px; padding:20px; display:flex; flex-direction:column; justify-content:space-between; gap:16px; box-shadow:var(--shadow-sm); position:relative; overflow:hidden;">
@@ -829,7 +968,7 @@ const VehicleCostsModule = (() => {
                     `}
 
                     <!-- Gran Métrica de Costo por Km -->
-                    <div style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8)); border:1px solid var(--border-color); border-radius:14px; padding:14px; margin-bottom:14px; text-align:center;">
+                    <div style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8)); border:1px solid var(--border-color); border-radius:14px; padding:14px; margin-bottom:12px; text-align:center;">
                         <div style="font-size:0.75rem; text-transform:uppercase; font-weight:800; color:var(--text-secondary); letter-spacing:0.5px;">
                             Costo Total por Kilómetro
                         </div>
@@ -843,6 +982,34 @@ const VehicleCostsModule = (() => {
                             <span>Mes (${_formatNumber(m.kmBase)} km): <strong>$${_formatNumber(Math.round(m.costoMensual))}</strong></span>
                         </div>
                     </div>
+
+                    <!-- Balance Financiero del Auto: Facturación vs Gasto = GANANCIA NETA -->
+                    ${_useRealKm ? `
+                        <div style="background:${vehicleNetProfit >= 0 ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(5, 150, 105, 0.04))' : 'linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(185, 28, 28, 0.04))'}; 
+                            border:1px solid ${vehicleNetProfit >= 0 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; 
+                            border-radius:14px; padding:12px 14px; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:${vehicleNetProfit >= 0 ? '#10b981' : '#f87171'}; letter-spacing:0.5px;">
+                                    💵 Ganancia Neta Auto
+                                </span>
+                                <span class="badge" style="background:${vehicleNetProfit >= 0 ? '#10b981' : '#ef4444'}; color:#fff; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px;">
+                                    ${vehicleEarnings > 0 ? `${vehicleMarginPct.toFixed(1)}% margen` : (hasRealData ? 'Sin recaudación' : 'Parado')}
+                                </span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; margin:2px 0;">
+                                <div style="font-size:1.6rem; font-weight:900; font-family:monospace; color:${vehicleNetProfit >= 0 ? '#10b981' : '#f87171'}; line-height:1.1;">
+                                    ${vehicleNetProfit >= 0 ? '+' : ''}$${_formatNumber(Math.round(vehicleNetProfit))}
+                                </div>
+                                <div style="font-size:11px; color:var(--text-secondary); text-align:right;">
+                                    Facturado: <strong style="color:var(--text-primary); font-family:monospace;">$${_formatNumber(Math.round(vehicleEarnings))}</strong>
+                                </div>
+                            </div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-top:4px; display:flex; justify-content:space-between; border-top:1px dashed rgba(255,255,255,0.08); padding-top:4px;">
+                                <span>Gasto: <strong>$${_formatNumber(Math.round(m.costoMensual))}</strong></span>
+                                ${realStats.totalMonthKm > 0 ? `<span>Limpio: <strong style="color:${vehicleNetProfit >= 0 ? '#10b981' : '#f87171'}; font-family:monospace;">$${(vehicleNetProfit / realStats.totalMonthKm).toFixed(2)}/km</strong></span>` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
 
                     <!-- Barra de Distribución Porcentual -->
                     <div style="margin-bottom:14px;">
