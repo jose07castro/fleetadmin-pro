@@ -3005,6 +3005,29 @@
 .vehicle-costs-container {
     max-width: 1400px;
     margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fleet-costs-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 1080px) {
+    .fleet-costs-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .fleet-costs-kpi-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .vehicle-cost-card {

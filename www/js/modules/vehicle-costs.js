@@ -460,117 +460,139 @@ const VehicleCostsModule = (() => {
                         </button>
                     </div>
 
-                    <!-- KPI Cards Summary: 6 Carteles Balanceados (2 filas de 3) -->
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:24px;">
-                        <!-- 1. Costo Promedio Flota -->
-                        <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:18px; position:relative; overflow:hidden;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Costo Promedio Flota</span>
-                                <span style="font-size:1.4rem;">📉</span>
-                            </div>
-                            <div style="font-size:2rem; font-weight:900; color:#38bdf8; font-family:monospace;">
-                                $${avgCostoKm.toFixed(2)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ km</span>
-                            </div>
-                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                ${_useRealKm && _realKmData.totalFleetMonthKm > 0 
-                                    ? `Costo integral real (${_formatNumber(_realKmData.totalFleetMonthKm)} km en ${curMonthName})`
-                                    : `Basado en ${_formatNumber(_simulatedKm)} km/mes por vehículo`}
-                            </div>
-                        </div>
+                    <!-- Estilos para grilla responsive exacta sin desbordamiento -->
+                    <style>
+                        .fleet-costs-kpi-grid {
+                            display: grid;
+                            grid-template-columns: repeat(3, minmax(0, 1fr));
+                            gap: 16px;
+                            margin-bottom: 24px;
+                            width: 100%;
+                            box-sizing: border-box;
+                        }
+                        @media (max-width: 1080px) {
+                            .fleet-costs-kpi-grid {
+                                grid-template-columns: repeat(2, minmax(0, 1fr));
+                            }
+                        }
+                        @media (max-width: 640px) {
+                            .fleet-costs-kpi-grid {
+                                grid-template-columns: 1fr;
+                            }
+                        }
+                    </style>
 
-                        <!-- 2. Auto Más Económico -->
-                        <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px;">
+                    <!-- KPI Cards Summary: 6 Carteles Ordenados y Balanceados -->
+                    <div class="fleet-costs-kpi-grid">
+                        <!-- 1. Facturación / Ingresos del Mes -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">Más Eficiente</span>
-                                <span style="font-size:1.4rem;">🏆</span>
-                            </div>
-                            <div style="font-size:2rem; font-weight:900; color:#10b981; font-family:monospace;">
-                                $${cheapestVehicle ? cheapestVehicle.metrics.costoTotalKm.toFixed(2) : '0.00'} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ km</span>
-                            </div>
-                            <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                                ${cheapestVehicle ? `${cheapestVehicle.vehicle.name || 'Vehículo'} (${cheapestVehicle.vehicle.plate || ''})` : 'Sin vehículos'}
-                            </div>
-                        </div>
-
-                        <!-- 3. Kilometraje Real o Ahorro Estimado -->
-                        <div class="card" style="background:linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(37, 99, 235, 0.04)); border:1px solid rgba(59, 130, 246, 0.35); border-radius:16px; padding:18px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
-                                    ${_useRealKm ? 'Km Reales de la Flota' : 'Ahorro Flota vs Nafta'}
-                                </span>
-                                <span style="font-size:1.4rem;">${_useRealKm ? '📍' : '💡'}</span>
-                            </div>
-                            <div style="font-size:2rem; font-weight:900; color:#60a5fa; font-family:monospace;">
-                                ${_useRealKm 
-                                    ? `${_formatNumber(_realKmData.totalFleetMonthKm)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">km</span>` 
-                                    : `$${_formatNumber(Math.round(ahorroMensualFlota))} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ mes</span>`}
-                            </div>
-                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                ${_useRealKm 
-                                    ? `${curMonthName} ${curYear} • ${_realKmData.totalCompletedShifts} turnos registrados` 
-                                    : 'Gracias al uso de GNC, Híbridos y Eléctricos'}
-                            </div>
-                        </div>
-
-                        <!-- 4. Facturación / Ingresos del Mes -->
-                        <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">
+                                <span style="font-size:0.82rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">
                                     ${_useRealKm ? 'Facturación Turnos Mes' : 'Ingresos Estimados Mes'}
                                 </span>
-                                <span style="font-size:1.4rem;">💰</span>
+                                <span style="font-size:1.3rem;">💰</span>
                             </div>
-                            <div style="font-size:2rem; font-weight:900; color:#10b981; font-family:monospace;">
+                            <div style="font-size:1.85rem; font-weight:900; color:#10b981; font-family:monospace; line-height:1.2;">
                                 $${_formatNumber(Math.round(totalIngresosMes))}
                             </div>
-                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                 ${_useRealKm 
                                     ? `${_realKmData.totalCompletedShifts} turnos • Recaudación: $${_realKmData.totalFleetMonthKm > 0 ? (totalIngresosMes / _realKmData.totalFleetMonthKm).toFixed(2) : '0'}/km` 
                                     : 'Recaudación bruta de turnos'}
                             </div>
                         </div>
 
-                        <!-- 5. Gasto Operativo Mensual -->
-                        <div class="card" style="background:linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(185, 28, 28, 0.03)); border:1px solid rgba(239, 68, 68, 0.3); border-radius:16px; padding:18px;">
+                        <!-- 2. Gasto Operativo Mensual -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(185, 28, 28, 0.03)); border:1px solid rgba(239, 68, 68, 0.3); border-radius:16px; padding:18px; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#f87171; text-transform:uppercase; letter-spacing:0.5px;">
+                                <span style="font-size:0.82rem; font-weight:700; color:#f87171; text-transform:uppercase; letter-spacing:0.5px;">
                                     ${_useRealKm ? 'Gasto Operativo Mes' : 'Gasto Mensual Proyectado'}
                                 </span>
-                                <span style="font-size:1.4rem;">💼</span>
+                                <span style="font-size:1.3rem;">💼</span>
                             </div>
-                            <div style="font-size:2rem; font-weight:900; color:#f87171; font-family:monospace;">
+                            <div style="font-size:1.85rem; font-weight:900; color:#f87171; font-family:monospace; line-height:1.2;">
                                 $${_formatNumber(Math.round(totalCostoMensual))}
                             </div>
-                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px;">
-                                ${_useRealKm ? `GNC, aceite, cubiertas y seguros consumidos en ${curMonthName}` : 'Costo total operativo proyectado al mes'}
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${_useRealKm ? `GNC, aceite, cubiertas y seguro en ${curMonthName}` : 'Costo total operativo proyectado al mes'}
                             </div>
                         </div>
 
-                        <!-- 6. GANANCIA NETA FLOTA (Cartel destacado pedido por el usuario) -->
+                        <!-- 3. GANANCIA NETA FLOTA (Cartel destacado pedido por el usuario) -->
                         <div class="card" style="background:${netProfit >= 0 
                             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.08))' 
                             : 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.08))'}; 
                             border:2px solid ${netProfit >= 0 ? '#10b981' : '#ef4444'}; 
                             box-shadow:${netProfit >= 0 ? '0 8px 24px rgba(16, 185, 129, 0.25)' : '0 8px 24px rgba(239, 68, 68, 0.25)'}; 
-                            border-radius:16px; padding:18px; position:relative; overflow:hidden;">
+                            border-radius:16px; padding:18px; position:relative; overflow:hidden; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <div style="display:flex; align-items:center; gap:6px;">
-                                    <span style="font-size:0.85rem; font-weight:800; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; text-transform:uppercase; letter-spacing:0.5px;">
+                                    <span style="font-size:0.82rem; font-weight:800; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; text-transform:uppercase; letter-spacing:0.5px;">
                                         Ganancia Neta Flota
                                     </span>
                                     <span class="badge" style="background:${netProfit >= 0 ? '#10b981' : '#ef4444'}; color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:8px;">
                                         ${netProfit >= 0 ? '✨ LIMPIO' : '⚠️ DÉFICIT'}
                                     </span>
                                 </div>
-                                <span style="font-size:1.4rem;">${netProfit >= 0 ? '💵' : '📉'}</span>
+                                <span style="font-size:1.3rem;">${netProfit >= 0 ? '💵' : '📉'}</span>
                             </div>
-                            <div style="font-size:2.2rem; font-weight:900; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; font-family:monospace; line-height:1.1;">
+                            <div style="font-size:2rem; font-weight:900; color:${netProfit >= 0 ? '#10b981' : '#ef4444'}; font-family:monospace; line-height:1.2;">
                                 ${netProfit >= 0 ? '+' : ''}$${_formatNumber(Math.round(netProfit))}
                             </div>
-                            <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:6px; font-weight:600;">
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                 ${totalIngresosMes > 0 
-                                    ? `Margen Neto: <strong style="color:${netProfit >= 0 ? '#10b981' : '#ef4444'};">${marginPct.toFixed(1)}%</strong> • <span style="color:var(--text-primary);">$${netPerKm.toFixed(2)} / km limpio</span>`
-                                    : 'Pendiente de carga de recaudaciones'}
+                                    ? `Margen: <strong style="color:${netProfit >= 0 ? '#10b981' : '#ef4444'};">${marginPct.toFixed(1)}%</strong> • <span style="color:var(--text-primary);">$${netPerKm.toFixed(2)}/km limpio</span>`
+                                    : 'Pendiente de turnos'}
+                            </div>
+                        </div>
+
+                        <!-- 4. Kilometraje Real o Ahorro Estimado -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(37, 99, 235, 0.04)); border:1px solid rgba(59, 130, 246, 0.35); border-radius:16px; padding:18px; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:0.82rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
+                                    ${_useRealKm ? 'Km Reales de la Flota' : 'Ahorro Flota vs Nafta'}
+                                </span>
+                                <span style="font-size:1.3rem;">${_useRealKm ? '📍' : '💡'}</span>
+                            </div>
+                            <div style="font-size:1.85rem; font-weight:900; color:#60a5fa; font-family:monospace; line-height:1.2;">
+                                ${_useRealKm 
+                                    ? `${_formatNumber(_realKmData.totalFleetMonthKm)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">km</span>` 
+                                    : `$${_formatNumber(Math.round(ahorroMensualFlota))} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ mes</span>`}
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${_useRealKm 
+                                    ? `${curMonthName} ${curYear} • ${_realKmData.totalCompletedShifts} turnos registrados` 
+                                    : 'Ahorro vs nafta tradicional'}
+                            </div>
+                        </div>
+
+                        <!-- 5. Costo Promedio Flota -->
+                        <div class="card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:16px; padding:18px; position:relative; overflow:hidden; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:0.82rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Costo Promedio Flota</span>
+                                <span style="font-size:1.3rem;">📉</span>
+                            </div>
+                            <div style="font-size:1.85rem; font-weight:900; color:#38bdf8; font-family:monospace; line-height:1.2;">
+                                $${avgCostoKm.toFixed(2)} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ km</span>
+                            </div>
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${_useRealKm && _realKmData.totalFleetMonthKm > 0 
+                                    ? `Costo real (${_formatNumber(_realKmData.totalFleetMonthKm)} km en ${curMonthName})`
+                                    : `Basado en ${_formatNumber(_simulatedKm)} km/mes`}
+                            </div>
+                        </div>
+
+                        <!-- 6. Auto Más Económico -->
+                        <div class="card" style="background:linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.04)); border:1px solid rgba(16, 185, 129, 0.35); border-radius:16px; padding:18px; box-sizing:border-box; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:0.82rem; font-weight:700; color:#10b981; text-transform:uppercase; letter-spacing:0.5px;">Más Eficiente</span>
+                                <span style="font-size:1.3rem;">🏆</span>
+                            </div>
+                            <div style="font-size:1.85rem; font-weight:900; color:#10b981; font-family:monospace; line-height:1.2;">
+                                $${cheapestVehicle ? cheapestVehicle.metrics.costoTotalKm.toFixed(2) : '0.00'} <span style="font-size:1rem; font-weight:600; color:var(--text-secondary);">/ km</span>
+                            </div>
+                            <div style="font-size:0.82rem; font-weight:700; color:var(--text-primary); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${cheapestVehicle ? `${cheapestVehicle.vehicle.name || 'Vehículo'} (${cheapestVehicle.vehicle.plate || ''})` : 'Sin vehículos'}
                             </div>
                         </div>
                     </div>
