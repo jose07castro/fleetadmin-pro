@@ -18,6 +18,8 @@ const CopilotModule = (() => {
     let _lastPosition = null;             // { lat, lng, time, speed }
     let _audioCtx = null;
     let _hudTimer = null;
+    let _liveTrafficAlerts = [];          // Alertas activas de tránsito en tiempo real (Firebase)
+    let _firebaseAlertsListening = false;
 
     // Base de Datos Oficial Rosario (80 Radares y Cámaras de Videocontrol con Coordenadas Exactas WGS84)
     const STATIC_RADARS = [
@@ -757,6 +759,78 @@ const CopilotModule = (() => {
         return R * c;
     }
 
+    // ============ SINCRONIZACIÓN DE ALERTAS DE TRÁNSITO EN VIVO ============
+    function _initLiveTrafficListener() {
+        if (_firebaseAlertsListening) return;
+        if (typeof firebaseDB === 'undefined') {
+            setTimeout(_initLiveTrafficListener, 2000);
+            return;
+        }
+
+        try {
+            _firebaseAlertsListening = true;
+            console.log('📡 [COPILOTO] Conectando escucha en vivo de global_traffic_alerts...');
+            const ref = firebaseDB.ref('global_traffic_alerts');
+            ref.on('value', (snap) => {
+                const val = snap.val() || {};
+                const now = Date.now();
+                const alerts = [];
+
+                for (const id in val) {
+                    const a = val[id];
+                    if (!a) continue;
+                    const lat = parseFloat(a.lat);
+                    const lng = parseFloat(a.lng);
+                    const isActive = (a.status === 'active' || !a.status);
+                    const notExpired = (!a.expiresAt || a.expiresAt > now);
+
+                    if (!isNaN(lat) && !isNaN(lng) && isActive && notExpired) {
+                        const alertType = a.type || 'warning';
+                        const typeLabels = {
+                            police:     'Control Policial',
+                            checkpoint: 'Operativo de Tránsito',
+                            municipal:  'Inspector Municipal',
+                            radar:      'Radar Móvil',
+                            helicopter: 'Helicóptero Sanitario',
+                            ambulance:  'Ambulancia en la vía',
+                            firetruck:  'Bomberos en la vía',
+                            accident:   'Accidente de Tránsito',
+                            traffic:    'Tránsito Lento',
+                            warning:    'Alerta de Tránsito'
+                        };
+                        const label = typeLabels[alertType] || 'Alerta de Tránsito';
+                        const locName = a.location ? a.location.replace(/ \(reporte.*$/i, '').trim() : label;
+
+                        alerts.push({
+                            id: a.id || id,
+                            name: locName,
+                            lat: lat,
+                            lng: lng,
+                            type: alertType,
+                            limit: null,
+                            desc: a.originalText || a.description || label,
+                            isTrafficAlert: true,
+                            audioUrl: a.audioUrl || null
+                        });
+                    }
+                }
+
+                _liveTrafficAlerts = alerts;
+                console.log(`📡 [COPILOTO] ✅ Alertas de tránsito en vivo cargadas: ${alerts.length}`);
+            }, (err) => {
+                console.warn('⚠️ [COPILOTO] Error escuchando global_traffic_alerts:', err);
+                _firebaseAlertsListening = false;
+            });
+        } catch(e) {
+            console.warn('⚠️ [COPILOTO] Error conectando a Firebase:', e);
+            _firebaseAlertsListening = false;
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        setTimeout(_initLiveTrafficListener, 1200);
+    }
+
     /**
      * Inicializa / desbloquea el sintetizador de sonido Web Audio API.
      */
@@ -786,56 +860,68 @@ const CopilotModule = (() => {
 
     /**
      * Reproduce un chime de advertencia potente usando Web Audio API.
-     * @param {boolean} isSpeeding - Si el conductor supera la velocidad máxima
+     * @param {boolean} isUrgent - Si requiere tono de urgencia
      */
-    function _playWarningChime(isSpeeding = false) {
+    function _playWarningChime(isUrgent = false) {
         if (!_isVoiceEnabled) return;
         try {
             const ctx = _getAudioContext();
             if (!ctx) return;
 
-            const now = ctx.currentTime;
-            const masterGain = ctx.createGain();
-            masterGain.gain.setValueAtTime(0.45, now);
-            masterGain.connect(ctx.destination);
+            const playTones = () => {
+                try {
+                    const now = ctx.currentTime;
+                    const masterGain = ctx.createGain();
+                    masterGain.gain.setValueAtTime(0.5, now);
+                    masterGain.connect(ctx.destination);
 
-            if (isSpeeding) {
-                // Tono de urgencia: 3 beeps rápidos y agudos
-                [0, 0.13, 0.26].forEach((delay, idx) => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(1080 + (idx * 60), now + delay);
-                    gain.gain.setValueAtTime(0.5, now + delay);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.10);
-                    osc.connect(gain);
-                    gain.connect(masterGain);
-                    osc.start(now + delay);
-                    osc.stop(now + delay + 0.11);
-                });
+                    if (isUrgent) {
+                        // Tono de urgencia: 3 beeps rápidos y agudos
+                        [0, 0.13, 0.26].forEach((delay, idx) => {
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.type = 'sawtooth';
+                            osc.frequency.setValueAtTime(1080 + (idx * 60), now + delay);
+                            gain.gain.setValueAtTime(0.5, now + delay);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.10);
+                            osc.connect(gain);
+                            gain.connect(masterGain);
+                            osc.start(now + delay);
+                            osc.stop(now + delay + 0.11);
+                        });
+                    } else {
+                        // Chime agradable de dos tonos: 880 Hz (La) -> 1320 Hz (Mi)
+                        const osc1 = ctx.createOscillator();
+                        const gain1 = ctx.createGain();
+                        osc1.type = 'sine';
+                        osc1.frequency.setValueAtTime(880, now);
+                        gain1.gain.setValueAtTime(0.35, now);
+                        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                        osc1.connect(gain1);
+                        gain1.connect(masterGain);
+                        osc1.start(now);
+                        osc1.stop(now + 0.2);
+
+                        const osc2 = ctx.createOscillator();
+                        const gain2 = ctx.createGain();
+                        osc2.type = 'sine';
+                        osc2.frequency.setValueAtTime(1320, now + 0.14);
+                        gain2.gain.setValueAtTime(0.45, now + 0.14);
+                        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+                        osc2.connect(gain2);
+                        gain2.connect(masterGain);
+                        osc2.start(now + 0.14);
+                        osc2.stop(now + 0.5);
+                    }
+                } catch (toneErr) {
+                    console.warn('[COPILOTO] Error en oscilador:', toneErr);
+                }
+            };
+
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(playTones).catch(playTones);
             } else {
-                // Chime de navegación agradable de dos tonos: 880 Hz (La) -> 1320 Hz (Mi)
-                const osc1 = ctx.createOscillator();
-                const gain1 = ctx.createGain();
-                osc1.type = 'sine';
-                osc1.frequency.setValueAtTime(880, now);
-                gain1.gain.setValueAtTime(0.35, now);
-                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-                osc1.connect(gain1);
-                gain1.connect(masterGain);
-                osc1.start(now);
-                osc1.stop(now + 0.2);
-
-                const osc2 = ctx.createOscillator();
-                const gain2 = ctx.createGain();
-                osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(1320, now + 0.14);
-                gain2.gain.setValueAtTime(0.45, now + 0.14);
-                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
-                osc2.connect(gain2);
-                gain2.connect(masterGain);
-                osc2.start(now + 0.14);
-                osc2.stop(now + 0.5);
+                playTones();
             }
         } catch (e) {
             console.warn('[COPILOTO] Error sintetizando chime Web Audio:', e);
@@ -860,36 +946,41 @@ const CopilotModule = (() => {
     /**
      * Vocaliza la advertencia por voz nativa (Android TTS / Web Speech API).
      */
-    function _speakWarning(radar, dist, currentSpeed) {
+    function _speakWarning(target, dist, currentSpeed) {
         if (!_isVoiceEnabled) return;
 
         const distRound = Math.round(dist / 10) * 10;
-        const isSpeeding = (currentSpeed !== null && currentSpeed > radar.limit);
-        const radarNameClean = radar.name.replace(/\s+y\s+/gi, ' esquina ');
+        const nameClean = (target.name || '').replace(/\s+y\s+/gi, ' esquina ');
+        const isSpeeding = (!target.isTrafficAlert && target.limit && currentSpeed !== null && currentSpeed > target.limit);
 
         let text = '';
-        if (isSpeeding) {
-            text = `¡Atención! Fotomulta a ${distRound} metros en ${radarNameClean}. Reduce tu velocidad. Velocidad máxima ${radar.limit} kilómetros por hora.`;
+        if (target.isTrafficAlert) {
+            text = `¡Atención! ${nameClean} a ${distRound} metros.`;
+            if (target.desc && target.desc !== target.name && target.desc.length < 80) {
+                text += ` ${target.desc}`;
+            }
+        } else if (isSpeeding) {
+            text = `¡Atención! Fotomulta a ${distRound} metros en ${nameClean}. Reduce tu velocidad. Velocidad máxima ${target.limit} kilómetros por hora.`;
         } else {
-            text = `Fotomulta a ${distRound} metros en ${radarNameClean}. Velocidad máxima ${radar.limit} kilómetros por hora.`;
+            text = `Fotomulta a ${distRound} metros en ${nameClean}. Velocidad máxima ${target.limit} kilómetros por hora.`;
         }
 
-        // 1. Android Native TTS
+        // 1. AndroidServices (con fallback universal automático a Web Speech)
+        let spoken = false;
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
-            AndroidServices.speak(text);
-            return;
+            spoken = AndroidServices.speak(text);
         }
 
-        // 2. Native Bridge (Capacitor/Cordova)
-        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+        // 2. Native Bridge directo (si AndroidServices no estuviera cargado)
+        if (!spoken && window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
             try {
                 window.NativeServiceBridge.speak(text);
-                return;
+                spoken = true;
             } catch (_) {}
         }
 
-        // 3. Web Speech API (Navegador móvil o escritorio)
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
+        // 3. Web Speech API directa
+        if (!spoken && typeof window !== 'undefined' && window.speechSynthesis) {
             try {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
                 window.speechSynthesis.cancel();
@@ -898,8 +989,7 @@ const CopilotModule = (() => {
                 utter.rate = 1.05;
                 utter.pitch = 1.0;
 
-                // Seleccionar voz en español si está disponible
-                const voices = window.speechSynthesis.getVoices();
+                const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
                 if (voices && voices.length > 0) {
                     const esVoice = voices.find(v => v.lang && (v.lang.includes('es-AR') || v.lang.includes('es_AR'))) ||
                                     voices.find(v => v.lang && v.lang.startsWith('es'));
@@ -917,17 +1007,20 @@ const CopilotModule = (() => {
      * Inyecta los estilos CSS necesarios para el HUD de alta visibilidad.
      */
     function _ensureHUDStyles() {
+        if (typeof document === 'undefined') return;
         if (document.getElementById('copilotHUDStyles')) return;
+        const target = document.head || document.body;
+        if (!target) return;
         const style = document.createElement('style');
         style.id = 'copilotHUDStyles';
         style.textContent = `
             #radarCopilotHUD {
                 position: fixed;
-                top: 14px;
+                top: 10px;
                 left: 50%;
                 transform: translateX(-50%) translateY(-120%);
                 width: calc(100% - 24px);
-                max-width: 520px;
+                max-width: 440px;
                 z-index: 9999999;
                 box-sizing: border-box;
                 transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
@@ -943,14 +1036,14 @@ const CopilotModule = (() => {
                 position: relative;
                 background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(26, 17, 24, 0.98) 100%);
                 border: 2px solid #ef4444;
-                border-radius: 20px;
-                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 25px rgba(239, 68, 68, 0.4);
+                border-radius: 16px;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75), 0 0 20px rgba(239, 68, 68, 0.35);
                 backdrop-filter: blur(16px);
                 -webkit-backdrop-filter: blur(16px);
-                padding: 12px 14px;
+                padding: 10px 12px;
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 10px;
                 color: #ffffff;
             }
             .copilot-hud-card.hud-speeding {
@@ -963,26 +1056,26 @@ const CopilotModule = (() => {
             }
             .copilot-traffic-sign {
                 flex-shrink: 0;
-                width: 62px;
-                height: 62px;
+                width: 50px;
+                height: 50px;
                 border-radius: 50%;
                 background: #ffffff;
-                border: 6px solid #dc2626;
+                border: 4px solid #dc2626;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
             }
             .copilot-traffic-sign .speed-num {
-                font-size: 25px;
+                font-size: 21px;
                 font-weight: 900;
                 line-height: 1;
                 color: #0f172a;
                 letter-spacing: -0.5px;
             }
             .copilot-traffic-sign .speed-unit {
-                font-size: 8px;
+                font-size: 7px;
                 font-weight: 900;
                 color: #dc2626;
                 margin-top: 1px;
@@ -1090,8 +1183,9 @@ const CopilotModule = (() => {
 
     /**
      * Muestra o actualiza el banner HUD de gran visibilidad en la pantalla.
+     * Soporta tanto cámaras fijas (Fotomultas) como alertas de tránsito en vivo.
      */
-    function _showRadarHUD(radar, dist, currentSpeed) {
+    function _showRadarHUD(target, dist, currentSpeed) {
         if (typeof document === 'undefined') return;
         _ensureHUDStyles();
 
@@ -1104,40 +1198,79 @@ const CopilotModule = (() => {
             document.body.appendChild(hud);
         }
 
-        const isSpeeding = (currentSpeed !== null && currentSpeed > radar.limit);
+        const isTraffic = !!target.isTrafficAlert;
+        const isSpeeding = (!isTraffic && target.limit && currentSpeed !== null && currentSpeed > target.limit);
         const distMeters = Math.round(dist);
         let distLabel = `📍 A ${distMeters}m`;
         if (distMeters <= PASSING_DISTANCE_METERS) {
-            distLabel = '📍 ¡PASANDO CÁMARA!';
+            distLabel = isTraffic ? '📍 ¡EN EL LUGAR!' : '📍 ¡PASANDO CÁMARA!';
         }
 
         let speedBadgeHtml = '';
-        if (currentSpeed !== null && currentSpeed > 0) {
-            const speedKmh = Math.round(currentSpeed);
-            if (isSpeeding) {
-                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over">⚠️ EXCESO: ${speedKmh} km/h (MÁX ${radar.limit})</div>`;
+        if (!isTraffic) {
+            if (currentSpeed !== null && currentSpeed > 0) {
+                const speedKmh = Math.round(currentSpeed);
+                if (isSpeeding) {
+                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over">⚠️ EXCESO: ${speedKmh} km/h (MÁX ${target.limit})</div>`;
+                } else {
+                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok">✅ Velocidad OK: ${speedKmh} km/h</div>`;
+                }
             } else {
-                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok">✅ Velocidad OK: ${speedKmh} km/h</div>`;
+                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral">⏱️ Respete el límite indicado (${target.limit} km/h)</div>`;
             }
         } else {
-            speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral">⏱️ Respete el límite indicado</div>`;
+            speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral">⚠️ Conduzca con precaución en la zona</div>`;
+        }
+
+        // Icono y distintivo
+        let signHtml = '';
+        let badgeHtml = '';
+        let cardBorderColor = '#ef4444';
+
+        if (isTraffic) {
+            const alertIcons = {
+                police:     { icon: '🚔', badge: 'POLICÍA', color: '#3b82f6' },
+                checkpoint: { icon: '🚧', badge: 'CONTROL', color: '#2563eb' },
+                municipal:  { icon: '🦊', badge: 'INSPECTOR', color: '#10b981' },
+                radar:      { icon: '📷', badge: 'RADAR MÓVIL', color: '#f59e0b' },
+                helicopter: { icon: '🚁', badge: 'HELICÓPTERO', color: '#10b981' },
+                ambulance:  { icon: '🚑', badge: 'AMBULANCIA', color: '#ef4444' },
+                firetruck:  { icon: '🚒', badge: 'BOMBEROS', color: '#b91c1c' },
+                accident:   { icon: '💥', badge: 'ACCIDENTE', color: '#ef4444' },
+                traffic:    { icon: '🚗', badge: 'TRÁNSITO', color: '#f97316' },
+                warning:    { icon: '⚠️', badge: 'ALERTA', color: '#f59e0b' }
+            };
+            const meta = alertIcons[target.type] || alertIcons.warning;
+            cardBorderColor = meta.color;
+            signHtml = `
+                <div class="copilot-traffic-sign" style="border-color:${meta.color}; background:#0f172a; color:#fff;">
+                    <span style="font-size:24px;">${meta.icon}</span>
+                    <span class="speed-unit" style="color:${meta.color}; font-size:7px;">ALERTA</span>
+                </div>
+            `;
+            badgeHtml = `<span class="copilot-hud-pill-badge" style="background:${meta.color};">${meta.icon} ${meta.badge}</span>`;
+        } else {
+            signHtml = `
+                <div class="copilot-traffic-sign">
+                    <span class="speed-num">${target.limit}</span>
+                    <span class="speed-unit">MÁX KM/H</span>
+                </div>
+            `;
+            badgeHtml = `<span class="copilot-hud-pill-badge">📷 FOTOMULTA</span>`;
         }
 
         const cardClass = isSpeeding ? 'copilot-hud-card hud-speeding' : 'copilot-hud-card';
 
         hud.innerHTML = `
-            <div class="${cardClass}">
-                <div class="copilot-traffic-sign">
-                    <span class="speed-num">${radar.limit}</span>
-                    <span class="speed-unit">MÁX KM/H</span>
-                </div>
+            <div class="${cardClass}" style="border-color:${cardBorderColor};">
+                ${signHtml}
                 <div class="copilot-hud-main">
                     <div class="copilot-hud-pill-row">
-                        <span class="copilot-hud-pill-badge">📷 FOTOMULTA</span>
+                        ${badgeHtml}
                         <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
                     </div>
-                    <div class="copilot-hud-name" title="${radar.name}">${radar.name}</div>
-                    <div class="copilot-hud-desc">${radar.desc || 'Videocontrol municipal de tránsito'}</div>
+                    <div class="copilot-hud-name" title="${target.name}">${target.name}</div>
+                    <div class="copilot-hud-desc">${target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito')}</div>
                     ${speedBadgeHtml}
                 </div>
                 <div class="copilot-hud-actions">
@@ -1205,7 +1338,6 @@ const CopilotModule = (() => {
     function _calculateSpeed(lat, lng, rawSpeed) {
         // 1. Si el GPS provee velocidad directa
         if (typeof rawSpeed === 'number' && !isNaN(rawSpeed) && rawSpeed >= 0) {
-            // En API HTML5 Geolocation es m/s; si es mayor a 45 probablemente ya venga en km/h
             return rawSpeed > 45 ? rawSpeed : (rawSpeed * 3.6);
         }
 
@@ -1225,7 +1357,7 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Chequea la posición actual respecto a todos los radares de la base.
+     * Chequea la posición actual respecto a radares fijos Y alertas de tránsito en tiempo real.
      * Invocado dinámicamente desde el pipeline de GPS nativo y web.
      * @param {number} currentLat - Latitud WGS84
      * @param {number} currentLng - Longitud WGS84
@@ -1241,52 +1373,52 @@ const CopilotModule = (() => {
         // Guardar última posición
         _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed };
 
-        // Buscar el radar más cercano dentro del radio de alerta
-        let nearestRadar = null;
+        // Buscar el objetivo más cercano (80 radares fijos oficiales + alertas de tránsito en vivo)
+        const allTargets = [...STATIC_RADARS, ..._liveTrafficAlerts];
+        let nearestTarget = null;
         let minDistance = Infinity;
 
-        for (const radar of STATIC_RADARS) {
-            const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
+        for (const target of allTargets) {
+            const dist = _getDistance(currentLat, currentLng, target.lat, target.lng);
             if (dist < minDistance) {
                 minDistance = dist;
-                nearestRadar = radar;
+                nearestTarget = target;
             }
         }
 
         // Caso 1: Estamos dentro del radio de advertencia temprana (<= 480m)
-        if (nearestRadar && minDistance <= WARNING_DISTANCE_METERS) {
-            const lastAlert = _lastAlertTime[nearestRadar.id] || 0;
-            const isSpeeding = (currentSpeed !== null && currentSpeed > nearestRadar.limit);
+        if (nearestTarget && minDistance <= WARNING_DISTANCE_METERS) {
+            const lastAlert = _lastAlertTime[nearestTarget.id] || 0;
+            const isSpeeding = (!nearestTarget.isTrafficAlert && nearestTarget.limit && currentSpeed !== null && currentSpeed > nearestTarget.limit);
 
             // Verificar si acabamos de entrar o si expiró el enfriamiento
             if (now - lastAlert > COOLDOWN_MS) {
-                _lastAlertTime[nearestRadar.id] = now;
+                _lastAlertTime[nearestTarget.id] = now;
                 _activeApproach = {
-                    radarId: nearestRadar.id,
+                    radarId: nearestTarget.id,
                     minDistance: minDistance,
                     startedAt: now
                 };
 
                 // Reproducir Chime + Voz + Vibración
                 _playWarningChime(isSpeeding);
-                _speakWarning(nearestRadar, minDistance, currentSpeed);
+                _speakWarning(nearestTarget, minDistance, currentSpeed);
                 _triggerVibration(isSpeeding);
 
-                console.log(`📡 [COPILOTO] 📸 RADAR DETECTADO: ${nearestRadar.name} a ${minDistance.toFixed(0)}m (Límite: ${nearestRadar.limit} km/h, Velocidad: ${currentSpeed ? currentSpeed.toFixed(0) : 'N/A'} km/h)`);
+                console.log(`📡 [COPILOTO] 🔔 ALERTA DETECTADA: ${nearestTarget.name} a ${minDistance.toFixed(0)}m (${nearestTarget.isTrafficAlert ? 'Tránsito' : 'Fotomulta'})`);
             }
 
             // Actualizar el HUD dinámicamente con la distancia en vivo
-            _showRadarHUD(nearestRadar, minDistance, currentSpeed);
+            _showRadarHUD(nearestTarget, minDistance, currentSpeed);
 
             // Actualizar seguimiento de aproximación
-            if (_activeApproach && _activeApproach.radarId === nearestRadar.id) {
+            if (_activeApproach && _activeApproach.radarId === nearestTarget.id) {
                 if (minDistance < _activeApproach.minDistance) {
                     _activeApproach.minDistance = minDistance;
                 }
             }
         } else {
             // Caso 2: Estamos fuera de la zona de advertencia (> 480m)
-            // Si teníamos un acercamiento activo que ahora se alejó, cerrar HUD
             if (_activeApproach) {
                 _hideRadarHUD();
                 _activeApproach = null;
@@ -1296,22 +1428,49 @@ const CopilotModule = (() => {
 
     /**
      * Prueba inmediata de alerta (HUD, Chime y Voz) para choferes y administradores.
-     * Útil para verificar que el audio y el banner funcionen en el dispositivo.
+     * @param {'fotomulta'|'transito'|string} typeOrRadarId
      */
-    function testAlert(radarId = 'radar_rosario_30') {
-        const radar = STATIC_RADARS.find(r => r.id === radarId) || STATIC_RADARS[0];
-        console.log('📡 [COPILOTO] Ejecutando TEST de alerta para:', radar.name);
+    function testAlert(typeOrRadarId = 'fotomulta') {
+        // Asegurar que la voz esté activada para la prueba
+        if (!_isVoiceEnabled) {
+            _isVoiceEnabled = true;
+            localStorage.setItem('radarVoice', 'on');
+            console.log('📡 [COPILOTO] Voz activada automáticamente para el test.');
+        }
 
-        const testDist = 280;
-        const testSpeed = radar.limit + 8; // Simula leve exceso para probar chime y alerta visual
+        let target = null;
+        let testDist = 280;
+        let testSpeed = 48;
 
-        _playWarningChime(true);
-        _speakWarning(radar, testDist, testSpeed);
+        if (typeOrRadarId === 'transito' || typeOrRadarId === 'traffic') {
+            target = (_liveTrafficAlerts && _liveTrafficAlerts.length > 0) ? _liveTrafficAlerts[0] : {
+                id: 'test_traffic_alert',
+                name: 'Av. Pellegrini y Corrientes',
+                lat: -32.9515,
+                lng: -60.6550,
+                type: 'police',
+                limit: null,
+                desc: 'Control policial e inspectores de tránsito',
+                isTrafficAlert: true
+            };
+            testDist = 250;
+            testSpeed = 35;
+        } else {
+            const foundRadar = STATIC_RADARS.find(r => r.id === typeOrRadarId);
+            target = foundRadar || STATIC_RADARS[0];
+            testDist = 280;
+            testSpeed = (target.limit || 40) + 8; // Leve exceso para probar aviso
+        }
+
+        console.log('📡 [COPILOTO] Ejecutando TEST de alerta para:', target.name);
+
+        _playWarningChime(testSpeed > (target.limit || 50));
+        _speakWarning(target, testDist, testSpeed);
         _triggerVibration(true);
-        _showRadarHUD(radar, testDist, testSpeed);
+        _showRadarHUD(target, testDist, testSpeed);
 
         if (typeof Components !== 'undefined' && Components.showToast) {
-            Components.showToast(`🔔 Test de Copiloto: ${radar.name}`, 'info');
+            Components.showToast(`🔔 Test: ${target.name} (${target.isTrafficAlert ? 'Tránsito' : 'Fotomulta'})`, 'info');
         }
     }
 
@@ -1341,6 +1500,10 @@ const CopilotModule = (() => {
         return STATIC_RADARS;
     }
 
+    function getLiveTrafficAlerts() {
+        return _liveTrafficAlerts;
+    }
+
     function getRadarById(id) {
         return STATIC_RADARS.find(r => r.id === id) || null;
     }
@@ -1356,6 +1519,7 @@ const CopilotModule = (() => {
         setVoiceEnabled,
         isVoiceEnabled,
         getAllRadars,
+        getLiveTrafficAlerts,
         getRadarById,
         dismissHUD,
         testAlert

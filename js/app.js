@@ -198,8 +198,9 @@ const App = (() => {
                         if (typeof SOSModule !== 'undefined') {
                             SOSModule.startListening();
                         }
-                        // 8.6 Activar copiloto de radares para TODOS (dueños y choferes)
+                        // 8.6 Activar copiloto de radares y tránsito para TODOS (dueños y choferes)
                         if (typeof GPSPermissions !== 'undefined') {
+                            try { GPSPermissions.initCopilotForAll(); } catch(e) { console.warn('Copilot init error:', e); }
                             // Pedir permiso GPS al dueño también si todavía no lo otorgó
                             GPSPermissions.checkPermission().then(state => {
                                 if (state === 'granted') {

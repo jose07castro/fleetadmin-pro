@@ -859,35 +859,76 @@ const GPSPermissions = (() => {
         }
     }
 
-    // ============ COPILOTO UNIVERSAL DE RADARES (TODOS LOS ROLES) ============
+    // ============ COPILOTO UNIVERSAL DE RADARES Y TRÁNSITO (TODOS LOS ROLES) ============
     // Funciona para dueños, choferes sin turno y cualquier usuario logueado.
-    // La única fuente de verdad para la proximidad de radares estáticos.
+    // La única fuente de verdad para la proximidad de radares estáticos y alertas viales en vivo.
 
     let _copilotWatchId = null;
+    let _copilotIntervalId = null;
+    let _lastCopilotFixTime = 0;
+
+    function _onCopilotPosition(pos) {
+        if (!pos || !pos.coords) return;
+        _lastCopilotFixTime = Date.now();
+        if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function') {
+            CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed);
+        }
+    }
 
     function _startUniversalCopilot() {
-        if (_copilotWatchId !== null) return; // Ya activo
-        if (typeof CopilotModule === 'undefined') return;
+        if (typeof CopilotModule === 'undefined') {
+            console.warn('📡 [COPILOTO-UNIVERSAL] CopilotModule aún no cargado, reintentando en 1.5s...');
+            setTimeout(_startUniversalCopilot, 1500);
+            return;
+        }
 
-        console.log('📡 [COPILOTO-UNIVERSAL] Activando vigilancia de fotomultas para todos los roles...');
+        console.log('📡 [COPILOTO-UNIVERSAL] Activando vigilancia de radares y alertas viales...');
 
-        try {
-            _copilotWatchId = navigator.geolocation.watchPosition(
+        // 1. Disparo inmediato para tener coordenadas iniciales sin esperar al watchPosition
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    // Siempre avisar de radares, sin importar turno ni rol
-                    CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed);
+                    console.log('📡 [COPILOTO-UNIVERSAL] ✅ Posición inicial inmediata obtenida');
+                    _onCopilotPosition(pos);
                 },
                 (err) => {
-                    // Silencioso en errores intermitentes de GPS
-                    if (err.code !== 3) { // Ignorar TIMEOUT
-                        console.warn('📡 [COPILOTO-UNIVERSAL] Error GPS:', err.message);
-                    }
+                    console.warn('📡 [COPILOTO-UNIVERSAL] Fix inicial diferido:', err.message);
                 },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
             );
-            console.log('📡 [COPILOTO-UNIVERSAL] ✅ watchPosition activo, ID:', _copilotWatchId);
-        } catch(e) {
-            console.warn('📡 [COPILOTO-UNIVERSAL] No se pudo iniciar watchPosition:', e);
+        }
+
+        // 2. Iniciar watchPosition si no está activo
+        if (_copilotWatchId === null && typeof navigator !== 'undefined' && navigator.geolocation) {
+            try {
+                _copilotWatchId = navigator.geolocation.watchPosition(
+                    _onCopilotPosition,
+                    (err) => {
+                        if (err.code !== 3) { // Ignorar TIMEOUT silencioso
+                            console.warn('📡 [COPILOTO-UNIVERSAL] Error GPS watch:', err.message);
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
+                );
+                console.log('📡 [COPILOTO-UNIVERSAL] ✅ watchPosition activo, ID:', _copilotWatchId);
+            } catch(e) {
+                console.warn('📡 [COPILOTO-UNIVERSAL] No se pudo iniciar watchPosition:', e);
+            }
+        }
+
+        // 3. Fallback Interval (cada 5s): Si watchPosition se congela en WebView o app en segundo plano
+        if (_copilotIntervalId === null && typeof navigator !== 'undefined' && navigator.geolocation) {
+            _copilotIntervalId = setInterval(() => {
+                const elapsed = Date.now() - _lastCopilotFixTime;
+                // Si pasaron más de 6 segundos sin actualización de posición, forzar getCurrentPosition
+                if (elapsed > 6000) {
+                    navigator.geolocation.getCurrentPosition(
+                        _onCopilotPosition,
+                        () => {},
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 15000 }
+                    );
+                }
+            }, 5000);
         }
     }
 

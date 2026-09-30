@@ -7,11 +7,14 @@ const KittVoice = (() => {
     function speak(text) {
         if (!text) return Promise.resolve();
         try {
+            let spoken = false;
             if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
-                AndroidServices.speak(text);
-            } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
-                try { window.NativeServiceBridge.speak(text); } catch(e) {}
-            } else if (window.speechSynthesis) {
+                spoken = AndroidServices.speak(text);
+            }
+            if (!spoken && window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+                try { window.NativeServiceBridge.speak(text); spoken = true; } catch(e) {}
+            }
+            if (!spoken && typeof window !== 'undefined' && window.speechSynthesis) {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
                 window.speechSynthesis.cancel();
                 const utter = new SpeechSynthesisUtterance(text);

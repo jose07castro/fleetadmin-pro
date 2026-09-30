@@ -159,6 +159,12 @@ const RadarModule = (() => {
                         <span class="radar-status-dot"></span>
                         Conectando...
                     </span>
+                    <button class="radar-test-btn" id="radarTestBtn"
+                        onclick="RadarModule.testAlerts()"
+                        title="Probar advertencia HUD, Chime y Voz"
+                        style="background:rgba(239, 68, 68, 0.2);border:1px solid #ef4444;border-radius:8px;padding:6px 11px;color:#fca5a5;font-size:13px;font-weight:700;cursor:pointer;margin-right:8px;display:flex;align-items:center;gap:4px;">
+                        🔔 Probar
+                    </button>
                     <button class="radar-cameras-btn" id="radarCamerasBtn"
                         onclick="RadarModule.toggleCameras()"
                         title="Mostrar u ocultar fotomultas en el mapa"
@@ -832,54 +838,75 @@ const RadarModule = (() => {
 
     // ============ TRAFFIC ALERTS LISTENER ============
 
-    function _startAlertListener() {
-        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+    let _globalAlertRef = null;
+    let _activeAlertsMap = {}; // id -> data
 
-        const fleetId = Auth.getFleetId();
-        if (!fleetId) {
-            // Auth aún no hidró la sesión — reintentar en 1 segundo
-            console.warn('[RADAR] fleetId no disponible aún, reintentando en 1s...');
-            setTimeout(() => { if (_isOpen) _startAlertListener(); }, 1000);
-            return;
-        }
+    function _syncAndRenderAlerts() {
+        if (!_map) return;
+        const now = Date.now();
+        const activeIds = Object.keys(_activeAlertsMap);
 
-        console.log(`[RADAR] Escuchando alertas de tráfico para flota: ${fleetId}`);
-        _alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+        activeIds.forEach(id => {
+            const alert = _activeAlertsMap[id];
+            if (!alert) return;
+            const notExpired = (!alert.expiresAt || alert.expiresAt > now);
+            const isActive = (alert.status === 'active' || !alert.status);
+            if (notExpired && isActive && alert.lat && alert.lng) {
+                _updateAlertMarker(id, alert);
+            } else {
+                _removeAlertMarker(id);
+            }
+        });
 
-        _alertRef.on('value', (snap) => {
-            const allAlerts = snap.val() || {};
-            const alertIds = Object.keys(allAlerts);
-            console.log(`[RADAR] Alertas recibidas: ${alertIds.length}`);
-
-            // 1. Update/Add alerts
-            alertIds.forEach(id => {
-                const alert = allAlerts[id];
-                const now = Date.now();
-                
-                // Solo mostrar si no ha expirado
-                if (alert.expiresAt > now && alert.status === 'active') {
-                    _updateAlertMarker(id, alert);
-                } else {
-                    _removeAlertMarker(id);
-                }
-            });
-
-            // 2. Remove deleted alerts
-            Object.keys(_alertMarkers).forEach(id => {
-                if (!allAlerts[id]) {
-                    _removeAlertMarker(id);
-                }
-            });
-        }, (error) => {
-            console.error('[RADAR] Error escuchando alertas de Firebase:', error);
+        // Eliminar marcadores que ya no están en los datos
+        Object.keys(_alertMarkers).forEach(id => {
+            if (!_activeAlertsMap[id]) {
+                _removeAlertMarker(id);
+            }
         });
     }
 
+    function _startAlertListener() {
+        if (typeof firebaseDB === 'undefined') return;
+
+        console.log('[RADAR] Escuchando nodo global_traffic_alerts...');
+        // 1. Escuchar nodo GLOBAL incondicionalmente
+        _globalAlertRef = firebaseDB.ref('global_traffic_alerts');
+        _globalAlertRef.on('value', (snap) => {
+            const val = snap.val() || {};
+            console.log(`[RADAR] Alertas globales recibidas: ${Object.keys(val).length}`);
+            for (const id in val) {
+                _activeAlertsMap[id] = val[id];
+            }
+            _syncAndRenderAlerts();
+        }, (error) => {
+            console.error('[RADAR] Error escuchando global_traffic_alerts:', error);
+        });
+
+        // 2. Escuchar nodo FLOTA si existe fleetId
+        const fleetId = (typeof Auth !== 'undefined') ? Auth.getFleetId() : null;
+        if (fleetId) {
+            _alertRef = firebaseDB.ref(`fleets/${fleetId}/traffic_alerts`);
+            _alertRef.on('value', (snap) => {
+                const val = snap.val() || {};
+                for (const id in val) {
+                    _activeAlertsMap[id] = val[id];
+                }
+                _syncAndRenderAlerts();
+            });
+        }
+    }
+
     function _stopAlertListener() {
+        if (_globalAlertRef) {
+            _globalAlertRef.off('value');
+            _globalAlertRef = null;
+        }
         if (_alertRef) {
             _alertRef.off('value');
             _alertRef = null;
         }
+        _activeAlertsMap = {};
     }
 
     function _updateAlertMarker(id, data) {
@@ -1332,12 +1359,15 @@ const RadarModule = (() => {
         const MarkerClass = _getHTMLMapMarkerClass();
 
         radars.forEach(radar => {
+            const isThreeDigits = (radar.limit >= 100);
+            const fontSize = isThreeDigits ? '6.5px' : '7.5px';
+            const letterSpacing = isThreeDigits ? '-0.5px' : '-0.2px';
             const pinHtml = `
-                <div class="radar-cam-pin" title="${radar.name} (Máx ${radar.limit} km/h)" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.6));">
-                    <div style="background:#ffffff;border:3px solid #dc2626;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);">
-                        <span style="font-size:11px;font-weight:900;color:#0f172a;line-height:1;">${radar.limit}</span>
+                <div class="radar-cam-pin" title="${radar.name} (Máx ${radar.limit} km/h)" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.55));cursor:pointer;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="background:#ffffff;border:1.8px solid #dc2626;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.4);">
+                        <span style="font-size:${fontSize};font-weight:900;color:#0f172a;line-height:1;letter-spacing:${letterSpacing};">${radar.limit}</span>
                     </div>
-                    <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #dc2626;margin-top:-1px;"></div>
+                    <div style="width:0;height:0;border-left:2.5px solid transparent;border-right:2.5px solid transparent;border-top:3.5px solid #dc2626;margin-top:-1px;"></div>
                 </div>
             `;
 
@@ -1356,8 +1386,8 @@ const RadarModule = (() => {
                 new google.maps.LatLng(radar.lat, radar.lng),
                 pinHtml,
                 popupHtml,
-                13,
-                32
+                8,
+                19
             );
             marker.setMap(_map);
             _cameraMarkers.push(marker);
@@ -1388,9 +1418,20 @@ const RadarModule = (() => {
         }
     }
 
+    function testAlerts() {
+        if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.testAlert === 'function') {
+            // Probar alternando entre fotomulta y alerta de tránsito
+            const lastType = RadarModule._lastTestType === 'transito' ? 'fotomulta' : 'transito';
+            RadarModule._lastTestType = lastType;
+            CopilotModule.testAlert(lastType);
+        } else if (typeof Components !== 'undefined' && Components.showToast) {
+            Components.showToast('CopilotModule no disponible', 'warning');
+        }
+    }
+
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts
     };
 })();

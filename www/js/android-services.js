@@ -564,13 +564,41 @@ const AndroidServices = (() => {
     }
 
     function speak(text) {
-        if (!text) return false;
+        if (!text || typeof text !== 'string') return false;
+        const cleanText = text.trim();
+        if (!cleanText) return false;
+
+        // 1. Si existe el Bridge Nativo (APK Android), vocalizar por el servicio nativo
         if (_hasNativeBridge() && typeof window.NativeServiceBridge.speak === 'function') {
             try {
-                window.NativeServiceBridge.speak(text);
+                window.NativeServiceBridge.speak(cleanText);
                 return true;
             } catch (e) {
-                console.warn('⚠️ Error en NativeServiceBridge.speak:', e);
+                console.warn('⚠️ Error en NativeServiceBridge.speak, recurriendo a Web Speech:', e);
+            }
+        }
+
+        // 2. Fallback universal Web Speech API (PWA, Chrome Android, WebView, Desktop)
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            try {
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(cleanText);
+                utter.lang = 'es-AR';
+                utter.rate = 1.05;
+                utter.pitch = 1.0;
+
+                const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
+                if (voices && voices.length > 0) {
+                    const esVoice = voices.find(v => v.lang && (v.lang.includes('es-AR') || v.lang.includes('es_AR'))) ||
+                                    voices.find(v => v.lang && v.lang.startsWith('es'));
+                    if (esVoice) utter.voice = esVoice;
+                }
+
+                window.speechSynthesis.speak(utter);
+                return true;
+            } catch (e) {
+                console.warn('⚠️ Error en fallback Web Speech:', e);
             }
         }
         return false;
