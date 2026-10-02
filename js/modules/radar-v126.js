@@ -447,6 +447,8 @@ const RadarModule = (() => {
             maxSilenceSecs = 600; // 10 minutos
         } else if (data.status === 'permissions_disabled') {
             maxSilenceSecs = 600; // 10 minutos
+        } else if (data.status === 'app_killed') {
+            maxSilenceSecs = 900; // 15 minutos — mantener en el mapa para que el dueño lo vea
         }
 
         if (timeAgoSecs > maxSilenceSecs) {
@@ -471,6 +473,8 @@ const RadarModule = (() => {
 
         if (effectiveStatus === 'logout_voluntario') {
             carMode = 'logout';
+        } else if (effectiveStatus === 'app_killed') {
+            carMode = 'app-killed';
         } else if (effectiveStatus === 'suspicious_disconnect') {
             carMode = 'suspicious';
         } else if (effectiveStatus === 'gps_desactivado') {
@@ -487,6 +491,9 @@ const RadarModule = (() => {
         if (effectiveStatus === 'logout_voluntario') {
             statusLabelText = 'Desconectado (Sesión Cerrada)';
             statusColor = '#94a3b8'; // Gris
+        } else if (effectiveStatus === 'app_killed') {
+            statusLabelText = '🚨 APP CERRADA MANUALMENTE';
+            statusColor = '#dc2626'; // Rojo intenso
         } else if (effectiveStatus === 'suspicious_disconnect') {
             statusLabelText = 'Desconexión Sospechosa (Sin Señal o Cierre Forzado)';
             statusColor = '#ef4444'; // Rojo
@@ -761,7 +768,12 @@ const RadarModule = (() => {
                         // Solo alertar si el estado CAMBIA hacia algo negativo (no al abrir radar por primera vez)
                         // Y solo si transcurrieron más de 10 minutos (600,000ms) desde el último aviso igual para este chofer
                         if (prevStatus !== null && (nowMs - lastWarningTime > 10 * 60 * 1000)) {
-                            if (newStatus === 'gps_desactivado') {
+                            if (newStatus === 'app_killed') {
+                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                                playWarningBeep();
+                                speakRadarAlert(`¡Atención! El conductor ${firstName} cerró la aplicación manualmente.`);
+                                showRadarWarning(`🚨 ${firstName}${plateText} cerró la app manualmente desde el panel de recientes`, 'danger');
+                            } else if (newStatus === 'gps_desactivado') {
                                 window._radarWarningCooldowns[warningCooldownKey] = nowMs;
                                 playWarningBeep();
                                 speakRadarAlert(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`);

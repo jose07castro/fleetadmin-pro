@@ -2813,6 +2813,36 @@
     animation: pulseGlowOrange 1.5s infinite ease-in-out;
 }
 
+/* 🚨 APP CERRADA MANUALMENTE — Rojo intenso, parpadeo urgente */
+.radar-car-label.status-app-killed {
+    border-color: #dc2626;
+    color: #fef2f2;
+    background: rgba(127, 29, 29, 0.97);
+    animation: flashBorderAppKilled 0.8s infinite;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.radar-car-icon-wrapper.status-app-killed {
+    background: radial-gradient(circle, rgba(220,38,38,0.45) 0%, transparent 70%);
+    animation: pulseGlowAppKilled 0.8s infinite ease-in-out;
+    border: 2px solid #dc2626;
+}
+@keyframes flashBorderAppKilled {
+    0%, 100% { border-color: #dc2626; background: rgba(127,29,29,0.97); }
+    50% { border-color: #fca5a5; background: rgba(185,28,28,0.99); }
+}
+@keyframes pulseGlowAppKilled {
+    0%, 100% {
+        background: radial-gradient(circle, rgba(220,38,38,0.35) 0%, transparent 70%);
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+    }
+    50% {
+        background: radial-gradient(circle, rgba(220,38,38,0.65) 0%, transparent 75%);
+        box-shadow: 0 0 18px 6px rgba(220, 38, 38, 0.4);
+    }
+}
+
 @keyframes pulseGlowRed {
     0%, 100% {
         background: radial-gradient(circle, rgba(239,68,68,0.2) 0%, transparent 70%);

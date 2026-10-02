@@ -290,7 +290,33 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.w(TAG, "⚠️ App cerrada desde recientes. Manteniendo servicio GPS activo...");
+        Log.w(TAG, "🚨 App CERRADA MANUALMENTE desde recientes (onTaskRemoved). Notificando al servidor...");
+
+        // NUEVO: Reportar cierre intencional de app al servidor ANTES de reiniciar
+        // Esto le avisa al dueño que el chofer cerró la app adrede
+        sendEventToServer("app_killed");
+
+        // También actualizar Firebase directamente para velocidad máxima
+        if (dbRef != null && userId != null && !userId.isEmpty()) {
+            serviceHandler.post(() -> {
+                try {
+                    Map<String, Object> killData = new HashMap<>();
+                    killData.put("status", "app_killed");
+                    killData.put("last_heartbeat", System.currentTimeMillis());
+                    killData.put("updated_at", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+                        .format(new java.util.Date()));
+                    dbRef.child(userId).updateChildren(killData);
+                    Log.i(TAG, "🔥 Estado app_killed escrito en Firebase directo");
+                } catch (Exception e) {
+                    Log.e(TAG, "❌ Error escribiendo app_killed en Firebase:", e);
+                }
+            });
+        }
+
+        // Esperar brevemente para que la red tenga tiempo de enviar
+        try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+
+        // Reiniciar el servicio GPS para que siga rastreando aunque la app esté cerrada
         Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
         restartServiceIntent.setPackage(getPackageName());
         if (userId != null) restartServiceIntent.putExtra("userId", userId);
