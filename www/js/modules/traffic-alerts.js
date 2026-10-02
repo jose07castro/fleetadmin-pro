@@ -294,6 +294,23 @@
                     : `${serverUrl}${alert.audioUrl.startsWith('/') ? '' : '/'}${alert.audioUrl}`;
                 console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de alerta: ${fullAudioUrl}`);
                 
+                const fallbackText = alert.originalText || alert.location || 'Alerta de tránsito';
+
+                // Prioridad 1: Delegar al servicio Android nativo (soporta segundo plano y audio focus de navegación)
+                if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.playAudio === 'function') {
+                    if (AndroidServices.playAudio(fullAudioUrl, fallbackText)) {
+                        console.log('🎵 [AUDIO-ORIGINAL] Delegado con éxito a AndroidServices.playAudio nativo');
+                        return;
+                    }
+                }
+                if (window.NativeServiceBridge && typeof window.NativeServiceBridge.playAudio === 'function') {
+                    try {
+                        window.NativeServiceBridge.playAudio(fullAudioUrl, fallbackText);
+                        console.log('🎵 [AUDIO-ORIGINAL] Delegado con éxito a NativeServiceBridge.playAudio nativo');
+                        return;
+                    } catch(e) {}
+                }
+
                 let audioPlayed = false;
                 let fallbackTriggered = false;
 

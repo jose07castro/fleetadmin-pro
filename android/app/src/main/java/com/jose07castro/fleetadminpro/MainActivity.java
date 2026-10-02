@@ -426,6 +426,21 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void playAudio(String audioUrl, String fallbackText) {
+            if (audioUrl == null || audioUrl.trim().isEmpty()) return;
+            Log.i(TAG, "📱 JS → playAudio: " + audioUrl);
+            try {
+                if (LocationTrackingService.instance != null) {
+                    LocationTrackingService.instance.playAudioAlert(audioUrl, fallbackText);
+                } else {
+                    LocationTrackingService.speakText(fallbackText, MainActivity.this);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating playAudio to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
         public int getAppVersionCode() {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

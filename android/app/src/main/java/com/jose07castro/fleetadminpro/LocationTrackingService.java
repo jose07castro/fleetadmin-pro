@@ -19,6 +19,8 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.net.wifi.WifiManager;
@@ -75,8 +77,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final float MIN_DISTANCE_M = 0f;
 
     // Proximity Config (Radarbot)
-    private static final int PROXIMITY_RADIUS_M = 600;  // Avisar a 600 metros
-    private static final long COOLDOWN_MS = 4 * 60 * 1000; // 4 min entre avisos del mismo radar
+    private static final int PROXIMITY_RADIUS_M = 600;  // Avisar a 600 metros de operativos dinámicos
+    private static final long COOLDOWN_MS = 4 * 60 * 1000; // 4 min entre avisos del mismo punto dinámico
+    private static final int RADAR_PROXIMITY_RADIUS_M = 480; // 480 metros para fotomultas fijas (oficial Rosario)
+    private static final long RADAR_COOLDOWN_MS = 3 * 60 * 1000; // 3 min entre avisos de la misma cámara
+    private final Map<String, Long> lastRadarAlertTimestamps = new HashMap<>();
 
     // State
     private FusedLocationProviderClient fusedLocationClient;
@@ -89,9 +94,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private boolean isTracking = false;
     private boolean isSendingQueue = false;
 
-    // Text To Speech (Radarbot Voice)
+    // Text To Speech (Radarbot Voice) & Native Audio Player
     private TextToSpeech tts;
     private boolean isTtsInitialized = false;
+    private final List<String> pendingSpeakQueue = new ArrayList<>();
+    private MediaPlayer mediaPlayer = null;
 
     // Background Thread
     private HandlerThread serviceThread;
@@ -335,6 +342,16 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         stopLocationUpdates();
         releaseWakeLock();
         
+        if (mediaPlayer != null) {
+            try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
+            mediaPlayer = null;
+        }
+        if (tts != null) {
+            try { tts.stop(); tts.shutdown(); } catch (Exception ignored) {}
+            tts = null;
+            isTtsInitialized = false;
+        }
+        
         // Desregistrar receptor GPS
         try {
             unregisterReceiver(gpsStatusReceiver);
@@ -473,41 +490,87 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void checkProximityToAlerts(Location myLocation) {
-        if (activeAlerts.isEmpty()) return;
+        if (myLocation == null) return;
+        long now = System.currentTimeMillis();
+        float currentSpeedKmh = myLocation.getSpeed() * 3.6f;
 
-        synchronized (activeAlerts) {
-            for (TrafficAlert alert : activeAlerts) {
-                float[] results = new float[1];
-                Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                       alert.lat, alert.lng, results);
-                float distance = results[0];
+        // 1. Chequeo de Fotomultas Fijas Oficiales de Rosario (80 cámaras)
+        for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
+            float[] results = new float[1];
+            Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                   radar.lat, radar.lng, results);
+            float distance = results[0];
 
-                if (distance <= PROXIMITY_RADIUS_M) {
-                    long now = System.currentTimeMillis();
-                    long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
+            if (distance <= RADAR_PROXIMITY_RADIUS_M) {
+                long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
+                if (now - lastTime > RADAR_COOLDOWN_MS) {
+                    lastRadarAlertTimestamps.put(radar.id, now);
+                    speakRadarWarning(radar, distance, currentSpeedKmh);
+                }
+            }
+        }
 
-                    if (now - lastTime > COOLDOWN_MS) {
-                        speakProximityWarning(alert, distance);
-                        lastAlertTimestamps.put(alert.id, now);
+        // 2. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
+        if (!activeAlerts.isEmpty()) {
+            synchronized (activeAlerts) {
+                for (TrafficAlert alert : activeAlerts) {
+                    float[] results = new float[1];
+                    Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                           alert.lat, alert.lng, results);
+                    float distance = results[0];
+
+                    if (distance <= PROXIMITY_RADIUS_M) {
+                        long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
+                        if (now - lastTime > COOLDOWN_MS) {
+                            lastAlertTimestamps.put(alert.id, now);
+                            speakProximityWarning(alert, distance);
+                        }
                     }
                 }
             }
         }
     }
 
+    private void speakRadarWarning(RosarioRadars.StaticRadar radar, float distance, float speedKmh) {
+        int distRound = Math.round(distance / 50.0f) * 50;
+        if (distRound < 100) distRound = 100;
+        String cleanName = radar.name.replace(" y ", " esquina ");
+        String message;
+        if (speedKmh > radar.limit) {
+            message = String.format(Locale.getDefault(), 
+                "¡Atención! Fotomulta a %d metros en %s. Reduce tu velocidad. Velocidad máxima %d kilómetros por hora.", 
+                distRound, cleanName, radar.limit);
+        } else {
+            message = String.format(Locale.getDefault(), 
+                "Fotomulta a %d metros en %s. Velocidad máxima %d kilómetros por hora.", 
+                distRound, cleanName, radar.limit);
+        }
+        Log.i(TAG, "📷 [RADAR] Proximidad fotomulta: " + radar.name + " (" + (int)distance + "m) -> \"" + message + "\"");
+        speak(message);
+    }
+
     private void speakProximityWarning(TrafficAlert alert, float distance) {
-        String typeLabel = "alerta";
+        String typeLabel = "control policial";
         if (alert.type != null) {
             switch (alert.type) {
                 case "police": case "checkpoint": typeLabel = "control policial"; break;
                 case "radar": typeLabel = "radar de velocidad"; break;
-                case "helicopter": typeLabel = "operativo sanitario"; break;
+                case "helicopter": typeLabel = "operativo sanitario de helicóptero"; break;
                 case "traffic": typeLabel = "congestión de tráfico"; break;
-                case "accident": typeLabel = "accidente"; break;
+                case "accident": typeLabel = "accidente en la vía"; break;
+                case "municipal": typeLabel = "control de tránsito municipal"; break;
+                default: typeLabel = "alerta de tránsito"; break;
             }
         }
 
-        String message = String.format("Atención, %s a quinientos metros.", typeLabel);
+        String loc = alert.location != null ? alert.location.replace(" y ", " esquina ") : "";
+        String message;
+        if (!loc.isEmpty() && !loc.toLowerCase().contains("desconocida")) {
+            message = String.format(Locale.getDefault(), "Atención, %s a quinientos metros en %s.", typeLabel, loc);
+        } else {
+            message = String.format(Locale.getDefault(), "Atención, %s a quinientos metros.", typeLabel);
+        }
+        Log.i(TAG, "🚨 [PROXIMITY-ALERT] Advertencia dinámica: " + message);
         speak(message);
     }
 
@@ -678,18 +741,42 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
-            Locale spanish = new Locale("es", "ES");
+            Locale spanish = new Locale("es", "AR");
             int result = tts.setLanguage(spanish);
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.w(TAG, "⚠️ TTS: es_ES not supported. Trying generic 'es' locale...");
+                Log.w(TAG, "⚠️ TTS: es_AR not supported. Trying generic 'es' locale...");
                 result = tts.setLanguage(new Locale("es"));
             }
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.w(TAG, "⚠️ TTS: 'es' not supported. Using default system locale.");
+                Log.w(TAG, "⚠️ TTS: 'es' not supported. Trying es_ES...");
+                result = tts.setLanguage(new Locale("es", "ES"));
+            }
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w(TAG, "⚠️ TTS: Spanish not supported. Using default system locale.");
                 tts.setLanguage(Locale.getDefault());
             }
+
+            // Configurar AudioAttributes para segundo plano y navegación vehicular
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+                tts.setAudioAttributes(audioAttributes);
+                Log.i(TAG, "🔊 [TTS] AudioAttributes USAGE_ASSISTANCE_NAVIGATION_GUIDANCE configurados con éxito");
+            }
+
             isTtsInitialized = true;
             Log.i(TAG, "🔊 TTS: TextToSpeech Initialized successfully");
+
+            // Despachar cualquier anuncio que se haya intentado hablar mientras el motor cargaba
+            synchronized (pendingSpeakQueue) {
+                for (String pending : pendingSpeakQueue) {
+                    Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado durante inicio: \"" + pending + "\"");
+                    tts.speak(pending, TextToSpeech.QUEUE_ADD, null, "pending_" + System.currentTimeMillis());
+                }
+                pendingSpeakQueue.clear();
+            }
         } else {
             Log.e(TAG, "❌ TTS: TextToSpeech Initialization failed with status: " + status);
         }
@@ -713,11 +800,82 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
             }
         } else {
-            Log.w(TAG, "⚠️ [TTS] TTS not initialized or null: isTtsInitialized=" + isTtsInitialized);
+            Log.w(TAG, "⏳ [TTS] Motor TTS aún no listo. Encolando texto para despacho inmediato: " + text);
+            synchronized (pendingSpeakQueue) {
+                if (pendingSpeakQueue.size() < 10) {
+                    pendingSpeakQueue.add(text);
+                }
+            }
         }
     }
 
-    private void speakImmediateAlert(TrafficAlert alert) {
+    public void playAudioAlert(String audioUrl, String fallbackTtsText) {
+        if (audioUrl == null || audioUrl.trim().isEmpty()) {
+            speak(fallbackTtsText);
+            return;
+        }
+
+        serviceHandler.post(() -> {
+            try {
+                String baseUrl = (serverUrl != null && !serverUrl.isEmpty()) 
+                    ? serverUrl 
+                    : "https://fleetadmin-web-nueva.onrender.com";
+                String fullUrl = audioUrl.startsWith("http") 
+                    ? audioUrl 
+                    : baseUrl + (audioUrl.startsWith("/") ? "" : "/") + audioUrl;
+
+                Log.i(TAG, "🎵 [NATIVE-AUDIO] Reproduciendo nota de voz nativa: " + fullUrl);
+
+                if (mediaPlayer != null) {
+                    try {
+                        mediaPlayer.stop();
+                        mediaPlayer.release();
+                    } catch (Exception ignored) {}
+                    mediaPlayer = null;
+                }
+
+                mediaPlayer = new MediaPlayer();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build();
+                    mediaPlayer.setAudioAttributes(audioAttributes);
+                }
+
+                mediaPlayer.setDataSource(fullUrl);
+                mediaPlayer.setOnPreparedListener(mp -> {
+                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo y reproduciendo...");
+                    mp.start();
+                });
+
+                mediaPlayer.setOnCompletionListener(mp -> {
+                    Log.i(TAG, "✅ [NATIVE-AUDIO] Audio finalizado");
+                    try {
+                        mp.release();
+                    } catch (Exception ignored) {}
+                    if (mediaPlayer == mp) mediaPlayer = null;
+                });
+
+                mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                    Log.w(TAG, "⚠️ [NATIVE-AUDIO] Falló MediaPlayer (what=" + what + ", extra=" + extra + "). Usando fallback TTS...");
+                    try {
+                        mp.release();
+                    } catch (Exception ignored) {}
+                    if (mediaPlayer == mp) mediaPlayer = null;
+                    speak(fallbackTtsText);
+                    return true;
+                });
+
+                mediaPlayer.prepareAsync();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [NATIVE-AUDIO] Error iniciando MediaPlayer:", e);
+                speak(fallbackTtsText);
+            }
+        });
+    }
+
+    private String getImmediateAlertText(TrafficAlert alert) {
         String msg = "Alerta de tráfico";
         if (alert.type != null) {
             switch (alert.type) {
@@ -753,14 +911,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             if (cleanText.length() > 2) {
                 fullText = cleanText;
             } else {
-                fullText = !loc.isEmpty() ? msg + " en " + loc : msg;
+                fullText = !loc.isEmpty() && !loc.toLowerCase().contains("desconocida") ? msg + " en " + loc : msg;
             }
         } else {
-            fullText = !loc.isEmpty() ? msg + " en " + loc : msg;
+            fullText = !loc.isEmpty() && !loc.toLowerCase().contains("desconocida") ? msg + " en " + loc : msg;
         }
+        return fullText;
+    }
 
+    private void speakImmediateAlert(TrafficAlert alert) {
+        String fullText = getImmediateAlertText(alert);
         Log.i(TAG, "🔊 [IMMEDIATE ALERTS] Speaking new alert: " + fullText);
-        speak(fullText);
+        if (alert.audioUrl != null && !alert.audioUrl.trim().isEmpty()) {
+            playAudioAlert(alert.audioUrl, fullText);
+        } else {
+            speak(fullText);
+        }
     }
 
     // ================================================================

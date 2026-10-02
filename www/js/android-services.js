@@ -604,6 +604,23 @@ const AndroidServices = (() => {
         return false;
     }
 
+    function playAudio(audioUrl, fallbackText) {
+        if (!audioUrl || typeof audioUrl !== 'string') return false;
+        const cleanUrl = audioUrl.trim();
+        if (!cleanUrl) return false;
+
+        // 1. Si existe el Bridge Nativo (APK Android), reproducir vía MediaPlayer nativo
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.playAudio === 'function') {
+            try {
+                window.NativeServiceBridge.playAudio(cleanUrl, fallbackText || '');
+                return true;
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.playAudio, recurriendo a Web Audio:', e);
+            }
+        }
+        return false;
+    }
+
     // =============================================
     // API PÚBLICA
     // =============================================
@@ -623,6 +640,7 @@ const AndroidServices = (() => {
         
         // Voz / TTS Nativo
         speak,
+        playAudio,
 
         // Batería
         requestBackgroundLocationPermission,
