@@ -1232,7 +1232,7 @@ app.post('/api/driver/gps-event', async (req, res) => {
 // ============================================
 app.post('/api/driver/location', async (req, res) => {
     try {
-        const { driver_id, lat, lng, speed, heading, battery, driverName, timestamp, source, snap } = req.body;
+        const { driver_id, lat, lng, speed, heading, battery, driverName, timestamp, source, snap, appVersion } = req.body;
         if (!driver_id || lat === undefined || lng === undefined) {
             return res.status(400).json({ ok: false, error: 'driver_id, lat, and lng are required' });
         }
@@ -1286,6 +1286,11 @@ app.post('/api/driver/location', async (req, res) => {
         // Si el chofer reporta nueva ubicación GPS válida, su estado se reactiva inmediatamente
         updateData.status = 'active';
         updateData.last_heartbeat_gap = null;
+
+        // Escribir appVersion si viene en el payload (PWA o APK vía sendLocationToServer)
+        if (appVersion && typeof appVersion === 'string' && appVersion.length > 0) {
+            updateData.appVersion = appVersion;
+        }
 
         await db.ref(`driver_positions/${driver_id}`).update(updateData);
         res.json({ ok: true, lat: finalLat, lng: finalLng, corrected });

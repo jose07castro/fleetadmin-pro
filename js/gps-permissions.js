@@ -1023,6 +1023,15 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
                        ? 'https://fleetadmin-web-nueva.onrender.com' 
                        : window.location.origin;
 
+    // Incluir versión en cada ping de GPS para que nunca aparezca "Sin versión"
+    // Si hay NativeServiceBridge (APK nativo), usar su versión real; si no, usar la versión PWA
+    let appVersion = 'v1.2.44'; // fallback PWA
+    try {
+        if (typeof window.NativeServiceBridge !== 'undefined' && window.NativeServiceBridge.getAppVersionName) {
+            appVersion = 'v' + window.NativeServiceBridge.getAppVersionName();
+        }
+    } catch (e) {}
+
     const body = {
         driver_id: userId,
         lat: lat,
@@ -1033,7 +1042,8 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
         driverName: (typeof Auth !== 'undefined') ? Auth.getUserName() || userId : userId,
         timestamp: new Date().toISOString(),
         source: source,
-        snap: snap
+        snap: snap,
+        appVersion: appVersion
     };
 
     try {
@@ -1051,3 +1061,4 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
         throw e;
     }
 };
+
