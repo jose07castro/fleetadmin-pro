@@ -7,7 +7,7 @@ android {
         applicationId "com.fleetadminpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion 36
-        versionCode 104
+        versionCode 110
         versionName "1.2.195"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
