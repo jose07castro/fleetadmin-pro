@@ -94,10 +94,33 @@ app.get('/api/bot/status', (req, res) => {
 // Endpoint HTML para vincular WhatsApp o ver estado en vivo
 app.get('/qr', async (req, res) => {
     try {
-        const isConnected = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.isConnected === 'function' ? WhatsappBot.isConnected() : false;
-        const diag = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDiagnostics === 'function' ? WhatsappBot.getDiagnostics() : {};
-        const qrUrl = diag.lastQr;
-        const groups = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getGroupCache === 'function' ? WhatsappBot.getGroupCache() : {};
+        let isConnected = false;
+        let diag = {};
+        let groups = {};
+        try {
+            if (typeof WhatsappBot !== 'undefined') {
+                if (typeof WhatsappBot.isConnected === 'function') isConnected = WhatsappBot.isConnected();
+                if (typeof WhatsappBot.getDiagnostics === 'function') diag = WhatsappBot.getDiagnostics() || {};
+                if (typeof WhatsappBot.getGroupCache === 'function') groups = WhatsappBot.getGroupCache() || {};
+            }
+        } catch(bErr) {
+            console.warn('⚠️ [QR-ENDPOINT] Error leyendo bot:', bErr.message);
+        }
+
+        let qrUrl = diag.lastQr || null;
+        if (!isConnected && !qrUrl && typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') {
+            try {
+                const db = WhatsappBot.getDb();
+                if (db) {
+                    const stSnap = await db.ref('bot_status').once('value');
+                    const stVal = stSnap.val() || {};
+                    if (stVal.qrUrl) qrUrl = stVal.qrUrl;
+                    if (stVal.connected) isConnected = true;
+                    if (stVal.phone && !diag.botNumber) diag.botNumber = stVal.phone;
+                }
+            } catch(dbErr) {}
+        }
+
         const groupList = Object.entries(groups).map(([jid, name]) => `<li><b>${name}</b> <small style="color:#888">(${jid.substring(0,18)}...)</small></li>`).join('');
 
         const html = `<!DOCTYPE html>

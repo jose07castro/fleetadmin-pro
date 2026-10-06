@@ -2515,8 +2515,8 @@ const WhatsappBot = (() => {
                             connected: true,
                             qr: null,
                             qrUrl: null,
-                            phone: sock.user?.id ? sock.user.id.split(':')[0] : null,
-                            userName: sock.user?.name || 'Bot',
+                            phone: sock?.user?.id ? sock.user.id.split(':')[0] : null,
+                            userName: sock?.user?.name || 'Bot',
                             connectedAt: Date.now()
                         }).catch(() => {});
                     }
@@ -4692,7 +4692,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
         getDiagnostics: () => ({
             connected: _isConnectedState,
             botNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null,
-            userName: sock.user?.name || null,
+            userName: sock?.user?.name || null,
             groupsCount: Object.keys(groupNameCache).length,
             hasGeminiKey: !!getGeminiKey(),
             lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null
