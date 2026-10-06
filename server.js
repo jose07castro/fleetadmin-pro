@@ -91,6 +91,85 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
+// Endpoint HTML para vincular WhatsApp o ver estado en vivo
+app.get('/qr', async (req, res) => {
+    try {
+        const isConnected = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.isConnected === 'function' ? WhatsappBot.isConnected() : false;
+        const diag = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDiagnostics === 'function' ? WhatsappBot.getDiagnostics() : {};
+        const qrUrl = diag.lastQr;
+        const groups = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getGroupCache === 'function' ? WhatsappBot.getGroupCache() : {};
+        const groupList = Object.entries(groups).map(([jid, name]) => `<li><b>${name}</b> <small style="color:#888">(${jid.substring(0,18)}...)</small></li>`).join('');
+
+        const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FleetAdmin Pro — Conexión WhatsApp</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; text-align: center; }
+        .card { background: #1e293b; border-radius: 16px; max-width: 520px; margin: 20px auto; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #334155; }
+        .badge { display: inline-block; padding: 6px 14px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
+        .badge-ok { background: #065f46; color: #34d399; }
+        .badge-wait { background: #7c2d12; color: #fb923c; }
+        .qr-box { background: white; padding: 16px; border-radius: 12px; display: inline-block; margin: 20px 0; }
+        .btn { display: inline-block; padding: 10px 18px; margin: 6px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 14px; transition: 0.2s; }
+        .btn-blue { background: #2563eb; color: white; }
+        .btn-amber { background: #d97706; color: white; }
+        .btn-red { background: #dc2626; color: white; }
+        ul { text-align: left; max-height: 200px; overflow-y: auto; background: #0f172a; padding: 12px 24px; border-radius: 8px; font-size: 13px; }
+    </style>
+    ${!isConnected ? '<meta http-equiv="refresh" content="5">' : ''}
+</head>
+<body>
+    <div class="card">
+        <h2>🚗 FleetAdmin Pro — Bot de WhatsApp</h2>
+        <div style="margin: 15px 0;">
+            ${isConnected 
+                ? '<span class="badge badge-ok">✅ CONECTADO Y ACTIVO</span><p style="margin-top:10px;font-size:16px;">Número: <b>+' + (diag.botNumber || 'Vinculado') + '</b></p>' 
+                : '<span class="badge badge-wait">📱 ESCANEAR CÓDIGO QR</span><p style="margin-top:10px;color:#94a3b8;">Abrí WhatsApp en tu teléfono > Dispositivos vinculados > Vincular un dispositivo</p>'}
+        </div>
+
+        ${!isConnected && qrUrl ? `
+            <div class="qr-box">
+                <img src="${qrUrl}" alt="Código QR WhatsApp" style="width: 280px; height: 280px; display: block;" />
+            </div>
+            <p style="color:#94a3b8;font-size:13px;">Esta pantalla se actualiza automáticamente cada 5 segundos.</p>
+        ` : ''}
+
+        ${!isConnected && !qrUrl ? `
+            <p style="color:#fbbf24;padding:20px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR" abajo.</p>
+        ` : ''}
+
+        <div style="margin: 20px 0; display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">
+            <button class="btn btn-blue" onclick="fetch('/api/bot/test-alert', {method:'POST'}).then(r=>r.json()).then(d=>alert('Alerta de prueba enviada al mapa: ' + JSON.stringify(d)))">🚨 Enviar Alerta Prueba</button>
+            <button class="btn btn-amber" onclick="fetch('/api/bot/soft-reset', {method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message); location.reload();})">🔧 Curar Sesión (Soft Reset)</button>
+            <button class="btn btn-red" onclick="if(confirm('¿Seguro que querés desvincular y pedir QR nuevo?')) fetch('/api/bot/reset-session', {method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message); location.reload();})">🔑 Generar Nuevo QR</button>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px;">
+            <h4>Grupos de Operativos Conectados (${diag.groupsCount || 0}):</h4>
+            ${groupList ? `<ul>${groupList}</ul>` : '<p style="color:#94a3b8;font-size:13px;">Esperando sincronización de grupos...</p>'}
+        </div>
+    </div>
+</body>
+</html>`;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch(err) {
+        res.status(500).send('Error cargando QR: ' + err.message);
+    }
+});
+
+app.get('/api/bot/diagnostics', (req, res) => {
+    try {
+        const diag = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDiagnostics === 'function' ? WhatsappBot.getDiagnostics() : {};
+        res.json({ ok: true, ...diag, timestamp: new Date().toISOString() });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 
 // Endpoint de diagnóstico para verificar los archivos de audio en Render
 app.get('/api/debug/audio-files', (req, res) => {

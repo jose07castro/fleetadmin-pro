@@ -25,6 +25,7 @@ const path = require('path');
 
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 let _dynamicGeminiKey = null;
+let _lastQrCode = null;
 
 function getGeminiKey() {
     return process.env.GEMINI_API_KEY || _dynamicGeminiKey || null;
@@ -34,9 +35,8 @@ const GEMINI_KEY = getGeminiKey();
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -2105,8 +2105,22 @@ const WhatsappBot = (() => {
                     }
                     console.log(`📦 [QUEUE-RESTORE] Restaurados ${_recentHistoricalQueue.length} mensajes candidatos a comprobantes desde Firebase ✅`);
                 }
+
+                // Restaurar nombres de grupos de WhatsApp guardados previamente
+                const groupSnap = await db.ref('bot_group_names').once('value');
+                const savedGroups = groupSnap.val() || {};
+                let restoredCount = 0;
+                for (const item of Object.values(savedGroups)) {
+                    if (item && item.jid && item.name) {
+                        groupNameCache[item.jid] = item.name;
+                        restoredCount++;
+                    }
+                }
+                if (restoredCount > 0) {
+                    console.log(`📋 [GROUP-RESTORE] Restaurados ${restoredCount} nombres de grupos de tránsito desde Firebase ✅`);
+                }
             } catch(initErr) {
-                console.warn('⚠️ [INIT] Error inicializando config/cola desde Firebase:', initErr.message);
+                console.warn('⚠️ [INIT] Error inicializando config/cola/grupos desde Firebase:', initErr.message);
             }
         }
         console.log(`🧠 Gemini IA: ${getGeminiKey() ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
@@ -2401,7 +2415,17 @@ const WhatsappBot = (() => {
                 const { connection, lastDisconnect, qr } = update;
 
                 if (qr) {
-                    console.log(`📱 QR generado: https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`);
+                    _lastQrCode = qr;
+                    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=400x400`;
+                    console.log(`📱 QR generado: ${qrUrl}`);
+                    if (db) {
+                        db.ref('bot_status').update({
+                            connected: false,
+                            qr: qr,
+                            qrUrl: qrUrl,
+                            qrTimestamp: Date.now()
+                        }).catch(() => {});
+                    }
                 }
 
                 if (connection === 'close') {
@@ -2483,22 +2507,38 @@ const WhatsappBot = (() => {
                     clearTimeout(lockWatchdog); // Éxito total, matar watchdog de cerrojo
                     isConnecting = false; // Liberar cerrojo al conectar con éxito
                     _isConnectedState = true;
+                    _lastQrCode = null;
                     console.log('✅ ¡Bot de WhatsApp CONECTADO!');
                     _syncBotStatus();
+                    if (db) {
+                        db.ref('bot_status').update({
+                            connected: true,
+                            qr: null,
+                            qrUrl: null,
+                            phone: sock.user?.id ? sock.user.id.split(':')[0] : null,
+                            userName: sock.user?.name || 'Bot',
+                            connectedAt: Date.now()
+                        }).catch(() => {});
+                    }
 
-                    // Pre-popular el caché de nombres de grupo
+                    // Pre-popular y persistir el caché de nombres de grupo
                     try {
                         console.log('📡 [GROUP-CACHE] Solicitando lista de grupos en segundo plano...');
                         sock.groupFetchAllParticipating().then(participatingGroups => {
                             let cachedCount = 0;
+                            const toSave = {};
                             for (const groupJid of Object.keys(participatingGroups || {})) {
                                 const subject = participatingGroups[groupJid]?.subject;
                                 if (subject) {
                                     groupNameCache[groupJid] = subject;
+                                    toSave[groupJid.replace(/[^a-zA-Z0-9_-]/g, '_')] = { jid: groupJid, name: subject, updatedAt: Date.now() };
                                     cachedCount++;
                                 }
                             }
                             console.log(`✅ [GROUP-CACHE] Caché inicializado con ${cachedCount} grupos.`);
+                            if (db && cachedCount > 0) {
+                                db.ref('bot_group_names').update(toSave).catch(() => {});
+                            }
                         }).catch(fetchErr => {
                             console.warn(`⚠️ [GROUP-CACHE] Error obteniendo grupos: ${fetchErr.message}`);
                         });
@@ -2646,31 +2686,6 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // 2. FILTRADO ESTRICTO DE GRUPOS SELECCIONADOS (Solicitado por el usuario)
-                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Operativos Arroyo Seco, etc).
-                    // Los chats privados del admin se permiten para diagnósticos.
-                    let isTargetGroup = false;
-                    if (isGroup) {
-                        const cleanedGroupName = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || 
-                                        cleanedGroupName.includes('solo operativos de transito') ||
-                                        cleanedGroupName.includes('alertas') ||
-                                        cleanedGroupName.includes('apps') ||
-                                        _isOperativoGroup(groupName);
-                        
-                        if (!isTargetGroup) {
-                            console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);
-                            continue;
-                        }
-                    } else {
-                        // Si no es grupo pero llegó hasta aquí, es del admin
-                        isTargetGroup = true;
-                    }
-
-                    const isKnownOperativoGroup = isTargetGroup;
-                    console.log(`📱 [MSG] JID=${jid?.substring(0,20)}... | Grupo=${isGroup} | Admin=${isFromTrustedAdmin} | Nombre="${groupName}" | Operativo=${isKnownOperativoGroup}`);
-
-
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
                     const m = msg.message;
@@ -2710,6 +2725,37 @@ const WhatsappBot = (() => {
                             }
                         }
                     }
+
+                    // 2. FILTRADO DE GRUPOS SELECCIONADOS
+                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Operativos Arroyo Seco, etc).
+                    // Los chats privados del admin se permiten para diagnósticos.
+                    let isTargetGroup = false;
+                    if (isGroup) {
+                        const cleanedGroupName = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || 
+                                        cleanedGroupName.includes('solo operativos de transito') ||
+                                        cleanedGroupName.includes('alertas') ||
+                                        cleanedGroupName.includes('apps') ||
+                                        _isOperativoGroup(groupName);
+                        
+                        // RESCATE DIRECTO: Si el nombre del grupo es desconocido o no coincidió por metadata,
+                        // pero el mensaje contiene palabras clave explícitas de operativos/tránsito, ¡ACEPTARLO!
+                        if (!isTargetGroup && text && _hasTrafficKeywords(text)) {
+                            console.log(`🎯 [TARGET-RESCUE] Mensaje en grupo "${groupName}" aceptado por contener palabras de tránsito: "${text.substring(0, 50)}"`);
+                            isTargetGroup = true;
+                        }
+                        
+                        if (!isTargetGroup) {
+                            console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);
+                            continue;
+                        }
+                    } else {
+                        // Si no es grupo pero llegó hasta aquí, es del admin
+                        isTargetGroup = true;
+                    }
+
+                    const isKnownOperativoGroup = isTargetGroup;
+                    console.log(`📱 [MSG] JID=${jid?.substring(0,20)}... | Grupo=${isGroup} | Admin=${isFromTrustedAdmin} | Nombre="${groupName}" | Operativo=${isKnownOperativoGroup}`);
 
                     // Debug: si el mensaje no tiene texto, loguear las claves para diagnosticar
                     if (!text && (isGroup || isFromTrustedAdmin) && m) {
@@ -4640,7 +4686,17 @@ Si no hay movimientos financieros detectados, respondé: []`;
         rejectPendingPayment: _rejectPendingPayment,
         listPendingPayments: _listPendingPayments,
         getVehicleKmStats: _getVehicleKmStats,
-        formatKmReportWhatsApp: _formatKmReportWhatsApp
+        formatKmReportWhatsApp: _formatKmReportWhatsApp,
+        getLastQr: () => _lastQrCode,
+        getGroupCache: () => groupNameCache,
+        getDiagnostics: () => ({
+            connected: _isConnectedState,
+            botNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null,
+            userName: sock.user?.name || null,
+            groupsCount: Object.keys(groupNameCache).length,
+            hasGeminiKey: !!getGeminiKey(),
+            lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null
+        })
     };
 })();
 
