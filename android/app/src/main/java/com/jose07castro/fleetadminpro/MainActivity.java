@@ -441,6 +441,41 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void stopAudio() {
+            Log.i(TAG, "📱 JS → stopAudio()");
+            try {
+                LocationTrackingService.stopAllAudio();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating stopAudio to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void setVoiceMuted(boolean muted) {
+            Log.i(TAG, "📱 JS → setVoiceMuted: " + muted);
+            try {
+                LocationTrackingService.setVoiceMuted(muted);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating setVoiceMuted to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void setAlertVolume(int percent) {
+            Log.i(TAG, "📱 JS → setAlertVolume: " + percent + "%");
+            try {
+                LocationTrackingService.setAlertVolume(percent, MainActivity.this);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating setAlertVolume to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public int getAlertVolume() {
+            return LocationTrackingService.alertVolumePercent;
+        }
+
+        @JavascriptInterface
         public int getAppVersionCode() {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

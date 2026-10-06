@@ -13,6 +13,7 @@ const CopilotModule = (() => {
     // Estado del módulo
     let _isEnabled = localStorage.getItem('copilotRadar') !== 'off';
     let _isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
+    let _alertVolumePercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
     let _lastAlertTime = {};              // { radarId: timestamp }
     let _activeApproach = null;           // { radarId, minDistance, startedAt }
     let _lastPosition = null;             // { lat, lng, time, speed }
@@ -20,6 +21,32 @@ const CopilotModule = (() => {
     let _hudTimer = null;
     let _liveTrafficAlerts = [];          // Alertas activas de tránsito en tiempo real (Firebase)
     let _firebaseAlertsListening = false;
+
+    function _stopAllAudio() {
+        console.log('⏹️ [COPILOTO] _stopAllAudio() ejecutado');
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch (_) {}
+        }
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.stopAudio === 'function') {
+            try { AndroidServices.stopAudio(); } catch (_) {}
+        }
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.stopAudio === 'function') {
+            try { window.NativeServiceBridge.stopAudio(); } catch (_) {}
+        }
+    }
+
+    function _setAlertVolume(percent) {
+        const val = Math.max(10, Math.min(100, parseInt(percent, 10) || 85));
+        _alertVolumePercent = val;
+        localStorage.setItem('radarVolumePercent', String(val));
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setAlertVolume === 'function') {
+            try { AndroidServices.setAlertVolume(val); } catch (_) {}
+        }
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setAlertVolume === 'function') {
+            try { window.NativeServiceBridge.setAlertVolume(val); } catch (_) {}
+        }
+        console.log(`🔊 [COPILOTO] Volumen independiente ajustado a ${val}%`);
+    }
 
     // Base de Datos Oficial Rosario (80 Radares y Cámaras de Videocontrol con Coordenadas Exactas WGS84)
     const STATIC_RADARS = [
@@ -988,6 +1015,7 @@ const CopilotModule = (() => {
                 utter.lang = 'es-AR';
                 utter.rate = 1.05;
                 utter.pitch = 1.0;
+                utter.volume = Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
 
                 const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
                 if (voices && voices.length > 0) {
@@ -1177,6 +1205,49 @@ const CopilotModule = (() => {
             .copilot-hud-btn:active {
                 transform: scale(0.92);
             }
+            .copilot-hud-btn.is-muted {
+                background: rgba(239, 68, 68, 0.45) !important;
+                border-color: #ef4444 !important;
+                box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+            }
+            .copilot-hud-bottom-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 3px;
+            }
+            .copilot-hud-vol-control {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                background: rgba(0, 0, 0, 0.45);
+                padding: 2px 7px;
+                border-radius: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+            }
+            .copilot-hud-vol-icon {
+                font-size: 11px;
+                cursor: pointer;
+                user-select: none;
+            }
+            .copilot-hud-slider {
+                width: 58px;
+                height: 4px;
+                accent-color: #38bdf8;
+                cursor: pointer;
+                outline: none;
+                margin: 0;
+            }
+            .copilot-hud-vol-label {
+                font-size: 10px;
+                font-weight: 800;
+                color: #38bdf8;
+                min-width: 26px;
+                text-align: right;
+                user-select: none;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -1271,13 +1342,20 @@ const CopilotModule = (() => {
                     </div>
                     <div class="copilot-hud-name" title="${target.name}">${target.name}</div>
                     <div class="copilot-hud-desc">${target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito')}</div>
-                    ${speedBadgeHtml}
+                    <div class="copilot-hud-bottom-row">
+                        ${speedBadgeHtml}
+                        <div class="copilot-hud-vol-control" title="Volumen independiente de la voz">
+                            <span class="copilot-hud-vol-icon" id="copilotHudVolIcon">${_isVoiceEnabled ? '🔊' : '🔇'}</span>
+                            <input type="range" min="10" max="100" step="5" value="${_alertVolumePercent}" id="copilotHudVolSlider" class="copilot-hud-slider" title="Ajustar volumen" />
+                            <span class="copilot-hud-vol-label" id="copilotHudVolLabel">${_alertVolumePercent}%</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="copilot-hud-actions">
-                    <button class="copilot-hud-btn" id="copilotVoiceToggleBtn" title="Silenciar / Activar voz">
+                    <button class="copilot-hud-btn ${_isVoiceEnabled ? '' : 'is-muted'}" id="copilotVoiceToggleBtn" title="Silenciar / Activar voz">
                         ${_isVoiceEnabled ? '🔊' : '🔇'}
                     </button>
-                    <button class="copilot-hud-btn" id="copilotCloseBtn" title="Cerrar aviso">✕</button>
+                    <button class="copilot-hud-btn" id="copilotCloseBtn" title="Cerrar aviso y silenciar">✕</button>
                 </div>
             </div>
         `;
@@ -1287,6 +1365,7 @@ const CopilotModule = (() => {
         if (closeBtn) {
             closeBtn.onclick = (e) => {
                 e.stopPropagation();
+                _stopAllAudio();
                 _hideRadarHUD();
             };
         }
@@ -1297,6 +1376,54 @@ const CopilotModule = (() => {
                 _isVoiceEnabled = !_isVoiceEnabled;
                 localStorage.setItem('radarVoice', _isVoiceEnabled ? 'on' : 'off');
                 voiceBtn.textContent = _isVoiceEnabled ? '🔊' : '🔇';
+                voiceBtn.classList.toggle('is-muted', !_isVoiceEnabled);
+                
+                const volIcon = document.getElementById('copilotHudVolIcon');
+                if (volIcon) volIcon.textContent = _isVoiceEnabled ? '🔊' : '🔇';
+
+                if (!_isVoiceEnabled) {
+                    _stopAllAudio();
+                    if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                        AndroidServices.setVoiceMuted(true);
+                    }
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setVoiceMuted === 'function') {
+                        try { window.NativeServiceBridge.setVoiceMuted(true); } catch (_) {}
+                    }
+                    if (typeof Components !== 'undefined' && Components.showToast) {
+                        Components.showToast('🔇 Alerta silenciada', 'info');
+                    }
+                } else {
+                    if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                        AndroidServices.setVoiceMuted(false);
+                    }
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setVoiceMuted === 'function') {
+                        try { window.NativeServiceBridge.setVoiceMuted(false); } catch (_) {}
+                    }
+                    if (typeof Components !== 'undefined' && Components.showToast) {
+                        Components.showToast('🔊 Alertas de voz activadas', 'success');
+                    }
+                }
+            };
+        }
+
+        const volSlider = document.getElementById('copilotHudVolSlider');
+        if (volSlider) {
+            volSlider.oninput = (e) => {
+                e.stopPropagation();
+                const newVol = parseInt(volSlider.value, 10);
+                _setAlertVolume(newVol);
+                const label = document.getElementById('copilotHudVolLabel');
+                if (label) label.textContent = newVol + '%';
+            };
+            volSlider.onclick = (e) => e.stopPropagation();
+            volSlider.ontouchstart = (e) => e.stopPropagation();
+        }
+
+        const volIconBtn = document.getElementById('copilotHudVolIcon');
+        if (volIconBtn) {
+            volIconBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (voiceBtn) voiceBtn.click();
             };
         }
 
@@ -1490,6 +1617,16 @@ const CopilotModule = (() => {
     function setVoiceEnabled(enabled) {
         _isVoiceEnabled = !!enabled;
         localStorage.setItem('radarVoice', _isVoiceEnabled ? 'on' : 'off');
+        if (!_isVoiceEnabled) {
+            _stopAllAudio();
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                AndroidServices.setVoiceMuted(true);
+            }
+        } else {
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                AndroidServices.setVoiceMuted(false);
+            }
+        }
     }
 
     function isVoiceEnabled() {
@@ -1509,6 +1646,7 @@ const CopilotModule = (() => {
     }
 
     function dismissHUD() {
+        _stopAllAudio();
         _hideRadarHUD();
     }
 
@@ -1518,6 +1656,9 @@ const CopilotModule = (() => {
         isEnabled,
         setVoiceEnabled,
         isVoiceEnabled,
+        setVolume: _setAlertVolume,
+        getVolume: () => _alertVolumePercent,
+        stopAudio: _stopAllAudio,
         getAllRadars,
         getLiveTrafficAlerts,
         getRadarById,

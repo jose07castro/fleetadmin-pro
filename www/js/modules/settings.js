@@ -106,6 +106,46 @@ const SettingsModule = (() => {
                 </div>
             </div>
             
+            <!-- Copiloto, Radares y Volumen Independiente -->
+            <div class="settings-section">
+                <div class="settings-section-title">🔊 Copiloto GPS y Volumen de Alertas</div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">Avisos por Voz de Fotomultas</div>
+                        <div class="settings-item-desc">Anunciar radares y controles por voz</div>
+                    </div>
+                    <div class="toggle-group">
+                        <button class="toggle-option ${localStorage.getItem('radarVoice') !== 'off' ? 'active' : ''}"
+                            onclick="if(typeof CopilotModule!=='undefined')CopilotModule.setVoiceEnabled(true); SettingsModule.render();">
+                            ON
+                        </button>
+                        <button class="toggle-option ${localStorage.getItem('radarVoice') === 'off' ? 'active' : ''}"
+                            onclick="if(typeof CopilotModule!=='undefined')CopilotModule.setVoiceEnabled(false); SettingsModule.render();">
+                            OFF
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="settings-item-label">Volumen Independiente de Alertas</div>
+                            <div class="settings-item-desc">Ajusta el volumen de voz sin modificar el volumen del teléfono</div>
+                        </div>
+                        <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;" id="settingsVolPercentDisplay">${localStorage.getItem('radarVolumePercent') || 85}%</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 16px;">🔈</span>
+                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                            style="flex: 1; accent-color: #38bdf8; cursor: pointer;"
+                            oninput="if(typeof CopilotModule!=='undefined')CopilotModule.setVolume(this.value); document.getElementById('settingsVolPercentDisplay').textContent = this.value + '%';" />
+                        <span style="font-size: 16px;">🔊</span>
+                        <button class="btn btn-secondary btn-sm" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('fotomulta')" style="white-space:nowrap; padding: 4px 10px; font-weight: 700;">
+                            ▶️ Probar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Comandos de Voz (v120) -->
             <div class="settings-section">
                 <div class="settings-section-title">🎙️ Comandos de Voz (Manos Libres)</div>

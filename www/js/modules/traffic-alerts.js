@@ -198,6 +198,11 @@
             fullText = (loc && loc !== 'Ubicación desconocida') ? `${msg} en ${loc}.` : `${msg}.`;
         }
 
+        if (localStorage.getItem('radarVoice') === 'off') {
+            console.log('🔇 [GLOBAL VOZ] Silenciado por preferencia del usuario.');
+            return;
+        }
+
         console.log(`🔊 [GLOBAL VOZ] Hablando (Voz nativa): "${fullText}"`);
 
         // === VOZ NATIVA DIRECTA (Android TTS / Web Speech) ===
@@ -216,6 +221,8 @@
                     const utter = new SpeechSynthesisUtterance(fullText);
                     utter.lang = 'es-AR';
                     utter.rate = 1.0;
+                    const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
+                    utter.volume = Math.max(0.1, Math.min(1.0, volPercent / 100.0));
                     window.speechSynthesis.speak(utter);
                 }, 50);
             } catch(e) {
@@ -284,6 +291,12 @@
                 return;
             }
 
+            // FILTRO DE SILENCIO: Si el usuario silenci贸 las alertas (radarVoice=off), no reproducir voz ni audio
+            if (localStorage.getItem('radarVoice') === 'off') {
+                console.log('🔇 [VOZ-GLOBAL] Alerta recibida pero silenciada por el usuario (radarVoice=off).');
+                return;
+            }
+
             console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
 
             // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
@@ -315,6 +328,8 @@
                 let fallbackTriggered = false;
 
                 const audio = new Audio();
+                const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
+                audio.volume = Math.max(0.1, Math.min(1.0, volPercent / 100.0));
 
                 const triggerFallback = () => {
                     if (fallbackTriggered) return;

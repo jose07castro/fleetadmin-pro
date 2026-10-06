@@ -20,6 +20,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
@@ -99,6 +100,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private boolean isTtsInitialized = false;
     private final List<String> pendingSpeakQueue = new ArrayList<>();
     private MediaPlayer mediaPlayer = null;
+    public static volatile boolean isVoiceMuted = false;
+    public static volatile float alertVolume = 0.85f;
+    public static volatile int alertVolumePercent = 85;
 
     // Background Thread
     private HandlerThread serviceThread;
@@ -164,6 +168,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         serviceStartTime = System.currentTimeMillis();
 
         createNotificationChannel();
+
+        // Cargar preferencias de volumen independiente y silencio
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        alertVolumePercent = prefs.getInt("alert_volume_percent", 85);
+        alertVolume = alertVolumePercent / 100.0f;
+        isVoiceMuted = "off".equals(prefs.getString("radarVoice", "on"));
+        Log.i(TAG, "🔊 [PREFS] Volumen independiente cargado: " + alertVolumePercent + "% | Mute: " + isVoiceMuted);
 
         // 1. Thread de fondo prioritario
         serviceThread = new HandlerThread("GPSServiceThread", Process.THREAD_PRIORITY_URGENT_DISPLAY);
@@ -714,8 +725,70 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // TEXT TO SPEECH
     // ================================================================
 
+    public static void stopAllAudio() {
+        Log.i(TAG, "⏹️ [AUDIO] stopAllAudio() solicitado");
+        if (instance != null) {
+            instance.stopAudioInternal();
+        }
+    }
+
+    public void stopAudioInternal() {
+        try {
+            if (tts != null) {
+                tts.stop();
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (mediaPlayer != null) {
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.stop();
+                }
+                mediaPlayer.reset();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static void setVoiceMuted(boolean muted) {
+        isVoiceMuted = muted;
+        Log.i(TAG, "🔇 [VOZ] setVoiceMuted: " + muted);
+        if (muted) {
+            stopAllAudio();
+        }
+        if (instance != null) {
+            SharedPreferences prefs = instance.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit().putString("radarVoice", muted ? "off" : "on").apply();
+        }
+    }
+
+    public static void setAlertVolume(int percent, Context context) {
+        alertVolumePercent = Math.max(0, Math.min(100, percent));
+        alertVolume = alertVolumePercent / 100.0f;
+        Log.i(TAG, "🔊 [VOLUME] Volumen independiente de alertas: " + alertVolumePercent + "% (factor " + alertVolume + ")");
+        if (context != null) {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit().putInt("alert_volume_percent", alertVolumePercent).apply();
+            try {
+                AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) {
+                    int maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    int targetVol = Math.round((alertVolumePercent / 100.0f) * maxVol);
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0);
+                }
+            } catch (Exception ignored) {}
+        }
+        if (instance != null && instance.mediaPlayer != null) {
+            try {
+                instance.mediaPlayer.setVolume(alertVolume, alertVolume);
+            } catch (Exception ignored) {}
+        }
+    }
+
     public static void speakText(String text, Context context) {
         if (text == null || text.trim().isEmpty()) return;
+        if (isVoiceMuted) {
+            Log.i(TAG, "🔇 [TTS] Silenciado por el usuario. Omitiendo: " + text);
+            return;
+        }
         if (instance != null && instance.isTtsInitialized && instance.tts != null) {
             instance.speak(text);
         } else {
@@ -727,7 +800,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         fallbackTts[0] = new TextToSpeech(context.getApplicationContext(), status -> {
                             if (status == TextToSpeech.SUCCESS) {
                                 fallbackTts[0].setLanguage(new Locale("es", "ES"));
-                                fallbackTts[0].speak(text, TextToSpeech.QUEUE_FLUSH, null, "fallback_" + System.currentTimeMillis());
+                                Bundle params = new Bundle();
+                                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                                fallbackTts[0].speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_" + System.currentTimeMillis());
                             }
                         });
                     } catch (Exception ex) {
@@ -772,8 +847,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             // Despachar cualquier anuncio que se haya intentado hablar mientras el motor cargaba
             synchronized (pendingSpeakQueue) {
                 for (String pending : pendingSpeakQueue) {
-                    Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado durante inicio: \"" + pending + "\"");
-                    tts.speak(pending, TextToSpeech.QUEUE_ADD, null, "pending_" + System.currentTimeMillis());
+                    if (!isVoiceMuted) {
+                        Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado: \"" + pending + "\"");
+                        Bundle params = new Bundle();
+                        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                        tts.speak(pending, TextToSpeech.QUEUE_FLUSH, params, "pending_" + System.currentTimeMillis());
+                    }
                 }
                 pendingSpeakQueue.clear();
             }
@@ -784,18 +863,24 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     public void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
+        if (isVoiceMuted) {
+            Log.i(TAG, "🔇 [TTS] speak() ignorado porque está silenciado");
+            return;
+        }
         long now = System.currentTimeMillis();
-        // Evitar eco o repetición idéntica en menos de 10 segundos
-        if (text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 10000) {
-            Log.i(TAG, "🔊 [TTS] Duplicate text ignored within 10s: " + text);
+        // Evitar eco o repetición idéntica en menos de 8 segundos
+        if (text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 8000) {
+            Log.i(TAG, "🔊 [TTS] Duplicate text ignored within 8s: " + text);
             return;
         }
         lastSpokenTime = now;
         lastSpokenText = text;
 
-        Log.i(TAG, "🔊 [TTS] speak: \"" + text + "\"");
+        Log.i(TAG, "🔊 [TTS] speak (vol " + alertVolumePercent + "%): \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
-            int result = tts.speak(text, TextToSpeech.QUEUE_ADD, null, "alert_" + System.currentTimeMillis());
+            Bundle params = new Bundle();
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+            int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "alert_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
             }
@@ -810,6 +895,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     public void playAudioAlert(String audioUrl, String fallbackTtsText) {
+        if (isVoiceMuted) {
+            Log.i(TAG, "🔇 [NATIVE-AUDIO] Silenciado por el usuario. Omitiendo playAudioAlert.");
+            return;
+        }
         if (audioUrl == null || audioUrl.trim().isEmpty()) {
             speak(fallbackTtsText);
             return;
@@ -824,7 +913,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     ? audioUrl 
                     : baseUrl + (audioUrl.startsWith("/") ? "" : "/") + audioUrl;
 
-                Log.i(TAG, "🎵 [NATIVE-AUDIO] Reproduciendo nota de voz nativa: " + fullUrl);
+                Log.i(TAG, "🎵 [NATIVE-AUDIO] Reproduciendo nota de voz nativa: " + fullUrl + " (vol " + alertVolumePercent + "%)");
 
                 if (mediaPlayer != null) {
                     try {
@@ -845,8 +934,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 mediaPlayer.setDataSource(fullUrl);
                 mediaPlayer.setOnPreparedListener(mp -> {
-                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo y reproduciendo...");
-                    mp.start();
+                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo y reproduciendo con volumen: " + alertVolume);
+                    try {
+                        mp.setVolume(alertVolume, alertVolume);
+                        mp.start();
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ Error al iniciar MediaPlayer:", e);
+                    }
                 });
 
                 mediaPlayer.setOnCompletionListener(mp -> {

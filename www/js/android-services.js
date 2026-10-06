@@ -617,8 +617,59 @@ const AndroidServices = (() => {
             } catch (e) {
                 console.warn('⚠️ Error en NativeServiceBridge.playAudio, recurriendo a Web Audio:', e);
             }
+    function stopAudio() {
+        console.log('📱 AndroidServices: stopAudio() solicitado');
+        // 1. Android Nativo
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.stopAudio === 'function') {
+            try {
+                window.NativeServiceBridge.stopAudio();
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.stopAudio:', e);
+            }
         }
-        return false;
+        // 2. Web Speech API
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            try {
+                window.speechSynthesis.cancel();
+            } catch (e) {}
+        }
+    }
+
+    function setVoiceMuted(muted) {
+        console.log(`📱 AndroidServices: setVoiceMuted(${muted})`);
+        localStorage.setItem('radarVoice', muted ? 'off' : 'on');
+        if (muted) {
+            stopAudio();
+        }
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.setVoiceMuted === 'function') {
+            try {
+                window.NativeServiceBridge.setVoiceMuted(!!muted);
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.setVoiceMuted:', e);
+            }
+        }
+    }
+
+    function setAlertVolume(percent) {
+        const val = Math.max(0, Math.min(100, parseInt(percent, 10) || 85));
+        console.log(`📱 AndroidServices: setAlertVolume(${val}%)`);
+        localStorage.setItem('radarVolumePercent', String(val));
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.setAlertVolume === 'function') {
+            try {
+                window.NativeServiceBridge.setAlertVolume(val);
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.setAlertVolume:', e);
+            }
+        }
+    }
+
+    function getAlertVolume() {
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.getAlertVolume === 'function') {
+            try {
+                return window.NativeServiceBridge.getAlertVolume();
+            } catch (e) {}
+        }
+        return parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
     }
 
     // =============================================
@@ -638,9 +689,13 @@ const AndroidServices = (() => {
         // GPS nativo
         isNativeGPSAlive,
         
-        // Voz / TTS Nativo
+        // Voz / TTS Nativo & Volumen Independiente
         speak,
         playAudio,
+        stopAudio,
+        setVoiceMuted,
+        setAlertVolume,
+        getAlertVolume,
 
         // Batería
         requestBackgroundLocationPermission,

@@ -171,12 +171,18 @@ const RadarModule = (() => {
                         style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border:1px solid ${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};border-radius:8px;padding:6px 11px;color:white;font-size:13px;font-weight:700;cursor:pointer;margin-right:8px;display:flex;align-items:center;gap:4px;">
                         📷 Cámaras (80)
                     </button>
-                    <button class="radar-voice-btn" id="radarVoiceBtn"
-                        onclick="RadarModule.toggleVoice()"
-                        title="Activar/desactivar voz"
-                        style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;padding:6px 12px;color:white;font-size:18px;cursor:pointer;margin-right:8px;">
-                        ${_voiceEnabled ? '🔊' : '🔇'}
-                    </button>
+                    <div style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.12);border-radius:8px;padding:3px 8px;margin-right:8px;gap:6px;">
+                        <button class="radar-voice-btn" id="radarVoiceBtn"
+                            onclick="RadarModule.toggleVoice()"
+                            title="Activar/desactivar voz"
+                            style="background:none;border:none;color:white;font-size:17px;cursor:pointer;padding:0;">
+                            ${_voiceEnabled ? '🔊' : '🔇'}
+                        </button>
+                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                            id="radarVolSlider" title="Volumen independiente de alertas"
+                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
+                            style="width:50px;height:4px;accent-color:#38bdf8;cursor:pointer;margin:0;" />
+                    </div>
                     <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
                         ✕ Salir
                     </button>
@@ -1074,11 +1080,27 @@ const RadarModule = (() => {
         const btn = document.getElementById('radarVoiceBtn');
         if (btn) btn.textContent = _voiceEnabled ? '🔊' : '🔇';
         
-        // Confirmar con voz global si se activa
-        if (_voiceEnabled && typeof TrafficAlerts !== 'undefined') {
-            TrafficAlerts.speakAlert('warning', null);
+        if (!_voiceEnabled) {
+            if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.stopAudio === 'function') {
+                CopilotModule.stopAudio();
+            }
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                AndroidServices.setVoiceMuted(true);
+            }
+            if (typeof window !== 'undefined' && window.speechSynthesis) {
+                try { window.speechSynthesis.cancel(); } catch (_) {}
+            }
+            console.log('🔇 [VOZ] DESACTIVADA y audios cortados.');
+        } else {
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
+                AndroidServices.setVoiceMuted(false);
+            }
+            // Confirmar con voz global si se activa
+            if (typeof TrafficAlerts !== 'undefined') {
+                TrafficAlerts.speakAlert('warning', null);
+            }
+            console.log('🔊 [VOZ] ACTIVADA');
         }
-        console.log(`🔊 [VOZ] ${_voiceEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
     }
 
     function _removeAlertMarker(id) {

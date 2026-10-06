@@ -193,7 +193,14 @@ const ShiftsModule = (() => {
                         <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
+                        <span style="font-size: 13px;">🔊</span>
+                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                            title="Ajustar volumen"
+                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
+                            style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
+                    </div>
                     <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('fotomulta')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(239,68,68,0.4); color: #ef4444; border-radius: 8px; white-space: nowrap;">
                         📷 Fotomulta
                     </button>
@@ -338,7 +345,14 @@ const ShiftsModule = (() => {
                         <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
+                        <span style="font-size: 13px;">🔊</span>
+                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                            title="Ajustar volumen"
+                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
+                            style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
+                    </div>
                     <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('fotomulta')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(239,68,68,0.4); color: #ef4444; border-radius: 8px; white-space: nowrap;">
                         📷 Fotomulta
                     </button>
