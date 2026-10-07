@@ -201,11 +201,8 @@ const ShiftsModule = (() => {
                             oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
                             style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
                     </div>
-                    <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('fotomulta')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(239,68,68,0.4); color: #ef4444; border-radius: 8px; white-space: nowrap;">
-                        📷 Fotomulta
-                    </button>
-                    <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('transito')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(59,130,246,0.4); color: #3b82f6; border-radius: 8px; white-space: nowrap;">
-                        🚔 Tránsito
+                    <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 12px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                        💡 Sugerencia Desarrollador
                     </button>
                 </div>
             </div>
@@ -353,11 +350,8 @@ const ShiftsModule = (() => {
                             oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
                             style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
                     </div>
-                    <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('fotomulta')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(239,68,68,0.4); color: #ef4444; border-radius: 8px; white-space: nowrap;">
-                        📷 Fotomulta
-                    </button>
-                    <button type="button" class="btn btn-outline" onclick="if(typeof CopilotModule!=='undefined')CopilotModule.testAlert('transito')" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(59,130,246,0.4); color: #3b82f6; border-radius: 8px; white-space: nowrap;">
-                        🚔 Tránsito
+                    <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 12px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                        💡 Sugerencia Desarrollador
                     </button>
                 </div>
             </div>
