@@ -222,9 +222,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
             }
         };
-        android.content.IntentFilter filter = new android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION);
-        registerReceiver(gpsStatusReceiver, filter);
-        Log.i(TAG, "🔌 Registered GPS providers BroadcastReceiver");
+        try {
+            android.content.IntentFilter filter = new android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(gpsStatusReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(gpsStatusReceiver, filter);
+            }
+            Log.i(TAG, "🔌 Registered GPS providers BroadcastReceiver");
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error registering GPS providers receiver:", e);
+        }
     }
 
     @Override
@@ -283,8 +291,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
+        } catch (SecurityException se) {
+            Log.w(TAG, "⚠️ SecurityException en startForeground(LOCATION), usando fallback sin tipo:", se);
+            try {
+                startForeground(NOTIFICATION_ID, notification);
+            } catch (Exception eFallback) {
+                Log.e(TAG, "❌ Error fatal startForeground fallback:", eFallback);
+            }
         } catch (Exception e) {
             Log.e(TAG, "⚠️ Error startForeground:", e);
+            try {
+                startForeground(NOTIFICATION_ID, notification);
+            } catch (Exception ignored) {}
         }
 
         acquireWakeLock();
@@ -310,38 +328,35 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     public void onTaskRemoved(Intent rootIntent) {
         Log.w(TAG, "🚨 App CERRADA MANUALMENTE desde recientes (onTaskRemoved). Notificando al servidor...");
 
-        // NUEVO: Reportar cierre intencional de app al servidor ANTES de reiniciar
-        // Esto le avisa al dueño que el chofer cerró la app adrede
-        sendEventToServer("app_killed");
-
-        // También actualizar Firebase directamente para velocidad máxima
-        if (dbRef != null && userId != null && !userId.isEmpty()) {
-            serviceHandler.post(() -> {
-                try {
-                    Map<String, Object> killData = new HashMap<>();
-                    killData.put("status", "app_killed");
-                    killData.put("last_heartbeat", System.currentTimeMillis());
-                    killData.put("updated_at", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-                        .format(new java.util.Date()));
-                    dbRef.child(userId).updateChildren(killData);
-                    Log.i(TAG, "🔥 Estado app_killed escrito en Firebase directo");
-                } catch (Exception e) {
-                    Log.e(TAG, "❌ Error escribiendo app_killed en Firebase:", e);
-                }
-            });
+        try {
+            // Reportar cierre intencional de app al servidor sin bloquear el hilo principal (elimina Thread.sleep que causaba ANR)
+            if (serviceHandler != null) {
+                serviceHandler.post(() -> {
+                    try {
+                        sendEventToServer("app_killed");
+                        if (dbRef != null && userId != null && !userId.isEmpty()) {
+                            Map<String, Object> killData = new HashMap<>();
+                            killData.put("status", "app_killed");
+                            killData.put("last_heartbeat", System.currentTimeMillis());
+                            killData.put("updated_at", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+                                .format(new java.util.Date()));
+                            dbRef.child(userId).updateChildren(killData);
+                            Log.i(TAG, "🔥 Estado app_killed escrito en Firebase directo");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ Error escribiendo app_killed en Firebase:", e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error en onTaskRemoved handler:", e);
         }
 
-        // Esperar brevemente para que la red tenga tiempo de enviar
-        try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+        // NOTA CRÍTICA ANTI-CRASH: Con stopWithTask="false" en AndroidManifest.xml, este
+        // ForegroundService PERMANECE VIVO automáticamente en segundo plano con su notificación.
+        // NUNCA se debe llamar a startForegroundService() aquí: en Android 12+ (API 31+) genera
+        // ForegroundServiceStartNotAllowedException y provocaba el error "Punto Alertas continúa fallando".
 
-        // Reiniciar el servicio GPS para que siga rastreando aunque la app esté cerrada
-        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
-        restartServiceIntent.setPackage(getPackageName());
-        if (userId != null) restartServiceIntent.putExtra("userId", userId);
-        if (driverName != null) restartServiceIntent.putExtra("driverName", driverName);
-        if (fleetId != null) restartServiceIntent.putExtra("fleetId", fleetId);
-        if (serverUrl != null) restartServiceIntent.putExtra("serverUrl", serverUrl);
-        androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartServiceIntent);
         super.onTaskRemoved(rootIntent);
     }
 
@@ -350,8 +365,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         Log.w(TAG, "⛔ onDestroy() — El servicio está siendo destruido");
         if (instance == this) instance = null;
         isTracking = false;
-        stopLocationUpdates();
-        releaseWakeLock();
+        try { stopLocationUpdates(); } catch (Exception ignored) {}
+        try { releaseWakeLock(); } catch (Exception ignored) {}
         
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
@@ -363,42 +378,34 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             isTtsInitialized = false;
         }
         
-        // Desregistrar receptor GPS
+        // Desregistrar receptor GPS de forma segura
         try {
-            unregisterReceiver(gpsStatusReceiver);
-        } catch (Exception e) {}
+            if (gpsStatusReceiver != null) {
+                unregisterReceiver(gpsStatusReceiver);
+            }
+        } catch (Exception ignored) {}
         
         // Detener timer de latidos
-        if (heartbeatHandler != null && heartbeatRunnable != null) {
-            heartbeatHandler.removeCallbacks(heartbeatRunnable);
-        }
-        
-        // Auto-reinicio solo si no fue apagado voluntario (se verifica si hay userId en SharedPreferences)
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String savedUserId = prefs.getString("userId", null);
-        
-        if (savedUserId != null) {
-            final String savedDriverName = prefs.getString("driverName", driverName);
-            final String savedFleetId = prefs.getString("fleetId", fleetId);
-            final String savedServerUrl = prefs.getString("serverUrl", serverUrl);
-            
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
-                    restartIntent.putExtra("userId", savedUserId);
-                    if (savedDriverName != null) restartIntent.putExtra("driverName", savedDriverName);
-                    if (savedFleetId != null) restartIntent.putExtra("fleetId", savedFleetId);
-                    if (savedServerUrl != null) restartIntent.putExtra("serverUrl", savedServerUrl);
-                    
-                    androidx.core.content.ContextCompat.startForegroundService(getApplicationContext(), restartIntent);
-                    Log.i(TAG, "🔁 Auto-reinicio post-destroy disparado");
-                } catch (Exception e) {
-                    Log.e(TAG, "❌ Auto-reinicio fallido:", e);
-                }
-            }, 2000);
-        } else {
-            Log.i(TAG, "🛑 Cierre voluntario detectado (sin credenciales en SharedPreferences). No se reiniciará el servicio.");
-        }
+        try {
+            if (heartbeatHandler != null && heartbeatRunnable != null) {
+                heartbeatHandler.removeCallbacks(heartbeatRunnable);
+            }
+        } catch (Exception ignored) {}
+
+        // Detener vigilante
+        try {
+            if (watchdogHandler != null && watchdogRunnable != null) {
+                watchdogHandler.removeCallbacks(watchdogRunnable);
+            }
+        } catch (Exception ignored) {}
+
+        // Detener hilo de servicio
+        try {
+            if (serviceThread != null) {
+                serviceThread.quitSafely();
+            }
+        } catch (Exception ignored) {}
+
         super.onDestroy();
     }
 

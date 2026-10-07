@@ -40,6 +40,12 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Blindaje global anti-cuelgues: Evita que excepciones en hilos de fondo o servicios
+        // disparen el diálogo del sistema "Punto Alertas continúa fallando".
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            Log.e(TAG, "🛡️ [CRASH-SHIELD] Excepción interceptada en " + thread.getName() + ":", throwable);
+        });
+
         // v1.2.175: Se remueve la solicitud automática de permisos en onCreate para cumplir con la política
         // de 'Divulgación Destacada' de Google Play (se solicita desde JS tras mostrar el cartel explicativo).
 
