@@ -110,11 +110,21 @@ app.post('/api/suggestions', async (req, res) => {
             }
         }
 
-        // 2. Enviar por WhatsApp al desarrollador si el bot está conectado
+        // 2. Enviar por WhatsApp a todos los números administradores registrados
+        const targetNumbers = ['5493415707731', '5493417327248'];
+        if (typeof WhatsappBot.getTrustedAdminNumbers === 'function') {
+            const dynamic = WhatsappBot.getTrustedAdminNumbers();
+            if (Array.isArray(dynamic)) targetNumbers.push(...dynamic);
+        }
+
         let sentToWhatsApp = false;
         if (typeof WhatsappBot.sendTextMessage === 'function') {
-            const sendRes = await WhatsappBot.sendTextMessage(devPhone, whatsappText);
-            sentToWhatsApp = !!(sendRes && sendRes.success);
+            const uniqueNumbers = [...new Set(targetNumbers.map(n => String(n).replace(/[^0-9]/g, '')))];
+            for (const phone of uniqueNumbers) {
+                if (!phone) continue;
+                const sendRes = await WhatsappBot.sendTextMessage(phone, whatsappText);
+                if (sendRes && sendRes.success) sentToWhatsApp = true;
+            }
         }
 
         res.json({

@@ -4737,6 +4737,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
         getLastQr: () => _lastQrCode,
         getGroupCache: () => groupNameCache,
         sendTextMessage,
+        getTrustedAdminNumbers: () => [...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers],
         getDiagnostics: () => ({
             connected: _isConnectedState,
             botNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null,
