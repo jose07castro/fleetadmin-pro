@@ -533,7 +533,13 @@ const Components = (() => {
         const fleetId = typeof Auth !== 'undefined' && typeof Auth.getFleetId === 'function' ? Auth.getFleetId() : '';
 
         try {
-            const serverUrl = window.location.origin;
+            const isNativeOrLocal = window.location.hostname === 'localhost' || 
+                                    window.location.protocol === 'file:' || 
+                                    window.location.protocol === 'capacitor:';
+            const serverUrl = isNativeOrLocal 
+                ? 'https://fleetadmin-web-nueva.onrender.com' 
+                : window.location.origin;
+
             const res = await fetch(`${serverUrl}/api/suggestions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -554,9 +560,32 @@ const Components = (() => {
                 throw new Error(data?.error || 'No se pudo enviar la sugerencia.');
             }
         } catch (err) {
-            console.error('Error enviando sugerencia:', err);
-            if (feedback) feedback.innerHTML = `<span style="color:#f87171;">⚠️ ${err.message || 'Error de conexión'}</span>`;
-            if (btn) { btn.disabled = false; btn.textContent = 'Reintentar'; }
+            console.warn('⚠️ Error enviando sugerencia por API, intentando respaldo Firebase:', err);
+            let savedDirectly = false;
+            try {
+                if (typeof firebase !== 'undefined' && firebase.database) {
+                    await firebase.database().ref('developer_suggestions').push({
+                        userName: user.name || 'Usuario',
+                        userRole: roleLabel,
+                        userPhone: user.phone || 'No registrado',
+                        fleetName: fleetId,
+                        message: msg,
+                        timestamp: Date.now(),
+                        dateStr: new Date().toLocaleString('es-AR')
+                    });
+                    savedDirectly = true;
+                }
+            } catch(fbErr) {
+                console.warn('Error respaldo Firebase sugerencia:', fbErr);
+            }
+
+            if (savedDirectly) {
+                closeModal();
+                showToast('✅ ¡Sugerencia registrada con éxito! Muchas gracias.', 'success');
+            } else {
+                if (feedback) feedback.innerHTML = `<span style="color:#f87171;">⚠️ ${err.message || 'Error de conexión'}</span>`;
+                if (btn) { btn.disabled = false; btn.textContent = 'Reintentar'; }
+            }
         }
     }
 

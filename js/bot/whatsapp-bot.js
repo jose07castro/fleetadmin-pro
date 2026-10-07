@@ -2326,6 +2326,32 @@ const WhatsappBot = (() => {
         : `local_${process.pid}_${Math.random().toString(36).substring(2, 7)}`;
     let _leaderHeartbeatInterval = null;
 
+    // Caché en memoria para re-cifrado E2EE (Soluciona "Esperando mensaje. Esto puede tomar tiempo...")
+    const _messageStore = new Map();
+    const MAX_STORED_MSGS = 2000;
+
+    function storeMessage(key, message) {
+        if (!key || !key.id || !message) return;
+        try {
+            if (_messageStore.size >= MAX_STORED_MSGS) {
+                const keysToDelete = Array.from(_messageStore.keys()).slice(0, 200);
+                for (const k of keysToDelete) _messageStore.delete(k);
+            }
+            _messageStore.set(key.id, message);
+            if (key.remoteJid) {
+                _messageStore.set(`${key.remoteJid}_${key.id}`, message);
+            }
+            // Respaldo ligero en Firebase para retries posteriores
+            if (db && key.id) {
+                db.ref(`bot_msg_cache/${key.id}`).set({
+                    message,
+                    remoteJid: key.remoteJid || null,
+                    timestamp: Date.now()
+                }).catch(() => {});
+            }
+        } catch(e) {}
+    }
+
     async function startSocket() {
         if (isConnecting) {
             console.log('🛡️ [LOCK] Bloqueando intento de conexión duplicado en paralelo.');
@@ -2423,6 +2449,27 @@ const WhatsappBot = (() => {
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: true,
                 shouldSyncHistoryMessage: () => true,
+                getMessage: async (key) => {
+                    if (!key || !key.id) return undefined;
+                    let m = _messageStore.get(key.id) || (key.remoteJid ? _messageStore.get(`${key.remoteJid}_${key.id}`) : null);
+                    if (m) {
+                        console.log(`🔄 [RETRY-GET-MESSAGE] Mensaje ${key.id} entregado para re-cifrado E2EE a ${key.remoteJid || 'dispositivo'}`);
+                        return m;
+                    }
+                    if (db) {
+                        try {
+                            const snap = await db.ref(`bot_msg_cache/${key.id}`).once('value');
+                            const val = snap.val();
+                            if (val?.message) {
+                                _messageStore.set(key.id, val.message);
+                                console.log(`🔄 [RETRY-GET-MESSAGE] Mensaje ${key.id} recuperado de Firebase para re-cifrado E2EE`);
+                                return val.message;
+                            }
+                        } catch(e) {}
+                    }
+                    console.warn(`⚠️ [RETRY-GET-MESSAGE] Clave de mensaje no encontrada en caché: ${key.id}`);
+                    return undefined;
+                }
             });
 
             sock.ev.on('connection.update', async (update) => {
@@ -2623,6 +2670,11 @@ const WhatsappBot = (() => {
                     try {
                     const jid = msg.key?.remoteJid;
                     if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
+
+                    // Almacenar en caché de reintentos para re-cifrado E2EE
+                    if (msg.key?.id && msg.message) {
+                        storeMessage(msg.key, msg.message);
+                    }
 
                     // Guardar en cola si es candidato a comprobante
                     _enqueueCandidateMessage(msg);
@@ -4724,11 +4776,31 @@ Si no hay movimientos financieros detectados, respondé: []`;
                 console.warn('⚠️ [ON-WHATSAPP] Falló validación de JID, usando directo:', waErr.message);
             }
 
-            await sock.sendMessage(targetJid, { text: messageText });
-            console.log(`✉️ [SEND-TEXT] Mensaje enviado exitosamente a ${targetJid}`);
-            return { success: true };
+            const sentMsg = await sock.sendMessage(targetJid, { text: messageText });
+            if (sentMsg?.key && sentMsg?.message) {
+                storeMessage(sentMsg.key, sentMsg.message);
+            }
+            console.log(`✉️ [SEND-TEXT] Mensaje enviado exitosamente a ${targetJid} (ID: ${sentMsg?.key?.id})`);
+            if (db) {
+                db.ref('bot_debug_logs').push({
+                    event: 'send_text_success',
+                    targetPhone,
+                    targetJid,
+                    msgId: sentMsg?.key?.id || null,
+                    timestamp: Date.now()
+                }).catch(() => {});
+            }
+            return { success: true, messageId: sentMsg?.key?.id };
         } catch(err) {
             console.error('❌ [SEND-TEXT] Error enviando mensaje a WhatsApp:', err.message);
+            if (db) {
+                db.ref('bot_debug_logs').push({
+                    event: 'send_text_error',
+                    targetPhone,
+                    error: err.message,
+                    timestamp: Date.now()
+                }).catch(() => {});
+            }
             return { success: false, error: err.message };
         }
     }
