@@ -617,6 +617,10 @@ const AndroidServices = (() => {
             } catch (e) {
                 console.warn('⚠️ Error en NativeServiceBridge.playAudio, recurriendo a Web Audio:', e);
             }
+        }
+        return false;
+    }
+
     function stopAudio() {
         console.log('📱 AndroidServices: stopAudio() solicitado');
         // 1. Android Nativo

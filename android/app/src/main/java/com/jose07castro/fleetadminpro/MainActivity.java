@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
@@ -42,20 +43,40 @@ public class MainActivity extends BridgeActivity {
 
         // Blindaje global anti-cuelgues: Evita que excepciones en hilos de fondo o servicios
         // disparen el diálogo del sistema "Punto Alertas continúa fallando".
+        final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             Log.e(TAG, "🛡️ [CRASH-SHIELD] Excepción interceptada en " + thread.getName() + ":", throwable);
+            // Si la excepción ocurrió en el hilo principal (UI thread), delegar al manejador por defecto
+            // para evitar que la aplicación quede congelada/zombie (ANR)
+            if (Looper.getMainLooper().getThread() == thread) {
+                if (defaultHandler != null) {
+                    defaultHandler.uncaughtException(thread, throwable);
+                }
+            }
         });
 
         // v1.2.175: Se remueve la solicitud automática de permisos en onCreate para cumplir con la política
         // de 'Divulgación Destacada' de Google Play (se solicita desde JS tras mostrar el cartel explicativo).
 
-        // Capturar referencia al WebView
-        this.bridge.getWebView().post(() -> {
-            webView = this.bridge.getWebView();
-            webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
-            webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
-            Log.i(TAG, "✅ NativeServiceBridge registrado en el WebView");
-        });
+        // Capturar referencia al WebView de forma segura
+        try {
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                this.bridge.getWebView().post(() -> {
+                    try {
+                        webView = this.bridge.getWebView();
+                        if (webView != null) {
+                            webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+                            webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
+                            Log.i(TAG, "✅ NativeServiceBridge registrado en el WebView");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "⚠️ Error configurando WebView post: " + e.getMessage());
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error obteniendo WebView en onCreate: " + e.getMessage());
+        }
 
         // Verificar actualizaciones al iniciar
         checkPlayStoreUpdate();
@@ -92,16 +113,23 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         LocationTrackingService.isAppInForeground = true;
         try {
-            this.bridge.getWebView().post(new Runnable() {
-                @Override
-                public void run() {
-                    if (webView != null) {
-                        webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
-                            "GPSPermissions.onResumeCheck(); " +
-                            "}", null);
-                    }
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                if (webView == null) {
+                    webView = this.bridge.getWebView();
+                    webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+                    webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
                 }
-            });
+                this.bridge.getWebView().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (webView != null) {
+                            webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
+                                "GPSPermissions.onResumeCheck(); " +
+                                "}", null);
+                        }
+                    }
+                });
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error evaluating JS in onResume: " + e.getMessage());
         }
