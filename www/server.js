@@ -1410,7 +1410,7 @@ app.post('/api/driver/location', async (req, res) => {
 const GEMINI_MODELS = [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 ];
 
 async function callGeminiAudio(audioBuffer, mimeType) {

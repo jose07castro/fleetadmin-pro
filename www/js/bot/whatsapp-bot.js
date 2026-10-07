@@ -30,13 +30,12 @@ let _lastQrCode = null;
 function getGeminiKey() {
     return process.env.GEMINI_API_KEY || _dynamicGeminiKey || null;
 }
-const GEMINI_KEY = getGeminiKey();
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -118,8 +117,9 @@ Determiná:
 4. La dirección o intersección mencionada (null si no hay ninguna)
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS Y CONSULTAS (CRÍTICA):
-- Si el audio es una pregunta, consulta, duda o pedido de información (por ejemplo: "¿hay algo de arroyo a pavón?", "¿está limpio tal lugar?", "¿alguien sabe si están los zorros en Pellegrini?", "¿cómo está la autopista?", "algo de arroyo a pavón?", "algo de arroyo a pavón"), responde ESTRICTAMENTE con "isTrafficAlert": false.
+- Si el audio es una pregunta, consulta, duda o pedido de información (por ejemplo: "¿hay algo de arroyo a pavón?", "¿alguien sabe si están los zorros en Pellegrini?", "¿cómo está la autopista?", "algo de arroyo a pavón?"), responde ESTRICTAMENTE con "isTrafficAlert": false.
 - Solo debes marcar "isTrafficAlert": true para reportes AFIRMATIVOS, CONFIRMADOS y CONCRETOS de incidentes o controles activos (por ejemplo: "hay operativo de arroyo a pavón", "están parando los zorros en Pellegrini").
+- REGLA PARA OPERATIVOS LEVANTADOS / LIMPIOS (SÍ REPORTAR): Si el audio avisa afirmativamente que un control u operativo SE LEVANTÓ, SE FUE o YA ESTÁ LIMPIO (ej: "muchachos levantaron el operativo de Pellegrini", "se fueron los zorros", "limpio fiscalización"), SÍ debes reportarlo como "isTrafficAlert": true, type: "municipal" o "checkpoint", y en reason pon "operativo levantado / en movimiento". La flota necesita saber que el control se trasladó.
 
 Si el audio es: conversación personal, música, tutorial, broma, saludos, venta de productos, noticias generales, o cualquier cosa NO relacionada con el tránsito activo en las calles → "isTrafficAlert": false.
 
@@ -127,11 +127,10 @@ Respuesta EXACTAMENTE en este formato:
 {"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
 
     // Los modelos Flash soportan audio inline.
-            const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -750,17 +749,19 @@ const WhatsappBot = (() => {
     }
     // Números de admin/dueño que pueden enviar alertas por chat privado
     // Formato: código de país + código de área + número (sin +)
-    const TRUSTED_ADMIN_NUMBERS = [
+    let TRUSTED_ADMIN_NUMBERS = [
         '5493415707731', // Número principal del bot/dueño (341-5707731)
         '5493417327248', // Segundo número de prueba/reenvío del admin (341-7327248)
     ];
+    let _dynamicTrustedNumbers = [];
 
     function _isTrustedAdmin(jid) {
         if (!jid) return false;
         if (jid === 'status@broadcast' || jid.endsWith('@broadcast')) return false;
         const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
         if (!num) return false;
-        return TRUSTED_ADMIN_NUMBERS.some(t => num.endsWith(t) || t.endsWith(num));
+        const allTrusted = [...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers];
+        return allTrusted.some(t => num.endsWith(t) || t.endsWith(num));
     }
 
     function _hasTransferKeywords(mRaw) {
@@ -2095,6 +2096,19 @@ const WhatsappBot = (() => {
                     if (s.val()) _dynamicGeminiKey = s.val();
                 });
 
+                // Cargar números de administradores dinámicos (ej: Jose IMOWI y otras líneas)
+                db.ref('bot_config/trusted_admin_numbers').on('value', (s) => {
+                    const val = s.val();
+                    if (Array.isArray(val)) {
+                        _dynamicTrustedNumbers = val.map(n => String(n).replace(/[^0-9]/g, ''));
+                    } else if (typeof val === 'string') {
+                        _dynamicTrustedNumbers = val.split(',').map(n => n.trim().replace(/[^0-9]/g, ''));
+                    } else if (typeof val === 'object' && val) {
+                        _dynamicTrustedNumbers = Object.values(val).map(n => String(n).replace(/[^0-9]/g, ''));
+                    }
+                    console.log(`📱 [ADMIN-NUMBERS] Administradores autorizados en vivo: [${[...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers].join(', ')}]`);
+                });
+
                 const queueSnap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
                 const savedQueue = queueSnap.val();
                 if (savedQueue && typeof savedQueue === 'object') {
@@ -2641,8 +2655,8 @@ const WhatsappBot = (() => {
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    // Límite flexible: 4h para mensajes pendientes offline, 20 min para mensajes en vivo
-                    const maxAgeSec = (type === 'append') ? 14400 : 1200;
+                    // Límite flexible: 12h (43200s) para mensajes pendientes offline acumulados mientras Render dormía, 30 min (1800s) para mensajes en vivo
+                    const maxAgeSec = (type === 'append') ? 43200 : 1800;
                     
                     if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
                         console.log(`⏭️ [SKIP] Mensaje de texto/voz muy antiguo saltado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
@@ -3357,8 +3371,11 @@ const WhatsappBot = (() => {
                             if (kw) {
                                 // Si no hay dirección de keywords, intentar extraerla del texto
                                 const extractedAddr = kw.address || _extractIntersection(text);
-                                console.log(`🔑 [KEYWORD] Detectado: ${kw.type} | Dir: ${extractedAddr || 'sin dirección'}`);
-                                analysis = { isAlert: true, type: kw.type, address: extractedAddr, description: text.substring(0, 100), confidence: 0.7 };
+                                const desc = kw.isLifting 
+                                    ? `Operativo levantado / en movimiento${extractedAddr ? ' en ' + extractedAddr : ''}`
+                                    : text.substring(0, 100);
+                                console.log(`🔑 [KEYWORD] Detectado: ${kw.type} (lifting=${!!kw.isLifting}) | Dir: ${extractedAddr || 'sin dirección'}`);
+                                analysis = { isAlert: true, type: kw.type, address: extractedAddr, description: desc, confidence: 0.75 };
                             }
                         }
                         
@@ -3426,10 +3443,10 @@ const WhatsappBot = (() => {
      */
     function _keywordDetect(text) {
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        // Si indica que ya se limpió, se retiró o no hay nada, ignorar
-        if (/\b(?:limpio|limpiaron|ya\s+no\s+estan|se\s+fueron|levantaron|suspendido|todo\s+libre|via\s+libre|esta\s+libre|no\s+hay\s+nada)\b/i.test(t)) {
-            return null;
-        }
+        
+        // Detectar si avisa que el operativo se fue, se levantó o ya está limpio
+        const isLifting = /\b(?:limpio|limpiaron|ya\s+no\s+estan|se\s+fueron|levantaron|suspendido|todo\s+libre|via\s+libre|esta\s+libre|no\s+hay\s+nada)\b/i.test(t);
+
         // Si es una pregunta o consulta (contiene ? o palabras de duda/pregunta), ignorar
         if (t.includes('?') || /\b(?:alguien\s+sabe|saben\s+si|info\b|reporta\s+si|saben\s+algo|hay\s+algo|alguien\s+vio|que\s+onda|pasa\s+algo|alguien\s+que\s+sepa)\b/i.test(t)) {
             return null;
@@ -3438,15 +3455,20 @@ const WhatsappBot = (() => {
         if (/\b(?:ayer|anoche|anteayer|el\s+otro\s+dia|la\s+otra\s+vez|semana\s+pasada|mes\s+pasado|año\s+pasado)\b/i.test(t)) {
             return null;
         }
-        if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica' };
-        if (/accidente|choque/.test(t)) return { type: 'accident', address: null };
-        if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null };
-        if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null };
-        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|fiscalisacion|fizca|fisca|fizcalizacion|fizcalisacion|servicio publico|servicios publicos|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null };
-        if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null };
-        if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null };
-        if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null };
-        if (/corte|cortada|trafico|tráfico|transito|bache|inundacion/.test(t)) return { type: 'traffic', address: null };
+        if (/helicoptero|codigo rojo/.test(t)) return { type: 'helicopter', address: 'Pellegrini y Vera Mujica', isLifting };
+        if (/accidente|choque/.test(t)) return { type: 'accident', address: null, isLifting };
+        if (/ambulancia|samu/.test(t)) return { type: 'ambulance', address: null, isLifting };
+        if (/bomberos|incendio|fuego/.test(t)) return { type: 'firetruck', address: null, isLifting };
+        if (/municipal|zorros|inspectores|carreton|grua|motos|fiscalizacion|fiscalisacion|fizca|fisca|fizcalizacion|fizcalisacion|servicio publico|servicios publicos|control de transito|operativo de transito|operativo transito/.test(t)) return { type: 'municipal', address: null, isLifting };
+        if (/gorra|ratis|chanchos|cana|policia|patrulla/.test(t)) return { type: 'police', address: null, isLifting };
+        if (/operativo|operatico|control/.test(t)) return { type: 'checkpoint', address: null, isLifting };
+        if (/radar|camara|foto multa|multa foto/.test(t)) return { type: 'radar', address: null, isLifting };
+        if (/corte|cortada|trafico|tráfico|transito|bache|inundacion/.test(t)) return { type: 'traffic', address: null, isLifting };
+        
+        // Si menciona levantado/limpio con contexto de calle
+        if (isLifting && (/entre|esquina|\by\b|calle|avenida|bv|av\b/.test(t))) {
+            return { type: 'municipal', address: null, isLifting: true };
+        }
         return null;
     }
 
@@ -3454,10 +3476,11 @@ const WhatsappBot = (() => {
      * Analiza el mensaje con Gemini (HTTP directo) para detectar alertas.
      */
     async function _analyzeMessageWithAI(text, groupName = '') {
-        if (!GEMINI_KEY) return null;
+        const key = getGeminiKey();
+        if (!key) return null;
         
         const prompt = `Sos un detector de alertas de tránsito para un grupo de WhatsApp de conductores de flota en Argentina.
-Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO Y CONCRETO.
+Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO O EN MOVIMIENTO.
 
 REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
 - Si el mensaje es SOLO un nombre propio, apodo, mote o forma de llamar a alguien (ej: "roti", "juanchi", "el gordo", "carlitos", "toto", "el vasco", "tío", "che"), responde ESTRICTAMENTE con {"isAlert":false}. Los apodos NO son alertas de tránsito.
@@ -3465,7 +3488,7 @@ REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
 - Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
-- Si el mensaje es una pregunta, consulta, duda o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?", "algo de arroyo a pavón?", "algo de arroyo a pavón"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos y concretos de controles o incidentes activos.
+- Si el mensaje es una pregunta, consulta, duda o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?", "algo de arroyo a pavón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos y concretos de controles o incidentes activos.
 
 REGLAS DE EXCLUSIÓN DE CHARLA GENERAL / AGRADECIMIENTOS (CRÍTICA):
 - Si el mensaje es un saludo (ej: "buen día", "hola"), un agradecimiento o respuesta de cortesía (ej: "gracias viejo", "muchas gracias", "buenísimo gracias", "ok gracias", "muchas gracias de verdad"), o una conversación personal/comentario general que no reporta activamente un nuevo incidente (ej: "yo estoy saliendo de arroyo", "está complicado", "qué mala suerte", "quería saber gracias"), responde ESTRICTAMENTE con {"isAlert":false}.
@@ -3474,8 +3497,11 @@ REGLAS DE EXCLUSIÓN DE ANÉCDOTAS, HISTORIAS Y EVENTOS PASADOS (CRÍTICA):
 - Si el mensaje describe un evento pasado (ej: "ayer había operativo", "anoche lo pararon", "le pasó a un compañero", "el otro día pasé"), responde ESTRICTAMENTE con {"isAlert":false}.
 - Si el mensaje cuenta una historia personal, anécdota, estafa, robo, discusión o situación particular de un chofer (ej: "fue a buscar un pedido y lo esperaba la policía por estafa", "le robaron a uno en tal lado", "me peleé con un inspector"), responde ESTRICTAMENTE con {"isAlert":false}. Las alertas deben ser ÚNICAMENTE avisos de utilidad general para la navegación activa (controles activos ahora, radares, accidentes con obstrucción, cortes de tránsito).
 
-REGLA DE EXCLUSIÓN DE ALERTAS FINALIZADAS / LIMPIAS (CRÍTICA):
-- Si el mensaje indica que un control, operativo, accidente o corte ya se limpió, se retiró, se fue, está libre o ya no está (ej: "ya está limpio", "todo limpio", "se fueron los zorros", "ya no hay nada", "ya lo levantaron", "limpio Pellegrini"), responde ESTRICTAMENTE con {"isAlert":false}. No queremos reportar como alertas los controles que ya dejaron de estar activos.
+REGLA PARA OPERATIVOS LEVANTADOS / LIMPIOS (CRÍTICA - SÍ REPORTAR):
+- Si el mensaje indica que un control, operativo de tránsito o fiscalización YA ESTÁ LIMPIO, SE FUE o SE LEVANTÓ (ej: "ya está limpio el operativo", "se fueron los zorros", "levantaron el control", "limpio Pellegrini y Corrientes", "ya está limpio de fisca"):
+  DEBES REPORTARLO COMO ALERTA: "isAlert": true, "type": "municipal" o "checkpoint".
+  En "description" pon: "Operativo levantado / en movimiento" o "Operativo levantado en [dirección]".
+  Esto es vital porque la flota necesita saber que el control se está trasladando a otra zona.
 
 - Solo debes reportar como alertas los reportes AFIRMATIVOS y CONCRETOS de controles, operativos, radares o incidentes viales activos. El campo "confidence" debe reflejar qué tan seguro estás: usa 0.9 si el mensaje es claro y concreto, 0.5 si es ambiguo.
         
