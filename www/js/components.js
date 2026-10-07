@@ -78,6 +78,10 @@ const Components = (() => {
                         </div>` : ''}
                 </nav>
                 <div class="sidebar-footer">
+                    <div class="nav-item" onclick="Components.showSuggestionModal()" style="margin-bottom: var(--space-2); background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
+                        <span class="nav-icon" style="color: #818cf8; margin-right: 8px;">💡</span>
+                        <span>Sugerencia Desarrollador</span>
+                    </div>
                     <div class="nav-item" onclick="Components.showDonationModal()" style="margin-bottom: var(--space-3); background: rgba(255, 193, 7, 0.08); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
                         <span class="nav-icon" style="color: #ffc107; margin-right: 8px;">💝</span>
                         <span>Colaborar App</span>
@@ -474,6 +478,88 @@ const Components = (() => {
         `);
     }
 
+    // --- Modal de Sugerencia para el Desarrollador ---
+    function showSuggestionModal() {
+        document.getElementById('sidebar')?.classList.remove('open');
+        document.getElementById('sidebarOverlay')?.classList.remove('active');
+
+        const bodyHTML = `
+            <div style="padding:var(--space-2);">
+                <div style="text-align:center; margin-bottom:var(--space-4);">
+                    <div style="font-size:3rem; margin-bottom:var(--space-2);">💡</div>
+                    <h3 style="font-size:var(--font-size-lg); font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+                        Sugerencia para el Desarrollador
+                    </h3>
+                    <p style="font-size:var(--font-size-xs); color:var(--text-secondary); line-height:1.4;">
+                        Tu mensaje llegará por WhatsApp al desarrollador de Punto Alertas para implementar mejoras o corregir problemas.
+                    </p>
+                </div>
+                <div style="margin-bottom:var(--space-4);">
+                    <label style="display:block; font-size:var(--font-size-xs); color:var(--text-secondary); font-weight:700; margin-bottom:6px; text-transform:uppercase;">
+                        Tu idea, mejora o reporte:
+                    </label>
+                    <textarea id="suggestionInput" rows="5" placeholder="Escribí acá tu sugerencia o reporte en detalle..." style="width:100%; box-sizing:border-box; padding:12px; border-radius:var(--radius-md); background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#fff; font-family:inherit; font-size:14px; resize:vertical; outline:none;"></textarea>
+                </div>
+                <div id="suggestionFeedback" style="font-size:var(--font-size-xs); margin-bottom:var(--space-2); text-align:center; min-height:18px;"></div>
+            </div>
+        `;
+
+        showModal('💡 Sugerencia al Desarrollador', bodyHTML, `
+            <div style="display:flex; gap:10px; width:100%;">
+                <button class="btn btn-secondary" onclick="Components.closeModal()" style="flex:1;">Cancelar</button>
+                <button class="btn btn-primary" id="btnSubmitSuggestion" onclick="Components.submitSuggestion()" style="flex:2; background:linear-gradient(135deg, #6366f1, #818cf8); border:none; font-weight:700;">
+                    🚀 Enviar Sugerencia
+                </button>
+            </div>
+        `);
+    }
+
+    async function submitSuggestion() {
+        const input = document.getElementById('suggestionInput');
+        const feedback = document.getElementById('suggestionFeedback');
+        const btn = document.getElementById('btnSubmitSuggestion');
+        if (!input || !input.value.trim()) {
+            if (feedback) feedback.innerHTML = '<span style="color:#f87171;">⚠️ Por favor escribí un mensaje antes de enviar.</span>';
+            return;
+        }
+
+        const msg = input.value.trim();
+        if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+        if (feedback) feedback.innerHTML = '<span style="color:#818cf8;">⏳ Enviando tu sugerencia al desarrollador...</span>';
+
+        const user = (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function' ? Auth.getUser() : null) || {};
+        const role = (typeof Auth !== 'undefined' && typeof Auth.getRole === 'function' ? Auth.getRole() : user.role) || 'Usuario';
+        const roleLabel = (role === 'owner' || role === 'titular') ? 'Titular' : (role === 'driver' ? 'Chofer' : role);
+        const fleetId = typeof Auth !== 'undefined' && typeof Auth.getFleetId === 'function' ? Auth.getFleetId() : '';
+
+        try {
+            const serverUrl = window.location.origin;
+            const res = await fetch(`${serverUrl}/api/suggestions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userName: user.name || 'Usuario',
+                    userRole: roleLabel,
+                    userPhone: user.phone || 'No registrado',
+                    fleetName: fleetId,
+                    message: msg
+                })
+            });
+
+            const data = await res.json();
+            if (data && data.ok) {
+                closeModal();
+                showToast('✅ ¡Sugerencia enviada al desarrollador con éxito! Muchas gracias.', 'success');
+            } else {
+                throw new Error(data?.error || 'No se pudo enviar la sugerencia.');
+            }
+        } catch (err) {
+            console.error('Error enviando sugerencia:', err);
+            if (feedback) feedback.innerHTML = `<span style="color:#f87171;">⚠️ ${err.message || 'Error de conexión'}</span>`;
+            if (btn) { btn.disabled = false; btn.textContent = 'Reintentar'; }
+        }
+    }
+
     function getVersionBadge(version) {
         if (!version || version === 'Desconocida') {
             return `<span class="badge" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-weight: 600; font-size: 11px;">⚠️ Sin versión</span>`;
@@ -517,6 +603,7 @@ const Components = (() => {
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
         renderEmptyState, confirm, escapeHTML, showDonationModal,
+        showSuggestionModal, submitSuggestion,
         getVersionBadge
     };
 })();

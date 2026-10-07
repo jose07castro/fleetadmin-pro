@@ -2655,11 +2655,12 @@ const WhatsappBot = (() => {
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    // Límite flexible: 12h (43200s) para mensajes pendientes offline acumulados mientras Render dormía, 30 min (1800s) para mensajes en vivo
-                    const maxAgeSec = (type === 'append') ? 43200 : 1800;
+                    // Límite estricto de tiempo real para alertas de tránsito (máximo 20 minutos / 1200s):
+                    // No procesa historial viejo ni atrasado para evitar colapsos y solo alertar sobre situaciones activas.
+                    const maxAgeSec = 1200;
                     
                     if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
-                        console.log(`⏭️ [SKIP] Mensaje de texto/voz muy antiguo saltado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
+                        console.log(`⏭️ [SKIP] Mensaje muy antiguo ignorado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
                         continue;
                     }
 
@@ -4692,6 +4693,26 @@ Si no hay movimientos financieros detectados, respondé: []`;
         };
     }
 
+    async function sendTextMessage(targetPhone, messageText) {
+        if (!sock || !_isConnectedState) {
+            console.warn('⚠️ [SEND-TEXT] Bot no conectado para enviar mensaje a', targetPhone);
+            return { success: false, reason: 'bot_disconnected' };
+        }
+        try {
+            let cleanNum = String(targetPhone).replace(/[^0-9]/g, '');
+            if (!cleanNum.startsWith('549') && cleanNum.startsWith('341')) {
+                cleanNum = '549' + cleanNum;
+            }
+            const targetJid = `${cleanNum}@s.whatsapp.net`;
+            await sock.sendMessage(targetJid, { text: messageText });
+            console.log(`✉️ [SEND-TEXT] Mensaje enviado exitosamente a ${targetJid}`);
+            return { success: true };
+        } catch(err) {
+            console.error('❌ [SEND-TEXT] Error enviando mensaje a WhatsApp:', err.message);
+            return { success: false, error: err.message };
+        }
+    }
+
     return { 
         init, 
         resetSession,
@@ -4715,6 +4736,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
         formatKmReportWhatsApp: _formatKmReportWhatsApp,
         getLastQr: () => _lastQrCode,
         getGroupCache: () => groupNameCache,
+        sendTextMessage,
         getDiagnostics: () => ({
             connected: _isConnectedState,
             botNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null,

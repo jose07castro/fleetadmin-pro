@@ -71,6 +71,64 @@ app.post('/api/whatsapp/webhook', (req, res) => {
 });
 
 // ============================================
+// Endpoint para Sugerencias de Usuarios al Desarrollador
+// ============================================
+app.post('/api/suggestions', async (req, res) => {
+    try {
+        const { userName, userRole, userPhone, fleetName, message } = req.body || {};
+        if (!message || !message.trim()) {
+            return res.status(400).json({ error: 'El mensaje no puede estar vacío.' });
+        }
+
+        const devPhone = '5493415707731';
+        const nowStr = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+
+        const whatsappText = `💡 *NUEVA SUGERENCIA DE PUNTO ALERTAS*
+👤 *Usuario:* ${userName || 'Usuario'} (${userRole || 'General'})
+📞 *Contacto:* ${userPhone || 'No informado'}
+🚗 *Flota:* ${fleetName || 'General'}
+📅 *Fecha:* ${nowStr}
+
+💬 *Mensaje:*
+"${message.trim()}"`;
+
+        // 1. Guardar en Firebase RTDB como respaldo permanente
+        const db = typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (db) {
+            try {
+                await db.ref('developer_suggestions').push({
+                    userName: userName || 'Usuario',
+                    userRole: userRole || 'General',
+                    userPhone: userPhone || null,
+                    fleetName: fleetName || null,
+                    message: message.trim(),
+                    timestamp: Date.now(),
+                    dateStr: nowStr
+                });
+            } catch(dbErr) {
+                console.warn('⚠️ [SUGGESTION] No se pudo guardar en Firebase:', dbErr.message);
+            }
+        }
+
+        // 2. Enviar por WhatsApp al desarrollador si el bot está conectado
+        let sentToWhatsApp = false;
+        if (typeof WhatsappBot.sendTextMessage === 'function') {
+            const sendRes = await WhatsappBot.sendTextMessage(devPhone, whatsappText);
+            sentToWhatsApp = !!(sendRes && sendRes.success);
+        }
+
+        res.json({
+            ok: true,
+            sentToWhatsApp,
+            message: '¡Gracias! Tu sugerencia fue enviada al desarrollador de Punto Alertas.'
+        });
+    } catch(err) {
+        console.error('❌ Error en /api/suggestions:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================
 // Bot Management Endpoints
 // ============================================
 // Endpoint de Health Check — usado por Render y por el keep-alive interno
