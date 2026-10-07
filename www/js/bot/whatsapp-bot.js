@@ -4700,10 +4700,30 @@ Si no hay movimientos financieros detectados, respondé: []`;
         }
         try {
             let cleanNum = String(targetPhone).replace(/[^0-9]/g, '');
-            if (!cleanNum.startsWith('549') && cleanNum.startsWith('341')) {
+            if (!cleanNum.startsWith('54') && cleanNum.startsWith('341')) {
                 cleanNum = '549' + cleanNum;
             }
-            const targetJid = `${cleanNum}@s.whatsapp.net`;
+
+            // En Argentina, WhatsApp registra números como 549... o 54... (sin el 9).
+            // Usamos sock.onWhatsApp para consultar a los servidores de Meta cuál JID existe realmente.
+            let targetJid = `${cleanNum}@s.whatsapp.net`;
+            try {
+                const candidates = [cleanNum];
+                if (cleanNum.startsWith('549')) {
+                    candidates.push('54' + cleanNum.slice(3));
+                } else if (cleanNum.startsWith('54')) {
+                    candidates.push('549' + cleanNum.slice(2));
+                }
+                const onWa = await sock.onWhatsApp(...candidates);
+                const found = onWa?.find(w => w.exists);
+                if (found?.jid) {
+                    targetJid = found.jid;
+                    console.log(`📱 [RESOLVE-JID] ${targetPhone} verificado en WhatsApp como: ${targetJid}`);
+                }
+            } catch(waErr) {
+                console.warn('⚠️ [ON-WHATSAPP] Falló validación de JID, usando directo:', waErr.message);
+            }
+
             await sock.sendMessage(targetJid, { text: messageText });
             console.log(`✉️ [SEND-TEXT] Mensaje enviado exitosamente a ${targetJid}`);
             return { success: true };
