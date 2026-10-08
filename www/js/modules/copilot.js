@@ -6,8 +6,9 @@
 
 const CopilotModule = (() => {
     // Configuración de proximidad y alertas
-    const WARNING_DISTANCE_METERS = 480;  // Radio de alerta temprana (480 metros)
-    const PASSING_DISTANCE_METERS = 50;   // Distancia mínima para considerar cámara superada
+    const WARNING_DISTANCE_METERS = 315;  // 300m para fotomultas (con margen de tolerancia GPS)
+    const TRAFFIC_WARNING_METERS = 500;   // 500m para operativos dinámicos de tránsito
+    const PASSING_DISTANCE_METERS = 20;   // Distancia mínima para considerar cámara superada
     const COOLDOWN_MS = 3 * 60 * 1000;    // 3 minutos de enfriamiento por cámara
 
     // Estado del módulo
@@ -15,8 +16,8 @@ const CopilotModule = (() => {
     let _isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
     let _alertVolumePercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
     let _lastAlertTime = {};              // { radarId: timestamp }
-    let _activeApproach = null;           // { radarId, minDistance, startedAt }
-    let _lastPosition = null;             // { lat, lng, time, speed }
+    let _activeApproach = null;           // { radarId, target, stage, minDistance, startedAt }
+    let _lastPosition = null;             // { lat, lng, time, speed, bearing }
     let _audioCtx = null;
     let _hudTimer = null;
     let _liveTrafficAlerts = [];          // Alertas activas de tránsito en tiempo real (Firebase)
@@ -1011,6 +1012,120 @@ const CopilotModule = (() => {
     }
 
     /**
+     * Pitidos de proximidad cada 30 metros con volumen y tono ascendente.
+     * @param {number} distanceMeters - Distancia aproximada (120, 90, 60 o 30)
+     */
+    function _playProximityBeep(distanceMeters) {
+        if (!_isVoiceEnabled) return;
+        try {
+            const ctx = _getAudioContext();
+            if (!ctx) return;
+
+            const playTone = () => {
+                try {
+                    const now = ctx.currentTime;
+                    const baseVol = Math.max(0.1, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+
+                    let freq = 820;
+                    let beeps = 1;
+                    let volScale = 0.55;
+
+                    if (distanceMeters <= 35) {
+                        freq = 1350; // Agudo intenso llegando a la cámara
+                        beeps = 3;
+                        volScale = 1.0;
+                    } else if (distanceMeters <= 65) {
+                        freq = 1150;
+                        beeps = 2;
+                        volScale = 0.85;
+                    } else if (distanceMeters <= 95) {
+                        freq = 960;
+                        beeps = 2;
+                        volScale = 0.70;
+                    } else { // 120m
+                        freq = 820;
+                        beeps = 1;
+                        volScale = 0.55;
+                    }
+
+                    const masterGain = ctx.createGain();
+                    masterGain.gain.setValueAtTime(baseVol * volScale * 0.75, now);
+                    masterGain.connect(ctx.destination);
+
+                    for (let i = 0; i < beeps; i++) {
+                        const delay = i * 0.10;
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + delay);
+                        gain.gain.setValueAtTime(0.45, now + delay);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.075);
+                        osc.connect(gain);
+                        gain.connect(masterGain);
+                        osc.start(now + delay);
+                        osc.stop(now + delay + 0.08);
+                    }
+                } catch (_) {}
+            };
+
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(playTone).catch(() => {});
+            } else {
+                playTone();
+            }
+        } catch (_) {}
+    }
+
+    /**
+     * Tono armónico agradable cuando se supera la cámara con éxito.
+     */
+    function _playPassedChime() {
+        if (!_isVoiceEnabled) return;
+        try {
+            const ctx = _getAudioContext();
+            if (!ctx) return;
+
+            const playPassed = () => {
+                try {
+                    const now = ctx.currentTime;
+                    const baseVol = Math.max(0.1, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    const masterGain = ctx.createGain();
+                    masterGain.gain.setValueAtTime(baseVol * 0.45, now);
+                    masterGain.connect(ctx.destination);
+
+                    const osc1 = ctx.createOscillator();
+                    const gain1 = ctx.createGain();
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(1046.5, now); // C6
+                    gain1.gain.setValueAtTime(0.3, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc1.connect(gain1);
+                    gain1.connect(masterGain);
+                    osc1.start(now);
+                    osc1.stop(now + 0.16);
+
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(783.99, now + 0.11); // G5
+                    gain2.gain.setValueAtTime(0.35, now + 0.11);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                    osc2.connect(gain2);
+                    gain2.connect(masterGain);
+                    osc2.start(now + 0.11);
+                    osc2.stop(now + 0.40);
+                } catch (_) {}
+            };
+
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(playPassed).catch(() => {});
+            } else {
+                playPassed();
+            }
+        } catch (_) {}
+    }
+
+    /**
      * Dispara vibración háptica en dispositivos móviles.
      */
     function _triggerVibration(isSpeeding) {
@@ -1026,42 +1141,92 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Vocaliza la advertencia por voz nativa (Android TTS / Web Speech API).
+     * Extrae el primer nombre del chofer logueado para personalizar la voz de forma natural.
      */
-    function _speakWarning(target, dist, currentSpeed) {
-        if (!_isVoiceEnabled) return;
-
-        const distRound = Math.round(dist / 10) * 10;
-        const nameClean = (target.name || '').replace(/\s+y\s+/gi, ' esquina ');
-        const isSpeeding = (!target.isTrafficAlert && target.limit && currentSpeed !== null && currentSpeed > target.limit);
-
-        let text = '';
-        if (target.isTrafficAlert) {
-            text = `¡Atención! ${nameClean} a ${distRound} metros.`;
-            if (target.desc && target.desc !== target.name && target.desc.length < 80) {
-                text += ` ${target.desc}`;
+    function _getDriverFirstName() {
+        try {
+            if (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function') {
+                const u = Auth.getUser();
+                const full = (u && (u.name || u.displayName)) || '';
+                if (full) {
+                    const first = full.trim().split(/\s+/)[0];
+                    if (first && first.length > 1 && !first.toLowerCase().includes('chofer') && !first.toLowerCase().includes('usuario')) {
+                        return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+                    }
+                }
             }
-        } else if (isSpeeding) {
-            text = `¡Atención! Fotomulta a ${distRound} metros en ${nameClean}. Reduce tu velocidad. Velocidad máxima ${target.limit} kilómetros por hora.`;
-        } else {
-            text = `Fotomulta a ${distRound} metros en ${nameClean}. Velocidad máxima ${target.limit} kilómetros por hora.`;
+        } catch (_) {}
+        return '';
+    }
+
+    /**
+     * Calcula el rumbo geodésico (bearing) en grados (0° - 360°) entre dos puntos.
+     */
+    function _calculateBearing(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180;
+        const phi1 = lat1 * toRad;
+        const phi2 = lat2 * toRad;
+        const deltaLam = (lon2 - lon1) * toRad;
+        const y = Math.sin(deltaLam) * Math.cos(phi2);
+        const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLam);
+        const brng = Math.atan2(y, x) * (180 / Math.PI);
+        return (brng + 360) % 360;
+    }
+
+    /**
+     * Diferencia angular más corta entre dos rumbos en grados (0° a 180°).
+     */
+    function _getAngleDifference(b1, b2) {
+        const diff = Math.abs(b1 - b2) % 360;
+        return diff > 180 ? 360 - diff : diff;
+    }
+
+    /**
+     * Verifica si el vehículo circula realmente por la calle de la cámara y se aproxima hacia ella.
+     * Descarta calles paralelas, perpendiculares o circular en sentido opuesto.
+     * @param {number} carLat
+     * @param {number} carLng
+     * @param {number|null} carHeading - Rumbo en grados del vehículo
+     * @param {number} camLat
+     * @param {number} camLng
+     * @param {number} distance - Distancia en metros al radar
+     * @returns {boolean} true si está en el corredor de la misma calle hacia la cámara
+     */
+    function _isCorridorAligned(carLat, carLng, carHeading, camLat, camLng, distance) {
+        if (carHeading === null || isNaN(carHeading)) return true;
+
+        const targetBearing = _calculateBearing(carLat, carLng, camLat, camLng);
+        const angleDiff = _getAngleDifference(carHeading, targetBearing);
+
+        // 1. Sentido de avance: si la cámara queda a más de 42° de la trayectoria, descartar
+        if (angleDiff > 42) {
+            return false;
         }
 
-        // 1. AndroidServices (con fallback universal automático a Web Speech)
+        // 2. Corredor transversal (Cross-track distance):
+        // En cuadrícula urbana (manzanas de 90 a 130m), una calle paralela tiene crossTrack > 70m.
+        // La misma calle/avenida tiene un ancho máximo de calzada de 15 a 35m.
+        const crossTrack = distance * Math.sin(angleDiff * (Math.PI / 180));
+        const maxLateral = distance > 200 ? 38 : (distance > 100 ? 28 : 22);
+
+        if (crossTrack > maxLateral) {
+            return false; // Calle paralela descartada
+        }
+
+        return true;
+    }
+
+    /**
+     * Envia texto a síntesis de voz nativa / Web Speech de forma confiable.
+     */
+    function _speakTextDirect(text) {
         let spoken = false;
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
             spoken = AndroidServices.speak(text);
         }
-
-        // 2. Native Bridge directo (si AndroidServices no estuviera cargado)
         if (!spoken && window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
-            try {
-                window.NativeServiceBridge.speak(text);
-                spoken = true;
-            } catch (_) {}
+            try { window.NativeServiceBridge.speak(text); spoken = true; } catch (_) {}
         }
-
-        // 3. Web Speech API directa
         if (!spoken && typeof window !== 'undefined' && window.speechSynthesis) {
             try {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
@@ -1084,6 +1249,46 @@ const CopilotModule = (() => {
                 console.warn('[COPILOTO] Error en SpeechSynthesis:', e);
             }
         }
+    }
+
+    /**
+     * Locución concisa y personalizada para fotomultas (a 300m y a 150m).
+     * Estructura exacta: "(nombre chofer) foto multa a 300 metros, máxima 60"
+     */
+    function _speakRadarConcise(target, distanceStage) {
+        if (!_isVoiceEnabled) return;
+        const firstName = _getDriverFirstName();
+        const prefix = firstName ? `${firstName}, ` : '';
+        const limit = target.limit || 60;
+        const distText = distanceStage === 150 ? '150' : '300';
+        const text = `${prefix}foto multa a ${distText} metros, máxima ${limit}.`;
+
+        console.log(`🔊 [COPILOTO] Locución concisa (${distText}m): "${text}"`);
+        _speakTextDirect(text);
+    }
+
+    /**
+     * Locución para alertas de tránsito en tiempo real (policía, operativos, accidentes).
+     */
+    function _speakWarning(target, dist, currentSpeed) {
+        if (!_isVoiceEnabled) return;
+
+        const distRound = Math.round(dist / 10) * 10;
+        const nameClean = (target.name || '').replace(/\s+y\s+/gi, ' esquina ');
+        const firstName = _getDriverFirstName();
+        const prefix = firstName ? `${firstName}, ` : '';
+
+        let text = '';
+        if (target.isTrafficAlert) {
+            text = `${prefix}atención, ${nameClean} a ${distRound} metros.`;
+            if (target.desc && target.desc !== target.name && target.desc.length < 80) {
+                text += ` ${target.desc}`;
+            }
+        } else {
+            text = `${prefix}foto multa a ${distRound} metros, máxima ${target.limit || 60}.`;
+        }
+
+        _speakTextDirect(text);
     }
 
     /**
@@ -1540,80 +1745,166 @@ const CopilotModule = (() => {
 
     /**
      * Chequea la posición actual respecto a radares fijos Y alertas de tránsito en tiempo real.
-     * Invocado dinámicamente desde el pipeline de GPS nativo y web.
+     * Incorpora filtro direccional de carril/calle (elimina falsos positivos de calles paralelas),
+     * aviso conciso a 300m, repetición a 150m y pitidos ascendentes cada 30m.
      * @param {number} currentLat - Latitud WGS84
      * @param {number} currentLng - Longitud WGS84
      * @param {number} [rawSpeed] - Velocidad actual en m/s o km/h
+     * @param {number} [rawBearing] - Rumbo/dirección actual en grados (0-360)
      */
-    function checkProximity(currentLat, currentLng, rawSpeed = null) {
+    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null) {
         if (!_isEnabled) return;
         if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) return;
 
         const now = Date.now();
         const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed);
 
-        // Guardar última posición
-        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed };
-
-        // Buscar el objetivo más cercano (80 radares fijos oficiales + alertas de tránsito en vivo)
-        const allTargets = [...STATIC_RADARS, ..._liveTrafficAlerts];
-        let nearestTarget = null;
-        let minDistance = Infinity;
-
-        for (const target of allTargets) {
-            const dist = _getDistance(currentLat, currentLng, target.lat, target.lng);
-            if (dist < minDistance) {
-                minDistance = dist;
-                nearestTarget = target;
+        // Determinar rumbo (bearing) actual del vehículo
+        let currentBearing = (typeof rawBearing === 'number' && !isNaN(rawBearing) && rawBearing >= 0) ? rawBearing : null;
+        if (currentBearing === null && _lastPosition && _lastPosition.lat) {
+            const distFromLast = _getDistance(_lastPosition.lat, _lastPosition.lng, currentLat, currentLng);
+            if (distFromLast >= 4) {
+                currentBearing = _calculateBearing(_lastPosition.lat, _lastPosition.lng, currentLat, currentLng);
+            } else if (_lastPosition.bearing !== undefined) {
+                currentBearing = _lastPosition.bearing;
             }
         }
 
-        // Caso 1: Estamos dentro del radio de advertencia temprana (<= 480m)
-        if (nearestTarget && minDistance <= WARNING_DISTANCE_METERS) {
-            const lastAlert = _lastAlertTime[nearestTarget.id] || 0;
-            const isSpeeding = (!nearestTarget.isTrafficAlert && nearestTarget.limit && currentSpeed !== null && currentSpeed > nearestTarget.limit);
+        // Guardar última posición
+        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed, bearing: currentBearing };
 
-            // Verificar si acabamos de entrar o si expiró el enfriamiento
-            if (now - lastAlert > COOLDOWN_MS) {
-                _lastAlertTime[nearestTarget.id] = now;
-                _activeApproach = {
-                    radarId: nearestTarget.id,
-                    minDistance: minDistance,
-                    startedAt: now
-                };
+        // --- 1. PROCESAR RADAR ACTIVO EN SEGUIMIENTO ---
+        if (_activeApproach) {
+            const radar = _activeApproach.target;
+            const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
+            const isCloser = dist < _activeApproach.minDistance;
+            if (isCloser) _activeApproach.minDistance = dist;
 
-                // Reproducir Chime + Voz + Vibración
-                _playWarningChime(isSpeeding);
-                _speakWarning(nearestTarget, minDistance, currentSpeed);
-                _triggerVibration(isSpeeding);
+            // Verificar si el chofer dobló y se desvió de la calle
+            const stillAligned = _isCorridorAligned(currentLat, currentLng, currentBearing, radar.lat, radar.lng, dist);
 
-                console.log(`📡 [COPILOTO] 🔔 ALERTA DETECTADA: ${nearestTarget.name} a ${minDistance.toFixed(0)}m (${nearestTarget.isTrafficAlert ? 'Tránsito' : 'Fotomulta'})`);
-            }
-
-            // Actualizar el HUD dinámicamente con la distancia en vivo
-            _showRadarHUD(nearestTarget, minDistance, currentSpeed);
-
-            // Actualizar seguimiento de aproximación
-            if (_activeApproach && _activeApproach.radarId === nearestTarget.id) {
-                if (minDistance < _activeApproach.minDistance) {
-                    _activeApproach.minDistance = minDistance;
-                }
-            }
-        } else {
-            // Caso 2: Estamos fuera de la zona de advertencia (> 480m)
-            if (_activeApproach) {
+            // A) Superó la cámara (pasó a menos de 20m o la distancia aumentó tras el punto más cercano)
+            if (dist <= 20 || (_activeApproach.minDistance < 50 && dist > _activeApproach.minDistance + 15)) {
+                console.log(`📡 [COPILOTO] 🏁 Cámara superada: ${radar.name}`);
+                _playPassedChime();
+                _lastAlertTime[radar.id] = now;
                 _hideRadarHUD();
                 _activeApproach = null;
+                return;
+            }
+
+            // B) Se alejó o dobló hacia otra calle lejos de la cámara
+            if (!stillAligned && dist > 100) {
+                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o cambió de rumbo, cancelando aproximación a: ${radar.name}`);
+                _hideRadarHUD();
+                _activeApproach = null;
+                return;
+            }
+
+            // Actualizar HUD con distancia viva
+            _showRadarHUD(radar, dist, currentSpeed);
+
+            // C) ETAPAS DE APROXIMACIÓN:
+            // Etapa 150 metros (Repetición concisa de voz)
+            if (_activeApproach.stage === 300 && dist <= 165 && dist >= 125) {
+                _activeApproach.stage = 150;
+                _speakRadarConcise(radar, 150);
+                return;
+            }
+
+            // Pitidos cada 30 metros (120m, 90m, 60m, 30m) con frecuencia y volumen ascendente
+            if (_activeApproach.stage <= 150 && dist <= 130 && dist > 105 && _activeApproach.stage !== 120) {
+                _activeApproach.stage = 120;
+                _playProximityBeep(120);
+                return;
+            }
+            if (_activeApproach.stage <= 120 && dist <= 105 && dist > 75 && _activeApproach.stage !== 90) {
+                _activeApproach.stage = 90;
+                _playProximityBeep(90);
+                return;
+            }
+            if (_activeApproach.stage <= 90 && dist <= 75 && dist > 45 && _activeApproach.stage !== 60) {
+                _activeApproach.stage = 60;
+                _playProximityBeep(60);
+                return;
+            }
+            if (_activeApproach.stage <= 60 && dist <= 45 && dist > 20 && _activeApproach.stage !== 30) {
+                _activeApproach.stage = 30;
+                _playProximityBeep(30);
+                return;
+            }
+
+            return;
+        }
+
+        // --- 2. BUSCAR NUEVA FOTOMULTA O ALERTA ---
+        // A) Buscar radares fijos oficiales dentro de 315 metros
+        let nearestRadar = null;
+        let minRadarDist = Infinity;
+
+        for (const radar of STATIC_RADARS) {
+            const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
+            if (dist < minRadarDist) {
+                minRadarDist = dist;
+                nearestRadar = radar;
+            }
+        }
+
+        if (nearestRadar && minRadarDist <= WARNING_DISTANCE_METERS) {
+            const lastAlert = _lastAlertTime[nearestRadar.id] || 0;
+            if (now - lastAlert > COOLDOWN_MS) {
+                // FILTRO DE CALLE Y RUMBO (DESCARTAR CALLES PARALELAS)
+                const isAligned = _isCorridorAligned(currentLat, currentLng, currentBearing, nearestRadar.lat, nearestRadar.lng, minRadarDist);
+                if (isAligned) {
+                    _activeApproach = {
+                        radarId: nearestRadar.id,
+                        target: nearestRadar,
+                        stage: 300,
+                        minDistance: minRadarDist,
+                        lastDistance: minRadarDist,
+                        startedAt: now
+                    };
+
+                    _showRadarHUD(nearestRadar, minRadarDist, currentSpeed);
+                    _triggerVibration(false);
+                    // Locución concisa y personalizada a 300m:
+                    _speakRadarConcise(nearestRadar, 300);
+                    return;
+                } else {
+                    // Ignorado por estar en calle paralela o rumbo distinto
+                    // console.log(`📡 [COPILOTO] Filtro paralelo: ${nearestRadar.name} a ${minRadarDist.toFixed(0)}m descartado.`);
+                }
+            }
+        }
+
+        // B) Alertas de tránsito en tiempo real (policía, operativos, accidentes)
+        let nearestTraffic = null;
+        let minTrafficDist = Infinity;
+        for (const tr of _liveTrafficAlerts) {
+            const dist = _getDistance(currentLat, currentLng, tr.lat, tr.lng);
+            if (dist < minTrafficDist) {
+                minTrafficDist = dist;
+                nearestTraffic = tr;
+            }
+        }
+
+        if (nearestTraffic && minTrafficDist <= TRAFFIC_WARNING_METERS) {
+            const lastAlert = _lastAlertTime[nearestTraffic.id] || 0;
+            if (now - lastAlert > COOLDOWN_MS) {
+                _lastAlertTime[nearestTraffic.id] = now;
+                _showRadarHUD(nearestTraffic, minTrafficDist, currentSpeed);
+                _playWarningChime(false);
+                _speakWarning(nearestTraffic, minTrafficDist, currentSpeed);
+                _triggerVibration(false);
             }
         }
     }
 
     /**
-     * Prueba inmediata de alerta (HUD, Chime y Voz) para choferes y administradores.
+     * Prueba inmediata de alerta (HUD, Locución concisa y Pitidos de proximidad).
      * @param {'fotomulta'|'transito'|string} typeOrRadarId
      */
     function testAlert(typeOrRadarId = 'fotomulta') {
-        // Asegurar que la voz esté activada para la prueba
         if (!_isVoiceEnabled) {
             _isVoiceEnabled = true;
             localStorage.setItem('radarVoice', 'on');
@@ -1621,7 +1912,7 @@ const CopilotModule = (() => {
         }
 
         let target = null;
-        let testDist = 280;
+        let testDist = 300;
         let testSpeed = 48;
 
         if (typeOrRadarId === 'transito' || typeOrRadarId === 'traffic') {
@@ -1637,19 +1928,28 @@ const CopilotModule = (() => {
             };
             testDist = 250;
             testSpeed = 35;
+            _playWarningChime(false);
+            _speakWarning(target, testDist, testSpeed);
+            _showRadarHUD(target, testDist, testSpeed);
         } else {
             const foundRadar = STATIC_RADARS.find(r => r.id === typeOrRadarId);
             target = foundRadar || STATIC_RADARS[0];
-            testDist = 280;
-            testSpeed = (target.limit || 40) + 8; // Leve exceso para probar aviso
+            testDist = 300;
+            testSpeed = target.limit || 60;
+
+            console.log('📡 [COPILOTO] Ejecutando TEST conciso para:', target.name);
+
+            _showRadarHUD(target, testDist, testSpeed);
+            _speakRadarConcise(target, 300);
+            _triggerVibration(false);
+
+            // Simulación de pitidos ascendentes cada 30 metros de muestra
+            setTimeout(() => _playProximityBeep(120), 2200);
+            setTimeout(() => _playProximityBeep(90), 3200);
+            setTimeout(() => _playProximityBeep(60), 4200);
+            setTimeout(() => _playProximityBeep(30), 5200);
+            setTimeout(() => _playPassedChime(), 6400);
         }
-
-        console.log('📡 [COPILOTO] Ejecutando TEST de alerta para:', target.name);
-
-        _playWarningChime(testSpeed > (target.limit || 50));
-        _speakWarning(target, testDist, testSpeed);
-        _triggerVibration(true);
-        _showRadarHUD(target, testDist, testSpeed);
 
         if (typeof Components !== 'undefined' && Components.showToast) {
             Components.showToast(`🔔 Test: ${target.name} (${target.isTrafficAlert ? 'Tránsito' : 'Fotomulta'})`, 'info');

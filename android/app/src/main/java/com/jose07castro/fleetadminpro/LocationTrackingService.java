@@ -21,6 +21,7 @@ import android.os.PowerManager;
 import android.os.Process;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.media.MediaPlayer;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
@@ -80,9 +81,27 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // Proximity Config (Radarbot)
     private static final int PROXIMITY_RADIUS_M = 600;  // Avisar a 600 metros de operativos dinámicos
     private static final long COOLDOWN_MS = 4 * 60 * 1000; // 4 min entre avisos del mismo punto dinámico
-    private static final int RADAR_PROXIMITY_RADIUS_M = 480; // 480 metros para fotomultas fijas (oficial Rosario)
+    private static final int RADAR_PROXIMITY_RADIUS_M = 315; // 300 metros para fotomultas fijas (conciso)
     private static final long RADAR_COOLDOWN_MS = 3 * 60 * 1000; // 3 min entre avisos de la misma cámara
     private final Map<String, Long> lastRadarAlertTimestamps = new HashMap<>();
+
+    private static class BgRadarApproach {
+        String radarId;
+        RosarioRadars.StaticRadar radar;
+        int stage; // 300, 150, 120, 90, 60, 30
+        float minDistance;
+        long startedAt;
+
+        BgRadarApproach(RosarioRadars.StaticRadar radar, float initialDist, long startedAt) {
+            this.radarId = radar.id;
+            this.radar = radar;
+            this.stage = 300;
+            this.minDistance = initialDist;
+            this.startedAt = startedAt;
+        }
+    }
+    private BgRadarApproach activeBgApproach = null;
+    private ToneGenerator bgToneGen = null;
 
     // State
     private FusedLocationProviderClient fusedLocationClient;
@@ -507,28 +526,183 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // RADARBOT ENGINE (Proximity Check)
     // ================================================================
 
+    private String getDriverFirstName() {
+        if (driverName != null && !driverName.trim().isEmpty() && !driverName.equalsIgnoreCase("Chofer")) {
+            String first = driverName.trim().split("\\s+")[0];
+            if (first.length() > 1 && !first.equalsIgnoreCase("Usuario")) {
+                return Character.toUpperCase(first.charAt(0)) + first.substring(1).toLowerCase();
+            }
+        }
+        return "";
+    }
+
+    private boolean isCorridorAligned(Location carLoc, RosarioRadars.StaticRadar radar, float distance) {
+        if (carLoc == null || !carLoc.hasBearing() || carLoc.getSpeed() < 1.1f) {
+            return true; // Si no hay rumbo confiable (< 4 km/h), permitir detección
+        }
+        float carBearing = carLoc.getBearing();
+
+        Location targetLoc = new Location("");
+        targetLoc.setLatitude(radar.lat);
+        targetLoc.setLongitude(radar.lng);
+        float targetBearing = carLoc.bearingTo(targetLoc);
+        if (targetBearing < 0) targetBearing += 360f;
+
+        float angleDiff = Math.abs(carBearing - targetBearing) % 360f;
+        if (angleDiff > 180f) angleDiff = 360f - angleDiff;
+
+        // 1. Sentido de avance hacia la cámara (si queda a más de 42° de desvío, va hacia otra dirección)
+        if (angleDiff > 42f) {
+            return false;
+        }
+
+        // 2. Corredor transversal para descartar calles paralelas (cuadras de 90 a 130m)
+        double crossTrack = distance * Math.sin(Math.toRadians(angleDiff));
+        double maxLateral = distance > 200 ? 38.0 : (distance > 100 ? 28.0 : 22.0);
+        if (crossTrack > maxLateral) {
+            return false; // Calle paralela descartada
+        }
+
+        return true;
+    }
+
+    private void playBgProximityTone(int distanceStage) {
+        if (isVoiceMuted) return;
+        try {
+            int streamVol = (int)(alertVolume * 100);
+            if (bgToneGen == null) {
+                bgToneGen = new ToneGenerator(AudioManager.STREAM_MUSIC, Math.max(10, Math.min(100, streamVol)));
+            }
+            if (distanceStage <= 35) {
+                bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 130);
+            } else if (distanceStage <= 65) {
+                bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 100);
+            } else if (distanceStage <= 95) {
+                bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 80);
+            } else { // 120m
+                bgToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 70);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "bgToneGen error: " + e.getMessage());
+        }
+    }
+
+    private void playBgPassedTone() {
+        if (isVoiceMuted) return;
+        try {
+            int streamVol = (int)(alertVolume * 100);
+            if (bgToneGen == null) {
+                bgToneGen = new ToneGenerator(AudioManager.STREAM_MUSIC, Math.max(10, Math.min(100, streamVol)));
+            }
+            bgToneGen.startTone(ToneGenerator.TONE_PROP_PROMPT, 150);
+        } catch (Exception e) {}
+    }
+
+    private void speakRadarConcise(RosarioRadars.StaticRadar radar, int distanceStage) {
+        String firstName = getDriverFirstName();
+        String prefix = !firstName.isEmpty() ? firstName + ", " : "";
+        String message = String.format(Locale.getDefault(), 
+            "%sfoto multa a %d metros, máxima %d.", 
+            prefix, distanceStage, radar.limit);
+        Log.i(TAG, "📷 [RADAR NATIVO] Locución concisa (" + distanceStage + "m): \"" + message + "\"");
+        speak(message);
+    }
+
     private void checkProximityToAlerts(Location myLocation) {
         if (myLocation == null) return;
-        long now = System.currentTimeMillis();
-        float currentSpeedKmh = myLocation.getSpeed() * 3.6f;
 
-        // 1. Chequeo de Fotomultas Fijas Oficiales de Rosario (80 cámaras)
+        // Si la aplicación está en primer plano, el módulo JS (CopilotModule) se encarga de la voz y HUD
+        if (isAppInForeground) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        // 1. SEGUIMIENTO DE APROXIMACIÓN A RADAR ACTIVO EN SEGUNDO PLANO
+        if (activeBgApproach != null) {
+            RosarioRadars.StaticRadar radar = activeBgApproach.radar;
+            float[] results = new float[1];
+            Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                   radar.lat, radar.lng, results);
+            float distance = results[0];
+
+            if (distance < activeBgApproach.minDistance) {
+                activeBgApproach.minDistance = distance;
+            }
+
+            // A) Cámara superada
+            if (distance <= 20 || (activeBgApproach.minDistance < 50 && distance > activeBgApproach.minDistance + 15)) {
+                Log.i(TAG, "📷 [RADAR NATIVO] 🏁 Cámara superada en background: " + radar.name);
+                playBgPassedTone();
+                lastRadarAlertTimestamps.put(radar.id, now);
+                activeBgApproach = null;
+                return;
+            }
+
+            // B) Vehículo dobló o se alejó
+            boolean isAligned = isCorridorAligned(myLocation, radar, distance);
+            if (!isAligned && distance > 100) {
+                activeBgApproach = null;
+                return;
+            }
+
+            // C) Etapas de aproximación
+            if (activeBgApproach.stage == 300 && distance <= 165 && distance >= 125) {
+                activeBgApproach.stage = 150;
+                speakRadarConcise(radar, 150);
+                return;
+            }
+            if (activeBgApproach.stage <= 150 && distance <= 130 && distance > 105 && activeBgApproach.stage != 120) {
+                activeBgApproach.stage = 120;
+                playBgProximityTone(120);
+                return;
+            }
+            if (activeBgApproach.stage <= 120 && distance <= 105 && distance > 75 && activeBgApproach.stage != 90) {
+                activeBgApproach.stage = 90;
+                playBgProximityTone(90);
+                return;
+            }
+            if (activeBgApproach.stage <= 90 && distance <= 75 && distance > 45 && activeBgApproach.stage != 60) {
+                activeBgApproach.stage = 60;
+                playBgProximityTone(60);
+                return;
+            }
+            if (activeBgApproach.stage <= 60 && distance <= 45 && distance > 20 && activeBgApproach.stage != 30) {
+                activeBgApproach.stage = 30;
+                playBgProximityTone(30);
+                return;
+            }
+            return;
+        }
+
+        // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS
+        RosarioRadars.StaticRadar nearestRadar = null;
+        float minRadarDistance = Float.MAX_VALUE;
+
         for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
             float[] results = new float[1];
             Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
                                    radar.lat, radar.lng, results);
             float distance = results[0];
 
-            if (distance <= RADAR_PROXIMITY_RADIUS_M) {
-                long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
-                if (now - lastTime > RADAR_COOLDOWN_MS) {
-                    lastRadarAlertTimestamps.put(radar.id, now);
-                    speakRadarWarning(radar, distance, currentSpeedKmh);
+            if (distance < minRadarDistance) {
+                minRadarDistance = distance;
+                nearestRadar = radar;
+            }
+        }
+
+        if (nearestRadar != null && minRadarDistance <= RADAR_PROXIMITY_RADIUS_M) {
+            long lastTime = lastRadarAlertTimestamps.getOrDefault(nearestRadar.id, 0L);
+            if (now - lastTime > RADAR_COOLDOWN_MS) {
+                if (isCorridorAligned(myLocation, nearestRadar, minRadarDistance)) {
+                    activeBgApproach = new BgRadarApproach(nearestRadar, minRadarDistance, now);
+                    speakRadarConcise(nearestRadar, 300);
+                    return;
                 }
             }
         }
 
-        // 2. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
+        // 3. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
         if (!activeAlerts.isEmpty()) {
             synchronized (activeAlerts) {
                 for (TrafficAlert alert : activeAlerts) {
@@ -547,24 +721,6 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
             }
         }
-    }
-
-    private void speakRadarWarning(RosarioRadars.StaticRadar radar, float distance, float speedKmh) {
-        int distRound = Math.round(distance / 50.0f) * 50;
-        if (distRound < 100) distRound = 100;
-        String cleanName = radar.name.replace(" y ", " esquina ");
-        String message;
-        if (speedKmh > radar.limit) {
-            message = String.format(Locale.getDefault(), 
-                "¡Atención! Fotomulta a %d metros en %s. Reduce tu velocidad. Velocidad máxima %d kilómetros por hora.", 
-                distRound, cleanName, radar.limit);
-        } else {
-            message = String.format(Locale.getDefault(), 
-                "Fotomulta a %d metros en %s. Velocidad máxima %d kilómetros por hora.", 
-                distRound, cleanName, radar.limit);
-        }
-        Log.i(TAG, "📷 [RADAR] Proximidad fotomulta: " + radar.name + " (" + (int)distance + "m) -> \"" + message + "\"");
-        speak(message);
     }
 
     private void speakProximityWarning(TrafficAlert alert, float distance) {

@@ -7,8 +7,8 @@ android {
         applicationId "com.fleetadminpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion 36
-        versionCode 122
-        versionName "1.2.202"
+        versionCode 123
+        versionName "1.2.203"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
