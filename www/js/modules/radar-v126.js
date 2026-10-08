@@ -280,6 +280,8 @@ const RadarModule = (() => {
             speedText = 'SIN SEÑAL';
         } else if (status === 'gps_desactivado') {
             speedText = 'GPS APAGADO';
+        } else if (status === 'offline') {
+            speedText = 'SIN SEÑAL';
         }
         
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
@@ -408,18 +410,22 @@ const RadarModule = (() => {
     }
 
     async function _updateMarker(driverId, data, shift, vehicle) {
-        if (!_map || !data || !data.lat || !data.lng) return;
+        if (!_map || !data || !data.lat || !data.lng) return null;
 
-        // v119: Filtro de autorretrato - Ocultar mi propio marcador en el mapa
-        const myId = typeof Auth !== 'undefined' ? (Auth.getUserId() || Auth.getUserName()) : null;
-        if (driverId === myId) {
-            _removeMarker(driverId);
-            return false;
+        // v119: Filtro de autorretrato - Ocultar mi propio marcador en el mapa SOLO si soy conductor sin turno
+        // Un administrador/dueño SIEMPRE debe ver toda su flota en el mapa.
+        const isOwnerOrAdmin = typeof Auth !== 'undefined' && (Auth.getRole() === 'owner' || Auth.getRole() === 'titular');
+        if (!isOwnerOrAdmin && !shift) {
+            const myId = typeof Auth !== 'undefined' ? (Auth.getUserId() || Auth.getUserName()) : null;
+            if (driverId === myId) {
+                _removeMarker(driverId);
+                return null;
+            }
         }
 
         const lat = parseFloat(data.lat);
         const lng = parseFloat(data.lng);
-        if (isNaN(lat) || isNaN(lng)) return;
+        if (isNaN(lat) || isNaN(lng)) return null;
 
         const heading = data.heading || 0;
         const speed = data.speed || 0;
@@ -442,24 +448,29 @@ const RadarModule = (() => {
         // Formato final limpio "Nombre - Patente"
         let displayName = `${firstName} - ${vehiclePlate}`;
 
-        // v117 - Limpieza TOTAL de fantasmas
-        // v126: Extendemos el límite de fantasmas para desconexiones sospechosas y cierres manuales
-        let maxSilenceSecs = 60;
-        if (data.status === 'suspicious_disconnect') {
-            maxSilenceSecs = 600; // 10 minutos
-        } else if (data.status === 'logout_voluntario') {
-            maxSilenceSecs = 300; // 5 minutos
-        } else if (data.status === 'gps_desactivado') {
-            maxSilenceSecs = 600; // 10 minutos
-        } else if (data.status === 'permissions_disabled') {
-            maxSilenceSecs = 600; // 10 minutos
-        } else if (data.status === 'app_killed') {
-            maxSilenceSecs = 900; // 15 minutos — mantener en el mapa para que el dueño lo vea
-        }
+        // CRÍTICO: Si el chofer tiene turno activo (shift != null), NUNCA se elimina del mapa.
+        // Se mantiene visible con su última ubicación para que el dueño sepa dónde está el auto.
+        const hasActiveShift = !!shift;
 
-        if (timeAgoSecs > maxSilenceSecs) {
-            _removeMarker(driverId);
-            return false; // Indicamos al caller que el chofer ya no está online
+        if (!hasActiveShift) {
+            // Choferes sin turno: limpieza de fantasmas antiguos
+            let maxSilenceSecs = 60;
+            if (data.status === 'suspicious_disconnect') {
+                maxSilenceSecs = 600; // 10 minutos
+            } else if (data.status === 'logout_voluntario') {
+                maxSilenceSecs = 300; // 5 minutos
+            } else if (data.status === 'gps_desactivado') {
+                maxSilenceSecs = 600; // 10 minutos
+            } else if (data.status === 'permissions_disabled') {
+                maxSilenceSecs = 600; // 10 minutos
+            } else if (data.status === 'app_killed') {
+                maxSilenceSecs = 900; // 15 minutos
+            }
+
+            if (timeAgoSecs > maxSilenceSecs) {
+                _removeMarker(driverId);
+                return null;
+            }
         }
 
         // Si el chofer está enviando GPS fresco (últimos 90s), reflejar su estado real de movimiento
@@ -477,7 +488,13 @@ const RadarModule = (() => {
             }
         }
 
-        if (effectiveStatus === 'logout_voluntario') {
+        if (!isFresh && hasActiveShift) {
+            // En turno pero sin señal en tiempo real (más de 90s)
+            carMode = 'offline';
+            if (effectiveStatus === 'active') {
+                effectiveStatus = 'offline';
+            }
+        } else if (effectiveStatus === 'logout_voluntario') {
             carMode = 'logout';
         } else if (effectiveStatus === 'app_killed') {
             carMode = 'app-killed';
@@ -491,17 +508,20 @@ const RadarModule = (() => {
         }
         const statusClass = 'status-' + carMode;
         
-        let shiftStatusText = shift ? (carMode === 'offline' ? 'Sin Señal GPS (Fantasma)' : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
+        let shiftStatusText = shift ? (carMode === 'offline' ? `En turno (Sin señal ${timeAgo})` : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
         let statusLabelText = shiftStatusText;
         let statusColor = '#f59e0b';
-        if (effectiveStatus === 'logout_voluntario') {
+        if (carMode === 'offline') {
+            statusLabelText = `En turno (Sin señal ${timeAgo})`;
+            statusColor = '#94a3b8'; // Gris o tenue
+        } else if (effectiveStatus === 'logout_voluntario') {
             statusLabelText = 'Desconectado (Sesión Cerrada)';
             statusColor = '#94a3b8'; // Gris
         } else if (effectiveStatus === 'app_killed') {
             statusLabelText = '🚨 APP CERRADA MANUALMENTE';
             statusColor = '#dc2626'; // Rojo intenso
         } else if (effectiveStatus === 'suspicious_disconnect') {
-            statusLabelText = 'Desconexión Sospechosa (Sin Señal o Cierre Forzado)';
+            statusLabelText = `Desconexión Sospechosa (Últ. señal ${timeAgo})`;
             statusColor = '#ef4444'; // Rojo
         } else if (effectiveStatus === 'gps_desactivado') {
             statusLabelText = 'GPS Desactivado por el Conductor';
@@ -664,7 +684,7 @@ const RadarModule = (() => {
             _markers[driverId] = marker;
         }
 
-        return true; // Marcador vivo y renderizado
+        return { isAlive: true, isFresh: isFresh, hasShift: hasActiveShift }; // Marcador vivo y renderizado
     }
 
     function _removeMarker(driverId) {
@@ -732,10 +752,15 @@ const RadarModule = (() => {
             for (const v of allVehicles) vehiclesMap[v.id] = v;
 
             const driverShiftMap = {};
-            for (const s of activeShifts) driverShiftMap[s.driverId] = s;
+            for (const s of activeShifts) {
+                if (s.driverId) driverShiftMap[s.driverId] = s;
+                if (s.driver_id) driverShiftMap[s.driver_id] = s;
+                if (s.userId) driverShiftMap[s.userId] = s;
+            }
 
             const driverIds = Object.keys(allPositions);
             let activeCount = 0;
+            let onlineCount = 0;
 
             // Update/create markers
             for (const driverId of driverIds) {
@@ -743,9 +768,12 @@ const RadarModule = (() => {
                 if (data && data.lat && data.lng) {
                     const shift = driverShiftMap[driverId];
                     const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
-                    const isAlive = await _updateMarker(driverId, data, shift, vehicle);
-                    if (isAlive) {
+                    const res = await _updateMarker(driverId, data, shift, vehicle);
+                    if (res && res.isAlive) {
                         activeCount++;
+                        if (res.isFresh) {
+                            onlineCount++;
+                        }
                     }
 
                     // Verificar transiciones de estado para disparar alertas sonoras y visuales
@@ -808,16 +836,22 @@ const RadarModule = (() => {
                 }
             }
 
-            // Remove markers for drivers that left
+            // Remove markers for drivers that left (solo si no tienen turno activo)
             for (const existingId of Object.keys(_markers)) {
-                if (!allPositions[existingId]) {
+                if (!allPositions[existingId] && !driverShiftMap[existingId]) {
                     _removeMarker(existingId);
                     if (window._driverStatusCache) delete window._driverStatusCache[existingId];
                 }
             }
 
             _updateActiveCount(activeCount);
-            _setStatus('connected', `${activeCount} chofer${activeCount !== 1 ? 'es' : ''} en línea`);
+            if (onlineCount > 0) {
+                _setStatus('connected', `${onlineCount} en línea · ${activeCount} en turno`);
+            } else if (activeCount > 0) {
+                _setStatus('connected', `${activeCount} chofer${activeCount !== 1 ? 'es' : ''} en turno`);
+            } else {
+                _setStatus('idle', 'Sin choferes activos');
+            }
 
             // Auto-fit bounds if markers exist
             if (activeCount > 0 && !_hasUserPanned) {

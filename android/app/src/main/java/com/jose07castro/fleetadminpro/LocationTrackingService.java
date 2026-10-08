@@ -1329,7 +1329,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void startHeartbeatTimer() {
-        heartbeatHandler = new Handler(Looper.getMainLooper());
+        heartbeatHandler = (serviceHandler != null) ? new Handler(serviceHandler.getLooper()) : new Handler(Looper.getMainLooper());
         heartbeatRunnable = new Runnable() {
             @Override
             public void run() {
