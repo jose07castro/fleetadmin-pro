@@ -90,15 +90,22 @@ public class MainActivity extends BridgeActivity {
     }
 
     private static final int MY_REQUEST_CODE = 9001;
+    private AppUpdateManager appUpdateManager = null;
+    private boolean isUpdateFlowActive = false;
 
     private void checkPlayStoreUpdate() {
+        if (isUpdateFlowActive) return;
         try {
-            AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
+            if (appUpdateManager == null) {
+                appUpdateManager = AppUpdateManagerFactory.create(this);
+            }
             Task<AppUpdateInfo> appUpdateInfoTask = appUpdateManager.getAppUpdateInfo();
             appUpdateInfoTask.addOnSuccessListener(appUpdateInfo -> {
-                if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
+                int availability = appUpdateInfo.updateAvailability();
+                if ((availability == UpdateAvailability.UPDATE_AVAILABLE || availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS)
                         && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
                     try {
+                        isUpdateFlowActive = true;
                         appUpdateManager.startUpdateFlowForResult(
                             appUpdateInfo,
                             AppUpdateType.IMMEDIATE,
@@ -106,11 +113,16 @@ public class MainActivity extends BridgeActivity {
                             MY_REQUEST_CODE
                         );
                     } catch (Exception e) {
+                        isUpdateFlowActive = false;
                         Log.e(TAG, "Error starting immediate update flow: " + e.getMessage());
                     }
                 }
+            }).addOnFailureListener(e -> {
+                isUpdateFlowActive = false;
+                Log.w(TAG, "Error getting update info from Google Play: " + e.getMessage());
             });
         } catch (Exception e) {
+            isUpdateFlowActive = false;
             Log.e(TAG, "Error checking play store update: " + e.getMessage());
         }
     }
@@ -140,26 +152,9 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error evaluating JS in onResume: " + e.getMessage());
         }
-        try {
-            AppUpdateManager appUpdateManager = AppUpdateManagerFactory.create(this);
-            appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
-                if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
-                    try {
-                        appUpdateManager.startUpdateFlowForResult(
-                            appUpdateInfo,
-                            AppUpdateType.IMMEDIATE,
-                            this,
-                            MY_REQUEST_CODE
-                        );
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error resuming update flow: " + e.getMessage());
-                    }
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking active update in resume: " + e.getMessage());
+        if (!isUpdateFlowActive) {
+            checkPlayStoreUpdate();
         }
-        checkPlayStoreUpdate();
     }
 
     @Override
@@ -215,9 +210,11 @@ public class MainActivity extends BridgeActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == MY_REQUEST_CODE) {
+            isUpdateFlowActive = false;
             if (resultCode != RESULT_OK) {
-                Log.e(TAG, "In-app update failed or cancelled by user. Result code: " + resultCode);
-                checkPlayStoreUpdate();
+                Log.w(TAG, "In-app update failed or cancelled by user. Result code: " + resultCode + ". Permitiendo continuar a la app.");
+            } else {
+                Log.i(TAG, "In-app update flow completed successfully.");
             }
         }
     }
