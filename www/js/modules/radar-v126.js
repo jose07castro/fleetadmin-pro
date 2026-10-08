@@ -161,35 +161,33 @@ const RadarModule = (() => {
                     </span>
                     <button class="radar-test-btn" id="radarTestBtn"
                         onclick="RadarModule.testAlerts()"
-                        title="Probar advertencia HUD, Chime y Voz"
-                        style="background:rgba(239, 68, 68, 0.2);border:1px solid #ef4444;border-radius:8px;padding:6px 11px;color:#fca5a5;font-size:13px;font-weight:700;cursor:pointer;margin-right:8px;display:flex;align-items:center;gap:4px;">
+                        title="Probar advertencia HUD, Chime y Voz">
                         🔔 Probar
                     </button>
                     <button class="radar-cameras-btn" id="radarCamerasBtn"
                         onclick="RadarModule.toggleCameras()"
                         title="Mostrar u ocultar fotomultas en el mapa"
-                        style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border:1px solid ${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};border-radius:8px;padding:6px 11px;color:white;font-size:13px;font-weight:700;cursor:pointer;margin-right:8px;display:flex;align-items:center;gap:4px;">
+                        style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border-color:${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};">
                         📷 Cámaras (80)
                     </button>
-                    <div style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.12);border-radius:8px;padding:3px 8px;margin-right:8px;gap:6px;">
+                    <div class="radar-volume-box" id="radarVolumeBox" title="Volumen independiente de alertas">
                         <button class="radar-voice-btn" id="radarVoiceBtn"
                             onclick="RadarModule.toggleVoice()"
-                            title="Activar/desactivar voz"
-                            style="background:none;border:none;color:white;font-size:17px;cursor:pointer;padding:0;">
+                            title="Activar/desactivar voz">
                             ${_voiceEnabled ? '🔊' : '🔇'}
                         </button>
                         <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
-                            id="radarVolSlider" title="Volumen independiente de alertas"
-                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
-                            style="width:50px;height:4px;accent-color:#38bdf8;cursor:pointer;margin:0;" />
+                            id="radarVolSlider" class="radar-vol-slider" title="Volumen independiente de alertas"
+                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);" />
+                        <span id="radarVolLabel" style="font-size:10px;font-weight:700;color:#38bdf8;min-width:24px;text-align:right;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
                     </div>
-                    <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
-                        ✕ Salir
-                    </button>
                 </div>
+                <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
+                    ✕ Salir
+                </button>
             </div>
             <div id="radarMap" class="radar-map"></div>
-            <div class="radar-warning-container" id="radarWarningContainer" style="position:absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 90%; max-width: 400px; pointer-events: none;"></div>
+            <div class="radar-warning-container" id="radarWarningContainer" style="position:absolute; top: 92px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 90%; max-width: 400px; pointer-events: none;"></div>
             <button id="radarMapStyleBtn" onclick="RadarModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
                 style="position:absolute; bottom: 80px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold; transition: transform 0.1s active;">
                 🗺️
@@ -1200,6 +1198,8 @@ const RadarModule = (() => {
         currentAudio = new Audio(fullUrl);
         currentAudioId = audioUrl;
         currentAudio.preload = 'auto'; // Forzar precarga de audio para móviles
+        const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
+        currentAudio.volume = Math.max(0.05, Math.min(1.0, volPercent / 100.0));
 
         btn.innerHTML = '⏳ Cargando...';
 

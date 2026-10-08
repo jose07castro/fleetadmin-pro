@@ -78,6 +78,13 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "⚠️ Error obteniendo WebView en onCreate: " + e.getMessage());
         }
 
+        // Pre-inicializar motor de voz Text-To-Speech para que esté listo al instante
+        try {
+            LocationTrackingService.initFallbackTts(MainActivity.this);
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error pre-inicializando fallback TTS: " + e.getMessage());
+        }
+
         // Verificar actualizaciones al iniciar
         checkPlayStoreUpdate();
     }

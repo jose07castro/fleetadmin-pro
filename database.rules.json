@@ -57,6 +57,11 @@
     "fcm_tokens": {
       ".read": true,
       ".write": true
+    },
+
+    "developer_suggestions": {
+      ".read": true,
+      ".write": true
     }
   }
 }

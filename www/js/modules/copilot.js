@@ -35,7 +35,44 @@ const CopilotModule = (() => {
         }
     }
 
-    function _setAlertVolume(percent) {
+    let _previewDebounce = null;
+    function _playVolumePreview(percent) {
+        if (!_isVoiceEnabled) return;
+        if (_previewDebounce) clearTimeout(_previewDebounce);
+        _previewDebounce = setTimeout(() => {
+            try {
+                const ctx = _getAudioContext();
+                if (!ctx) return;
+                const playTone = () => {
+                    try {
+                        const now = ctx.currentTime;
+                        const masterGain = ctx.createGain();
+                        const volumeFactor = Math.max(0.05, Math.min(1.0, (percent || 85) / 100.0));
+                        masterGain.gain.setValueAtTime(volumeFactor * 0.45, now);
+                        masterGain.connect(ctx.destination);
+
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(1046.5, now); // C6 nota agradable de confirmación
+                        gain.gain.setValueAtTime(0.4, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                        osc.connect(gain);
+                        gain.connect(masterGain);
+                        osc.start(now);
+                        osc.stop(now + 0.13);
+                    } catch (_) {}
+                };
+                if (ctx.state === 'suspended') {
+                    ctx.resume().then(playTone).catch(() => {});
+                } else {
+                    playTone();
+                }
+            } catch (_) {}
+        }, 120);
+    }
+
+    function _setAlertVolume(percent, playPreview = true) {
         const val = Math.max(10, Math.min(100, parseInt(percent, 10) || 85));
         _alertVolumePercent = val;
         localStorage.setItem('radarVolumePercent', String(val));
@@ -45,6 +82,23 @@ const CopilotModule = (() => {
         if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setAlertVolume === 'function') {
             try { window.NativeServiceBridge.setAlertVolume(val); } catch (_) {}
         }
+
+        // Sincronizar todos los sliders y labels activos en la interfaz
+        const sliders = ['radarVolSlider', 'copilotHudVolSlider', 'shiftsVolSlider', 'shiftsActiveVolSlider', 'settingsVolSlider'];
+        sliders.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.value != val) el.value = val;
+        });
+        const labels = ['radarVolLabel', 'copilotHudVolLabel', 'shiftsVolLabel', 'shiftsActiveVolLabel', 'settingsVolPercentDisplay'];
+        labels.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val + '%';
+        });
+
+        if (playPreview) {
+            _playVolumePreview(val);
+        }
+
         console.log(`🔊 [COPILOTO] Volumen independiente ajustado a ${val}%`);
     }
 
@@ -899,7 +953,8 @@ const CopilotModule = (() => {
                 try {
                     const now = ctx.currentTime;
                     const masterGain = ctx.createGain();
-                    masterGain.gain.setValueAtTime(0.5, now);
+                    const volFactor = Math.max(0.05, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    masterGain.gain.setValueAtTime(volFactor * 0.75, now);
                     masterGain.connect(ctx.destination);
 
                     if (isUrgent) {

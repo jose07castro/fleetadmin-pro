@@ -280,6 +280,9 @@ const Components = (() => {
     //   staticBackdrop = true → clic fuera NO cierra el modal
     //   onClose = fn → el botón ✕ ejecuta fn() en vez de closeModal()
     function showModal(title, bodyHTML, footerHTML = '', options = {}) {
+        const prevModal = document.getElementById('activeModal');
+        if (prevModal) prevModal.remove();
+
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.id = 'activeModal';
@@ -491,7 +494,7 @@ const Components = (() => {
                         Sugerencia para el Desarrollador
                     </h3>
                     <p style="font-size:var(--font-size-xs); color:var(--text-secondary); line-height:1.4;">
-                        Tu mensaje llegará por WhatsApp al desarrollador de Punto Alertas para implementar mejoras o corregir problemas.
+                        Tu mensaje será recibido directamente por el desarrollador de Punto Alertas para implementar mejoras o corregir problemas.
                     </p>
                 </div>
                 <div style="margin-bottom:var(--space-4);">
@@ -505,13 +508,31 @@ const Components = (() => {
         `;
 
         showModal('💡 Sugerencia al Desarrollador', bodyHTML, `
-            <div style="display:flex; gap:10px; width:100%;">
-                <button class="btn btn-secondary" onclick="Components.closeModal()" style="flex:1;">Cancelar</button>
-                <button class="btn btn-primary" id="btnSubmitSuggestion" onclick="Components.submitSuggestion()" style="flex:2; background:linear-gradient(135deg, #6366f1, #818cf8); border:none; font-weight:700;">
-                    🚀 Enviar Sugerencia
+            <div style="display:flex; flex-direction:column; gap:8px; width:100%;">
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn btn-secondary" onclick="Components.closeModal()" style="flex:1;">Cancelar</button>
+                    <button class="btn btn-primary" id="btnSubmitSuggestion" onclick="Components.submitSuggestion()" style="flex:2; background:linear-gradient(135deg, #6366f1, #818cf8); border:none; font-weight:700;">
+                        🚀 Enviar por Sistema
+                    </button>
+                </div>
+                <button type="button" class="btn" onclick="Components.openWhatsAppSuggestion()" style="width:100%; background:rgba(37,211,102,0.18); border:1px solid #25d366; color:#25d366; font-weight:700; font-size:12px; padding:8px; border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+                    💬 Abrir WhatsApp directo con Desarrollador
                 </button>
             </div>
         `);
+    }
+
+    function openWhatsAppSuggestion() {
+        const input = document.getElementById('suggestionInput');
+        const msg = input ? input.value.trim() : '';
+        const user = (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function' ? Auth.getUser() : null) || {};
+        const role = (typeof Auth !== 'undefined' && typeof Auth.getRole === 'function' ? Auth.getRole() : user.role) || 'Usuario';
+        const roleLabel = (role === 'owner' || role === 'titular') ? 'Titular' : (role === 'driver' ? 'Chofer' : role);
+        const fleetId = typeof Auth !== 'undefined' && typeof Auth.getFleetId === 'function' ? Auth.getFleetId() : '';
+
+        const text = `💡 *SUGERENCIA PUNTO ALERTAS*\n👤 *Usuario:* ${user.name || 'Usuario'} (${roleLabel})\n🚗 *Flota:* ${fleetId || 'General'}\n\n💬 *Mensaje:*\n${msg || 'Hola! Te paso una sugerencia para la app:'}`;
+        const waUrl = `https://wa.me/5493415707731?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, '_blank');
     }
 
     async function submitSuggestion() {
@@ -531,59 +552,66 @@ const Components = (() => {
         const role = (typeof Auth !== 'undefined' && typeof Auth.getRole === 'function' ? Auth.getRole() : user.role) || 'Usuario';
         const roleLabel = (role === 'owner' || role === 'titular') ? 'Titular' : (role === 'driver' ? 'Chofer' : role);
         const fleetId = typeof Auth !== 'undefined' && typeof Auth.getFleetId === 'function' ? Auth.getFleetId() : '';
+        const payload = {
+            userName: user.name || 'Usuario',
+            userRole: roleLabel,
+            userPhone: user.phone || 'No registrado',
+            fleetName: fleetId,
+            message: msg,
+            timestamp: Date.now(),
+            dateStr: new Date().toLocaleString('es-AR')
+        };
 
+        // 1. Guardar de forma inmediata en Firebase Realtime Database (< 200ms)
+        let savedInFirebase = false;
         try {
-            const isNativeOrLocal = window.location.hostname === 'localhost' || 
-                                    window.location.protocol === 'file:' || 
-                                    window.location.protocol === 'capacitor:';
-            const serverUrl = isNativeOrLocal 
-                ? 'https://fleetadmin-web-nueva.onrender.com' 
-                : window.location.origin;
+            const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : (typeof firebaseDB !== 'undefined' ? firebaseDB : null);
+            if (db) {
+                await db.ref('developer_suggestions').push(payload);
+                savedInFirebase = true;
+                console.log('✅ [SUGGESTION] Guardada exitosamente en Firebase RTDB');
+            }
+        } catch (fbErr) {
+            console.warn('⚠️ [SUGGESTION] Error guardando directo en Firebase:', fbErr);
+        }
 
-            const res = await fetch(`${serverUrl}/api/suggestions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userName: user.name || 'Usuario',
-                    userRole: roleLabel,
-                    userPhone: user.phone || 'No registrado',
-                    fleetName: fleetId,
-                    message: msg
-                })
-            });
+        // 2. Disparar notificación API al backend de WhatsApp en segundo plano
+        const isNativeOrLocal = window.location.hostname === 'localhost' || 
+                                window.location.protocol === 'file:' || 
+                                window.location.protocol === 'capacitor:';
+        const serverUrl = isNativeOrLocal 
+            ? 'https://fleetadmin-web-nueva.onrender.com' 
+            : window.location.origin;
 
-            const data = await res.json();
-            if (data && data.ok) {
+        const fetchPromise = (async () => {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(`${serverUrl}/api/suggestions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                const data = await res.json();
+                return data && data.ok;
+            } catch (apiErr) {
+                console.warn('⚠️ [SUGGESTION] API Render no respondió a tiempo:', apiErr.message);
+                return false;
+            }
+        })();
+
+        if (savedInFirebase) {
+            closeModal();
+            showToast('✅ ¡Sugerencia enviada al desarrollador con éxito! Muchas gracias.', 'success');
+        } else {
+            const ok = await fetchPromise;
+            if (ok) {
                 closeModal();
                 showToast('✅ ¡Sugerencia enviada al desarrollador con éxito! Muchas gracias.', 'success');
             } else {
-                throw new Error(data?.error || 'No se pudo enviar la sugerencia.');
-            }
-        } catch (err) {
-            console.warn('⚠️ Error enviando sugerencia por API, intentando respaldo Firebase:', err);
-            let savedDirectly = false;
-            try {
-                if (typeof firebase !== 'undefined' && firebase.database) {
-                    await firebase.database().ref('developer_suggestions').push({
-                        userName: user.name || 'Usuario',
-                        userRole: roleLabel,
-                        userPhone: user.phone || 'No registrado',
-                        fleetName: fleetId,
-                        message: msg,
-                        timestamp: Date.now(),
-                        dateStr: new Date().toLocaleString('es-AR')
-                    });
-                    savedDirectly = true;
-                }
-            } catch(fbErr) {
-                console.warn('Error respaldo Firebase sugerencia:', fbErr);
-            }
-
-            if (savedDirectly) {
-                closeModal();
-                showToast('✅ ¡Sugerencia registrada con éxito! Muchas gracias.', 'success');
-            } else {
-                if (feedback) feedback.innerHTML = `<span style="color:#f87171;">⚠️ ${err.message || 'Error de conexión'}</span>`;
+                if (feedback) feedback.innerHTML = '<span style="color:#f87171;">⚠️ No se pudo enviar por conexión. Probá con el botón de WhatsApp abajo.</span>';
                 if (btn) { btn.disabled = false; btn.textContent = 'Reintentar'; }
             }
         }
@@ -632,7 +660,7 @@ const Components = (() => {
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
         renderEmptyState, confirm, escapeHTML, showDonationModal,
-        showSuggestionModal, submitSuggestion,
+        showSuggestionModal, submitSuggestion, openWhatsAppSuggestion,
         getVersionBadge
     };
 })();

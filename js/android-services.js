@@ -587,6 +587,8 @@ const AndroidServices = (() => {
                 utter.lang = 'es-AR';
                 utter.rate = 1.05;
                 utter.pitch = 1.0;
+                const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
+                utter.volume = Math.max(0.05, Math.min(1.0, volPercent / 100.0));
 
                 const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
                 if (voices && voices.length > 0) {

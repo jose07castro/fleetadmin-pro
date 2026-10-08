@@ -790,6 +790,35 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
+    private static TextToSpeech staticFallbackTts = null;
+    private static volatile boolean isStaticFallbackTtsReady = false;
+
+    public static synchronized void initFallbackTts(Context context) {
+        if (staticFallbackTts == null && context != null) {
+            try {
+                Context appContext = context.getApplicationContext();
+                staticFallbackTts = new TextToSpeech(appContext, status -> {
+                    if (status == TextToSpeech.SUCCESS) {
+                        Locale spanish = new Locale("es", "AR");
+                        int res = staticFallbackTts.setLanguage(spanish);
+                        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                            res = staticFallbackTts.setLanguage(new Locale("es", "ES"));
+                        }
+                        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                            staticFallbackTts.setLanguage(new Locale("es"));
+                        }
+                        isStaticFallbackTtsReady = true;
+                        Log.i(TAG, "🔊 [STATIC-TTS] Fallback TextToSpeech inicializado con éxito");
+                    } else {
+                        Log.w(TAG, "⚠️ [STATIC-TTS] Error inicializando fallback TTS: " + status);
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [STATIC-TTS] Error creando fallback TextToSpeech:", e);
+            }
+        }
+    }
+
     public static void speakText(String text, Context context) {
         if (text == null || text.trim().isEmpty()) return;
         if (isVoiceMuted) {
@@ -801,19 +830,24 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         } else {
             Log.i(TAG, "🔊 [TTS] Service instance not ready, attempting fallback TTS for: " + text);
             if (context != null) {
+                initFallbackTts(context);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     try {
-                        final TextToSpeech[] fallbackTts = new TextToSpeech[1];
-                        fallbackTts[0] = new TextToSpeech(context.getApplicationContext(), status -> {
-                            if (status == TextToSpeech.SUCCESS) {
-                                fallbackTts[0].setLanguage(new Locale("es", "ES"));
-                                Bundle params = new Bundle();
-                                params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
-                                fallbackTts[0].speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_" + System.currentTimeMillis());
-                            }
-                        });
+                        if (staticFallbackTts != null && isStaticFallbackTtsReady) {
+                            Bundle params = new Bundle();
+                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                            staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_" + System.currentTimeMillis());
+                        } else if (staticFallbackTts != null) {
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                if (staticFallbackTts != null && isStaticFallbackTtsReady) {
+                                    Bundle params = new Bundle();
+                                    params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                                    staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_d_" + System.currentTimeMillis());
+                                }
+                            }, 500);
+                        }
                     } catch (Exception ex) {
-                        Log.e(TAG, "❌ Error initializing fallback TTS:", ex);
+                        Log.e(TAG, "❌ Error speaking via fallback TTS:", ex);
                     }
                 });
             }

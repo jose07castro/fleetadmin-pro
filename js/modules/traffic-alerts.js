@@ -352,7 +352,6 @@
                 try {
                     audio.crossOrigin = 'anonymous'; // Necesario para boost
                     audio.src = fullAudioUrl;
-                    audio.volume = 1.0;
                     audio.preload = 'auto';
 
                     audio.onerror = (err) => {
