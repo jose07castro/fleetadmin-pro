@@ -824,6 +824,1546 @@ const CopilotModule = (() => {
         "limit": 70,
         "desc": "Radar ingreso a Rosario",
         "address": "Autopista Bs As altura Arroyo Seco / Ingreso Rosario"
+    },
+    {
+        "id": "radar_rn9_campana_75",
+        "name": "RN 9 km 75 (Campana)",
+        "address": "Ruta Nacional 9 km 75, Campana, Bs As",
+        "lat": -34.195,
+        "lng": -58.932,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_zarate_84",
+        "name": "RN 9 km 83.8 (Zárate)",
+        "address": "Ruta Nacional 9 km 83.8, Zárate, Bs As",
+        "lat": -34.135,
+        "lng": -59.043,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_zarate_95",
+        "name": "RN 9 km 95 (Zárate Oeste)",
+        "address": "Ruta Nacional 9 km 95, Zárate, Bs As",
+        "lat": -34.092,
+        "lng": -59.135,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_baradero_142",
+        "name": "RN 9 km 142 (Baradero)",
+        "address": "Ruta Nacional 9 km 142, Baradero, Bs As",
+        "lat": -33.847,
+        "lng": -59.508,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_baradero_152",
+        "name": "RN 9 km 152 (Acceso Baradero)",
+        "address": "Ruta Nacional 9 km 152, Baradero, Bs As",
+        "lat": -33.785,
+        "lng": -59.578,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_sanpedro_154",
+        "name": "RN 9 km 154 (Río Tala / San Pedro)",
+        "address": "Ruta Nacional 9 km 154, Río Tala, Bs As",
+        "lat": -33.771,
+        "lng": -59.605,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_sanpedro_160",
+        "name": "RN 9 km 160 (Acceso San Pedro)",
+        "address": "Ruta Nacional 9 km 160, San Pedro, Bs As",
+        "lat": -33.738,
+        "lng": -59.663,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_ramallo_205",
+        "name": "RN 9 km 205 (Ramallo Sur)",
+        "address": "Ruta Nacional 9 km 205, Ramallo, Bs As",
+        "lat": -33.513,
+        "lng": -60.005,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_ramallo_215",
+        "name": "RN 9 km 215 (Ramallo Norte)",
+        "address": "Ruta Nacional 9 km 215, Ramallo, Bs As",
+        "lat": -33.468,
+        "lng": -60.088,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_sannicolas_228",
+        "name": "RN 9 km 228 (San Nicolás)",
+        "address": "Ruta Nacional 9 km 228, San Nicolás, Bs As",
+        "lat": -33.398,
+        "lng": -60.198,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_sannicolas_232",
+        "name": "RN 9 km 232 (San Nicolás Norte)",
+        "address": "Ruta Nacional 9 km 232, San Nicolás, Bs As",
+        "lat": -33.368,
+        "lng": -60.235,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_theobald_246",
+        "name": "RN 9 km 246 (Theobald / Límite Santa Fe)",
+        "address": "Ruta Nacional 9 km 246, Theobald, Santa Fe",
+        "lat": -33.272,
+        "lng": -60.334,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_villaconst_250",
+        "name": "RN 9 km 250 (Villa Constitución)",
+        "address": "Ruta Nacional 9 km 250, Villa Constitución, Santa Fe",
+        "lat": -33.245,
+        "lng": -60.365,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_figheira_262",
+        "name": "RN 9 km 262 (Fighiera)",
+        "address": "Ruta Nacional 9 km 262, Fighiera, Santa Fe",
+        "lat": -33.175,
+        "lng": -60.442,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_arroyoseco_268",
+        "name": "RN 9 km 268 (Arroyo Seco)",
+        "address": "Ruta Nacional 9 km 268, Arroyo Seco, Santa Fe",
+        "lat": -33.142,
+        "lng": -60.485,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_glagos_272",
+        "name": "RN 9 km 272 (General Lagos)",
+        "address": "Ruta Nacional 9 km 272, General Lagos, Santa Fe",
+        "lat": -33.118,
+        "lng": -60.528,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_alvear_282",
+        "name": "RN 9 km 282 (Alvear)",
+        "address": "Ruta Nacional 9 km 282, Alvear, Santa Fe",
+        "lat": -33.065,
+        "lng": -60.621,
+        "limit": 100,
+        "desc": "Fotomulta fija autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_funes_travesia",
+        "name": "RN 9 travesía Funes (Garita 9)",
+        "address": "Ruta Nacional 9 y Bv. Mitre (Garita 9), Funes",
+        "lat": -32.922,
+        "lng": -60.812,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_au9_roldan_314",
+        "name": "AU 9 km 314 (Roldán Este)",
+        "address": "Autopista Rosario - Córdoba km 314, Roldán",
+        "lat": -32.915,
+        "lng": -60.895,
+        "limit": 120,
+        "desc": "Fotomulta autopista RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_roldan_travesia",
+        "name": "RN 9 travesía Roldán (km 325)",
+        "address": "Ruta Nacional 9 km 325, Roldán",
+        "lat": -32.898,
+        "lng": -60.91,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_sanjeronimo_340",
+        "name": "RN 9 km 340 (San Jerónimo Sud)",
+        "address": "Ruta Nacional 9 km 340, San Jerónimo Sud",
+        "lat": -32.905,
+        "lng": -61.025,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_correa_352",
+        "name": "RN 9 km 352 (Correa)",
+        "address": "Ruta Nacional 9 km 352, Correa",
+        "lat": -32.855,
+        "lng": -61.245,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_carcarana_361",
+        "name": "RN 9 km 361 (Carcarañá)",
+        "address": "Ruta Nacional 9 km 361, Carcarañá",
+        "lat": -32.862,
+        "lng": -61.155,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_cdegomez_379",
+        "name": "RN 9 km 379 (Cañada de Gómez)",
+        "address": "Ruta Nacional 9 km 379, Cañada de Gómez",
+        "lat": -32.822,
+        "lng": -61.395,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_armstrong_396",
+        "name": "RN 9 km 396 (Armstrong)",
+        "address": "Ruta Nacional 9 km 396, Armstrong",
+        "lat": -32.785,
+        "lng": -61.605,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_tortugas_420",
+        "name": "RN 9 km 420 (Tortugas)",
+        "address": "Ruta Nacional 9 km 420, Tortugas",
+        "lat": -32.745,
+        "lng": -61.825,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_mjuarez_440",
+        "name": "RN 9 km 440 (Marcos Juárez)",
+        "address": "Ruta Nacional 9 km 440, Marcos Juárez, Córdoba",
+        "lat": -32.695,
+        "lng": -62.105,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_leones_465",
+        "name": "RN 9 km 465 (Leones)",
+        "address": "Ruta Nacional 9 km 465, Leones, Córdoba",
+        "lat": -32.662,
+        "lng": -62.302,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_bellville_500",
+        "name": "RN 9 km 500 (Bell Ville)",
+        "address": "Ruta Nacional 9 km 500, Bell Ville, Córdoba",
+        "lat": -32.625,
+        "lng": -62.685,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn9_vmaria_560",
+        "name": "RN 9 km 560 (Villa María)",
+        "address": "Ruta Nacional 9 km 560, Villa María, Córdoba",
+        "lat": -32.415,
+        "lng": -63.245,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_ibarlucea_13",
+        "name": "RN 34 km 13.5 (Ibarlucea)",
+        "address": "Ruta Nacional 34 km 13.5, Ibarlucea",
+        "lat": -32.862,
+        "lng": -60.785,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_lpalacios_22",
+        "name": "RN 34 km 22.5 (Luis Palacios)",
+        "address": "Ruta Nacional 34 km 22.5, Luis Palacios",
+        "lat": -32.795,
+        "lng": -60.852,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_saltogrande_42",
+        "name": "RN 34 km 42 (Salto Grande)",
+        "address": "Ruta Nacional 34 km 42, Salto Grande",
+        "lat": -32.658,
+        "lng": -60.985,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_totoras_54",
+        "name": "RN 34 km 54 (Totoras)",
+        "address": "Ruta Nacional 34 km 54, Totoras",
+        "lat": -32.585,
+        "lng": -61.055,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_clason_68",
+        "name": "RN 34 km 68 (Clason)",
+        "address": "Ruta Nacional 34 km 68, Clason",
+        "lat": -32.485,
+        "lng": -61.135,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_sangenaro_86",
+        "name": "RN 34 km 86 (San Genaro)",
+        "address": "Ruta Nacional 34 km 86, San Genaro",
+        "lat": -32.365,
+        "lng": -61.225,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_centeno_98",
+        "name": "RN 34 km 98 (Centeno)",
+        "address": "Ruta Nacional 34 km 98, Centeno",
+        "lat": -32.285,
+        "lng": -61.325,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_casas_112",
+        "name": "RN 34 km 112 (Casas)",
+        "address": "Ruta Nacional 34 km 112, Casas",
+        "lat": -32.195,
+        "lng": -61.425,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_crosquin_129",
+        "name": "RN 34 km 129 (Cañada Rosquín)",
+        "address": "Ruta Nacional 34 km 129, Cañada Rosquín",
+        "lat": -32.055,
+        "lng": -61.602,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_smescobas_152",
+        "name": "RN 34 km 152 (San Martín de las Escobas)",
+        "address": "Ruta Nacional 34 km 152, San Martín de las Escobas",
+        "lat": -31.895,
+        "lng": -61.685,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_bandurrias_168",
+        "name": "RN 34 km 168 (Las Bandurrias)",
+        "address": "Ruta Nacional 34 km 168, Las Bandurrias",
+        "lat": -31.785,
+        "lng": -61.725,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_svicente_178",
+        "name": "RN 34 km 178 (San Vicente)",
+        "address": "Ruta Nacional 34 km 178, San Vicente",
+        "lat": -31.705,
+        "lng": -61.755,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_angelica_192",
+        "name": "RN 34 km 192 (Angélica / Cruce RN 19)",
+        "address": "Ruta Nacional 34 km 192, Angélica",
+        "lat": -31.605,
+        "lng": -61.785,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN 34 y RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_rafaela_220",
+        "name": "RN 34 km 220 (Rafaela / Av. Salva)",
+        "address": "Ruta Nacional 34 km 220, Rafaela",
+        "lat": -31.252,
+        "lng": -61.505,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Rafaela",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_lehmann_237",
+        "name": "RN 34 km 237 (Lehmann)",
+        "address": "Ruta Nacional 34 km 237, Lehmann",
+        "lat": -31.125,
+        "lng": -61.525,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_ataliva_248",
+        "name": "RN 34 km 248 (Ataliva)",
+        "address": "Ruta Nacional 34 km 248, Ataliva",
+        "lat": -31.025,
+        "lng": -61.555,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_sunchales_258",
+        "name": "RN 34 km 258 (Sunchales)",
+        "address": "Ruta Nacional 34 km 258, Sunchales",
+        "lat": -30.945,
+        "lng": -61.565,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_tacural_276",
+        "name": "RN 34 km 276 (Tacural)",
+        "address": "Ruta Nacional 34 km 276, Tacural",
+        "lat": -30.815,
+        "lng": -61.605,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_arrufo_342",
+        "name": "RN 34 km 342 (Arrufó)",
+        "address": "Ruta Nacional 34 km 342, Arrufó",
+        "lat": -30.345,
+        "lng": -61.725,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_hersilia_368",
+        "name": "RN 34 km 368 (Hersilia)",
+        "address": "Ruta Nacional 34 km 368, Hersilia",
+        "lat": -30.015,
+        "lng": -61.825,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn34_ceres_388",
+        "name": "RN 34 km 388 (Ceres)",
+        "address": "Ruta Nacional 34 km 388, Ceres",
+        "lat": -29.885,
+        "lng": -61.945,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 34",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_perez_782",
+        "name": "RN 33 km 782 (Pérez)",
+        "address": "Ruta Nacional 33 km 782, Pérez",
+        "lat": -32.998,
+        "lng": -60.768,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_zavalla_775",
+        "name": "RN 33 km 775 (Zavalla)",
+        "address": "Ruta Nacional 33 km 775, Zavalla",
+        "lat": -33.025,
+        "lng": -60.885,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_pujato_756",
+        "name": "RN 33 km 756 (Pujato)",
+        "address": "Ruta Nacional 33 km 756, Pujato",
+        "lat": -33.022,
+        "lng": -61.035,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_casilda_741",
+        "name": "RN 33 km 741 (Casilda)",
+        "address": "Ruta Nacional 33 y Bv. Lisandro de la Torre, Casilda",
+        "lat": -33.045,
+        "lng": -61.165,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Casilda",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_sanford_726",
+        "name": "RN 33 km 726 (Sanford)",
+        "address": "Ruta Nacional 33 km 726, Sanford",
+        "lat": -33.155,
+        "lng": -61.275,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_chabas_715",
+        "name": "RN 33 km 715 (Chabás)",
+        "address": "Ruta Nacional 33 km 715, Chabás",
+        "lat": -33.245,
+        "lng": -61.365,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_villada_705",
+        "name": "RN 33 km 705 (Villada)",
+        "address": "Ruta Nacional 33 km 705, Villada",
+        "lat": -33.335,
+        "lng": -61.455,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_firmat_694",
+        "name": "RN 33 km 694 (Firmat)",
+        "address": "Ruta Nacional 33 km 694, Firmat",
+        "lat": -33.455,
+        "lng": -61.485,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Firmat",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_cucle_680",
+        "name": "RN 33 km 680 (Cañada del Ucle)",
+        "address": "Ruta Nacional 33 km 680, Cañada del Ucle",
+        "lat": -33.565,
+        "lng": -61.595,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_chovet_667",
+        "name": "RN 33 km 667 (Chovet)",
+        "address": "Ruta Nacional 33 km 667, Chovet",
+        "lat": -33.645,
+        "lng": -61.685,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_murphy_648",
+        "name": "RN 33 km 648 (Murphy)",
+        "address": "Ruta Nacional 33 km 648, Murphy",
+        "lat": -33.695,
+        "lng": -61.835,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_vtuerto_634",
+        "name": "RN 33 km 634 (Venado Tuerto)",
+        "address": "Ruta Nacional 33 y Av. Santa Fe, Venado Tuerto",
+        "lat": -33.745,
+        "lng": -61.965,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Venado Tuerto",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_sspiritu_575",
+        "name": "RN 33 km 575 (Sancti Spíritu)",
+        "address": "Ruta Nacional 33 km 575, Sancti Spíritu",
+        "lat": -34.025,
+        "lng": -62.335,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn33_rufino_540",
+        "name": "RN 33 km 540 (Rufino)",
+        "address": "Ruta Nacional 33 km 540, Rufino",
+        "lat": -34.265,
+        "lng": -62.715,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Rufino",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_cbermudez_324",
+        "name": "RN 11 km 324 (Capitán Bermúdez)",
+        "address": "Ruta Nacional 11 km 324, Capitán Bermúdez",
+        "lat": -32.818,
+        "lng": -60.718,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_flbeltran_328",
+        "name": "RN 11 km 328 (Fray Luis Beltrán)",
+        "address": "Ruta Nacional 11 km 328, Fray Luis Beltrán",
+        "lat": -32.788,
+        "lng": -60.728,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_slorenzo_335",
+        "name": "RN 11 km 335 (San Lorenzo)",
+        "address": "Ruta Nacional 11 km 335, San Lorenzo",
+        "lat": -32.745,
+        "lng": -60.735,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_pgsm_340",
+        "name": "RN 11 km 340 (Puerto Gral San Martín)",
+        "address": "Ruta Nacional 11 km 340, Puerto Gral San Martín",
+        "lat": -32.715,
+        "lng": -60.738,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_timbues_348",
+        "name": "RN 11 km 348 (Timbúes)",
+        "address": "Ruta Nacional 11 km 348, Timbúes",
+        "lat": -32.665,
+        "lng": -60.755,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_oliveros_360",
+        "name": "RN 11 km 360 (Oliveros)",
+        "address": "Ruta Nacional 11 km 360, Oliveros",
+        "lat": -32.575,
+        "lng": -60.855,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_maciel_370",
+        "name": "RN 11 km 370 (Maciel)",
+        "address": "Ruta Nacional 11 km 370, Maciel",
+        "lat": -32.465,
+        "lng": -60.895,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_monje_382",
+        "name": "RN 11 km 382 (Monje)",
+        "address": "Ruta Nacional 11 km 382, Monje",
+        "lat": -32.355,
+        "lng": -60.945,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_barrancas_395",
+        "name": "RN 11 km 395 (Barrancas)",
+        "address": "Ruta Nacional 11 km 395, Barrancas",
+        "lat": -32.235,
+        "lng": -60.975,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_arocena_410",
+        "name": "RN 11 km 410 (Arocena)",
+        "address": "Ruta Nacional 11 km 410, Arocena",
+        "lat": -32.125,
+        "lng": -61.015,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_coronda_428",
+        "name": "RN 11 km 428 (Coronda)",
+        "address": "Ruta Nacional 11 km 428, Coronda",
+        "lat": -31.975,
+        "lng": -60.925,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Coronda",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_sauceviejo_460",
+        "name": "RN 11 km 460 (Sauce Viejo)",
+        "address": "Ruta Nacional 11 km 460, Sauce Viejo",
+        "lat": -31.775,
+        "lng": -60.835,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_stotome_470",
+        "name": "RN 11 km 470 (Santo Tomé)",
+        "address": "Ruta Nacional 11 km 470, Santo Tomé",
+        "lat": -31.675,
+        "lng": -60.775,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Santo Tomé",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_recreo_485",
+        "name": "RN 11 km 485 (Recreo)",
+        "address": "Ruta Nacional 11 km 485, Recreo",
+        "lat": -31.495,
+        "lng": -60.735,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_candioti_495",
+        "name": "RN 11 km 495 (Candioti)",
+        "address": "Ruta Nacional 11 km 495, Candioti",
+        "lat": -31.405,
+        "lng": -60.745,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_nelson_515",
+        "name": "RN 11 km 515 (Nelson)",
+        "address": "Ruta Nacional 11 km 515, Nelson",
+        "lat": -31.265,
+        "lng": -60.765,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_llambi_530",
+        "name": "RN 11 km 530 (Llambi Campbell)",
+        "address": "Ruta Nacional 11 km 530, Llambi Campbell",
+        "lat": -31.145,
+        "lng": -60.755,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_sjusto_568",
+        "name": "RN 11 km 568 (San Justo)",
+        "address": "Ruta Nacional 11 km 568, San Justo",
+        "lat": -30.785,
+        "lng": -60.595,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana San Justo",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_gcrespo_625",
+        "name": "RN 11 km 625 (Gobernador Crespo)",
+        "address": "Ruta Nacional 11 km 625, Gobernador Crespo",
+        "lat": -30.365,
+        "lng": -60.365,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_calchaqui_670",
+        "name": "RN 11 km 670 (Calchaquí)",
+        "address": "Ruta Nacional 11 km 670, Calchaquí",
+        "lat": -29.885,
+        "lng": -60.305,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Calchaquí",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_vera_722",
+        "name": "RN 11 km 722 (Vera)",
+        "address": "Ruta Nacional 11 km 722, Vera",
+        "lat": -29.465,
+        "lng": -60.215,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Vera",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_malabrigo_750",
+        "name": "RN 11 km 750 (Malabrigo)",
+        "address": "Ruta Nacional 11 km 750, Malabrigo",
+        "lat": -29.345,
+        "lng": -59.975,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 11",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_reconquista_789",
+        "name": "RN 11 km 789 (Reconquista)",
+        "address": "Ruta Nacional 11 km 789, Reconquista",
+        "lat": -29.145,
+        "lng": -59.645,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Reconquista",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn11_avellaneda_794",
+        "name": "RN 11 km 794 (Avellaneda)",
+        "address": "Ruta Nacional 11 km 794, Avellaneda",
+        "lat": -29.115,
+        "lng": -59.655,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Avellaneda",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_sjose_8",
+        "name": "RN 19 km 8 (Colonia San José)",
+        "address": "Ruta Nacional 19 km 8, Colonia San José",
+        "lat": -31.662,
+        "lng": -60.825,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_sagustin_20",
+        "name": "RN 19 km 20 (San Agustín)",
+        "address": "Autovía 19 km 20, San Agustín",
+        "lat": -31.655,
+        "lng": -60.945,
+        "limit": 110,
+        "desc": "Fotomulta autovía RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_franck_30",
+        "name": "RN 19 km 30 (Franck)",
+        "address": "Autovía 19 km 30, Franck",
+        "lat": -31.652,
+        "lng": -61.055,
+        "limit": 110,
+        "desc": "Fotomulta autovía RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_sjsauce_37",
+        "name": "RN 19 km 37 (San Jerónimo del Sauce)",
+        "address": "Ruta Nacional 19 km 37, San Jerónimo del Sauce",
+        "lat": -31.65,
+        "lng": -61.125,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_sapereira_62",
+        "name": "RN 19 km 62 (Sa Pereira)",
+        "address": "Ruta Nacional 19 km 62, Sa Pereira",
+        "lat": -31.642,
+        "lng": -61.375,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_josefina_118",
+        "name": "RN 19 km 118 (Josefina)",
+        "address": "Ruta Nacional 19 km 118, Josefina",
+        "lat": -31.472,
+        "lng": -61.955,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_frontera_127",
+        "name": "RN 19 km 127 (Frontera / San Francisco)",
+        "address": "Ruta Nacional 19 km 127, Frontera / San Francisco",
+        "lat": -31.435,
+        "lng": -62.085,
+        "limit": 60,
+        "desc": "Fotomulta límite Santa Fe - Córdoba",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_devoto_160",
+        "name": "RN 19 km 160 (Devoto)",
+        "address": "Ruta Nacional 19 km 160, Devoto, Córdoba",
+        "lat": -31.405,
+        "lng": -62.305,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_lafrancia_185",
+        "name": "RN 19 km 185 (La Francia)",
+        "address": "Ruta Nacional 19 km 185, La Francia, Córdoba",
+        "lat": -31.402,
+        "lng": -62.635,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_arroyito_225",
+        "name": "RN 19 km 225 (Arroyito)",
+        "address": "Ruta Nacional 19 km 225, Arroyito, Córdoba",
+        "lat": -31.422,
+        "lng": -63.055,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn19_rioprimero_280",
+        "name": "RN 19 km 280 (Río Primero)",
+        "address": "Ruta Nacional 19 km 280, Río Primero, Córdoba",
+        "lat": -31.332,
+        "lng": -63.625,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 19",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_ecruz_75",
+        "name": "RN 8 km 75 (Exaltación de la Cruz)",
+        "address": "Ruta Nacional 8 km 75, Exaltación de la Cruz, Bs As",
+        "lat": -34.345,
+        "lng": -59.185,
+        "limit": 100,
+        "desc": "Fotomulta autopista RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_sareco_112",
+        "name": "RN 8 km 112 (San Antonio de Areco)",
+        "address": "Ruta Nacional 8 km 112, San Antonio de Areco",
+        "lat": -34.255,
+        "lng": -59.475,
+        "limit": 80,
+        "desc": "Fotomulta cruce RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_csarmiento_145",
+        "name": "RN 8 km 145 (Capitán Sarmiento)",
+        "address": "Ruta Nacional 8 km 145, Capitán Sarmiento",
+        "lat": -34.175,
+        "lng": -59.785,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_arrecifes_175",
+        "name": "RN 8 km 175 (Arrecifes)",
+        "address": "Ruta Nacional 8 km 175, Arrecifes",
+        "lat": -34.065,
+        "lng": -60.105,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Arrecifes",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_todd_184",
+        "name": "RN 8 km 184 (Todd)",
+        "address": "Ruta Nacional 8 km 184, Todd",
+        "lat": -34.025,
+        "lng": -60.175,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_vina_198",
+        "name": "RN 8 km 198 (Viña)",
+        "address": "Ruta Nacional 8 km 198, Viña",
+        "lat": -33.975,
+        "lng": -60.295,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_pergamino_222",
+        "name": "RN 8 km 222 (Pergamino)",
+        "address": "Ruta Nacional 8 km 222, Pergamino",
+        "lat": -33.895,
+        "lng": -60.575,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Pergamino",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_colon_276",
+        "name": "RN 8 km 276 (Colón)",
+        "address": "Ruta Nacional 8 km 276, Colón, Bs As",
+        "lat": -33.898,
+        "lng": -61.095,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Colón",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_wheelwright_302",
+        "name": "RN 8 km 302 (Wheelwright)",
+        "address": "Ruta Nacional 8 km 302, Wheelwright, Santa Fe",
+        "lat": -33.795,
+        "lng": -61.355,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_hughes_320",
+        "name": "RN 8 km 320 (Hughes)",
+        "address": "Ruta Nacional 8 km 320, Hughes, Santa Fe",
+        "lat": -33.802,
+        "lng": -61.545,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_sisabel_342",
+        "name": "RN 8 km 342 (Santa Isabel)",
+        "address": "Ruta Nacional 8 km 342, Santa Isabel, Santa Fe",
+        "lat": -33.785,
+        "lng": -61.735,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_vtuerto_365",
+        "name": "RN 8 km 365 (Venado Tuerto)",
+        "address": "Ruta Nacional 8 y Av. Casey, Venado Tuerto",
+        "lat": -33.755,
+        "lng": -61.965,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Venado Tuerto",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_maggiolo_392",
+        "name": "RN 8 km 392 (Maggiolo)",
+        "address": "Ruta Nacional 8 km 392, Maggiolo, Santa Fe",
+        "lat": -33.725,
+        "lng": -62.245,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_arias_410",
+        "name": "RN 8 km 410 (Arias)",
+        "address": "Ruta Nacional 8 km 410, Arias, Córdoba",
+        "lat": -33.645,
+        "lng": -62.405,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_canals_445",
+        "name": "RN 8 km 445 (Canals)",
+        "address": "Ruta Nacional 8 km 445, Canals, Córdoba",
+        "lat": -33.565,
+        "lng": -62.885,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn8_lacarlota_500",
+        "name": "RN 8 km 500 (La Carlota)",
+        "address": "Ruta Nacional 8 km 500, La Carlota, Córdoba",
+        "lat": -33.425,
+        "lng": -63.295,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 8",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_alvear_2",
+        "name": "RN A012 km 2 (Alvear / RP 21)",
+        "address": "Ruta Nacional A012 km 2, Alvear",
+        "lat": -33.065,
+        "lng": -60.598,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN A012 y RP 21",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_pinero_15",
+        "name": "RN A012 km 15 (Piñero / RP 14)",
+        "address": "Ruta Nacional A012 km 15, Piñero",
+        "lat": -33.055,
+        "lng": -60.745,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN A012 y RP 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_zavalla_26",
+        "name": "RN A012 km 26 (Zavalla / RN 33)",
+        "address": "Ruta Nacional A012 km 26, Zavalla",
+        "lat": -33.032,
+        "lng": -60.855,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN A012 y RN 33",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_roldan_44",
+        "name": "RN A012 km 44 (Roldán / RN 9)",
+        "address": "Ruta Nacional A012 km 44, Roldán",
+        "lat": -32.898,
+        "lng": -60.902,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN A012 y RN 9",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_ricardone_56",
+        "name": "RN A012 km 56 (Ricardone / RP 10)",
+        "address": "Ruta Nacional A012 km 56, Ricardone",
+        "lat": -32.785,
+        "lng": -60.785,
+        "limit": 60,
+        "desc": "Fotomulta cruce RN A012 y RP 10",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rna012_slorenzo_64",
+        "name": "RN A012 km 64 (San Lorenzo Acceso)",
+        "address": "Ruta Nacional A012 km 64, San Lorenzo",
+        "lat": -32.752,
+        "lng": -60.755,
+        "limit": 60,
+        "desc": "Fotomulta acceso San Lorenzo",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_lujan_68",
+        "name": "RN 7 km 68 (Luján)",
+        "address": "Autopista Luján - Junín RN 7 km 68, Luján",
+        "lat": -34.565,
+        "lng": -59.125,
+        "limit": 100,
+        "desc": "Fotomulta autopista RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_giles_98",
+        "name": "RN 7 km 98 (San Andrés de Giles)",
+        "address": "Ruta Nacional 7 km 98, San Andrés de Giles",
+        "lat": -34.455,
+        "lng": -59.455,
+        "limit": 100,
+        "desc": "Fotomulta autopista RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_careco_140",
+        "name": "RN 7 km 140 (Carmen de Areco)",
+        "address": "Ruta Nacional 7 km 140, Carmen de Areco",
+        "lat": -34.385,
+        "lng": -59.825,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_chacabuco_208",
+        "name": "RN 7 km 208 (Chacabuco)",
+        "address": "Ruta Nacional 7 km 208, Chacabuco",
+        "lat": -34.645,
+        "lng": -60.475,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Chacabuco",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_junin_260",
+        "name": "RN 7 km 260 (Junín)",
+        "address": "Ruta Nacional 7 km 260, Junín",
+        "lat": -34.595,
+        "lng": -60.945,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Junín",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_vedia_312",
+        "name": "RN 7 km 312 (Vedia)",
+        "address": "Ruta Nacional 7 km 312, Vedia",
+        "lat": -34.495,
+        "lng": -61.545,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_dalvear_395",
+        "name": "RN 7 km 395 (Diego de Alvear)",
+        "address": "Ruta Nacional 7 km 395, Diego de Alvear, Santa Fe",
+        "lat": -34.375,
+        "lng": -62.135,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_rufino_425",
+        "name": "RN 7 km 425 (Rufino)",
+        "address": "Ruta Nacional 7 km 425, Rufino, Santa Fe",
+        "lat": -34.275,
+        "lng": -62.705,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana Rufino",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn7_laboulaye_490",
+        "name": "RN 7 km 490 (Laboulaye)",
+        "address": "Ruta Nacional 7 km 490, Laboulaye, Córdoba",
+        "lat": -34.135,
+        "lng": -63.395,
+        "limit": 60,
+        "desc": "Fotomulta travesía urbana RN 7",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn12_zarate_85",
+        "name": "RN 12 km 85 (Zárate / Acceso Zárate Brazo Largo)",
+        "address": "Ruta Nacional 12 km 85, Zárate, Bs As",
+        "lat": -34.095,
+        "lng": -59.015,
+        "limit": 80,
+        "desc": "Fotomulta acceso Complejo Zárate Brazo Largo",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn12_blargo_115",
+        "name": "RN 12 km 115 (Brazo Largo)",
+        "address": "Ruta Nacional 12 km 115, Brazo Largo, Entre Ríos",
+        "lat": -33.865,
+        "lng": -58.855,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 12",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn12_ceibas_158",
+        "name": "RN 12 km 158 (Ceibas)",
+        "address": "Ruta Nacional 12 km 158, Ceibas, Entre Ríos",
+        "lat": -33.515,
+        "lng": -58.745,
+        "limit": 80,
+        "desc": "Fotomulta empalme RN 12 y RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_ceibas_0",
+        "name": "RN 14 km 0 (Empalme Ceibas)",
+        "address": "Autovía RN 14 km 0, Ceibas, Entre Ríos",
+        "lat": -33.485,
+        "lng": -58.725,
+        "limit": 120,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_gualeguaychu_58",
+        "name": "RN 14 km 58 (Gualeguaychú)",
+        "address": "Autovía RN 14 km 58, Gualeguaychú, Entre Ríos",
+        "lat": -33.025,
+        "lng": -58.545,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_curuguay_125",
+        "name": "RN 14 km 125 (Concepción del Uruguay)",
+        "address": "Autovía RN 14 km 125, Concepción del Uruguay, Entre Ríos",
+        "lat": -32.485,
+        "lng": -58.295,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_colon_152",
+        "name": "RN 14 km 152 (Colón)",
+        "address": "Autovía RN 14 km 152, Colón, Entre Ríos",
+        "lat": -32.225,
+        "lng": -58.225,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_concordia_250",
+        "name": "RN 14 km 250 (Concordia)",
+        "address": "Autovía RN 14 km 250, Concordia, Entre Ríos",
+        "lat": -31.395,
+        "lng": -58.055,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn14_chajari_325",
+        "name": "RN 14 km 325 (Chajarí)",
+        "address": "Autovía RN 14 km 325, Chajarí, Entre Ríos",
+        "lat": -30.745,
+        "lng": -57.985,
+        "limit": 100,
+        "desc": "Fotomulta autovía RN 14",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn168_laguardia_3",
+        "name": "RN 168 km 3 (La Guardia / Santa Fe)",
+        "address": "Ruta Nacional 168 km 3, La Guardia, Santa Fe",
+        "lat": -31.645,
+        "lng": -60.625,
+        "limit": 80,
+        "desc": "Fotomulta autovía RN 168",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn168_peaje_11",
+        "name": "RN 168 km 11 (Peaje Túnel Subfluvial)",
+        "address": "Ruta Nacional 168 km 11, Peaje Túnel, Santa Fe",
+        "lat": -31.698,
+        "lng": -60.525,
+        "limit": 60,
+        "desc": "Fotomulta cabina peaje Túnel Subfluvial",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn168_tunel_14",
+        "name": "RN 168 Boca Paraná (Túnel Subfluvial)",
+        "address": "Ruta Nacional 168 cabecera Túnel Subfluvial, Paraná",
+        "lat": -31.712,
+        "lng": -60.498,
+        "limit": 60,
+        "desc": "Fotomulta acceso Túnel Subfluvial Paraná",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_rn168_parana_18",
+        "name": "RN 168 Acceso Paraná",
+        "address": "Ruta Nacional 168 ingreso Paraná, Entre Ríos",
+        "lat": -31.725,
+        "lng": -60.485,
+        "limit": 60,
+        "desc": "Fotomulta acceso ciudad de Paraná",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_gbaigorria_0",
+        "name": "AP 01 km 0 (Granadero Baigorria)",
+        "address": "Autopista Rosario - Santa Fe km 0, Granadero Baigorria",
+        "lat": -32.868,
+        "lng": -60.718,
+        "limit": 80,
+        "desc": "Fotomulta ingreso Autopista Rosario - Santa Fe",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_slorenzo_14",
+        "name": "AP 01 km 14 (San Lorenzo Sur)",
+        "address": "Autopista Rosario - Santa Fe km 14, San Lorenzo",
+        "lat": -32.765,
+        "lng": -60.755,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_slorenzo_22",
+        "name": "AP 01 km 22 (San Lorenzo Norte)",
+        "address": "Autopista Rosario - Santa Fe km 22, San Lorenzo",
+        "lat": -32.705,
+        "lng": -60.765,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_timbues_28",
+        "name": "AP 01 km 28 (Timbúes)",
+        "address": "Autopista Rosario - Santa Fe km 28, Timbúes",
+        "lat": -32.655,
+        "lng": -60.785,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_monje_58",
+        "name": "AP 01 km 58 (Monje)",
+        "address": "Autopista Rosario - Santa Fe km 58, Monje",
+        "lat": -32.415,
+        "lng": -60.915,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_arocena_90",
+        "name": "AP 01 km 90 (Arocena)",
+        "address": "Autopista Rosario - Santa Fe km 90, Arocena",
+        "lat": -32.145,
+        "lng": -60.985,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_coronda_110",
+        "name": "AP 01 km 110 (Coronda)",
+        "address": "Autopista Rosario - Santa Fe km 110, Coronda",
+        "lat": -31.985,
+        "lng": -60.955,
+        "limit": 130,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_sauceviejo_141",
+        "name": "AP 01 km 141 (Sauce Viejo)",
+        "address": "Autopista Rosario - Santa Fe km 141, Sauce Viejo",
+        "lat": -31.745,
+        "lng": -60.815,
+        "limit": 100,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_stotome_153",
+        "name": "AP 01 km 153 (Santo Tomé)",
+        "address": "Autopista Rosario - Santa Fe km 153, Santo Tomé",
+        "lat": -31.668,
+        "lng": -60.755,
+        "limit": 100,
+        "desc": "Fotomulta autopista AP 01",
+        "type": "speed_camera"
+    },
+    {
+        "id": "radar_ap01_stafe_156",
+        "name": "AP 01 km 156 (Acceso Santa Fe Capital)",
+        "address": "Autopista Rosario - Santa Fe km 156, Santa Fe Capital",
+        "lat": -31.645,
+        "lng": -60.725,
+        "limit": 60,
+        "desc": "Fotomulta acceso Santa Fe Capital",
+        "type": "speed_camera"
     }
 ];
 
