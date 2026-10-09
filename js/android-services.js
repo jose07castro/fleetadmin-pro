@@ -81,24 +81,30 @@ const AndroidServices = (() => {
         if (isNativeAndroid()) {
             try {
                 // ── CAPA 1: Arrancar el Foreground Service Java REAL ──
-                if (_hasNativeBridge()) {
-                    const serverUrl = (window.location.hostname === 'localhost' || 
-                                       window.location.hostname === '127.0.0.1' ||
-                                       window.location.protocol === 'file:') 
-                                       ? 'https://fleetadmin-web-nueva.onrender.com' 
-                                       : window.location.origin;
+                const serverUrl = (window.location.hostname === 'localhost' || 
+                                   window.location.hostname === '127.0.0.1' ||
+                                   window.location.protocol === 'file:') 
+                                   ? 'https://fleetadmin-web-nueva.onrender.com' 
+                                   : window.location.origin;
 
-                    console.log('📱 AndroidServices: 🔥 CAPA 1 — Arrancando LocationTrackingService via NativeServiceBridge');
-                    console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId} | serverUrl=${serverUrl}`);
-                    
-                    // Pasar userId, driverName, fleetId y serverUrl al Service
-                    window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl);
-                    
-                    _nativeGPSActive = true;
-                    console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo + Firebase Direct');
-                } else {
-                    console.warn('📱 AndroidServices: ⚠️ NativeServiceBridge NO disponible — el Service Java NO se arrancó');
-                }
+                let attempts = 0;
+                const launchNativeService = () => {
+                    attempts++;
+                    if (_hasNativeBridge()) {
+                        console.log(`📱 AndroidServices: 🔥 CAPA 1 — Arrancando LocationTrackingService via NativeServiceBridge (intento ${attempts})`);
+                        console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId} | serverUrl=${serverUrl}`);
+                        
+                        window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl);
+                        _nativeGPSActive = true;
+                        console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo + Firebase Direct');
+                    } else if (attempts < 15) {
+                        console.log(`📱 AndroidServices: Esperando puente NativeServiceBridge... (reintento ${attempts}/15)`);
+                        setTimeout(launchNativeService, 200);
+                    } else {
+                        console.warn('📱 AndroidServices: ⚠️ NativeServiceBridge NO disponible tras 15 intentos — el Service Java NO se arrancó');
+                    }
+                };
+                launchNativeService();
 
                 // ── CAPA 2: BackgroundMode plugin (desactiva JS throttling) ──
                 if (Capacitor.Plugins.BackgroundMode) {
@@ -440,16 +446,17 @@ const AndroidServices = (() => {
     /**
      * Muestra un modal explicativo ANTES de pedir la exención.
      * Los usuarios tienden a rechazar diálogos del sistema sin leerlos.
+     * Si force === true, se muestra incondicionalmente (útil para Ajustes manuales en Samsung One UI).
      */
-    function showBatteryExemptionDialog() {
+    function showBatteryExemptionDialog(force = false) {
         if (!isNativeAndroid()) return;
         if (typeof Components === 'undefined') return;
 
-        // Si la exención de batería ya fue otorgada, omitir el diálogo
-        if (_hasNativeBridge() && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+        // Si la exención de batería ya fue otorgada y no es forzada, omitir el diálogo automático
+        if (!force && _hasNativeBridge() && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
             try {
                 if (!window.NativeServiceBridge.isBatteryOptimized()) {
-                    console.log('📱 AndroidServices: ✅ Exención de batería ya otorgada — omitiendo diálogo');
+                    console.log('📱 AndroidServices: ✅ Exención de batería ya otorgada — omitiendo diálogo automático');
                     return;
                 }
             } catch (e) {
@@ -457,24 +464,24 @@ const AndroidServices = (() => {
             }
         }
 
-        console.log('📱 AndroidServices: Mostrando diálogo de exención de batería');
+        console.log('📱 AndroidServices: Mostrando diálogo de exención de batería (force=' + force + ')');
 
         const bodyHTML = `
             <div style="text-align:center; padding:8px 0;">
                 <div style="font-size:3rem; margin-bottom:12px;">🔋</div>
                 <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:16px;">
-                    Permiso de Batería Requerido
+                    Configuración de Batería en Segundo Plano
                 </div>
                 <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.6; margin-bottom:20px; padding:0 8px;">
-                    Para que el <strong>GPS funcione con la pantalla apagada</strong>, 
-                    desactivá el ahorro de batería para esta aplicación.
+                    Para que el <strong>GPS y las alertas por voz funcionen con la pantalla apagada o usando Uber / DiDi</strong>, 
+                    desactivá la optimización de batería.
                 </div>
                 <div style="margin-top:16px; padding:12px; background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:12px; text-align:left;">
-                    <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚡ En el siguiente paso:</div>
+                    <div style="font-size:0.85rem; color:#fde047; font-weight:600; margin-bottom:6px;">⚡ Instrucción obligatoria:</div>
                     <ul style="font-size:0.8rem; color:var(--text-secondary); margin:0; padding-left:16px; line-height:1.8;">
-                        <li>Si ves un cartel directo → tocá <strong>"Permitir"</strong></li>
-                        <li>Si abre una lista de apps → buscá la app y elegí <strong>"Sin restricciones"</strong></li>
-                        <li>Si abre Ajustes → andá a <strong>Batería → Sin restricciones</strong></li>
+                        <li>1. Tocá <strong>"Configurar Ahora"</strong>.</li>
+                        <li>2. Si ves un diálogo de confirmación → tocá <strong>"Permitir"</strong>.</li>
+                        <li>3. En teléfonos <strong>Samsung / Motorola / Xiaomi</strong>: tocá <strong>"Batería"</strong> y elegí <strong>"Sin restricciones"</strong>.</li>
                     </ul>
                 </div>
             </div>

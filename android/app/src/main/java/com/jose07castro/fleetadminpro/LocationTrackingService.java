@@ -20,10 +20,12 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.media.MediaPlayer;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
 import android.net.wifi.WifiManager;
 import android.net.ConnectivityManager;
@@ -67,13 +69,14 @@ import java.util.TimeZone;
 public class LocationTrackingService extends Service implements TextToSpeech.OnInitListener {
 
     private static final String TAG = "FleetGPS";
-    private static final String CHANNEL_ID = "fleet_gps_tracking";
+    private static final String CHANNEL_ID = "fleet_gps_tracking_v2";
     private static final int NOTIFICATION_ID = 7001;
     private static final String PREFS_NAME = "fleet_gps_prefs";
     public static boolean isAppInForeground = false;
     public static LocationTrackingService instance = null;
     private static long lastSpokenTime = 0;
     private static String lastSpokenText = "";
+    private AudioFocusRequest navAudioFocusRequest = null;
 
     // GPS Config
     private static final long MIN_TIME_MS = 1000;   // 1 segundo (agresivo para evitar suspension del GPS)
@@ -349,36 +352,36 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.w(TAG, "🚨 App CERRADA MANUALMENTE desde recientes (onTaskRemoved). Notificando al servidor...");
+        Log.i(TAG, "📱 onTaskRemoved() — Tarea cerrada desde recientes. El servicio continúa activo en segundo plano.");
 
         try {
-            // Reportar cierre intencional de app al servidor sin bloquear el hilo principal (elimina Thread.sleep que causaba ANR)
-            if (serviceHandler != null) {
+            acquireWakeLock();
+            try {
+                FirebaseDatabase.getInstance().goOnline();
+            } catch (Exception ignored) {}
+
+            // CRÍTICO ANTI-APAGADO: Con stopWithTask="false", este ForegroundService PERMANECE VIVO automáticamente
+            // en segundo plano con su notificación activa. El chofer está trabajando con Uber/DiDi.
+            // NUNCA reportar 'app_killed' al servidor ni a Firebase cuando el chofer simplemente minimiza o limpia recientes.
+            if (serviceHandler != null && dbRef != null && userId != null && !userId.isEmpty()) {
                 serviceHandler.post(() -> {
                     try {
-                        sendEventToServer("app_killed");
-                        if (dbRef != null && userId != null && !userId.isEmpty()) {
-                            Map<String, Object> killData = new HashMap<>();
-                            killData.put("status", "app_killed");
-                            killData.put("last_heartbeat", System.currentTimeMillis());
-                            killData.put("updated_at", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-                                .format(new java.util.Date()));
-                            dbRef.child(userId).updateChildren(killData);
-                            Log.i(TAG, "🔥 Estado app_killed escrito en Firebase directo");
-                        }
+                        Map<String, Object> aliveData = new HashMap<>();
+                        aliveData.put("status", "active");
+                        aliveData.put("last_heartbeat", System.currentTimeMillis());
+                        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                        aliveData.put("updated_at", sdf.format(new Date()));
+                        dbRef.child(userId).updateChildren(aliveData);
+                        Log.i(TAG, "🛡️ Estado 'active' preservado en Firebase tras onTaskRemoved");
                     } catch (Exception e) {
-                        Log.e(TAG, "❌ Error escribiendo app_killed en Firebase:", e);
+                        Log.e(TAG, "❌ Error actualizando Firebase en onTaskRemoved:", e);
                     }
                 });
             }
         } catch (Exception e) {
             Log.e(TAG, "⚠️ Error en onTaskRemoved handler:", e);
         }
-
-        // NOTA CRÍTICA ANTI-CRASH: Con stopWithTask="false" en AndroidManifest.xml, este
-        // ForegroundService PERMANECE VIVO automáticamente en segundo plano con su notificación.
-        // NUNCA se debe llamar a startForegroundService() aquí: en Android 12+ (API 31+) genera
-        // ForegroundServiceStartNotAllowedException y provocaba el error "Punto Alertas continúa fallando".
 
         super.onTaskRemoved(rootIntent);
     }
@@ -925,6 +928,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void startTrafficAlertsListener() {
         Log.i(TAG, "📡 [ALERTS] startTrafficAlertsListener. fleetId: " + fleetId);
+        try {
+            FirebaseDatabase.getInstance().goOnline();
+        } catch (Exception ignored) {}
+
         if (alertsRef != null) {
             Log.i(TAG, "📡 [ALERTS] Removing previous fleet database listener");
             alertsRef.removeEventListener(alertsListener);
@@ -934,15 +941,72 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             globalAlertsRef.removeEventListener(alertsListener);
         }
 
-        globalAlertsRef = FirebaseDatabase.getInstance().getReference("global_traffic_alerts");
-        globalAlertsRef.addValueEventListener(alertsListener);
-        Log.i(TAG, "📡 [ALERTS] Listening on global_traffic_alerts");
+        try {
+            globalAlertsRef = FirebaseDatabase.getInstance().getReference("global_traffic_alerts");
+            globalAlertsRef.keepSynced(true);
+            globalAlertsRef.addValueEventListener(alertsListener);
+            Log.i(TAG, "📡 [ALERTS] Listening on global_traffic_alerts (keepSynced=true)");
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error escuchando global_traffic_alerts:", e);
+        }
 
         if (fleetId != null && !fleetId.isEmpty()) {
-            alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
-            alertsRef.addValueEventListener(alertsListener);
-            Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
+            try {
+                alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
+                alertsRef.keepSynced(true);
+                alertsRef.addValueEventListener(alertsListener);
+                Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error escuchando fleet traffic_alerts:", e);
+            }
         }
+    }
+
+    // ================================================================
+    // AUDIO FOCUS MANAGEMENT (Ducking de Uber, DiDi, Spotify y radio)
+    // ================================================================
+
+    private boolean requestNavigationAudioFocus() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+                navAudioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(attrs)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener(focusChange -> {})
+                    .build();
+                int res = am.requestAudioFocus(navAudioFocusRequest);
+                Log.i(TAG, "🔊 [AUDIO-FOCUS] Solicitud de audio focus otorgada: " + (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED));
+                return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+            } else {
+                int res = am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+                return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error pidiendo audio focus de navegación:", e);
+            return false;
+        }
+    }
+
+    private void releaseNavigationAudioFocus() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (navAudioFocusRequest != null) {
+                    am.abandonAudioFocusRequest(navAudioFocusRequest);
+                    navAudioFocusRequest = null;
+                    Log.i(TAG, "🔊 [AUDIO-FOCUS] Audio focus liberado con éxito");
+                }
+            } else {
+                am.abandonAudioFocus(null);
+            }
+        } catch (Exception ignored) {}
     }
 
     // ================================================================
@@ -1099,6 +1163,26 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 Log.i(TAG, "🔊 [TTS] AudioAttributes USAGE_ASSISTANCE_NAVIGATION_GUIDANCE configurados con éxito");
             }
 
+            // Utterance listener para liberar audio focus al finalizar de hablar
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override
+                public void onStart(String utteranceId) {
+                    Log.i(TAG, "🔊 [TTS] Locución iniciada: " + utteranceId);
+                }
+
+                @Override
+                public void onDone(String utteranceId) {
+                    Log.i(TAG, "🔊 [TTS] Locución completada: " + utteranceId);
+                    releaseNavigationAudioFocus();
+                }
+
+                @Override
+                public void onError(String utteranceId) {
+                    Log.w(TAG, "⚠️ [TTS] Locución con error: " + utteranceId);
+                    releaseNavigationAudioFocus();
+                }
+            });
+
             isTtsInitialized = true;
             Log.i(TAG, "🔊 TTS: TextToSpeech Initialized successfully");
 
@@ -1107,6 +1191,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 for (String pending : pendingSpeakQueue) {
                     if (!isVoiceMuted) {
                         Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado: \"" + pending + "\"");
+                        requestNavigationAudioFocus();
                         Bundle params = new Bundle();
                         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
                         tts.speak(pending, TextToSpeech.QUEUE_FLUSH, params, "pending_" + System.currentTimeMillis());
@@ -1136,11 +1221,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         Log.i(TAG, "🔊 [TTS] speak (vol " + alertVolumePercent + "%): \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
+            requestNavigationAudioFocus();
             Bundle params = new Bundle();
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
             int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "alert_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
+                releaseNavigationAudioFocus();
             }
         } else {
             Log.w(TAG, "⏳ [TTS] Motor TTS aún no listo. Encolando texto para despacho inmediato: " + text);
@@ -1194,15 +1281,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 mediaPlayer.setOnPreparedListener(mp -> {
                     Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo y reproduciendo con volumen: " + alertVolume);
                     try {
+                        requestNavigationAudioFocus();
                         mp.setVolume(alertVolume, alertVolume);
                         mp.start();
                     } catch (Exception e) {
                         Log.e(TAG, "❌ Error al iniciar MediaPlayer:", e);
+                        releaseNavigationAudioFocus();
                     }
                 });
 
                 mediaPlayer.setOnCompletionListener(mp -> {
                     Log.i(TAG, "✅ [NATIVE-AUDIO] Audio finalizado");
+                    releaseNavigationAudioFocus();
                     try {
                         mp.release();
                     } catch (Exception ignored) {}
@@ -1211,6 +1301,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 mediaPlayer.setOnErrorListener((mp, what, extra) -> {
                     Log.w(TAG, "⚠️ [NATIVE-AUDIO] Falló MediaPlayer (what=" + what + ", extra=" + extra + "). Usando fallback TTS...");
+                    releaseNavigationAudioFocus();
                     try {
                         mp.release();
                     } catch (Exception ignored) {}
@@ -1318,11 +1409,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 data.put("last_heartbeat", System.currentTimeMillis());
 
                 // Verificar dinámicamente el estado de permisos antes de reportar la ubicación
+                boolean hasFineLoc = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
                 boolean hasBgLoc = true;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     hasBgLoc = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-                } else {
-                    hasBgLoc = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
                 }
 
                 PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -1333,7 +1423,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     }
                 }
 
-                boolean permOk = hasBgLoc;
+                // Para un Foreground Service activo de ubicación, FINE_LOCATION es suficiente para rastreo continuo.
+                boolean permOk = hasFineLoc;
                 data.put("permissions_ok", permOk);
                 data.put("bg_location_ok", hasBgLoc);
                 data.put("battery_optimization_ok", isIgnoringBatt);
@@ -1461,6 +1552,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             @Override
             public void run() {
                 if (!isTracking) return;
+
+                // 1. Re-asegurar WakeLock y WifiLock si Android los soltó
+                acquireWakeLock();
+
+                // 2. Re-asegurar socket de Firebase en segundo plano
+                try {
+                    FirebaseDatabase.getInstance().goOnline();
+                } catch (Exception ignored) {}
+
                 long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
                 
                 // Si el GPS no se ha movido o no ha reportado en 60s, reforzamos el binding
@@ -1486,13 +1586,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void acquireWakeLock() {
-        if (wakeLock == null || !wakeLock.isHeld()) {
-            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PuntoAlertas::CpuWakeLock");
+        try {
+            if (wakeLock == null) {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PuntoAlertas::CpuWakeLock");
+                    wakeLock.setReferenceCounted(false);
+                }
+            }
+            if (wakeLock != null && !wakeLock.isHeld()) {
                 wakeLock.acquire();
                 Log.i(TAG, "🛡️ WakeLock Reforzado Activo (PuntoAlertas::CpuWakeLock)");
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error acquiring wakeLock: " + e.getMessage());
         }
         acquireWifiLock();
     }
@@ -1525,8 +1632,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Servicio de Rastreo Permanente", NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("Mantiene el GPS activo en segundo plano para recibir alertas de tráfico.");
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID, 
+                "Servicio de Rastreo Permanente y Radar", 
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            channel.setDescription("Mantiene el GPS activo en segundo plano y recibe alertas de tránsito en vivo.");
+            channel.setSound(null, null); // Silencioso para no pitar en cada fix GPS
+            channel.enableVibration(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -1544,10 +1657,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
-            // Fix v5.2: PRIORITY_LOW en lugar de PRIORITY_MIN.
-            // PRIORITY_MIN le indica al sistema que el servicio no es crítico y puede matarlo
-            // en situaciones de poca memoria. PRIORITY_LOW lo protege sin molestar al usuario.
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            // IMPORTANCE_DEFAULT / PRIORITY_DEFAULT protege el proceso del LowMemoryKiller de Android y Samsung
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();
@@ -1590,8 +1701,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 checkAndReportPermissions();
 
                 long now = System.currentTimeMillis();
-                if (now - lastHeartbeatTime >= 120000) { // 2 minutos
-                    Log.i(TAG, "🏓 Enviando ping de latido silencioso (GPS sin cambio)...");
+                if (now - lastHeartbeatTime >= 60000) { // Ping cada 60s para evitar sospecha de desconexión
+                    Log.i(TAG, "🏓 Enviando ping de latido silencioso...");
                     sendSilentHeartbeat();
                 }
 
@@ -1610,11 +1721,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void checkAndReportPermissions() {
         if (userId == null || userId.isEmpty()) return;
 
+        boolean hasFineLoc = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         boolean hasBgLocation = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             hasBgLocation = checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        } else {
-            hasBgLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         }
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -1625,7 +1735,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         }
 
-        boolean currentPermissionsOk = hasBgLocation;
+        // El Foreground Service requiere FINE_LOCATION. Si FINE_LOCATION está activo, el servicio funciona.
+        boolean currentPermissionsOk = hasFineLoc;
 
         // Si cambia el estado de los permisos (eliminada la condición redundante que causaba reportes cada 1 minuto)
         if (currentPermissionsOk != lastPermissionsOk) {

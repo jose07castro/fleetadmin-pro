@@ -191,7 +191,7 @@ const SettingsModule = (() => {
                         <div class="settings-item-label" style="color:var(--text-primary); font-weight:700; font-size: 0.95rem;">Protección contra Cierres</div>
                         <div class="settings-item-desc" style="color:var(--text-secondary); font-size: 0.75rem;">Evita que Android suspenda el rastreo del auto con la pantalla apagada.</div>
                     </div>
-                    <button class="btn btn-warning" onclick="AndroidServices.showBatteryExemptionDialog()" style="box-shadow: 0 4px 12px rgba(234,179,8,0.4); font-weight: 700; font-size: 0.85rem; padding: 10px 14px; white-space: nowrap;">
+                    <button class="btn btn-warning" onclick="AndroidServices.showBatteryExemptionDialog(true)" style="box-shadow: 0 4px 12px rgba(234,179,8,0.4); font-weight: 700; font-size: 0.85rem; padding: 10px 14px; white-space: nowrap;">
                         🛡️ Blindar GPS
                     </button>
                 </div>

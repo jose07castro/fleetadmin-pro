@@ -152,6 +152,27 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.e(TAG, "Error evaluating JS in onResume: " + e.getMessage());
         }
+        // Auto-recuperación de Foreground Service si el proceso de fondo fue eliminado por el sistema
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String savedUserId = prefs.getString("userId", null);
+            if (savedUserId != null && LocationTrackingService.instance == null) {
+                Log.i(TAG, "🛡️ [AUTO-RECOVERY] onResume detectó sesión previa (" + savedUserId + ") pero el servicio no estaba activo. Reiniciando servicio...");
+                String savedDriverName = prefs.getString("driverName", "Chofer");
+                String savedFleetId = prefs.getString("fleetId", null);
+                String savedServerUrl = prefs.getString("serverUrl", "https://fleetadmin-web-nueva.onrender.com");
+                
+                Intent serviceIntent = new Intent(this, LocationTrackingService.class);
+                serviceIntent.putExtra("userId", savedUserId);
+                serviceIntent.putExtra("driverName", savedDriverName);
+                serviceIntent.putExtra("fleetId", savedFleetId);
+                serviceIntent.putExtra("serverUrl", savedServerUrl);
+                androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error en auto-recovery de servicio en onResume: " + e.getMessage());
+        }
+
         if (!isUpdateFlowActive) {
             checkPlayStoreUpdate();
         }
@@ -286,41 +307,41 @@ public class MainActivity extends BridgeActivity {
         public void requestBatteryExemption() {
             Log.i(TAG, "📱 JS → requestBatteryExemption()");
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                    if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                        Log.i(TAG, "✅ La aplicación ya está exenta de optimizaciones de batería — omitiendo apertura de ajustes.");
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                boolean isIgnoring = (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(getPackageName()));
+
+                // Intento 1: Si no tiene la exención básica de Doze, solicitar diálogo nativo del sistema
+                if (!isIgnoring && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                        Log.i(TAG, "✅ Diálogo directo de exención de batería abierto");
                         return;
+                    } catch (Exception e1) {
+                        Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, intentando App Info...", e1);
                     }
                 }
 
-                // Intento 1: Diálogo directo de confirmación del sistema (ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                try {
-                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                    Log.i(TAG, "✅ Diálogo directo de exención de batería abierto");
-                    return;
-                } catch (Exception e1) {
-                    Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, intentando lista de optimización...", e1);
-                }
-
-                // Intento 2: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
-                try {
-                    Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                    startActivity(intentList);
-                    Log.i(TAG, "✅ Lista de optimización de batería abierta");
-                    return;
-                } catch (Exception e2) {
-                    Log.w(TAG, "⚠️ ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS falló, intentando App Info...", e2);
-                }
-
-                // Intento 3: Ajustes de la aplicación (App Info)
+                // Intento 2: Ajustes de la aplicación (App Info) — VITAL para Samsung One UI
+                // donde el usuario debe seleccionar Batería -> "Sin restricciones"
                 try {
                     Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                     intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
+                    intentAppDetails.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intentAppDetails);
-                    Log.i(TAG, "✅ Ajustes de la aplicación abiertos (App Info)");
+                    Log.i(TAG, "✅ Ajustes de la aplicación abiertos (App Info para Samsung 'Sin restricciones')");
+                    return;
+                } catch (Exception e2) {
+                    Log.w(TAG, "⚠️ ACTION_APPLICATION_DETAILS_SETTINGS falló, intentando lista de optimización...", e2);
+                }
+
+                // Intento 3: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
+                try {
+                    Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    intentList.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intentList);
+                    Log.i(TAG, "✅ Lista de optimización de batería abierta");
                 } catch (Exception e3) {
                     Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
                 }
