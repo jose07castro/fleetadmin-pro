@@ -188,10 +188,21 @@ const RadarModule = (() => {
             </div>
             <div id="radarMap" class="radar-map"></div>
             <div class="radar-warning-container" id="radarWarningContainer" style="position:absolute; top: 92px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; width: 90%; max-width: 400px; pointer-events: none;"></div>
-            <button id="radarMapStyleBtn" onclick="RadarModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
-                style="position:absolute; bottom: 80px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold; transition: transform 0.1s active;">
-                🗺️
-            </button>
+            <!-- Controles flotantes elevados del mapa (Zoom + / - y Estilo Satelital) -->
+            <div class="radar-floating-controls" style="position:absolute; bottom: 80px; right: 14px; z-index: 1000; display: flex; flex-direction: column; gap: 8px;">
+                <button id="radarZoomInBtn" onclick="RadarModule.zoomIn()" title="Acercar mapa (+)" 
+                    style="background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; width: 40px; height: 40px; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); user-select: none;">
+                    +
+                </button>
+                <button id="radarZoomOutBtn" onclick="RadarModule.zoomOut()" title="Alejar mapa (-)" 
+                    style="background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; width: 40px; height: 40px; font-size: 22px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); user-select: none;">
+                    −
+                </button>
+                <button id="radarMapStyleBtn" onclick="RadarModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
+                    style="background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 40px; height: 40px; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4); font-weight: bold; user-select: none;">
+                    🗺️
+                </button>
+            </div>
             <div class="radar-legend" id="radarLegend">
                 <span class="radar-legend-item">🚗 Choferes activos: <strong id="radarActiveCount">0</strong></span>
                 <span class="radar-legend-item">📷 Fotomultas: <strong id="radarCameraCount">80 oficiales</strong></span>
@@ -255,7 +266,7 @@ const RadarModule = (() => {
             center: { lat: defaultLat, lng: defaultLng },
             zoom: 13,
             styles: activeStyle,
-            zoomControl: true,
+            zoomControl: false, // Reemplazado por botones flotantes elevados (+ / -) para que nunca queden tapados por carteles o el pie
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false
@@ -1497,9 +1508,21 @@ const RadarModule = (() => {
         }
     }
 
+    function zoomIn() {
+        if (_map) {
+            _map.setZoom((_map.getZoom() || 13) + 1);
+        }
+    }
+
+    function zoomOut() {
+        if (_map) {
+            _map.setZoom((_map.getZoom() || 13) - 1);
+        }
+    }
+
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts, zoomIn, zoomOut
     };
 })();
