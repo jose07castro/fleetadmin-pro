@@ -99,7 +99,12 @@
     <script src="js/alerts.js?v=194"></script>
     <script src="js/components.js?v=194"></script>
     <script src="js/router.js?v=194"></script>
-    <!-- Se han eliminado los scripts de módulos mediante Patrón Lazy Loading en el Router -->
+    <!-- Prevenir alertas de autenticación y billing de Google Maps -->
+    <script>
+        window.gm_authFailure = function() {
+            console.warn('[GoogleMaps] Notificación de autenticación/billing interceptada silenciosamente.');
+        };
+    </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE&libraries=places"></script>
     <script src="js/modules/radar-v126.js?v=194"></script>
     <script src="js/modules/traffic-alerts.js?v=194"></script>

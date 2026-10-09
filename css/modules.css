@@ -2481,6 +2481,51 @@
     background: #1e293b;
 }
 
+/* ============================================================ */
+/* SUPRESIÓN DE CARTELES Y MARCAS DE AGUA DE GOOGLE MAPS        */
+/* ============================================================ */
+/* 1. Ocultar la capa gris y la marca de agua 'For development purposes only' */
+.gm-style-pbc,
+div.gm-style-pbc,
+div[class*="gm-style-pbc"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+/* 2. Ocultar carteles de error y diálogos nativos de Google Maps */
+.gm-err-container,
+.gm-err-content,
+.gm-err-icon,
+.gm-err-title,
+.gm-err-message,
+.gm-err-autocomplete,
+div[class*="gm-err"] {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* 3. Ocultar diálogos y modales creados en los contenedores de mapas */
+#radarMap div:has(> .gm-err-container),
+#radarMap div:has(> .gm-err-content),
+#radarMap div:has(> button.dismissButton),
+#live-map div:has(> .gm-err-container),
+#live-map div:has(> .gm-err-content),
+#live-map div:has(> button.dismissButton) {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* 4. Ocultar botón 'Aceptar' suelto del modal */
+#radarMap button.dismissButton,
+#live-map button.dismissButton {
+    display: none !important;
+}
+
 /* Legend bar */
 .radar-legend {
     display: flex;

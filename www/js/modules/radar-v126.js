@@ -149,6 +149,28 @@ const RadarModule = (() => {
         container.id = 'radarFullscreen';
         container.className = 'radar-fullscreen';
         container.innerHTML = `
+            <style>
+                .gm-style-pbc, div.gm-style-pbc, div[class*="gm-style-pbc"] {
+                    display: none !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    visibility: hidden !important;
+                }
+                .gm-err-container, .gm-err-content, .gm-err-icon, .gm-err-title, .gm-err-message, .gm-err-autocomplete, div[class*="gm-err"] {
+                    display: none !important;
+                    opacity: 0 !important;
+                    visibility: hidden !important;
+                    pointer-events: none !important;
+                }
+                #radarMap div:has(> .gm-err-container),
+                #radarMap div:has(> .gm-err-content),
+                #radarMap div:has(> button.dismissButton) {
+                    display: none !important;
+                }
+                #radarMap button.dismissButton {
+                    display: none !important;
+                }
+            </style>
             <div class="radar-header">
                 <div class="radar-header-left">
                     <span class="radar-header-icon">📡</span>
@@ -228,8 +250,74 @@ const RadarModule = (() => {
 
     // ============ CLOSE MAP ============
 
+    let _suppressInterval = null;
+    let _suppressObserver = null;
+    function _suppressGoogleOverlays() {
+        const clean = () => {
+            // 1. Quitar capa de desarrollo y marca de agua 'For development purposes only'
+            const pbcElements = document.querySelectorAll('.gm-style-pbc, [class*="gm-style-pbc"]');
+            pbcElements.forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+            });
+
+            // 2. Ocultar carteles de error nativos de Google Maps
+            const errElements = document.querySelectorAll('.gm-err-container, .gm-err-content, [class*="gm-err"]');
+            errElements.forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                const modalWrapper = el.closest('div[style*="position: absolute"]');
+                if (modalWrapper && modalWrapper !== document.getElementById('radarMap') && modalWrapper !== document.body) {
+                    modalWrapper.style.setProperty('display', 'none', 'important');
+                }
+            });
+
+            // 3. Buscar y silenciar modales con texto 'Esta página no puede cargar Google Maps' o 'propietario'
+            const candidates = document.querySelectorAll('#radarMap div, #radarMap dialog, body > div[style*="z-index"]');
+            candidates.forEach(node => {
+                const txt = node.textContent || node.innerText || '';
+                if (txt.includes('Esta página no puede cargar Google Maps') ||
+                    txt.includes("This page can't load Google Maps") ||
+                    txt.includes('¿Eres el propietario de este sitio web?')) {
+                    const btn = node.querySelector('button');
+                    if (btn) {
+                        try { btn.click(); } catch (e) {}
+                    }
+                    node.style.setProperty('display', 'none', 'important');
+                    node.style.setProperty('visibility', 'hidden', 'important');
+                    node.style.setProperty('pointer-events', 'none', 'important');
+                }
+            });
+        };
+
+        clean();
+        if (_suppressInterval) clearInterval(_suppressInterval);
+        _suppressInterval = setInterval(clean, 300);
+
+        const mapEl = document.getElementById('radarMap');
+        if (mapEl && window.MutationObserver) {
+            if (_suppressObserver) _suppressObserver.disconnect();
+            _suppressObserver = new MutationObserver(() => clean());
+            _suppressObserver.observe(mapEl, { childList: true, subtree: true });
+            _suppressObserver.observe(document.body, { childList: true });
+        }
+    }
+
     function close() {
         _isOpen = false;
+
+        // Limpiar supresor de Google
+        if (_suppressInterval) {
+            clearInterval(_suppressInterval);
+            _suppressInterval = null;
+        }
+        if (_suppressObserver) {
+            _suppressObserver.disconnect();
+            _suppressObserver = null;
+        }
 
         // Stop Firebase listener
         _stopFirebaseListener();
@@ -271,6 +359,9 @@ const RadarModule = (() => {
             streetViewControl: false,
             fullscreenControl: false
         });
+
+        // Supresión continua de marcas de agua 'For development purposes only' y carteles de error
+        _suppressGoogleOverlays();
 
         // Cargar pines de cámaras de fotomultas oficiales de Rosario
         _renderCameraMarkers();
