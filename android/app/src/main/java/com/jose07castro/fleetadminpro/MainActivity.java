@@ -46,8 +46,18 @@ public class MainActivity extends BridgeActivity {
         final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             Log.e(TAG, "🛡️ [CRASH-SHIELD] Excepción interceptada en " + thread.getName() + ":", throwable);
+            // Suprimir cualquier excepción mientras la app esté en segundo plano o relacionada con servicios
+            String msg = throwable != null ? throwable.getMessage() : "";
+            String cls = throwable != null ? throwable.getClass().getName() : "";
+            if (!LocationTrackingService.isAppInForeground ||
+                cls.contains("ForegroundService") ||
+                cls.contains("MissingForegroundService") ||
+                (msg != null && msg.contains("ForegroundService")) ||
+                throwable instanceof IllegalStateException) {
+                Log.w(TAG, "🛡️ [CRASH-SHIELD] Excepción en segundo plano neutralizada para no interrumpir el rastreo");
+                return;
+            }
             // Si la excepción ocurrió en el hilo principal (UI thread), delegar al manejador por defecto
-            // para evitar que la aplicación quede congelada/zombie (ANR)
             if (Looper.getMainLooper().getThread() == thread) {
                 if (defaultHandler != null) {
                     defaultHandler.uncaughtException(thread, throwable);

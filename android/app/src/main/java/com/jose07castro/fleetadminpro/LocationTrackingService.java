@@ -496,40 +496,52 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         lastBearing = (reliable != null) ? reliable : -1.0f;
         lastGPSTimestamp = System.currentTimeMillis();
 
-        // 1. Radarbot Engine
-        checkProximityToAlerts(location);
+        // 1. Radarbot Engine protegido contra excepciones
+        try {
+            checkProximityToAlerts(location);
+        } catch (Throwable t) {
+            Log.w(TAG, "⚠️ Error no fatal en checkProximityToAlerts:", t);
+        }
 
         // 2. Firebase Direct / SQLite Queue (Asíncrono en serviceHandler)
-        serviceHandler.post(() -> {
-            int battery = getBatteryLevel();
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String timestamp = sdf.format(new Date());
+        if (serviceHandler != null) {
+            serviceHandler.post(() -> {
+                try {
+                    int battery = getBatteryLevel();
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                    sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    String timestamp = sdf.format(new Date());
 
-            if (isNetworkAvailable()) {
-                sendQueuedLocations();
-                float pushBearing = lastBearing >= 0 ? lastBearing : 0f;
-                pushSingleToFirebaseAsync(lastLat, lastLng, lastSpeed, pushBearing, battery, timestamp, "native_foreground_v5_1", (error, ref) -> {
-                    if (error != null) {
-                        serviceHandler.post(() -> {
-                            dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, pushBearing, battery, timestamp);
-                            Log.i(TAG, "💾 Firebase falló. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
-                            updateStatusNotification();
+                    if (isNetworkAvailable()) {
+                        sendQueuedLocations();
+                        float pushBearing = lastBearing >= 0 ? lastBearing : 0f;
+                        pushSingleToFirebaseAsync(lastLat, lastLng, lastSpeed, pushBearing, battery, timestamp, "native_foreground_v5_1", (error, ref) -> {
+                            if (error != null && serviceHandler != null && dbHelper != null) {
+                                serviceHandler.post(() -> {
+                                    try {
+                                        dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, pushBearing, battery, timestamp);
+                                        Log.i(TAG, "💾 Firebase falló. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
+                                        updateStatusNotification();
+                                    } catch (Throwable ignored) {}
+                                });
+                            }
                         });
+                    } else if (dbHelper != null) {
+                        float queueBearing = lastBearing >= 0 ? lastBearing : 0f;
+                        dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, queueBearing, battery, timestamp);
+                        Log.i(TAG, "💾 Sin red. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
                     }
-                });
-            } else {
-                float queueBearing = lastBearing >= 0 ? lastBearing : 0f;
-                dbHelper.enqueueLocation(lastLat, lastLng, lastSpeed, queueBearing, battery, timestamp);
-                Log.i(TAG, "💾 Sin red. Encolando posición actual. Cola: " + dbHelper.getQueueSize());
-            }
+                } catch (Throwable t) {
+                    Log.w(TAG, "⚠️ Error no fatal despachando GPS a Firebase:", t);
+                }
+            });
+        }
 
-            // 3. UI Sync (WebView)
-            sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
+        // 3. UI Sync (WebView)
+        sendToWebView(lastLat, lastLng, lastSpeed, lastBearing);
 
-            // 4. Update Notification
-            updateStatusNotification();
-        });
+        // 4. Update Notification
+        updateStatusNotification();
     }
 
     // ================================================================
@@ -671,119 +683,123 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             return;
         }
 
-        long now = System.currentTimeMillis();
-        Float reliableBearing = (lastBearing >= 0) ? lastBearing : getReliableBearing(myLocation);
+        try {
+            long now = System.currentTimeMillis();
+            Float reliableBearing = (lastBearing >= 0) ? lastBearing : getReliableBearing(myLocation);
 
-        // 1. SEGUIMIENTO DE APROXIMACIÓN A RADAR ACTIVO EN SEGUNDO PLANO
-        if (activeBgApproach != null) {
-            RosarioRadars.StaticRadar radar = activeBgApproach.radar;
-            float[] results = new float[1];
-            Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                   radar.lat, radar.lng, results);
-            float distance = results[0];
+            // 1. SEGUIMIENTO DE APROXIMACIÓN A RADAR ACTIVO EN SEGUNDO PLANO
+            if (activeBgApproach != null) {
+                RosarioRadars.StaticRadar radar = activeBgApproach.radar;
+                float[] results = new float[1];
+                Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                       radar.lat, radar.lng, results);
+                float distance = results[0];
 
-            // A) Cámara superada (<= 18m o la distancia aumentó tras haber estado muy cerca)
-            if (distance <= 18.0f || (activeBgApproach.minDistance < 35.0f && distance > activeBgApproach.minDistance + 10.0f)) {
-                Log.i(TAG, "📷 [RADAR NATIVO] 🏁 Cámara superada en background: " + radar.name);
-                playBgPassedTone();
-                lastRadarAlertTimestamps.put(radar.id, now);
-                activeBgApproach = null;
+                // A) Cámara superada (<= 18m o la distancia aumentó tras haber estado muy cerca)
+                if (distance <= 18.0f || (activeBgApproach.minDistance < 35.0f && distance > activeBgApproach.minDistance + 10.0f)) {
+                    Log.i(TAG, "📷 [RADAR NATIVO] 🏁 Cámara superada en background: " + radar.name);
+                    playBgPassedTone();
+                    lastRadarAlertTimestamps.put(radar.id, now);
+                    activeBgApproach = null;
+                    return;
+                }
+
+                // B) Vehículo dobló, se alejó o se desvió de la calle (cancelar inmediatamente sin seguir pitando)
+                boolean stillAligned = isCorridorAligned(myLocation, reliableBearing, radar, distance);
+                boolean isMovingAway = distance > activeBgApproach.lastDistance + 9.0f;
+
+                if (isMovingAway || (!stillAligned && distance > 35.0f)) {
+                    Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se alejó, cancelando: " + radar.name);
+                    activeBgApproach = null;
+                    return;
+                }
+
+                // Actualizar distancias
+                if (distance < activeBgApproach.minDistance) {
+                    activeBgApproach.minDistance = distance;
+                }
+                activeBgApproach.lastDistance = distance;
+
+                // C) Etapas de aproximación
+                if (activeBgApproach.stage == 300 && distance <= 165.0f && distance >= 130.0f) {
+                    activeBgApproach.stage = 150;
+                    speakRadarConcise(radar, 150);
+                    return;
+                }
+                if (activeBgApproach.stage <= 150 && distance <= 125.0f && distance > 98.0f && activeBgApproach.stage != 120) {
+                    activeBgApproach.stage = 120;
+                    playBgProximityTone(120);
+                    return;
+                }
+                if (activeBgApproach.stage <= 120 && distance <= 98.0f && distance > 68.0f && activeBgApproach.stage != 90) {
+                    activeBgApproach.stage = 90;
+                    playBgProximityTone(90);
+                    return;
+                }
+                if (activeBgApproach.stage <= 90 && distance <= 68.0f && distance > 38.0f && activeBgApproach.stage != 60) {
+                    activeBgApproach.stage = 60;
+                    playBgProximityTone(60);
+                    return;
+                }
+                if (activeBgApproach.stage <= 60 && distance <= 38.0f && distance > 18.0f && activeBgApproach.stage != 30) {
+                    activeBgApproach.stage = 30;
+                    playBgProximityTone(30);
+                    return;
+                }
                 return;
             }
 
-            // B) Vehículo dobló, se alejó o se desvió de la calle (cancelar inmediatamente sin seguir pitando)
-            boolean stillAligned = isCorridorAligned(myLocation, reliableBearing, radar, distance);
-            boolean isMovingAway = distance > activeBgApproach.lastDistance + 9.0f;
+            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS (ALINEADA)
+            // Filtrar candidatos dentro del radio que estén estrictamente alineados con la calle de circulación
+            RosarioRadars.StaticRadar bestRadar = null;
+            float bestRadarDistance = Float.MAX_VALUE;
 
-            if (isMovingAway || (!stillAligned && distance > 35.0f)) {
-                Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se alejó, cancelando: " + radar.name);
-                activeBgApproach = null;
-                return;
-            }
+            for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
+                float[] results = new float[1];
+                Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                       radar.lat, radar.lng, results);
+                float distance = results[0];
 
-            // Actualizar distancias
-            if (distance < activeBgApproach.minDistance) {
-                activeBgApproach.minDistance = distance;
-            }
-            activeBgApproach.lastDistance = distance;
-
-            // C) Etapas de aproximación
-            if (activeBgApproach.stage == 300 && distance <= 165.0f && distance >= 130.0f) {
-                activeBgApproach.stage = 150;
-                speakRadarConcise(radar, 150);
-                return;
-            }
-            if (activeBgApproach.stage <= 150 && distance <= 125.0f && distance > 98.0f && activeBgApproach.stage != 120) {
-                activeBgApproach.stage = 120;
-                playBgProximityTone(120);
-                return;
-            }
-            if (activeBgApproach.stage <= 120 && distance <= 98.0f && distance > 68.0f && activeBgApproach.stage != 90) {
-                activeBgApproach.stage = 90;
-                playBgProximityTone(90);
-                return;
-            }
-            if (activeBgApproach.stage <= 90 && distance <= 68.0f && distance > 38.0f && activeBgApproach.stage != 60) {
-                activeBgApproach.stage = 60;
-                playBgProximityTone(60);
-                return;
-            }
-            if (activeBgApproach.stage <= 60 && distance <= 38.0f && distance > 18.0f && activeBgApproach.stage != 30) {
-                activeBgApproach.stage = 30;
-                playBgProximityTone(30);
-                return;
-            }
-            return;
-        }
-
-        // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS (ALINEADA)
-        // Filtrar candidatos dentro del radio que estén estrictamente alineados con la calle de circulación
-        RosarioRadars.StaticRadar bestRadar = null;
-        float bestRadarDistance = Float.MAX_VALUE;
-
-        for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
-            float[] results = new float[1];
-            Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                   radar.lat, radar.lng, results);
-            float distance = results[0];
-
-            if (distance <= RADAR_PROXIMITY_RADIUS_M) {
-                long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
-                if (now - lastTime > RADAR_COOLDOWN_MS) {
-                    if (isCorridorAligned(myLocation, reliableBearing, radar, distance)) {
-                        if (distance < bestRadarDistance) {
-                            bestRadarDistance = distance;
-                            bestRadar = radar;
+                if (distance <= RADAR_PROXIMITY_RADIUS_M) {
+                    long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
+                    if (now - lastTime > RADAR_COOLDOWN_MS) {
+                        if (isCorridorAligned(myLocation, reliableBearing, radar, distance)) {
+                            if (distance < bestRadarDistance) {
+                                bestRadarDistance = distance;
+                                bestRadar = radar;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if (bestRadar != null) {
-            activeBgApproach = new BgRadarApproach(bestRadar, bestRadarDistance, now);
-            speakRadarConcise(bestRadar, 300);
-            return;
-        }
+            if (bestRadar != null) {
+                activeBgApproach = new BgRadarApproach(bestRadar, bestRadarDistance, now);
+                speakRadarConcise(bestRadar, 300);
+                return;
+            }
 
-        // 3. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
-        if (!activeAlerts.isEmpty()) {
-            synchronized (activeAlerts) {
-                for (TrafficAlert alert : activeAlerts) {
-                    float[] results = new float[1];
-                    Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                           alert.lat, alert.lng, results);
-                    float distance = results[0];
+            // 3. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
+            if (!activeAlerts.isEmpty()) {
+                synchronized (activeAlerts) {
+                    for (TrafficAlert alert : activeAlerts) {
+                        float[] results = new float[1];
+                        Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                               alert.lat, alert.lng, results);
+                        float distance = results[0];
 
-                    if (distance <= PROXIMITY_RADIUS_M) {
-                        long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
-                        if (now - lastTime > COOLDOWN_MS) {
-                            lastAlertTimestamps.put(alert.id, now);
-                            speakProximityWarning(alert, distance);
+                        if (distance <= PROXIMITY_RADIUS_M) {
+                            long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
+                            if (now - lastTime > COOLDOWN_MS) {
+                                lastAlertTimestamps.put(alert.id, now);
+                                speakProximityWarning(alert, distance);
+                            }
                         }
                     }
                 }
             }
+        } catch (Throwable t) {
+            Log.w(TAG, "⚠️ Error capturado en checkProximityToAlerts (background):", t);
         }
     }
 

@@ -105,32 +105,6 @@ const AndroidServices = (() => {
                     }
                 };
                 launchNativeService();
-
-                // ── CAPA 2: BackgroundMode plugin (desactiva JS throttling) ──
-                if (Capacitor.Plugins.BackgroundMode) {
-                    try {
-                        await Capacitor.Plugins.BackgroundMode.enable();
-                        console.log('📱 AndroidServices: ✅ CAPA 2 — BackgroundMode habilitado');
-
-                        // Desactivar optimizaciones del WebView (JS timers throttling)
-                        if (Capacitor.Plugins.BackgroundMode.disableWebViewOptimizations) {
-                            await Capacitor.Plugins.BackgroundMode.disableWebViewOptimizations();
-                            console.log('📱 AndroidServices: ✅ WebView optimizations desactivadas');
-                        }
-
-                        await Capacitor.Plugins.BackgroundMode.setSettings({
-                            title: 'Punto Remis: Turno activo',
-                            text: `📍 GPS de alta precisión — ${vehiclePlate || 'En turno'}`,
-                            icon: 'ic_launcher',
-                            color: '1e1b4b',
-                            resume: true,
-                            hidden: false,
-                        });
-                    } catch (bgErr) {
-                        console.warn('📱 AndroidServices: BackgroundMode falló (no crítico):', bgErr.message);
-                    }
-                }
-
                 return;
             } catch (e) {
                 console.error('📱 AndroidServices: Error en ruta nativa:', e);
@@ -176,16 +150,6 @@ const AndroidServices = (() => {
                 } catch (e) {
                     console.error('📱 AndroidServices: Error deteniendo Service Java:', e);
                 }
-            }
-
-            // ── CAPA 2: Desactivar BackgroundMode ──
-            try {
-                if (Capacitor.Plugins.BackgroundMode) {
-                    await Capacitor.Plugins.BackgroundMode.disable();
-                    console.log('📱 AndroidServices: ✅ BackgroundMode desactivado');
-                }
-            } catch (e) {
-                console.warn('📱 AndroidServices: Error desactivando BackgroundMode:', e);
             }
         }
 
@@ -318,21 +282,7 @@ const AndroidServices = (() => {
             }
         }
 
-        // ── RUTA B: BackgroundMode plugin ──
-        try {
-            if (Capacitor.Plugins.BackgroundMode) {
-                const result = await Capacitor.Plugins.BackgroundMode.checkBatteryOptimizations();
-                if (!result || !result.disabled) {
-                    await Capacitor.Plugins.BackgroundMode.disableBatteryOptimizations();
-                    console.log('📱 AndroidServices: ✅ Diálogo de batería mostrado (BackgroundMode)');
-                } else {
-                    console.log('📱 AndroidServices: ✅ Ya exenta de optimización de batería');
-                }
-                return;
-            }
-        } catch (bgErr) {
-            console.warn('📱 AndroidServices: BackgroundMode battery check falló:', bgErr);
-        }
+        // ── RUTA B: Fallback manual ──
 
         // ── RUTA C: Fallback manual ──
         if (Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
