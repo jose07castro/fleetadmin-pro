@@ -736,8 +736,26 @@ const WhatsappBot = (() => {
         return patterns.some(p => p.test(t));
     }
 
+    // Grupos EXCLUIDOS explícitamente de las alertas de tránsito (a pedido del admin).
+    // Se comparan contra el nombre normalizado (sin acentos, emojis ni signos).
+    const EXCLUDED_TRAFFIC_GROUPS = [
+        'operativos arroyo seco',
+        'operativos arroyo'
+    ];
+
+    function _normalizeGroupName(groupName) {
+        return String(groupName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function _isExcludedTrafficGroup(groupName) {
+        const gn = _normalizeGroupName(groupName);
+        if (!gn) return false;
+        return EXCLUDED_TRAFFIC_GROUPS.some(ex => gn.includes(ex));
+    }
+
     function _isOperativoGroup(groupName) {
         if (!groupName) return false;
+        if (_isExcludedTrafficGroup(groupName)) return false;
         const gn = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const keywords = [
             'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
@@ -2794,13 +2812,18 @@ const WhatsappBot = (() => {
                     }
 
                     // 2. FILTRADO DE GRUPOS SELECCIONADOS
-                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Operativos Arroyo Seco, etc).
+                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Solo operativos de tránsito, etc).
+                    // "Operativos Arroyo Seco" fue EXCLUIDO a pedido del admin (ver EXCLUDED_TRAFFIC_GROUPS).
                     // Los chats privados del admin se permiten para diagnósticos.
                     let isTargetGroup = false;
                     if (isGroup) {
-                        const cleanedGroupName = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-                        isTargetGroup = cleanedGroupName.includes('operativos arroyo seco') || 
-                                        cleanedGroupName.includes('solo operativos de transito') ||
+                        // Exclusión explícita: se evalúa ANTES de cualquier coincidencia o rescate por palabras clave
+                        if (_isExcludedTrafficGroup(groupName)) {
+                            console.log(`🚫 [EXCLUDED-GROUP] Grupo excluido de alertas de tránsito: "${groupName}"`);
+                            continue;
+                        }
+                        const cleanedGroupName = _normalizeGroupName(groupName);
+                        isTargetGroup = cleanedGroupName.includes('solo operativos de transito') ||
                                         cleanedGroupName.includes('alertas') ||
                                         cleanedGroupName.includes('apps') ||
                                         _isOperativoGroup(groupName);
