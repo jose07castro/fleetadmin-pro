@@ -218,9 +218,12 @@ const AndroidServices = (() => {
         window._onNativeGPS = async function(lat, lng, speed, bearing) {
             _lastNativeGPSTime = Date.now();
 
+            // Filtrar rumbo inválido (< 0 o no numérico) para no enviar falso 0.0 al Copiloto
+            const validBearing = (typeof bearing === 'number' && !isNaN(bearing) && bearing >= 0) ? bearing : null;
+
             // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo) ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(lat, lng, speed, bearing);
+                CopilotModule.checkProximity(lat, lng, speed, validBearing);
             }
 
             // Validar que estemos en turno activo para enviar a Firebase

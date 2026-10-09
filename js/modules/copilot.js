@@ -1143,10 +1143,24 @@ const CopilotModule = (() => {
     /**
      * Extrae el primer nombre del chofer logueado para personalizar la voz de forma natural.
      */
+    /**
+     * Extrae el primer nombre del chofer logueado para personalizar la voz de forma natural.
+     */
     function _getDriverFirstName() {
         try {
             if (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function') {
                 const u = Auth.getUser();
+                const full = (u && (u.name || u.displayName)) || '';
+                if (full) {
+                    const first = full.trim().split(/\s+/)[0];
+                    if (first && first.length > 1 && !first.toLowerCase().includes('chofer') && !first.toLowerCase().includes('usuario')) {
+                        return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+                    }
+                }
+            }
+            const saved = localStorage.getItem('fleetadmin_user');
+            if (saved) {
+                const u = JSON.parse(saved);
                 const full = (u && (u.name || u.displayName)) || '';
                 if (full) {
                     const first = full.trim().split(/\s+/)[0];
@@ -1181,33 +1195,73 @@ const CopilotModule = (() => {
         return diff > 180 ? 360 - diff : diff;
     }
 
+    // Historial circular de posiciones para calcular rumbo de trayectoria inmune al ruido GPS
+    const _gpsHistory = [];
+
     /**
-     * Verifica si el vehículo circula realmente por la calle de la cámara y se aproxima hacia ella.
-     * Descarta calles paralelas, perpendiculares o circular en sentido opuesto.
+     * Obtiene el rumbo real de desplazamiento vehicular.
+     * Si no hay sensor nativo o la velocidad es baja, calcula el vector contra un punto previo (10m - 75m).
+     */
+    function _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, speedKmh) {
+        const now = Date.now();
+        _gpsHistory.push({ lat: currentLat, lng: currentLng, time: now, speed: speedKmh });
+        while (_gpsHistory.length > 8 || (_gpsHistory.length > 1 && (now - _gpsHistory[0].time) > 15000)) {
+            _gpsHistory.shift();
+        }
+
+        // 1. Si el sensor o GPS nativo reporta rumbo válido y velocidad de marcha
+        if (typeof rawBearing === 'number' && !isNaN(rawBearing) && rawBearing > 0 && speedKmh !== null && speedKmh >= 8) {
+            return rawBearing;
+        }
+
+        // 2. Vector geodésico entre el punto actual y un punto anterior con separación suficiente (10m a 75m)
+        for (let i = _gpsHistory.length - 2; i >= 0; i--) {
+            const prev = _gpsHistory[i];
+            const dist = _getDistance(prev.lat, prev.lng, currentLat, currentLng);
+            const timeDiff = (now - prev.time) / 1000;
+            if (dist >= 10 && dist <= 75 && timeDiff <= 15) {
+                return _calculateBearing(prev.lat, prev.lng, currentLat, currentLng);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifica con rigor geométrico si el vehículo circula por la misma calle que la cámara.
+     * Descarta calles paralelas (en Rosario siempre separadas por 90m a 125m) y perpendiculares.
      * @param {number} carLat
      * @param {number} carLng
-     * @param {number|null} carHeading - Rumbo en grados del vehículo
+     * @param {number|null} carHeading - Rumbo de trayectoria confirmado
      * @param {number} camLat
      * @param {number} camLng
-     * @param {number} distance - Distancia en metros al radar
-     * @returns {boolean} true si está en el corredor de la misma calle hacia la cámara
+     * @param {number} distance - Distancia en metros
+     * @param {number} [speedLimit=40]
+     * @returns {boolean}
      */
-    function _isCorridorAligned(carLat, carLng, carHeading, camLat, camLng, distance) {
-        if (carHeading === null || isNaN(carHeading)) return true;
+    function _isCorridorAligned(carLat, carLng, carHeading, camLat, camLng, distance, speedLimit = 40) {
+        // En cuadrícula urbana, si el vehículo no se desplaza o no hay rumbo seguro:
+        // A más de 35 metros NUNCA alertar para evitar falsos positivos de calles paralelas
+        if (carHeading === null || isNaN(carHeading)) {
+            return distance <= 35;
+        }
 
         const targetBearing = _calculateBearing(carLat, carLng, camLat, camLng);
         const angleDiff = _getAngleDifference(carHeading, targetBearing);
 
-        // 1. Sentido de avance: si la cámara queda a más de 42° de la trayectoria, descartar
-        if (angleDiff > 42) {
+        // 1. Cono frontal hacia la cámara:
+        // En una paralela a 100m, a 200m el desvío es de 26.5°. Exigir cono estrecho:
+        const maxAngle = (speedLimit >= 70) ? 18 : 22;
+        if (angleDiff > maxAngle) {
             return false;
         }
 
         // 2. Corredor transversal (Cross-track distance):
-        // En cuadrícula urbana (manzanas de 90 a 130m), una calle paralela tiene crossTrack > 70m.
-        // La misma calle/avenida tiene un ancho máximo de calzada de 15 a 35m.
+        // Distancia perpendicular lateral desde la trayectoria del vehículo hasta la cámara.
+        // En Rosario, las calles paralelas están a >= 90m. En la misma calle la cámara está a <= 15m.
+        // Tolerancia máxima: 20m para calles urbanas, 28m para autopistas.
         const crossTrack = distance * Math.sin(angleDiff * (Math.PI / 180));
-        const maxLateral = distance > 200 ? 38 : (distance > 100 ? 28 : 22);
+        const maxLateral = (speedLimit >= 70) ? 28 : 20;
 
         if (crossTrack > maxLateral) {
             return false; // Calle paralela descartada
@@ -1759,32 +1813,19 @@ const CopilotModule = (() => {
         const now = Date.now();
         const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed);
 
-        // Determinar rumbo (bearing) actual del vehículo
-        let currentBearing = (typeof rawBearing === 'number' && !isNaN(rawBearing) && rawBearing >= 0) ? rawBearing : null;
-        if (currentBearing === null && _lastPosition && _lastPosition.lat) {
-            const distFromLast = _getDistance(_lastPosition.lat, _lastPosition.lng, currentLat, currentLng);
-            if (distFromLast >= 4) {
-                currentBearing = _calculateBearing(_lastPosition.lat, _lastPosition.lng, currentLat, currentLng);
-            } else if (_lastPosition.bearing !== undefined) {
-                currentBearing = _lastPosition.bearing;
-            }
-        }
+        // Determinar rumbo (bearing) confiable de trayectoria vehicular
+        const reliableBearing = _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, currentSpeed);
 
         // Guardar última posición
-        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed, bearing: currentBearing };
+        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed, bearing: reliableBearing };
 
         // --- 1. PROCESAR RADAR ACTIVO EN SEGUIMIENTO ---
         if (_activeApproach) {
             const radar = _activeApproach.target;
             const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
-            const isCloser = dist < _activeApproach.minDistance;
-            if (isCloser) _activeApproach.minDistance = dist;
 
-            // Verificar si el chofer dobló y se desvió de la calle
-            const stillAligned = _isCorridorAligned(currentLat, currentLng, currentBearing, radar.lat, radar.lng, dist);
-
-            // A) Superó la cámara (pasó a menos de 20m o la distancia aumentó tras el punto más cercano)
-            if (dist <= 20 || (_activeApproach.minDistance < 50 && dist > _activeApproach.minDistance + 15)) {
+            // A) Superó la cámara (pasó a menos de 18m o la distancia aumentó tras estar muy cerca)
+            if (dist <= 18 || (_activeApproach.minDistance < 35 && dist > _activeApproach.minDistance + 10)) {
                 console.log(`📡 [COPILOTO] 🏁 Cámara superada: ${radar.name}`);
                 _playPassedChime();
                 _lastAlertTime[radar.id] = now;
@@ -1793,42 +1834,51 @@ const CopilotModule = (() => {
                 return;
             }
 
-            // B) Se alejó o dobló hacia otra calle lejos de la cámara
-            if (!stillAligned && dist > 100) {
-                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o cambió de rumbo, cancelando aproximación a: ${radar.name}`);
+            // B) Vehículo dobló, se alejó o se desvió de la calle (cancelar inmediatamente sin seguir pitando)
+            const stillAligned = _isCorridorAligned(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar.limit);
+            const isMovingAway = dist > _activeApproach.lastDistance + 9;
+
+            if (isMovingAway || (!stillAligned && dist > 35)) {
+                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o se alejó, cancelando aproximación a: ${radar.name}`);
                 _hideRadarHUD();
                 _activeApproach = null;
                 return;
             }
+
+            // Actualizar distancias
+            if (dist < _activeApproach.minDistance) {
+                _activeApproach.minDistance = dist;
+            }
+            _activeApproach.lastDistance = dist;
 
             // Actualizar HUD con distancia viva
             _showRadarHUD(radar, dist, currentSpeed);
 
             // C) ETAPAS DE APROXIMACIÓN:
             // Etapa 150 metros (Repetición concisa de voz)
-            if (_activeApproach.stage === 300 && dist <= 165 && dist >= 125) {
+            if (_activeApproach.stage === 300 && dist <= 165 && dist >= 130) {
                 _activeApproach.stage = 150;
                 _speakRadarConcise(radar, 150);
                 return;
             }
 
             // Pitidos cada 30 metros (120m, 90m, 60m, 30m) con frecuencia y volumen ascendente
-            if (_activeApproach.stage <= 150 && dist <= 130 && dist > 105 && _activeApproach.stage !== 120) {
+            if (_activeApproach.stage <= 150 && dist <= 125 && dist > 98 && _activeApproach.stage !== 120) {
                 _activeApproach.stage = 120;
                 _playProximityBeep(120);
                 return;
             }
-            if (_activeApproach.stage <= 120 && dist <= 105 && dist > 75 && _activeApproach.stage !== 90) {
+            if (_activeApproach.stage <= 120 && dist <= 98 && dist > 68 && _activeApproach.stage !== 90) {
                 _activeApproach.stage = 90;
                 _playProximityBeep(90);
                 return;
             }
-            if (_activeApproach.stage <= 90 && dist <= 75 && dist > 45 && _activeApproach.stage !== 60) {
+            if (_activeApproach.stage <= 90 && dist <= 68 && dist > 38 && _activeApproach.stage !== 60) {
                 _activeApproach.stage = 60;
                 _playProximityBeep(60);
                 return;
             }
-            if (_activeApproach.stage <= 60 && dist <= 45 && dist > 20 && _activeApproach.stage !== 30) {
+            if (_activeApproach.stage <= 60 && dist <= 38 && dist > 18 && _activeApproach.stage !== 30) {
                 _activeApproach.stage = 30;
                 _playProximityBeep(30);
                 return;
@@ -1837,44 +1887,41 @@ const CopilotModule = (() => {
             return;
         }
 
-        // --- 2. BUSCAR NUEVA FOTOMULTA O ALERTA ---
-        // A) Buscar radares fijos oficiales dentro de 315 metros
-        let nearestRadar = null;
-        let minRadarDist = Infinity;
+        // --- 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS ---
+        // Filtrar candidatos dentro del radio que estén estrictamente alineados con la calle de circulación
+        let bestRadar = null;
+        let bestRadarDist = Infinity;
 
         for (const radar of STATIC_RADARS) {
             const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
-            if (dist < minRadarDist) {
-                minRadarDist = dist;
-                nearestRadar = radar;
+            if (dist <= WARNING_DISTANCE_METERS) {
+                const lastAlert = _lastAlertTime[radar.id] || 0;
+                if (now - lastAlert > COOLDOWN_MS) {
+                    if (_isCorridorAligned(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar.limit)) {
+                        if (dist < bestRadarDist) {
+                            bestRadarDist = dist;
+                            bestRadar = radar;
+                        }
+                    }
+                }
             }
         }
 
-        if (nearestRadar && minRadarDist <= WARNING_DISTANCE_METERS) {
-            const lastAlert = _lastAlertTime[nearestRadar.id] || 0;
-            if (now - lastAlert > COOLDOWN_MS) {
-                // FILTRO DE CALLE Y RUMBO (DESCARTAR CALLES PARALELAS)
-                const isAligned = _isCorridorAligned(currentLat, currentLng, currentBearing, nearestRadar.lat, nearestRadar.lng, minRadarDist);
-                if (isAligned) {
-                    _activeApproach = {
-                        radarId: nearestRadar.id,
-                        target: nearestRadar,
-                        stage: 300,
-                        minDistance: minRadarDist,
-                        lastDistance: minRadarDist,
-                        startedAt: now
-                    };
+        if (bestRadar) {
+            _activeApproach = {
+                radarId: bestRadar.id,
+                target: bestRadar,
+                stage: 300,
+                minDistance: bestRadarDist,
+                lastDistance: bestRadarDist,
+                startedAt: now
+            };
 
-                    _showRadarHUD(nearestRadar, minRadarDist, currentSpeed);
-                    _triggerVibration(false);
-                    // Locución concisa y personalizada a 300m:
-                    _speakRadarConcise(nearestRadar, 300);
-                    return;
-                } else {
-                    // Ignorado por estar en calle paralela o rumbo distinto
-                    // console.log(`📡 [COPILOTO] Filtro paralelo: ${nearestRadar.name} a ${minRadarDist.toFixed(0)}m descartado.`);
-                }
-            }
+            _showRadarHUD(bestRadar, bestRadarDist, currentSpeed);
+            _triggerVibration(false);
+            // Locución concisa y personalizada a 300m:
+            _speakRadarConcise(bestRadar, 300);
+            return;
         }
 
         // B) Alertas de tránsito en tiempo real (policía, operativos, accidentes)
