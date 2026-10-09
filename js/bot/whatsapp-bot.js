@@ -33,12 +33,15 @@ function getGeminiKey() {
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
+let _googleGeocodeDisabled = false; // Se activa si Google devuelve REQUEST_DENIED
+
 
 
 async function callGemini(prompt) {
@@ -128,9 +131,10 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -716,7 +720,9 @@ const WhatsappBot = (() => {
             'fotomulta', 'evitar', 'cana', 'alertas', 'reporte', 'accidente', 'choque', 
             'ambulancia', 'bomberos', 'heca', 'gendarme', 'gendarmeria', 'federal', 
             'parando', 'palo', 'inspeccion', 'limpio', 'libre', 'corte', 'demora',
-            'motos', 'grua', 'carreton', 'fiscalizacion', 'fisca', 'servicios publicos'
+            'motos', 'grua', 'carreton', 'fiscalizacion', 'fisca', 'servicios publicos',
+            'alcoholemia', 'narcolemia', 'patrulla', 'patrullero', 'prefectura',
+            'frenando', 'revisando', 'papeles', 'documentacion', 'reten', 'retenes'
         ];
         return keywords.some(kw => t.includes(kw));
     }
@@ -740,7 +746,10 @@ const WhatsappBot = (() => {
     // Se comparan contra el nombre normalizado (sin acentos, emojis ni signos).
     const EXCLUDED_TRAFFIC_GROUPS = [
         'operativos arroyo seco',
-        'operativos arroyo'
+        'operativos arroyo',
+        'arroyo seco',
+        'resina',
+        'bisuteria'
     ];
 
     function _normalizeGroupName(groupName) {
@@ -756,12 +765,16 @@ const WhatsappBot = (() => {
     function _isOperativoGroup(groupName) {
         if (!groupName) return false;
         if (_isExcludedTrafficGroup(groupName)) return false;
-        const gn = groupName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const gn = _normalizeGroupName(groupName);
         const keywords = [
             'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
             'chanchos', 'gorra', 'ratis', 'radar', 'movil', 'seguridad', 'camara', 
-            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte',
-            'trabajo' // Grupo de pruebas del admin — Gemini filtra el contenido igual
+            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte', 'trabajo',
+            'alcoholemia', 'narcolemia', 'inspeccion', 'fiscalizacion',
+            // Grupos de choferes / conductores / apps de Rosario y alrededores
+            'uber', 'didi', 'cabify', 'cadifay', 'chofer', 'choferes', 
+            'conductor', 'conductores', 'remis', 'remises', 'taxi', 'taxistas', 
+            'apps', 'flota', 'fleet'
         ];
         return keywords.some(kw => gn.includes(kw));
     }
@@ -3977,7 +3990,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
                 // Dado que el usuario ya cuenta con facturación vinculada y clave oficial, habilitamos este canal ultrapreciso.
                 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
-                if (googleApiKey) {
+                if (googleApiKey && !_googleGeocodeDisabled) {
                     try {
                         console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}" en ciudad: "${city}"`);
                         // Buscamos forzando la región y el idioma en Argentina
@@ -4004,10 +4017,14 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                                 console.log(`📍 [GEO-GOOGLE] ✅ ¡Ubicación válida a ${distKm.toFixed(1)}km del centro! Lat=${lat}, Lng=${lng}`);
                             } else {
                                 console.warn(`⚠️ [GEO-GOOGLE] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — posible dirección inventada. Descartando, se usará ubicación aproximada.`);
-                                // No marcar como isResolved, intentar Photon o fallback
                             }
                         } else {
-                            console.warn(`⚠️ [GEO-GOOGLE] Fallo en respuesta (status=${gResponse.data?.status || 'UNKNOWN'}). Procediendo al fallback gratuito...`);
+                            if (gResponse.data?.status === 'REQUEST_DENIED') {
+                                _googleGeocodeDisabled = true;
+                                console.warn(`⚠️ [GEO-GOOGLE] Google Geocode API sin facturación activa (REQUEST_DENIED). Conmutando a Photon para esta sesión.`);
+                            } else {
+                                console.warn(`⚠️ [GEO-GOOGLE] Fallo en respuesta (status=${gResponse.data?.status || 'UNKNOWN'}). Procediendo al fallback gratuito...`);
+                            }
                         }
                     } catch (errG) {
                         console.warn(`⚠️ [GEO-GOOGLE] Error de conexión o autorización: ${errG.message}. Procediendo al fallback gratuito...`);
@@ -4016,9 +4033,6 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
 
                 // --- NIVEL 2: PHOTON FALLBACK (En caso de que la API de Google no esté activada en la consola) ---
                 if (!isResolved) {
-                    // Respetar delay básico para evitar rate limits
-                    await new Promise(r => setTimeout(r, 1200));
-                    
                     console.log(`🔍 [GEO-PHOTON] Ejecutando consulta gratuita de emergencia para: "${expandedAddress}" en ciudad: "${city}"`);
                     
                     // REPARACIÓN CRÍTICA: Reemplazar " y " por ", " para Photon/OpenStreetMap
