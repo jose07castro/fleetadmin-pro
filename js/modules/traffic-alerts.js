@@ -302,7 +302,7 @@
             // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
                 const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
-                const fullAudioUrl = alert.audioUrl.startsWith('http') 
+                const fullAudioUrl = (alert.audioUrl.startsWith('http') || alert.audioUrl.startsWith('data:'))
                     ? alert.audioUrl 
                     : `${serverUrl}${alert.audioUrl.startsWith('/') ? '' : '/'}${alert.audioUrl}`;
                 console.log(`🎵 [AUDIO-ORIGINAL] Intentando reproducir audio de alerta: ${fullAudioUrl}`);

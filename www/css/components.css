@@ -1158,3 +1158,152 @@
         transform: translateX(-50%) translateY(100%);
     }
 }
+
+/* ================================================================
+   BOTÓN CIRCULAR DE MICRÓFONO PARA ALERTAS DE COPILOTO Y TRÁNSITO
+   ================================================================ */
+.copilot-mic-circle-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: #ffffff;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.copilot-mic-circle-btn:hover {
+    transform: scale(1.06);
+    box-shadow: 0 6px 18px rgba(239, 68, 68, 0.6);
+    filter: brightness(1.1);
+}
+
+.copilot-mic-circle-btn:active {
+    transform: scale(0.92);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.7);
+}
+
+/* ================================================================
+   MODAL DE GRABACIÓN DE ALERTA DE VOZ (VoiceAlertModule)
+   ================================================================ */
+.voice-alert-record-container {
+    position: relative;
+    width: 90px;
+    height: 90px;
+    margin: 8px auto 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.voice-alert-record-icon {
+    font-size: 44px;
+    z-index: 2;
+    filter: drop-shadow(0 2px 8px rgba(239, 68, 68, 0.5));
+}
+
+.voice-alert-pulse-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.2);
+    border: 2px solid rgba(239, 68, 68, 0.5);
+    z-index: 1;
+}
+
+.voice-alert-pulse-ring.recording {
+    animation: voiceAlertPulse 1.4s ease-out infinite;
+}
+
+@keyframes voiceAlertPulse {
+    0% { transform: scale(0.85); opacity: 0.9; }
+    50% { transform: scale(1.18); opacity: 0.45; }
+    100% { transform: scale(1.35); opacity: 0; }
+}
+
+.voice-alert-badge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.voice-badge {
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-primary, #ffffff);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.voice-badge.active {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: #ef4444;
+    color: #f87171;
+    font-weight: 700;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.4);
+}
+
+/* Selector de Tipo de Voz (Voz de la App vs Voz Real) */
+.voice-mode-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.voice-mode-option {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary, #94a3b8);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+}
+
+.voice-mode-option.active {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: #818cf8;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.35);
+}
+
+.voice-mode-desc {
+    font-size: 11px;
+    color: var(--text-secondary, #94a3b8);
+    margin-bottom: 14px;
+    text-align: center;
+    line-height: 1.35;
+}

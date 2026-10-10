@@ -1485,7 +1485,10 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     const key = process.env.GEMINI_API_KEY || (typeof WhatsappBot.getGeminiKey === 'function' ? WhatsappBot.getGeminiKey() : null);
     if (!key || !audioBuffer) return null;
     const audioB64 = audioBuffer.toString('base64');
-    const prompt = `Transcribí de forma exacta el audio de este mensaje de tránsito. Devolvé únicamente el texto transcrito, sin añadir ningún comentario, nota ni formato.`;
+    const prompt = `Sos un transcriptor de mensajes de seguridad vial y tránsito para una flota en Argentina.
+Transcribí de forma clara el audio de este mensaje.
+REGLA ESTRICTA DE MODERACIÓN: Si el audio contiene insultos, palabras groseras o desagradables (como puto, puta, concha, pija, culo, verga, poronga, traba, boludo, pelotudo, forro, mierda, etc.), ELIMINÁ esas palabras por completo de la transcripción. No uses asteriscos ni notas, simplemente quitalas y transcribí el resto del mensaje informativo sobre el tránsito o control vial con redacción limpia y coherente.
+Devolvé únicamente el texto limpio final, sin añadir comentarios, explicaciones ni formato.`;
     const axios = require('axios');
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
     for (const url of GEMINI_MODELS) {
@@ -1507,10 +1510,108 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     return null;
 }
 
+/**
+ * Filtra y elimina insultos y palabras prohibidas de un texto, conservando el resto del mensaje.
+ * @param {string} text 
+ * @returns {{ cleanText: string, hadForbiddenWords: boolean, removedWords: string[] }}
+ */
+function sanitizeForbiddenWords(text) {
+    if (!text || typeof text !== 'string') {
+        return { cleanText: '', hadForbiddenWords: false, removedWords: [] };
+    }
+
+    let cleaned = text;
+    let hadForbiddenWords = false;
+    const removedWords = [];
+
+    // 1. Frases compuestas comunes de insultos
+    const COMPOUND_PHRASES = [
+        /\b(?:la\s+)?concha\s+de\s+(?:tu|su|la)\s+(?:madre|hermana|lora|mono|tia)\b/gi,
+        /\b(?:la\s+)?puta\s+que\s+(?:te|lo|los|las)\s+pari[oó]\b/gi,
+        /\b(?:la\s+)?puta\s+madre\b/gi,
+        /\b(?:forr[oa]s?\s+de\s+mierda)\b/gi,
+        /\bhij[oa]s?\s+de\s+(?:mil\s+)?puta\b/gi,
+        /\bhdp\b/gi,
+        /\blpm(?:qlp)?\b/gi,
+        /\band[aá](?:te)?\s+a\s+la\s+mierda\b/gi,
+        /\bchup[aá](?:me|te)?\s+(?:un\s+huevo|la\s+pija|la\s+chota|la\s+verga|la\s+poronga|el\s+culo|un\s+pingo)\b/gi,
+        /\bme\s+cago\s+en\s+(?:la\s+puta|la\s+concha|todo|diez)\b/gi
+    ];
+
+    for (const pattern of COMPOUND_PHRASES) {
+        if (pattern.test(cleaned)) {
+            hadForbiddenWords = true;
+            const matches = cleaned.match(pattern);
+            if (matches) removedWords.push(...matches);
+            cleaned = cleaned.replace(pattern, ' ');
+        }
+    }
+
+    // 2. Palabras individuales e insultos (con soporte para vocales alargadas ej: putooo, veeerga)
+    const SINGLE_WORD_PATTERNS = [
+        /\bp+u+t+[oa](?:s|it[oa]s?)?\b/gi,           // puto, puta, putos, putas, putita, putito
+        /\bc+o+n+c+h+[ao](?:s|ud[oa]s?)?\b/gi,      // concha, conchas, conchudo, conchuda
+        /\bp+i+j+a(?:s|z[oa]s?)?\b/gi,              // pija, pijas, pijazo
+        /\bc+u+l+o(?:s|it[oa]s?)?\b/gi,             // culo, culos, culito
+        /\bv+e+r+g+a(?:s|z[oa]s?)?\b/gi,            // verga, vergas, vergazo
+        /\bp+o+r+o+n+g+a(?:s|it[oa]s?)?\b/gi,       // poronga, porongas
+        /\bt+r+a+b+a+s?\b/gi,                       // traba, trabas
+        /\bb+o+l+u+d+[oa](?:s|ces|z)?\b/gi,         // boludo, boluda, boludeces
+        /\bp+e+l+o+t+u+d+[oa]s?\b/gi,               // pelotudo, pelotuda
+        /\bf+o+r+r+[oa]s?\b/gi,                     // forro, forra
+        /\bc+h+o+t+[ao]s?\b/gi,                     // choto, chota
+        /\bt+a+r+a+d+[oa]s?\b/gi,                   // tarado, tarada
+        /\bp+a+j+e+r+[oa]s?\b/gi,                   // pajero, pajera
+        /\bm+i+e+r+d+a+s?\b/gi,                     // mierda
+        /\bc+a+g+[oó]+n+(?:a|es)?\b/gi,             // cagon, cagona, cagones
+        /\bc+a+g+a+d+a+s?\b/gi,                     // cagada
+        /\bc+u+l+i+a+[oa]s?\b/gi,                   // culiao, culiada
+        /\bo+r+t+o+s?\b/gi,                         // orto
+        /\bo+j+e+t+e+s?\b/gi,                       // ojete
+        /\bt+r+o+l+[oa]s?\b/gi,                     // trolo, trola
+        /\bm+o+g+[oó]+l+i+c+[oa]s?\b/gi,            // mogolico, mogolica
+        /\bm+a+l+p+a+r+i+d+[oa]s?\b/gi,             // malparido, malparida
+        /\bs+o+r+e+t+e+s?\b/gi,                     // sorete
+        /\bc+a+b+r+[oó]+n+(?:a|es)?\b/gi,           // cabron
+        /\bi+m+b+[eé]+c+i+l+(?:es)?\b/gi,           // imbecil
+        /\be+s+t+[uú]+p+i+d+[oa]s?\b/gi             // estupido, estupida
+    ];
+
+    for (const pattern of SINGLE_WORD_PATTERNS) {
+        if (pattern.test(cleaned)) {
+            hadForbiddenWords = true;
+            const matches = cleaned.match(pattern);
+            if (matches) removedWords.push(...matches);
+            cleaned = cleaned.replace(pattern, ' ');
+        }
+    }
+
+    // 3. Limpieza de artículos o preposiciones colgantes
+    cleaned = cleaned.replace(/\b(?:de|a|el|la|los|las|un|una|unos|unas)\s*([,.:;!?]|$)/gi, '$1');
+
+    // 4. Limpieza de espaciado y signos de puntuación
+    cleaned = cleaned
+        .replace(/\s+/g, ' ')
+        .replace(/\s*([,.:;!?])\s*/g, '$1 ')
+        .replace(/([,.:;!?])\s*\1+/g, '$1')
+        .replace(/^[,.:;!?-]+\s*/, '')
+        .trim();
+
+    if (cleaned.length > 0) {
+        cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+
+    return {
+        cleanText: cleaned,
+        hadForbiddenWords,
+        removedWords
+    };
+}
+
 // Endpoint de Alertas Dinámicas en Tiempo Real
 app.post('/api/alerts/dynamic', async (req, res) => {
     try {
-        const { text, audio, audioMimeType, lat, lng, type, authorName, fleetId } = req.body;
+        const { text, audio, audioMimeType, lat, lng, type, authorName, fleetId, voiceMode = 'app' } = req.body;
 
         if (!lat || !lng || !type || !authorName) {
             return res.status(400).json({ error: 'Faltan parámetros requeridos: lat, lng, type, authorName' });
@@ -1521,32 +1622,85 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             return res.status(503).json({ error: 'Base de datos de Firebase no disponible' });
         }
 
+        const typeLabels = {
+            checkpoint: 'Control vehicular y operativo',
+            police:     'Control policial',
+            municipal:  'Inspector municipal de tránsito',
+            warning:    'Precaución en la vía',
+            radar:      'Radar de velocidad',
+            accident:   'Accidente en la vía'
+        };
+        const defaultTypeLabel = typeLabels[type] || 'Control o alerta de tránsito';
+
         let originalText = text || '';
         let transcribedText = '';
+        let audioUrl = null;
+        let detectedBadWordsInAudio = false;
 
-        // 1. Si viene audio en base64, transcribirlo usando Gemini
+        // 1. Si viene audio en base64
         if (audio) {
-            console.log(`🎙️ [DYNAMIC-ALERT] Procesando audio de alerta (${audioMimeType || 'audio/ogg'}) de ${authorName}...`);
+            console.log(`🎙️ [DYNAMIC-ALERT] Procesando audio de alerta (${audioMimeType || 'audio/webm'}) de ${authorName} (modo: ${voiceMode})...`);
             const audioBuffer = Buffer.from(audio, 'base64');
+
+            // Intentar transcribir con Gemini (para el texto de la alerta y para moderación)
             const transcription = await callGeminiAudio(audioBuffer, audioMimeType);
             if (transcription) {
                 transcribedText = transcription;
                 originalText = transcription;
                 console.log(`🎙️ [DYNAMIC-ALERT] Transcripción Gemini: "${transcribedText}"`);
             } else {
-                console.warn('⚠️ [DYNAMIC-ALERT] Falló la transcripción de Gemini. Usando texto por defecto.');
-                transcribedText = 'Alerta reportada por voz';
-                originalText = '[Audio no transcrito]';
+                console.warn('⚠️ [DYNAMIC-ALERT] Falló la transcripción de Gemini. Usando etiqueta del tipo seleccionado.');
+                transcribedText = defaultTypeLabel;
+                originalText = defaultTypeLabel;
             }
         }
 
-        if (!originalText) {
-            return res.status(400).json({ error: 'Debes proporcionar un parámetro "text" o un archivo de "audio" base64' });
+        // Moderación y limpieza de palabras prohibidas/insultos
+        const moderation = sanitizeForbiddenWords(originalText);
+        let finalVoiceMode = voiceMode;
+
+        if (moderation.hadForbiddenWords) {
+            detectedBadWordsInAudio = true;
+            console.log(`🚫 [DYNAMIC-ALERT-CENSOR] Se detectaron insultos en la alerta de ${authorName}: [${moderation.removedWords.join(', ')}]. Palabras eliminadas. Texto limpio: "${moderation.cleanText}"`);
         }
 
-        const alertText = originalText;
+        // Si después de quitar insultos no quedó texto útil, usar etiqueta por defecto
+        let cleanText = moderation.cleanText.trim();
+        if (!cleanText || cleanText.length < 3) {
+            cleanText = defaultTypeLabel;
+        }
 
-        // 2. Publicar la alerta en Firebase (los dispositivos la vocalizan mediante TTS nativo local)
+        // Si el usuario eligió 'Mi Voz Real' pero el audio contenía insultos:
+        // NO podemos difundir el audio grabado porque contiene las malas palabras habladas.
+        // Se descarta el audio y se difunde con la voz limpia de la app (TTS) usando el texto saneado.
+        if (audio && finalVoiceMode === 'real') {
+            if (detectedBadWordsInAudio) {
+                console.log(`⚠️ [DYNAMIC-ALERT] Modo 'real' cambiado a 'app' porque el audio original contenía insultos. Se emitirá vía voz TTS limpia.`);
+                finalVoiceMode = 'app';
+                audioUrl = null;
+            } else {
+                // Audio limpio sin insultos: guardar en disco y emitir audioUrl
+                try {
+                    const ext = (audioMimeType && audioMimeType.includes('ogg')) ? 'ogg' :
+                                (audioMimeType && audioMimeType.includes('mp3')) ? 'mp3' : 'webm';
+                    const alertIdTemp = `alert_dynamic_${Date.now()}`;
+                    const audioFileName = `${alertIdTemp}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+                    const audioPath = path.join(audioDir, audioFileName);
+                    fs.writeFileSync(audioPath, Buffer.from(audio, 'base64'));
+                    audioUrl = `/audio/${audioFileName}`;
+                    console.log(`💾 [DYNAMIC-ALERT] Audio original limpio guardado en disco: ${audioUrl}`);
+                } catch (saveErr) {
+                    console.error('⚠️ [DYNAMIC-ALERT] Error guardando archivo de audio en disco:', saveErr);
+                    audioUrl = `data:${audioMimeType || 'audio/webm'};base64,${audio}`;
+                }
+            }
+        }
+
+        const alertText = cleanText;
+
+        // 2. Publicar la alerta en Firebase
+        // Si finalVoiceMode === 'app' o audioUrl es null -> Los dispositivos la anuncian con voz sintetizada (TTS) limpia y anónima.
+        // Si finalVoiceMode === 'real', audioUrl tiene la ruta del audio limpio -> Los dispositivos reproducen el audio original del chofer.
         const alertId = `alert_dynamic_${Date.now()}`;
         const finalFleetId = fleetId || await WhatsappBot.getFleetId() || 'default_fleet';
 
@@ -1560,9 +1714,11 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             expiresAt: Date.now() + (60 * 60 * 1000), // Expiración: 60 minutos
             authorName: authorName,
             status: 'active',
-            audioUrl: null,
+            voiceMode: finalVoiceMode,
+            audioUrl: (finalVoiceMode === 'real') ? audioUrl : null,
             originalText: alertText,
-            description: `Alerta dinámica reportada por ${authorName}`
+            description: (finalVoiceMode === 'real') ? `Audio de ${authorName}` : alertText,
+            censorApplied: detectedBadWordsInAudio
         };
 
         // Guardar en fleets/${fleetId}/traffic_alerts/
@@ -1571,14 +1727,16 @@ app.post('/api/alerts/dynamic', async (req, res) => {
         // Guardar en el nodo global global_traffic_alerts/ para que todos los dispositivos la escuchen
         await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
 
-        console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId}`);
+        console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId} (modo: ${finalVoiceMode}, moderada: ${detectedBadWordsInAudio})`);
         res.json({
             ok: true,
             alertId,
             fleetId: finalFleetId,
-            transcription: transcribedText,
+            transcription: alertText,
             location: alertText,
-            audioUrl: null
+            voiceMode: finalVoiceMode,
+            audioUrl: alertData.audioUrl,
+            censorApplied: detectedBadWordsInAudio
         });
 
     } catch (e) {

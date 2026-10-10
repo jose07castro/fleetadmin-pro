@@ -28,7 +28,6 @@ const Components = (() => {
                     </div>
                 </div>
                 ${renderMobileBottomNav(activeRoute, role)}
-                ${role === 'driver' ? renderVoiceAlertFab() : ''}
             </div>
         `;
     }

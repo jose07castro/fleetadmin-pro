@@ -182,29 +182,36 @@ const ShiftsModule = (() => {
                 </div>
 
             <!-- Widget Estado Copiloto de Fotomultas y Tránsito -->
-            <div class="card" style="padding: 12px 14px; margin-bottom: var(--space-4); background: linear-gradient(135deg, rgba(15,23,42,0.03), rgba(239,68,68,0.06)); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 22px;">📷</span>
-                    <div>
-                        <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                            Copiloto Fotomultas y Tránsito
-                            <span style="background: #10b981; color: white; font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 800;">ACTIVO</span>
+            <div class="card" style="padding: 12px 14px; margin-bottom: var(--space-4); background: linear-gradient(135deg, rgba(15,23,42,0.03), rgba(239,68,68,0.06)); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">🛡️</span>
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                Copiloto Fotomultas y Tránsito
+                                <span style="background: #10b981; color: white; font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 800;">ACTIVO</span>
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                         </div>
-                        <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
-                        <span style="font-size: 13px;">🔊</span>
-                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
-                            id="shiftsVolSlider"
-                            title="Ajustar volumen"
-                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
-                            style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
-                        <span id="shiftsVolLabel" style="font-size: 10px; font-weight: 700; color: var(--text-secondary); min-width: 26px;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
+                            <span style="font-size: 13px;">🔊</span>
+                            <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                                id="shiftsVolSlider"
+                                title="Ajustar volumen"
+                                oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
+                                style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
+                            <span id="shiftsVolLabel" style="font-size: 10px; font-weight: 700; color: var(--text-secondary); min-width: 26px;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
+                        </div>
+                        <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                            💡 Sugerencia Desarrollador
+                        </button>
                     </div>
-                    <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 12px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
-                        💡 Sugerencia Desarrollador
+                    <button type="button" class="copilot-mic-circle-btn" onclick="VoiceAlertModule.showRecordModal()" title="Reportar control policial u operativo de tránsito por voz" aria-label="Reportar Alerta por Voz">
+                        🎤
                     </button>
                 </div>
             </div>
@@ -333,29 +340,36 @@ const ShiftsModule = (() => {
             </div>
 
             <!-- Widget Estado Copiloto de Fotomultas y Tránsito -->
-            <div class="card" style="padding: 12px 14px; margin-bottom: var(--space-4); background: linear-gradient(135deg, rgba(15,23,42,0.03), rgba(239,68,68,0.06)); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 22px;">🛡️</span>
-                    <div>
-                        <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                            Copiloto Fotomultas y Tránsito
-                            <span style="background: #10b981; color: white; font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 800;">ACTIVO</span>
+            <div class="card" style="padding: 12px 14px; margin-bottom: var(--space-4); background: linear-gradient(135deg, rgba(15,23,42,0.03), rgba(239,68,68,0.06)); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">🛡️</span>
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                Copiloto Fotomultas y Tránsito
+                                <span style="background: #10b981; color: white; font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 800;">ACTIVO</span>
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                         </div>
-                        <div style="font-size: 11px; color: var(--text-secondary);">80 cámaras oficiales + alertas de operativos en vivo</div>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
-                        <span style="font-size: 13px;">🔊</span>
-                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
-                            id="shiftsActiveVolSlider"
-                            title="Ajustar volumen"
-                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
-                            style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
-                        <span id="shiftsActiveVolLabel" style="font-size: 10px; font-weight: 700; color: var(--text-secondary); min-width: 26px;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.06); padding: 4px 8px; border-radius: 8px;" title="Volumen independiente de la voz">
+                            <span style="font-size: 13px;">🔊</span>
+                            <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
+                                id="shiftsActiveVolSlider"
+                                title="Ajustar volumen"
+                                oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);"
+                                style="width: 55px; height: 4px; accent-color: #ef4444; cursor: pointer; margin: 0;" />
+                            <span id="shiftsActiveVolLabel" style="font-size: 10px; font-weight: 700; color: var(--text-secondary); min-width: 26px;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
+                        </div>
+                        <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                            💡 Sugerencia Desarrollador
+                        </button>
                     </div>
-                    <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 12px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
-                        💡 Sugerencia Desarrollador
+                    <button type="button" class="copilot-mic-circle-btn" onclick="VoiceAlertModule.showRecordModal()" title="Reportar control policial u operativo de tránsito por voz" aria-label="Reportar Alerta de Control">
+                        🎤
                     </button>
                 </div>
             </div>

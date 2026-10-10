@@ -12,6 +12,7 @@ const VoiceAlertModule = (() => {
     let _seconds = 0;
     let _selectedType = 'checkpoint';
     let _selectedMime = '';
+    let _voiceMode = 'app';
     
     const MAX_RECORDING_SECONDS = 15;
 
@@ -29,8 +30,8 @@ const VoiceAlertModule = (() => {
      * Muestra el modal de grabación e inicia el proceso.
      */
     function showRecordModal() {
-        if (!Auth.isDriver()) {
-            Components.showToast('⚠️ Solo los conductores pueden reportar alertas', 'warning');
+        if (!Auth.isDriver() && !Auth.isOwner()) {
+            Components.showToast('⚠️ Solo conductores y titulares pueden reportar alertas', 'warning');
             return;
         }
 
@@ -42,6 +43,7 @@ const VoiceAlertModule = (() => {
         _selectedType = 'checkpoint'; // Reset por defecto
         _audioChunks = [];
         _seconds = 0;
+        _voiceMode = localStorage.getItem('fa_voice_alert_mode') || 'app';
 
         // Detectar tipo MIME compatible
         _selectedMime = '';
@@ -71,18 +73,40 @@ const VoiceAlertModule = (() => {
                     Seleccioná el tipo de alerta:
                 </div>
                 <div class="voice-alert-badge-grid">
-                    <button class="voice-badge active" data-type="checkpoint" onclick="VoiceAlertModule.selectType('checkpoint', this)">
+                    <button type="button" class="voice-badge active" data-type="checkpoint" onclick="VoiceAlertModule.selectType('checkpoint', this)">
                         🚧 Control
                     </button>
-                    <button class="voice-badge" data-type="police" onclick="VoiceAlertModule.selectType('police', this)">
+                    <button type="button" class="voice-badge" data-type="police" onclick="VoiceAlertModule.selectType('police', this)">
                         🚔 Policía
                     </button>
-                    <button class="voice-badge" data-type="municipal" onclick="VoiceAlertModule.selectType('municipal', this)">
+                    <button type="button" class="voice-badge" data-type="municipal" onclick="VoiceAlertModule.selectType('municipal', this)">
                         🦊 Inspector
                     </button>
-                    <button class="voice-badge" data-type="warning" onclick="VoiceAlertModule.selectType('warning', this)">
+                    <button type="button" class="voice-badge" data-type="warning" onclick="VoiceAlertModule.selectType('warning', this)">
                         ⚠️ Peligro
                     </button>
+                </div>
+
+                <div style="font-weight:700; margin-bottom:var(--space-2); font-size:var(--font-size-sm); color:var(--text-primary); text-align:left;">
+                    Voz del aviso al difundir:
+                </div>
+                <div class="voice-mode-selector">
+                    <button type="button" class="voice-mode-option ${_voiceMode === 'app' ? 'active' : ''}" data-mode="app" onclick="VoiceAlertModule.selectVoiceMode('app', this)">
+                        <span style="font-size:16px;">🤖</span>
+                        <span>Voz de la App</span>
+                    </button>
+                    <button type="button" class="voice-mode-option ${_voiceMode === 'real' ? 'active' : ''}" data-mode="real" onclick="VoiceAlertModule.selectVoiceMode('real', this)">
+                        <span style="font-size:16px;">🗣️</span>
+                        <span>Mi Voz Real</span>
+                    </button>
+                </div>
+                <div class="voice-mode-desc" id="voice-mode-desc">
+                    ${_voiceMode === 'real'
+                        ? '🗣️ Los demás choferes escucharán directamente tu grabación de audio original.'
+                        : '🤖 La app transcribirá tu aviso y lo leerá con la voz del sistema (100% anónimo y privado).'}
+                </div>
+                <div style="font-size:11px; color:#10b981; background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.22); border-radius:8px; padding:6px 10px; text-align:center; margin-bottom:12px; line-height:1.35;">
+                    🛡️ <strong>Moderación activa:</strong> Se eliminan insultos y palabras desagradables automáticamente.
                 </div>
             </div>
         `;
@@ -179,6 +203,27 @@ const VoiceAlertModule = (() => {
     }
 
     /**
+     * Selecciona el modo de voz: 'app' (voz sintética del asistente) o 'real' (audio grabado).
+     */
+    function selectVoiceMode(mode, element) {
+        _voiceMode = mode;
+        try {
+            localStorage.setItem('fa_voice_alert_mode', mode);
+        } catch (e) {}
+
+        const options = document.querySelectorAll('.voice-mode-option');
+        options.forEach(opt => opt.classList.remove('active'));
+        if (element) element.classList.add('active');
+
+        const descEl = document.getElementById('voice-mode-desc');
+        if (descEl) {
+            descEl.innerText = mode === 'real'
+                ? '🗣️ Los demás choferes escucharán directamente tu grabación de audio original.'
+                : '🤖 La app transcribirá tu aviso y lo leerá con la voz del sistema (100% anónimo y privado).';
+        }
+    }
+
+    /**
      * Detiene la grabación y dispara el envío automático.
      */
     function stopAndSend() {
@@ -246,92 +291,122 @@ const VoiceAlertModule = (() => {
         const statusEl = document.getElementById('voice-alert-status');
         if (statusEl) statusEl.innerText = 'Obteniendo ubicación GPS...';
 
-        // Obtener geolocalización de alta precisión
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
-                
-                try {
-                    if (statusEl) statusEl.innerText = 'Procesando audio...';
+        function getFallbackCoords() {
+            if (window._lastKnownGPS && window._lastKnownGPS.lat && window._lastKnownGPS.lng) {
+                return { lat: window._lastKnownGPS.lat, lng: window._lastKnownGPS.lng };
+            }
+            if (typeof GPSModule !== 'undefined' && GPSModule.getLastPosition) {
+                const p = GPSModule.getLastPosition();
+                if (p && p.lat && p.lng) return { lat: p.lat, lng: p.lng };
+            }
+            const storedLat = parseFloat(localStorage.getItem('fa_last_lat') || localStorage.getItem('last_user_lat') || '0');
+            const storedLng = parseFloat(localStorage.getItem('fa_last_lng') || localStorage.getItem('last_user_lng') || '0');
+            if (!isNaN(storedLat) && !isNaN(storedLng) && storedLat !== 0) {
+                return { lat: storedLat, lng: storedLng };
+            }
+            return null;
+        }
 
-                    const blob = new Blob(_audioChunks, { type: _selectedMime || 'audio/webm' });
-                    
-                    // v192 FIX: Declarar base64Data en scope superior para acceso en catch
-                    let base64Data = null;
+        const proceedWithCoords = async (lat, lng) => {
+            try {
+                if (statusEl) statusEl.innerText = 'Procesando audio...';
 
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = async () => {
-                        try {
-                            base64Data = reader.result.split(',')[1];
-                            const currentUser = Auth.getUser();
-                            const author = currentUser ? currentUser.name : 'Conductor';
-                            const fleetId = Auth.getFleetId() || 'default_fleet';
+                const blob = new Blob(_audioChunks, { type: _selectedMime || 'audio/webm' });
+                let base64Data = null;
 
-                            if (statusEl) statusEl.innerText = 'Procesando alerta...';
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = async () => {
+                    try {
+                        base64Data = reader.result.split(',')[1];
+                        const currentUser = Auth.getUser();
+                        const author = currentUser ? currentUser.name : 'Conductor';
+                        const fleetId = Auth.getFleetId() || 'default_fleet';
 
-                            const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
+                        if (statusEl) statusEl.innerText = 'Procesando alerta...';
 
-                            const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    audio: base64Data,
-                                    audioMimeType: _selectedMime || 'audio/webm',
-                                    lat: lat,
-                                    lng: lng,
-                                    type: _selectedType,
-                                    authorName: author,
-                                    fleetId: fleetId
-                                })
-                            });
+                        const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
 
-                            const result = await response.json();
-                            if (!response.ok) {
-                                throw new Error(result.error || 'Error en el procesamiento del servidor');
-                            }
+                        const response = await fetch(`${serverUrl}/api/alerts/dynamic`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                audio: base64Data,
+                                audioMimeType: _selectedMime || 'audio/webm',
+                                lat: lat,
+                                lng: lng,
+                                type: _selectedType,
+                                voiceMode: _voiceMode,
+                                authorName: author,
+                                fleetId: fleetId
+                            })
+                        });
 
-                            console.log(`✅ [VOICE-ALERT] Procesada por backend:`, result);
-                            Components.closeModal();
-                            Components.showToast('🎤 Alerta procesada y enviada a la flota', 'success');
-
-                        } catch (err) {
-                            console.error('❌ Error enviando alerta de voz:', err);
-                            // v192 FIX: base64Data accesible desde scope superior
-                            if (base64Data) {
-                                const currentUser = Auth.getUser();
-                                _queueOfflineVoiceAlert({
-                                    audio: base64Data,
-                                    audioMimeType: _selectedMime || 'audio/webm',
-                                    lat: lat,
-                                    lng: lng,
-                                    type: _selectedType,
-                                    authorName: currentUser ? currentUser.name : 'Conductor',
-                                    fleetId: Auth.getFleetId() || 'default_fleet',
-                                    timestamp: Date.now()
-                                });
-                                Components.closeModal();
-                                Components.showToast('📶 Sin conexión. Alerta guardada; se enviará automáticamente al reconectarse.', 'warning');
-                            } else {
-                                Components.closeModal();
-                                Components.showToast(`❌ Error procesando audio: ${err.message || 'Error desconocido'}`, 'danger');
-                            }
+                        const result = await response.json();
+                        if (!response.ok) {
+                            throw new Error(result.error || 'Error en el procesamiento del servidor');
                         }
-                    };
-                } catch (err) {
-                    console.error('❌ Error inicial al leer audio:', err);
-                    if (statusEl) statusEl.innerText = 'Error al procesar.';
-                    Components.showToast(`❌ Error: ${err.message || 'Error desconocido'}`, 'danger');
+
+                        console.log(`✅ [VOICE-ALERT] Procesada por backend (${_voiceMode}):`, result);
+                        Components.closeModal();
+                        const toastMsg = result.censorApplied
+                            ? (_voiceMode === 'real'
+                                ? '⚠️ Alerta enviada: se eliminaron palabras inapropiadas y se difundió con voz limpia de la app.'
+                                : '⚠️ Alerta enviada: se eliminaron palabras inapropiadas del mensaje.')
+                            : (_voiceMode === 'real'
+                                ? '🎤 Alerta enviada con tu audio original a la flota'
+                                : '🤖 Alerta enviada y convertida a la voz de la app');
+                        Components.showToast(toastMsg, result.censorApplied ? 'warning' : 'success');
+
+                    } catch (err) {
+                        console.error('❌ Error enviando alerta de voz:', err);
+                        if (base64Data) {
+                            const currentUser = Auth.getUser();
+                            _queueOfflineVoiceAlert({
+                                audio: base64Data,
+                                audioMimeType: _selectedMime || 'audio/webm',
+                                lat: lat,
+                                lng: lng,
+                                type: _selectedType,
+                                voiceMode: _voiceMode,
+                                authorName: currentUser ? currentUser.name : 'Conductor',
+                                fleetId: Auth.getFleetId() || 'default_fleet',
+                                timestamp: Date.now()
+                            });
+                            Components.closeModal();
+                            Components.showToast('📶 Sin conexión. Alerta guardada; se enviará automáticamente al reconectarse.', 'warning');
+                        } else {
+                            Components.closeModal();
+                            Components.showToast(`❌ Error procesando audio: ${err.message || 'Error desconocido'}`, 'danger');
+                        }
+                    }
+                };
+            } catch (err) {
+                console.error('❌ Error inicial al leer audio:', err);
+                if (statusEl) statusEl.innerText = 'Error al procesar.';
+                Components.showToast(`❌ Error: ${err.message || 'Error desconocido'}`, 'danger');
+                Components.closeModal();
+            }
+        };
+
+        // Obtener geolocalización de alta precisión con fallback
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                proceedWithCoords(position.coords.latitude, position.coords.longitude);
+            },
+            (geoErr) => {
+                console.warn('⚠️ getCurrentPosition falló, verificando coordenadas de respaldo:', geoErr);
+                const fallback = getFallbackCoords();
+                if (fallback) {
+                    console.log('📍 Usando coordenadas de respaldo para alerta:', fallback);
+                    proceedWithCoords(fallback.lat, fallback.lng);
+                } else {
+                    console.error('❌ Error de Geolocalización:', geoErr);
+                    Components.showToast('⚠️ No se pudo obtener tu ubicación GPS. Activá el GPS e intentalo nuevamente.', 'danger');
                     Components.closeModal();
                 }
             },
-            (geoErr) => {
-                console.error('❌ Error de Geolocalización:', geoErr);
-                Components.showToast('⚠️ No se pudo obtener tu ubicación GPS. Activá el GPS e intentalo nuevamente.', 'danger');
-                Components.closeModal();
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
         );
     }
 
@@ -390,6 +465,7 @@ const VoiceAlertModule = (() => {
     return {
         showRecordModal,
         selectType,
+        selectVoiceMode,
         stopAndSend,
         cancelRecording
     };

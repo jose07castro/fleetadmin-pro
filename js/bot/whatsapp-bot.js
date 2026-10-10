@@ -115,7 +115,7 @@ Los conductores raramente dicen la ciudad completa en el audio. Debes DEDUCIR e 
 
 Determiná:
 1. Si el audio reporta alguna situación de tránsito activa: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
-2. La transcripción exacta de lo que dice el audio
+2. La transcripción de lo que dice el audio. REGLA ESTRICTA DE MODERACIÓN: Si en el audio dicen palabras desagradables o insultos (como puto, puta, concha, pija, culo, verga, poronga, traba, boludo, pelotudo, forro, etc.), ELIMINÁ esas palabras por completo de la transcripción y transcribí únicamente el resto del mensaje informativo vial de forma clara y limpia.
 3. El tipo de alerta: police / checkpoint / radar / accident / traffic / warning
 4. La dirección o intersección mencionada (null si no hay ninguna)
 
@@ -694,21 +694,105 @@ const WhatsappBot = (() => {
     // Diccionario de Slang Rosarino (Sincronizado con el cliente)
     const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
 
-    // Lista de palabras/insultos prohibidos para censura o rechazo de alertas (Modo Moderación)
+    // Lista de palabras/insultos prohibidos para censura o moderación de alertas
     const FORBIDDEN_WORDS = [
-        'boludo', 'boluda', 'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'tarado', 'tarada',
-        'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra', 'pelotudo', 'pelotuda', 'orto',
-        'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada', 'pija', 'chota', 'mierda',
-        'trola', 'trolo'
+        'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'pija', 'culo', 'verga', 'poronga', 'traba',
+        'boludo', 'boluda', 'tarado', 'tarada', 'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra',
+        'pelotudo', 'pelotuda', 'orto', 'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada',
+        'chota', 'mierda', 'trola', 'trolo', 'sorete', 'cabron', 'malparido', 'imbecil'
     ];
 
     function _containsForbiddenWords(text) {
         if (!text) return false;
         const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        return FORBIDDEN_WORDS.some(word => {
-            // Check for substring match to be extra safe and catch variations like "boludoo"
-            return normalized.includes(word);
-        });
+        return FORBIDDEN_WORDS.some(word => normalized.includes(word));
+    }
+
+    /**
+     * Elimina palabras prohibidas e insultos de un texto manteniendo la información vial útil.
+     */
+    function _sanitizeForbiddenWords(text) {
+        if (!text || typeof text !== 'string') {
+            return { cleanText: '', hadForbiddenWords: false, removedWords: [] };
+        }
+
+        let cleaned = text;
+        let hadForbiddenWords = false;
+        const removedWords = [];
+
+        const COMPOUND_PHRASES = [
+            /\b(?:la\s+)?concha\s+de\s+(?:tu|su|la)\s+(?:madre|hermana|lora|mono|tia)\b/gi,
+            /\b(?:la\s+)?puta\s+que\s+(?:te|lo|los|las)\s+pari[oó]\b/gi,
+            /\b(?:la\s+)?puta\s+madre\b/gi,
+            /\b(?:forr[oa]s?\s+de\s+mierda)\b/gi,
+            /\bhij[oa]s?\s+de\s+(?:mil\s+)?puta\b/gi,
+            /\bhdp\b/gi,
+            /\blpm(?:qlp)?\b/gi,
+            /\band[aá](?:te)?\s+a\s+la\s+mierda\b/gi,
+            /\bchup[aá](?:me|te)?\s+(?:un\s+huevo|la\s+pija|la\s+chota|la\s+verga|la\s+poronga|el\s+culo|un\s+pingo)\b/gi,
+            /\bme\s+cago\s+en\s+(?:la\s+puta|la\s+concha|todo|diez)\b/gi
+        ];
+
+        for (const pattern of COMPOUND_PHRASES) {
+            if (pattern.test(cleaned)) {
+                hadForbiddenWords = true;
+                const matches = cleaned.match(pattern);
+                if (matches) removedWords.push(...matches);
+                cleaned = cleaned.replace(pattern, ' ');
+            }
+        }
+
+        const SINGLE_WORD_PATTERNS = [
+            /\bp+u+t+[oa](?:s|it[oa]s?)?\b/gi,
+            /\bc+o+n+c+h+[ao](?:s|ud[oa]s?)?\b/gi,
+            /\bp+i+j+a(?:s|z[oa]s?)?\b/gi,
+            /\bc+u+l+o(?:s|it[oa]s?)?\b/gi,
+            /\bv+e+r+g+a(?:s|z[oa]s?)?\b/gi,
+            /\bp+o+r+o+n+g+a(?:s|it[oa]s?)?\b/gi,
+            /\bt+r+a+b+a+s?\b/gi,
+            /\bb+o+l+u+d+[oa](?:s|ces|z)?\b/gi,
+            /\bp+e+l+o+t+u+d+[oa]s?\b/gi,
+            /\bf+o+r+r+[oa]s?\b/gi,
+            /\bc+h+o+t+[ao]s?\b/gi,
+            /\bt+a+r+a+d+[oa]s?\b/gi,
+            /\bp+a+j+e+r+[oa]s?\b/gi,
+            /\bm+i+e+r+d+a+s?\b/gi,
+            /\bc+a+g+[oó]+n+(?:a|es)?\b/gi,
+            /\bc+a+g+a+d+a+s?\b/gi,
+            /\bc+u+l+i+a+[oa]s?\b/gi,
+            /\bo+r+t+o+s?\b/gi,
+            /\bo+j+e+t+e+s?\b/gi,
+            /\bt+r+o+l+[oa]s?\b/gi,
+            /\bm+o+g+[oó]+l+i+c+[oa]s?\b/gi,
+            /\bm+a+l+p+a+r+i+d+[oa]s?\b/gi,
+            /\bs+o+r+e+t+e+s?\b/gi,
+            /\bc+a+b+r+[oó]+n+(?:a|es)?\b/gi,
+            /\bi+m+b+[eé]+c+i+l+(?:es)?\b/gi,
+            /\be+s+t+[uú]+p+i+d+[oa]s?\b/gi
+        ];
+
+        for (const pattern of SINGLE_WORD_PATTERNS) {
+            if (pattern.test(cleaned)) {
+                hadForbiddenWords = true;
+                const matches = cleaned.match(pattern);
+                if (matches) removedWords.push(...matches);
+                cleaned = cleaned.replace(pattern, ' ');
+            }
+        }
+
+        cleaned = cleaned.replace(/\b(?:de|a|el|la|los|las|un|una|unos|unas)\s*([,.:;!?]|$)/gi, '$1');
+        cleaned = cleaned
+            .replace(/\s+/g, ' ')
+            .replace(/\s*([,.:;!?])\s*/g, '$1 ')
+            .replace(/([,.:;!?])\s*\1+/g, '$1')
+            .replace(/^[,.:;!?-]+\s*/, '')
+            .trim();
+
+        if (cleaned.length > 0) {
+            cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+        }
+
+        return { cleanText: cleaned, hadForbiddenWords, removedWords };
     }
 
     function _hasTrafficKeywords(text) {
@@ -3075,9 +3159,16 @@ const WhatsappBot = (() => {
                                         continue; // Saltar este mensaje completamente
                                     }
                                     // Es alerta de tránsito: usar la transcripción como texto
-                                    text = audioAnalysis.transcription || '';
-                                    console.log(`✅ [AUDIO-FILTER] Audio APROBADO como alerta de tránsito (${audioAnalysis.type}).`);
-                                    // Si Gemini detectó dirección y tipo, crear alerta directamente
+                                    const moderation = _sanitizeForbiddenWords(audioAnalysis.transcription || '');
+                                    text = moderation.cleanText || 'Reporte por audio de voz';
+                                    console.log(`✅ [AUDIO-FILTER] Audio APROBADO como alerta de tránsito (${audioAnalysis.type}). Moderado: ${moderation.hadForbiddenWords}`);
+
+                                    // Si el audio de WhatsApp contenía insultos, silenciar el audio crudo para que la app lea el texto limpio vía TTS
+                                    const finalAudioUrl = moderation.hadForbiddenWords ? null : audioUrl;
+                                    if (moderation.hadForbiddenWords) {
+                                        console.log(`⚠️ [AUDIO-FILTER] Audio de WhatsApp contenía insultos [${moderation.removedWords.join(', ')}]. Se eliminaron del texto y se silencia el audio grabado (se leerá vía TTS limpia).`);
+                                    }
+
                                     isAudioOnlyAlert = false;
                                     await _processAlert(
                                         audioAnalysis.address || null,
@@ -3085,8 +3176,8 @@ const WhatsappBot = (() => {
                                         groupName,
                                         audioAnalysis.type || 'checkpoint',
                                         msg.key.id,
-                                        audioUrl,
-                                        audioAnalysis.transcription ? audioAnalysis.transcription.substring(0, 100) : 'Reporte por audio de voz',
+                                        finalAudioUrl,
+                                        text.substring(0, 100),
                                         jid
                                     );
                                     continue;
@@ -3421,8 +3512,13 @@ const WhatsappBot = (() => {
                     }
 
                     // --- FILTRO DE PALABRAS PROHIBIDAS / INSULTOS ---
-                    if (_containsForbiddenWords(text)) {
-                        console.log(`🚫 [CENSOR] Mensaje descartado por contener insultos/palabras prohibidas: "${text}"`);
+                    const textModeration = _sanitizeForbiddenWords(text);
+                    if (textModeration.hadForbiddenWords) {
+                        console.log(`🚫 [CENSOR] Insultos eliminados del mensaje [${textModeration.removedWords.join(', ')}]. Texto limpio: "${textModeration.cleanText}"`);
+                        text = textModeration.cleanText;
+                    }
+                    if (!text || text.trim().length < 3) {
+                        console.log(`⏭️ [SKIP] Mensaje descartado por quedar vacío tras eliminar insultos.`);
                         continue;
                     }
 
