@@ -21,6 +21,7 @@ const CopilotModule = (() => {
     let _audioCtx = null;
     let _hudTimer = null;
     let _liveTrafficAlerts = [];          // Alertas activas de tránsito en tiempo real (Firebase)
+    let _warnedTrafficApproaches = new Set(); // IDs de alertas ya cantadas en la aproximación actual
     let _firebaseAlertsListening = false;
 
     function _stopAllAudio() {
@@ -2878,7 +2879,8 @@ const CopilotModule = (() => {
 
         let text = '';
         if (target.isTrafficAlert) {
-            text = `${prefix}atención, ${nameClean} a ${distRound} metros.`;
+            const distPhrase = (distRound <= 30) ? 'en el lugar.' : `a ${distRound} metros.`;
+            text = `${prefix}atención, ${nameClean} ${distPhrase}`;
             if (target.desc && target.desc !== target.name && target.desc.length < 80) {
                 text += ` ${target.desc}`;
             }
@@ -3479,14 +3481,37 @@ const CopilotModule = (() => {
             }
         }
 
-        if (nearestTraffic && minTrafficDist <= TRAFFIC_WARNING_METERS) {
-            const lastAlert = _lastAlertTime[nearestTraffic.id] || 0;
-            if (now - lastAlert > COOLDOWN_MS) {
-                _lastAlertTime[nearestTraffic.id] = now;
-                _showRadarHUD(nearestTraffic, minTrafficDist, currentSpeed);
-                _playWarningChime(false);
-                _speakWarning(nearestTraffic, minTrafficDist, currentSpeed);
-                _triggerVibration(false);
+        if (nearestTraffic) {
+            // Si el chofer se aleja a más de 1000m, resetear para permitir un nuevo aviso si vuelve en otro viaje
+            if (minTrafficDist > 1000 && _warnedTrafficApproaches.has(nearestTraffic.id)) {
+                _warnedTrafficApproaches.delete(nearestTraffic.id);
+            }
+
+            if (minTrafficDist <= TRAFFIC_WARNING_METERS) {
+                // 1. Si está detenido o a paso de hombre (< 7 km/h) y muy cerca (< 70m), NO disparar voz en bucle
+                const isStationaryAtAlert = ((currentSpeed === null || currentSpeed < 7) && minTrafficDist < 70);
+
+                // 2. Si el conductor actual es el creador de la alerta, silenciarla
+                const driverFirst = _getDriverFirstName();
+                const isOwnAlert = nearestTraffic.authorName && driverFirst &&
+                    nearestTraffic.authorName.trim().toLowerCase() === driverFirst.trim().toLowerCase();
+
+                // 3. Ya advertido en esta aproximación o en cooldown de 30 min
+                const alreadyWarned = _warnedTrafficApproaches.has(nearestTraffic.id);
+                const lastAlert = _lastAlertTime[nearestTraffic.id] || 0;
+                const inCooldown = (now - lastAlert < 30 * 60 * 1000); // 30 min cooldown
+
+                if (!isStationaryAtAlert && !isOwnAlert && !alreadyWarned && !inCooldown) {
+                    _warnedTrafficApproaches.add(nearestTraffic.id);
+                    _lastAlertTime[nearestTraffic.id] = now;
+                    _showRadarHUD(nearestTraffic, minTrafficDist, currentSpeed);
+                    _playWarningChime(false);
+                    _speakWarning(nearestTraffic, minTrafficDist, currentSpeed);
+                    _triggerVibration(false);
+                } else if (!isOwnAlert) {
+                    // Actualizar el HUD visual sin repetir la locución de voz
+                    _showRadarHUD(nearestTraffic, minTrafficDist, currentSpeed);
+                }
             }
         }
     }

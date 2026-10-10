@@ -809,11 +809,19 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         float distance = results[0];
 
                         if (distance <= PROXIMITY_RADIUS_M) {
+                            // Si el chofer está detenido (< 7 km/h) y muy cerca (< 70m), evitar locución en bucle
+                            if (myLocation.getSpeed() * 3.6f < 7 && distance < 70) {
+                                continue;
+                            }
+
                             long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
-                            if (now - lastTime > COOLDOWN_MS) {
+                            if (now - lastTime > 30 * 60 * 1000L) {
                                 lastAlertTimestamps.put(alert.id, now);
                                 speakProximityWarning(alert, distance);
                             }
+                        } else if (distance > 1000) {
+                            // Si se aleja a más de 1 km, resetear para permitir nueva advertencia si vuelve a aproximarse
+                            lastAlertTimestamps.remove(alert.id);
                         }
                     }
                 }

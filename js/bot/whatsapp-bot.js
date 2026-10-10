@@ -2325,12 +2325,24 @@ const WhatsappBot = (() => {
         // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
             const files = fs.readdirSync(AUTH_DIR);
+            // Poda preventiva: si hay más de 200 archivos, eliminar pre-keys viejos (> 12h) para evitar colapso de CPU/RAM
+            if (files.length > 200) {
+                const now = Date.now();
+                for (const file of files) {
+                    if (file.startsWith('pre-key-') && file.endsWith('.json')) {
+                        try {
+                            const stat = fs.statSync(path.join(AUTH_DIR, file));
+                            if (now - stat.mtimeMs > 12 * 60 * 60 * 1000) {
+                                fs.unlinkSync(path.join(AUTH_DIR, file));
+                            }
+                        } catch(e) {}
+                    }
+                }
+            }
+            const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
-            for (const file of files) {
+            for (const file of cleanFiles) {
                 if (file.endsWith('.json')) {
-                    // Firebase prohíbe '.', '#', '$', '/', '[', ']'. 
-                    // Baileys usa '.us' y '.net' en sus archivos, lo que rompe Firebase.
-                    // Solución: codificar el nombre del archivo en Base64
                     const safeKey = Buffer.from(file).toString('base64');
                     backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
                 }
@@ -2357,7 +2369,7 @@ const WhatsappBot = (() => {
             }, 5000); // Esperar 5s para agrupar escrituras
         };
 
-        // 4. Sync activo de llaves (Baileys no llama saveCreds para las session keys)
+        // 4. Sync activo de llaves (cada 5 minutos para evitar saturación de CPU y permitir flujo fluido de mensajes)
         if (_backupInterval) clearInterval(_backupInterval);
         _backupInterval = setInterval(async () => {
             if (db && fs.existsSync(AUTH_DIR)) {
@@ -2366,7 +2378,7 @@ const WhatsappBot = (() => {
                     await db.ref('bot_auth_backup').set(backup);
                 } catch(e) {}
             }
-        }, 60000); // Sincronizar cada 60s
+        }, 300000); // Sincronizar cada 5 min (300s)
         
         return { state, saveCreds: saveCredsToFirebase };
     }
@@ -3539,8 +3551,9 @@ const WhatsappBot = (() => {
 
                     // PRE-FILTRADO DE PALABRAS CLAVE (Optimización de cuota de Gemini)
                     const hasKeywords = _hasTrafficKeywords(text);
-                    if (!hasKeywords && !isFromTrustedAdmin) {
-                        console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito: "${text.substring(0,60)}"`);
+                    const hasIntersection = !!_extractIntersection(text);
+                    if (!hasKeywords && !hasIntersection && !isFromTrustedAdmin) {
+                        console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito ni intersección: "${text.substring(0,60)}"`);
                         continue;
                     }
 
@@ -3561,6 +3574,22 @@ const WhatsappBot = (() => {
                                     : text.substring(0, 100);
                                 console.log(`🔑 [KEYWORD] Detectado: ${kw.type} (lifting=${!!kw.isLifting}) | Dir: ${extractedAddr || 'sin dirección'}`);
                                 analysis = { isAlert: true, type: kw.type, address: extractedAddr, description: desc, confidence: 0.75 };
+                            }
+                        }
+                        
+                        // RESCATE DIRECTO: Si estamos en un grupo operativo (o mensaje de admin) y contiene una intersección
+                        // pero Gemini devolvió isAlert=false (ej: solo pasaron nombres de calles como "rioja entre mitre y entre rios"):
+                        if ((!analysis || !analysis.isAlert) && (isKnownOperativoGroup || isFromTrustedAdmin)) {
+                            const directIntersection = _extractIntersection(text);
+                            if (directIntersection) {
+                                console.log(`🎯 [OPERATIVO-INTERSECTION] Grupo "${groupName}" reporta intersección ("${directIntersection}"). Aceptado como operativo.`);
+                                analysis = {
+                                    isAlert: true,
+                                    type: 'checkpoint',
+                                    address: directIntersection,
+                                    description: `Control en ${directIntersection}`,
+                                    confidence: 0.85
+                                };
                             }
                         }
                         
@@ -3669,8 +3698,8 @@ Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO O E
 
 REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
 - Si el mensaje es SOLO un nombre propio, apodo, mote o forma de llamar a alguien (ej: "roti", "juanchi", "el gordo", "carlitos", "toto", "el vasco", "tío", "che"), responde ESTRICTAMENTE con {"isAlert":false}. Los apodos NO son alertas de tránsito.
-- Si el mensaje es solo un nombre de persona o conjunto de nombres/apodos sin ningún verbo de acción ni ubicación vial, responde ESTRICTAMENTE con {"isAlert":false}.
-- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
+- Si el mensaje contiene una intersección de calles (ej: "Rioja entre Mitre y Entre Ríos", "Pellegrini y Francia") dentro de un grupo de operativos o choferes, SÍ es una alerta (type: "checkpoint").
+- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene una ubicación vial ni palabra clave de tránsito, responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 - Si el mensaje es una pregunta, consulta, duda o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?", "algo de arroyo a pavón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos y concretos de controles o incidentes activos.

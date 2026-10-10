@@ -249,8 +249,13 @@
         if (!id) return false;
         if (_spokenAlertIds.has(id)) return true;
         try {
-            const stored = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
-            if (stored.includes(id)) {
+            const storedLocal = JSON.parse(localStorage.getItem('fa_spoken_alerts') || '[]');
+            if (storedLocal.includes(id)) {
+                _spokenAlertIds.add(id);
+                return true;
+            }
+            const storedSession = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
+            if (storedSession.includes(id)) {
                 _spokenAlertIds.add(id);
                 return true;
             }
@@ -262,10 +267,11 @@
         if (!id) return;
         _spokenAlertIds.add(id);
         try {
-            const stored = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
+            const stored = JSON.parse(localStorage.getItem('fa_spoken_alerts') || '[]');
             if (!stored.includes(id)) {
                 stored.push(id);
                 if (stored.length > 200) stored.shift();
+                localStorage.setItem('fa_spoken_alerts', JSON.stringify(stored));
                 sessionStorage.setItem('fa_spoken_alerts', JSON.stringify(stored));
             }
         } catch(e) {}
