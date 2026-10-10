@@ -2709,6 +2709,10 @@ const CopilotModule = (() => {
                     }
                 }
             }
+            if (typeof UserOnboarding !== 'undefined' && typeof UserOnboarding.getUserFirstName === 'function') {
+                const obFirst = UserOnboarding.getUserFirstName();
+                if (obFirst) return obFirst;
+            }
         } catch (_) {}
         return '';
     }

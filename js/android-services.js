@@ -638,6 +638,19 @@ const AndroidServices = (() => {
         return parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
     }
 
+    function setDriverName(name) {
+        if (!name || typeof name !== 'string') return;
+        const cleanName = name.trim();
+        console.log(`📱 AndroidServices: setDriverName("${cleanName}")`);
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.setDriverName === 'function') {
+            try {
+                window.NativeServiceBridge.setDriverName(cleanName);
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.setDriverName:', e);
+            }
+        }
+    }
+
     // =============================================
     // API PÚBLICA
     // =============================================
@@ -662,6 +675,7 @@ const AndroidServices = (() => {
         setVoiceMuted,
         setAlertVolume,
         getAlertVolume,
+        setDriverName,
 
         // Batería
         requestBackgroundLocationPermission,

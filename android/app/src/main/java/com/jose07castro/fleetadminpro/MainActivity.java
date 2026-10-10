@@ -543,6 +543,17 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void setDriverName(String name) {
+            if (name == null || name.trim().isEmpty()) return;
+            Log.i(TAG, "📱 JS → setDriverName: " + name);
+            try {
+                LocationTrackingService.setDriverName(name, MainActivity.this);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating setDriverName to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
         public int getAlertVolume() {
             return LocationTrackingService.alertVolumePercent;
         }

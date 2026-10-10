@@ -30,6 +30,7 @@ const ASSETS = [
     './js/notifications.js?v=194',
     './js/pwa-install.js?v=194',
     './js/ui-settings.js?v=194',
+    './js/modules/onboarding.js?v=211',
     './js/modules/radar-v126.js?v=194',
     './js/modules/traffic-alerts.js?v=211',
     './js/modules/copilot.js?v=205',

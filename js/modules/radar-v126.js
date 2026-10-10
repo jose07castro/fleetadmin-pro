@@ -1396,14 +1396,26 @@ const RadarModule = (() => {
     function speakRadarAlert(text) {
         if (!text) return;
         try {
+            let fullText = text;
+            let firstName = '';
+            try {
+                if (typeof UserOnboarding !== 'undefined' && typeof UserOnboarding.getUserFirstName === 'function') {
+                    firstName = UserOnboarding.getUserFirstName();
+                }
+            } catch (e) {}
+
+            if (firstName && !fullText.toLowerCase().includes(firstName.toLowerCase())) {
+                fullText = `${firstName}, ${fullText}`;
+            }
+
             if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
-                AndroidServices.speak(text);
+                AndroidServices.speak(fullText);
             } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
-                try { window.NativeServiceBridge.speak(text); } catch(e) {}
+                try { window.NativeServiceBridge.speak(fullText); } catch(e) {}
             } else if (window.speechSynthesis) {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
                 window.speechSynthesis.cancel();
-                const utter = new SpeechSynthesisUtterance(text);
+                const utter = new SpeechSynthesisUtterance(fullText);
                 utter.lang = 'es-AR';
                 utter.rate = 1.0;
                 window.speechSynthesis.speak(utter);

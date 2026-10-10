@@ -838,11 +838,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
 
         String loc = alert.location != null ? alert.location.replace(" y ", " esquina ") : "";
+        String first = getDriverFirstName();
+        String prefix = !first.isEmpty() ? first + ", " : "";
+
         String message;
         if (!loc.isEmpty() && !loc.toLowerCase().contains("desconocida")) {
-            message = String.format(Locale.getDefault(), "Atención, %s a quinientos metros en %s.", typeLabel, loc);
+            message = String.format(Locale.getDefault(), "%sAtención, %s a quinientos metros en %s.", prefix, typeLabel, loc);
         } else {
-            message = String.format(Locale.getDefault(), "Atención, %s a quinientos metros.", typeLabel);
+            message = String.format(Locale.getDefault(), "%sAtención, %s a quinientos metros.", prefix, typeLabel);
         }
         Log.i(TAG, "🚨 [PROXIMITY-ALERT] Advertencia dinámica: " + message);
         speak(message);
@@ -1141,6 +1144,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             try {
                 instance.mediaPlayer.setVolume(alertVolume, alertVolume);
             } catch (Exception ignored) {}
+        }
+    }
+
+    public static void setDriverName(String name, Context context) {
+        if (name == null || name.trim().isEmpty()) return;
+        String cleanName = name.trim();
+        Log.i(TAG, "👤 [DRIVER-NAME] setDriverName: " + cleanName);
+        if (instance != null) {
+            instance.driverName = cleanName;
+        }
+        Context ctx = (instance != null) ? instance : context;
+        if (ctx != null) {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit().putString("driverName", cleanName).apply();
         }
     }
 

@@ -22,10 +22,29 @@ const SettingsModule = (() => {
                 }
             }, 100);
 
+            const userProfile = (typeof UserOnboarding !== 'undefined') ? UserOnboarding.getProfile() : null;
+
             return `
                 <h2 style="font-size:var(--font-size-2xl); font-weight:700; margin-bottom:var(--space-6);">
                     ⚙️ ${I18n.t('settings_title')}
                 </h2>
+
+            <!-- Perfil e Identificación de Alertas -->
+            <div class="settings-section">
+                <div class="settings-section-title">👤 Perfil e Identificación de Alertas</div>
+                <div class="settings-item">
+                    <div>
+                        <div class="settings-item-label">${userProfile?.name ? userProfile.name : (Auth.getUserName() || 'Sin identificar')}</div>
+                        <div class="settings-item-desc">
+                            ${userProfile?.phone ? ('📱 WhatsApp: ' + userProfile.phone) : ''}
+                            ${userProfile?.email ? (' • ✉️ ' + userProfile.email) : ''}
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="if(typeof UserOnboarding!=='undefined') UserOnboarding.showModal(true);">
+                        ✏️ Editar Datos
+                    </button>
+                </div>
+            </div>
 
             <!-- Idioma -->
             <div class="settings-section">

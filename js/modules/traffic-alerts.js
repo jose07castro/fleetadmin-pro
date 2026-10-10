@@ -203,6 +203,18 @@
             return;
         }
 
+        // Personalización con el primer nombre del usuario
+        let firstName = '';
+        try {
+            if (typeof UserOnboarding !== 'undefined' && typeof UserOnboarding.getUserFirstName === 'function') {
+                firstName = UserOnboarding.getUserFirstName();
+            }
+        } catch (e) {}
+
+        if (firstName && !fullText.toLowerCase().startsWith(firstName.toLowerCase())) {
+            fullText = `${firstName}, ${fullText}`;
+        }
+
         console.log(`🔊 [GLOBAL VOZ] Hablando (Voz nativa): "${fullText}"`);
 
         // === VOZ NATIVA DIRECTA (Android TTS / Web Speech) ===

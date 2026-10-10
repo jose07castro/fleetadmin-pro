@@ -99,7 +99,7 @@ const LoginModule = (() => {
                             <input type="text" class="form-input" id="loginName"
                                 name="username"
                                 placeholder="${I18n.t('login_name_placeholder')}" autocomplete="username"
-                                value="${_loadRemembered()?.name || ''}">
+                                value="${_loadRemembered()?.name || (typeof UserOnboarding !== 'undefined' ? (UserOnboarding.getProfile()?.name || '') : '')}">
                         </div>
 
                         <div class="form-group">
@@ -1113,6 +1113,13 @@ const LoginModule = (() => {
 
         // 6. Configurar Wake Lock y eventos de visibilidad
         document.addEventListener('visibilitychange', _handleVisibilityChange);
+
+        // 7. Si el perfil del usuario no está completo (nuevo usuario), solicitar identificación
+        if (typeof UserOnboarding !== 'undefined' && !UserOnboarding.isProfileComplete()) {
+            setTimeout(() => {
+                UserOnboarding.showModal();
+            }, 600);
+        }
     }
 
     function _renderAlerts(alertsList) {

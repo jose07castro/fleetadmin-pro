@@ -131,6 +131,16 @@ const App = (() => {
             // 3.5. Activar manejo de reconexión (móvil)
             setupReconnectionHandler();
 
+            // 3.8. Sincronizar nombre registrado con el servicio de fondo Android
+            try {
+                if (typeof UserOnboarding !== 'undefined') {
+                    const p = UserOnboarding.getProfile();
+                    if (p && p.name && typeof AndroidServices !== 'undefined' && typeof AndroidServices.setDriverName === 'function') {
+                        AndroidServices.setDriverName(p.name);
+                    }
+                }
+            } catch (e) {}
+
             // 4. Navegar a la ruta correcta
             // USAR isLoggedInAsync() para recuperar sesión desde IndexedDB si Android mató el proceso
             setTimeout(async () => {
@@ -229,6 +239,9 @@ const App = (() => {
                         }
                         _hideSplash();
                         Router.navigate('login');
+                        if (typeof UserOnboarding !== 'undefined' && !UserOnboarding.isProfileComplete()) {
+                            setTimeout(() => UserOnboarding.showModal(), 800);
+                        }
                     }
                 } catch (navError) {
                     console.error('🔴 Error en navegación post-init:', navError);
