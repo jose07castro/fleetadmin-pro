@@ -224,12 +224,13 @@ Respuesta EXACTAMENTE en este formato:
 
     if (db) {
         try {
+            const currentGemKey = getGeminiKey();
             await db.ref('bot_debug_logs').push({
                 event: 'gemini_audio_failed_all_models',
                 mimeType: cleanMimeType,
                 size: audioBuffer.length,
-                hasKey: !!GEMINI_KEY,
-                keySnippet: GEMINI_KEY ? `${GEMINI_KEY.substring(0, 5)}...${GEMINI_KEY.substring(GEMINI_KEY.length - 5)}` : 'none',
+                hasKey: !!currentGemKey,
+                keySnippet: currentGemKey ? `${currentGemKey.substring(0, 5)}...${currentGemKey.substring(currentGemKey.length - 5)}` : 'none',
                 timestamp: Date.now()
             });
         } catch (dbErr) {}
@@ -245,7 +246,8 @@ Respuesta EXACTAMENTE en este formato:
  * @returns {Promise<{isTrafficAlert: boolean, description: string, type: string, address: string|null, reason: string}|null>}
  */
 async function callGeminiImage(imageBuffer, mimeType) {
-    if (!GEMINI_KEY || !imageBuffer) return null;
+    const key = getGeminiKey();
+    if (!key || !imageBuffer) return null;
 
     const imageB64 = imageBuffer.toString('base64');
     if (imageB64.length > 12 * 1024 * 1024) {
@@ -268,17 +270,13 @@ Si la imagen es una foto común y corriente (paisaje, selfie, comida, meme gené
 Respuesta EXACTAMENTE en este formato JSON:
 {"isTrafficAlert":true,"description":"Operativo de fiscalización con conos y patrulla","type":"municipal","address":null,"reason":"Muestra vehículo de fiscalización y texto de operativo urgente"}`;
 
-    const imageModels = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
-    ];
+    const imageModels = GEMINI_URL ? [GEMINI_URL] : GEMINI_MODELS;
 
     const cleanMimeType = (mimeType || 'image/jpeg').split(';')[0].trim();
 
     for (const url of imageModels) {
         try {
-            const res = await axios.post(`${url}?key=${GEMINI_KEY}`, {
+            const res = await axios.post(`${url}?key=${key}`, {
                 contents: [{
                     parts: [
                         { inlineData: { mimeType: cleanMimeType, data: imageB64 } },
@@ -824,6 +822,36 @@ const WhatsappBot = (() => {
         ];
         
         return patterns.some(p => p.test(t));
+    }
+
+    function _recursiveFindImage(obj, depth = 0) {
+        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+        if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
+        for (const k of Object.keys(obj)) {
+            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
+            const val = obj[k];
+            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
+                const found = _recursiveFindImage(val, depth + 1);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function _recursiveFindAudio(obj, depth = 0) {
+        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+        if ((obj.audioMessage && typeof obj.audioMessage === 'object') || (obj.pttMessage && typeof obj.pttMessage === 'object')) {
+            return obj.audioMessage || obj.pttMessage;
+        }
+        for (const k of Object.keys(obj)) {
+            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
+            const val = obj[k];
+            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
+                const found = _recursiveFindAudio(val, depth + 1);
+                if (found) return found;
+            }
+        }
+        return null;
     }
 
     // Grupos EXCLUIDOS explícitamente de las alertas de tránsito (a pedido del admin).
@@ -2325,12 +2353,24 @@ const WhatsappBot = (() => {
         // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
             const files = fs.readdirSync(AUTH_DIR);
+            // Poda preventiva: si hay más de 200 archivos, eliminar pre-keys viejos (> 12h) para evitar colapso de CPU/RAM
+            if (files.length > 200) {
+                const now = Date.now();
+                for (const file of files) {
+                    if (file.startsWith('pre-key-') && file.endsWith('.json')) {
+                        try {
+                            const stat = fs.statSync(path.join(AUTH_DIR, file));
+                            if (now - stat.mtimeMs > 12 * 60 * 60 * 1000) {
+                                fs.unlinkSync(path.join(AUTH_DIR, file));
+                            }
+                        } catch(e) {}
+                    }
+                }
+            }
+            const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
-            for (const file of files) {
+            for (const file of cleanFiles) {
                 if (file.endsWith('.json')) {
-                    // Firebase prohíbe '.', '#', '$', '/', '[', ']'. 
-                    // Baileys usa '.us' y '.net' en sus archivos, lo que rompe Firebase.
-                    // Solución: codificar el nombre del archivo en Base64
                     const safeKey = Buffer.from(file).toString('base64');
                     backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
                 }
@@ -2357,7 +2397,7 @@ const WhatsappBot = (() => {
             }, 5000); // Esperar 5s para agrupar escrituras
         };
 
-        // 4. Sync activo de llaves (Baileys no llama saveCreds para las session keys)
+        // 4. Sync activo de llaves (cada 5 minutos para evitar saturación de CPU y permitir flujo fluido de mensajes)
         if (_backupInterval) clearInterval(_backupInterval);
         _backupInterval = setInterval(async () => {
             if (db && fs.existsSync(AUTH_DIR)) {
@@ -2366,7 +2406,7 @@ const WhatsappBot = (() => {
                     await db.ref('bot_auth_backup').set(backup);
                 } catch(e) {}
             }
-        }, 60000); // Sincronizar cada 60s
+        }, 300000); // Sincronizar cada 5 min (300s)
         
         return { state, saveCreds: saveCredsToFirebase };
     }
@@ -2560,7 +2600,7 @@ const WhatsappBot = (() => {
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
-                markOnlineOnConnect: false,
+                markOnlineOnConnect: true,
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: true,
                 shouldSyncHistoryMessage: () => true,
@@ -2697,6 +2737,11 @@ const WhatsappBot = (() => {
                         }).catch(() => {});
                     }
 
+                    try {
+                        sock.sendPresenceUpdate('available').catch(() => {});
+                        console.log('🟢 [PRESENCE] Bot reportado ONLINE y listo para recibir flujo de mensajes en vivo.');
+                    } catch(e) {}
+
                     // Pre-popular y persistir el caché de nombres de grupo
                     try {
                         console.log('📡 [GROUP-CACHE] Solicitando lista de grupos en segundo plano...');
@@ -2774,6 +2819,26 @@ const WhatsappBot = (() => {
                         } catch (hErr) {}
                     }
                     console.log(`📚 [HISTORY-SYNC] Historial analizado. Candidatos encolados: ${candidatesCount}. Total en cola: ${_recentHistoricalQueue.length}`);
+
+                    // RECUPERACIÓN AUTOMÁTICA DE ALERTAS: Reenviar mensajes recientes (< 2.5 horas)
+                    // de grupos de tránsito a messages.upsert para no perder ninguna alerta por reinicios del servidor
+                    try {
+                        const nowSec = Math.floor(Date.now() / 1000);
+                        const recentTrafficCandidates = [];
+                        for (const histMsg of messages) {
+                            const jid = histMsg.key?.remoteJid;
+                            const msgSec = Number(histMsg.messageTimestamp) || 0;
+                            if (jid && jid.endsWith('@g.us') && msgSec > 0 && (nowSec - msgSec) <= 9000) {
+                                recentTrafficCandidates.push(histMsg);
+                            }
+                        }
+                        if (recentTrafficCandidates.length > 0) {
+                            console.log(`📡 [HISTORY-SYNC] Re-evaluando ${recentTrafficCandidates.length} mensajes recientes de grupos para alertas...`);
+                            sock.ev.emit('messages.upsert', { messages: recentTrafficCandidates, type: 'append' });
+                        }
+                    } catch(histRecoverErr) {
+                        console.warn('⚠️ [HISTORY-SYNC] Error recuperando alertas recientes:', histRecoverErr.message);
+                    }
                 }
             });
 
@@ -2815,16 +2880,22 @@ const WhatsappBot = (() => {
                     //   Esto permite recuperar alertas perdidas cuando Render se durmió.
                     // IMPORTANTE: Los comprobantes e imágenes NO tienen límite de fecha (escaneo histórico).
                     const mRaw = msg.message;
-                    const hasImageMsg = !!(mRaw && (mRaw.imageMessage || (typeof _recursiveFindImage === 'function' && _recursiveFindImage(mRaw, 0))));
-                    const hasAudioMsg = !!(mRaw && (mRaw.audioMessage || mRaw.pttMessage));
+                    const resolvedAudioMsg = _recursiveFindAudio(mRaw, 0) || mRaw?.audioMessage || null;
+                    const isAudio = !!resolvedAudioMsg;
+                    const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
+                    const resolvedImageMsg = _recursiveFindImage(mRaw, 0) || mRaw?.imageMessage || null;
+                    const isImage = !!resolvedImageMsg;
+                    const hasImageMsg = isImage;
+                    const hasAudioMsg = isAudio;
                     
                     const msgSec = Number(msg.messageTimestamp) || 0;
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    // Límite estricto de tiempo real para alertas de tránsito (máximo 20 minutos / 1200s):
-                    // No procesa historial viejo ni atrasado para evitar colapsos y solo alertar sobre situaciones activas.
-                    const maxAgeSec = 1200;
+                    // Validación de frescura para alertas de tránsito:
+                    // - type='notify': mensajes en vivo → hasta 45 minutos (2700s)
+                    // - type='append' o histórico: hasta 2.5 horas (9000s) para recuperar alertas de reinicio
+                    const maxAgeSec = (type === 'notify') ? 2700 : 9000;
                     
                     if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
                         console.log(`⏭️ [SKIP] Mensaje muy antiguo ignorado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
@@ -2908,6 +2979,21 @@ const WhatsappBot = (() => {
                         }
                     }
 
+                    // Registro de evento para monitoreo en vivo en Firebase
+                    if (db && isGroup) {
+                        try {
+                            db.ref('bot_live_events').push({
+                                type: type,
+                                group: groupName,
+                                jid: jid,
+                                text: (text || '').substring(0, 120),
+                                isAudio: isAudio,
+                                isImage: isImage,
+                                timestamp: Date.now()
+                            }).catch(() => {});
+                        } catch(e) {}
+                    }
+
                     // 2. FILTRADO DE GRUPOS SELECCIONADOS
                     // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Solo operativos de tránsito, etc).
                     // "Operativos Arroyo Seco" fue EXCLUIDO a pedido del admin (ver EXCLUDED_TRAFFIC_GROUPS).
@@ -2954,59 +3040,6 @@ const WhatsappBot = (() => {
                         }
                     }
                     
-                    // RESCATE ABSOLUTO DE AUDIO: búsqueda deep recursiva en TODO el árbol del mensaje
-                    // Detecta: mensajes directos, reenviados, ephemeral, viewOnce, viewOnceV2, etc.
-                    let resolvedAudioMsg = null;
-                    function _recursiveFindAudio(obj, depth) {
-                        if (!obj || typeof obj !== 'object' || depth > 8) return null;
-                        // Chequeo directo en este nivel
-                        if (obj.audioMessage && typeof obj.audioMessage === 'object') return obj.audioMessage;
-                        // Buscar en TODOS los valores del objeto recursivamente
-                        for (const k of Object.keys(obj)) {
-                            if (k === 'messageContextInfo' || k === 'contextInfo') continue; // evitar loops
-                            const val = obj[k];
-                            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
-                                const found = _recursiveFindAudio(val, depth + 1);
-                                if (found) return found;
-                            }
-                        }
-                        return null;
-                    }
-                    
-                    if (m) {
-                        resolvedAudioMsg = _recursiveFindAudio(m, 0);
-                        // Fallback directo: el mensaje completo tiene audioMessage en raíz
-                        if (!resolvedAudioMsg && m.audioMessage) {
-                            resolvedAudioMsg = m.audioMessage;
-                        }
-                    }
-                    const isAudio = !!resolvedAudioMsg;
-                    const isPTT = !!(resolvedAudioMsg && resolvedAudioMsg.ptt);
-
-                    // RESCATE ABSOLUTO DE IMAGEN: búsqueda deep recursiva en TODO el árbol del mensaje
-                    let resolvedImageMsg = null;
-                    function _recursiveFindImage(obj, depth) {
-                        if (!obj || typeof obj !== 'object' || depth > 8) return null;
-                        if (obj.imageMessage && typeof obj.imageMessage === 'object') return obj.imageMessage;
-                        for (const k of Object.keys(obj)) {
-                            if (k === 'messageContextInfo' || k === 'contextInfo') continue;
-                            const val = obj[k];
-                            if (val && typeof val === 'object' && !Buffer.isBuffer(val)) {
-                                const found = _recursiveFindImage(val, depth + 1);
-                                if (found) return found;
-                            }
-                        }
-                        return null;
-                    }
-
-                    if (m) {
-                        resolvedImageMsg = _recursiveFindImage(m, 0);
-                        if (!resolvedImageMsg && m.imageMessage) {
-                            resolvedImageMsg = m.imageMessage;
-                        }
-                    }
-                    const isImage = !!resolvedImageMsg;
-
                     console.log(`📩 [MSG] From=${jid?.substring(0,15)}... | Group=${isGroup} | Audio=${isAudio} | Image=${isImage} | PTT=${isPTT} | Text="${text.substring(0,80)}"`);
 
 
@@ -3539,8 +3572,9 @@ const WhatsappBot = (() => {
 
                     // PRE-FILTRADO DE PALABRAS CLAVE (Optimización de cuota de Gemini)
                     const hasKeywords = _hasTrafficKeywords(text);
-                    if (!hasKeywords && !isFromTrustedAdmin) {
-                        console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito: "${text.substring(0,60)}"`);
+                    const hasIntersection = !!_extractIntersection(text);
+                    if (!hasKeywords && !hasIntersection && !isFromTrustedAdmin) {
+                        console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito ni intersección: "${text.substring(0,60)}"`);
                         continue;
                     }
 
@@ -3561,6 +3595,22 @@ const WhatsappBot = (() => {
                                     : text.substring(0, 100);
                                 console.log(`🔑 [KEYWORD] Detectado: ${kw.type} (lifting=${!!kw.isLifting}) | Dir: ${extractedAddr || 'sin dirección'}`);
                                 analysis = { isAlert: true, type: kw.type, address: extractedAddr, description: desc, confidence: 0.75 };
+                            }
+                        }
+                        
+                        // RESCATE DIRECTO: Si estamos en un grupo operativo (o mensaje de admin) y contiene una intersección
+                        // pero Gemini devolvió isAlert=false (ej: solo pasaron nombres de calles como "rioja entre mitre y entre rios"):
+                        if ((!analysis || !analysis.isAlert) && (isKnownOperativoGroup || isFromTrustedAdmin)) {
+                            const directIntersection = _extractIntersection(text);
+                            if (directIntersection) {
+                                console.log(`🎯 [OPERATIVO-INTERSECTION] Grupo "${groupName}" reporta intersección ("${directIntersection}"). Aceptado como operativo.`);
+                                analysis = {
+                                    isAlert: true,
+                                    type: 'checkpoint',
+                                    address: directIntersection,
+                                    description: `Control en ${directIntersection}`,
+                                    confidence: 0.85
+                                };
                             }
                         }
                         
@@ -3669,8 +3719,8 @@ Tu ÚNICA misión es detectar si un mensaje reporta un incidente vial ACTIVO O E
 
 REGLA NÚMERO 1 — EXCLUSIÓN DE MENSAJES SIN REPORTE VIAL (CRÍTICA):
 - Si el mensaje es SOLO un nombre propio, apodo, mote o forma de llamar a alguien (ej: "roti", "juanchi", "el gordo", "carlitos", "toto", "el vasco", "tío", "che"), responde ESTRICTAMENTE con {"isAlert":false}. Los apodos NO son alertas de tránsito.
-- Si el mensaje es solo un nombre de persona o conjunto de nombres/apodos sin ningún verbo de acción ni ubicación vial, responde ESTRICTAMENTE con {"isAlert":false}.
-- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene explícitamente una palabra clave de tránsito (operativo, control, gorra, radar, accidente, corte, obstrucción), responde ESTRICTAMENTE con {"isAlert":false}.
+- Si el mensaje contiene una intersección de calles (ej: "Rioja entre Mitre y Entre Ríos", "Pellegrini y Francia") dentro de un grupo de operativos o choferes, SÍ es una alerta (type: "checkpoint").
+- Si el mensaje tiene MENOS DE 4 PALABRAS y no contiene una ubicación vial ni palabra clave de tránsito, responde ESTRICTAMENTE con {"isAlert":false}.
 
 REGLA DE EXCLUSIÓN DE PREGUNTAS (CRÍTICA):
 - Si el mensaje es una pregunta, consulta, duda o pedido de información (ej: "¿Hay operativo en la ruta?", "alguien sabe si hay zorros?", "en kenedy y la ruta hay operativo?", "cómo está tal calle?", "¿está libre Arijón?", "algo de arroyo a pavón?"), responde ESTRICTAMENTE con {"isAlert":false}. Solo debes reportar como alertas los avisos y reportes afirmativos y concretos de controles o incidentes activos.
@@ -3775,18 +3825,52 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
      * Extrae calles de un texto usando Regex.
      */
     function _extractIntersection(text) {
-        // Normalizar texto reemplazando delimitadores de intersección comunes por " y "
-        let normalized = text
-            .replace(/\b(?:a\s+la\s+altura\s+de|esquina|esq\.?|entre|e\/)\b/gi, ' y ')
-            .replace(/\be\b/gi, ' y ') // Normalizar conjunción copulativa 'e' a 'y'
+        if (!text || typeof text !== 'string') return null;
+
+        // Proteger Entre Ríos como palabra de calle (evita que la preposición "entre" lo destruya)
+        let safe = text
+            .replace(/\bentre\s+r[ií]os\b/gi, 'ENTRERIOS')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // 1. Caso común argentino: Calle1 entre Calle2 y Calle3 (ej: "Rioja entre Mitre y Entre Ríos")
+        const betweenRegex = /([a-z0-9\sáéíóúñÁÉÍÓÚÑ]+?)\s+(?:entre|e\/)\s+([a-z0-9\sáéíóúñÁÉÍÓÚÑ]+?)\s+[yYeE]\s+([a-z0-9\sáéíóúñÁÉÍÓÚÑ]+)/i;
+        const mBetween = safe.match(betweenRegex);
+        if (mBetween && mBetween[1] && mBetween[2]) {
+            let cleanMain = mBetween[1].replace(/ENTRERIOS/gi, 'Entre Ríos').trim();
+            let cleanCross1 = mBetween[2].replace(/ENTRERIOS/gi, 'Entre Ríos').trim();
+            
+            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'operativo', 'control', 'la', 'los', 'las', 'del', 'de', 'atencion'];
+            let partsMain = cleanMain.split(/[^a-zA-Z0-9\sáéíóúñÁÉÍÓÚÑ]/).filter(Boolean);
+            cleanMain = partsMain[partsMain.length - 1] || cleanMain;
+            let wordsMain = cleanMain.trim().split(' ');
+            while (wordsMain.length > 0 && noise.includes(wordsMain[0].toLowerCase())) wordsMain.shift();
+            if (wordsMain.length > 3) wordsMain = wordsMain.slice(-3);
+            cleanMain = wordsMain.join(' ').trim();
+
+            let partsCross = cleanCross1.split(/[^a-zA-Z0-9\sáéíóúñÁÉÍÓÚÑ]/).filter(Boolean);
+            cleanCross1 = partsCross[0] || cleanCross1;
+            let wordsCross = cleanCross1.trim().split(' ').slice(0, 3);
+            cleanCross1 = wordsCross.join(' ').trim();
+
+            if (cleanMain && cleanCross1 && _isValidIntersection(cleanMain, cleanCross1)) {
+                return `${cleanMain} y ${cleanCross1}`;
+            }
+        }
+
+        // 2. Normalizar separadores clásicos de intersección a " y "
+        let normalized = safe
+            .replace(/\b(?:a\s+la\s+altura\s+de|esquina|esq\.?|e\/)\b/gi, ' y ')
+            .replace(/\bentre\b/gi, ' y ')
+            .replace(/\be\b/gi, ' y ')
             .replace(/\s+/g, ' ');
 
-        // Regex para "Calle A y Calle B"
-        const regex = /([a-z0-9\sáéíóúñ.]+)\sy\s([a-z0-9\sáéíóúñ.]+)/i;
+        // 3. Regex clásica "Calle A y Calle B"
+        const regex = /([a-z0-9\sáéíóúñÁÉÍÓÚÑ.]+)\sy\s([a-z0-9\sáéíóúñÁÉÍÓÚÑ.]+)/i;
         const match = normalized.match(regex);
         if (match) {
-            let street1 = match[1].trim();
-            let street2 = match[2].trim();
+            let street1 = match[1].replace(/ENTRERIOS/gi, 'Entre Ríos').trim();
+            let street2 = match[2].replace(/ENTRERIOS/gi, 'Entre Ríos').trim();
 
             // 1. Limpiar street1: tomar la última parte que no tenga puntuación especial o emojis
             let cleanStreet1 = street1;
@@ -3802,7 +3886,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             }
 
             // Limpiar palabras comunes al inicio de la primera calle
-            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'operativo', 'control', 'la', 'los', 'las', 'del', 'de'];
+            const noise = ['hay', 'en', 'visto', 'un', 'el', 'una', 'operativo', 'control', 'la', 'los', 'las', 'del', 'de', 'atencion', 'parando', 'zorros', 'fiscalizacion', 'limpio'];
             let words1 = cleanStreet1.split(' ');
             while (words1.length > 0 && noise.includes(words1[0].toLowerCase())) {
                 words1.shift();
@@ -3830,7 +3914,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             let cleanWords2 = [];
             for (let i = 0; i < words2.length; i++) {
                 const w = words2[i].trim();
-                if (['frente', 'cerca', 'atencion', 'eviten', 'zona', 'llega', 'operativo', 'control', 'en'].includes(w.toLowerCase())) {
+                if (['frente', 'cerca', 'atencion', 'eviten', 'zona', 'llega', 'operativo', 'control', 'en', 'ya', 'esta', 'limpio', 'fisca'].includes(w.toLowerCase())) {
                     break;
                 }
                 cleanWords2.push(w);
