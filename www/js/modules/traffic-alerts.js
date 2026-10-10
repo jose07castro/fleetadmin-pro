@@ -231,6 +231,34 @@
         }
     }
 
+    const _spokenAlertIds = new Set();
+
+    function _isAlertAlreadySpoken(id) {
+        if (!id) return false;
+        if (_spokenAlertIds.has(id)) return true;
+        try {
+            const stored = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
+            if (stored.includes(id)) {
+                _spokenAlertIds.add(id);
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    function _markAlertAsSpoken(id) {
+        if (!id) return;
+        _spokenAlertIds.add(id);
+        try {
+            const stored = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
+            if (!stored.includes(id)) {
+                stored.push(id);
+                if (stored.length > 200) stored.shift();
+                sessionStorage.setItem('fa_spoken_alerts', JSON.stringify(stored));
+            }
+        } catch(e) {}
+    }
+
     /**
      * Inicia la escucha de alertas de tráfico para anuncios globales por voz.
      * Escucha el nodo GLOBAL — funciona para TODOS los celulares con la app,
@@ -272,26 +300,49 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            // NOTA: NO saltamos el anuncio en Android nativo — el servicio Java solo maneja GPS
-            // y NO tiene TTS para alertas de tráfico. El anuncio de voz SIEMPRE lo hace JS.
+            const alertId = alert.id || snap.key;
+
+            // FILTRO 0: DESDUPLICACIÓN ESTRICTA (Nunca repetir la misma alerta dos veces)
+            if (alertId && _isAlertAlreadySpoken(alertId)) {
+                console.log(`🔇 [VOZ-GLOBAL] Alerta ya reproducida en este dispositivo (${alertId}). Omitiendo repetición.`);
+                return;
+            }
+
+            // FILTRO DE AUTOR: Si el conductor actual es quien envió la alerta, no auto-repetírsela
+            try {
+                const currentUser = (typeof Auth !== 'undefined') ? Auth.getUser() : null;
+                if (currentUser && alert.authorName && currentUser.name) {
+                    if (alert.authorName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) {
+                        console.log(`🔇 [VOZ-GLOBAL] Alerta propia creada por el usuario (${alert.authorName}). Marcando y omitiendo.`);
+                        if (alertId) _markAlertAsSpoken(alertId);
+                        return;
+                    }
+                }
+            } catch (e) {}
 
             // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
             // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
-            // v192 FIX: Ventana ampliada a 5 minutos (300000ms) para tolerar desfases de reloj de Android
             const timeDiff = alert.timestamp ? Math.abs(Date.now() - alert.timestamp) : 0;
-            const isVeryRecent = alert.timestamp && (timeDiff < 300000 || alert.timestamp >= _appStartTime - 10000);
+            const isVeryRecent = alert.timestamp && (timeDiff < 180000 || alert.timestamp >= _appStartTime - 10000);
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
+                if (alertId) _markAlertAsSpoken(alertId);
                 return; 
             }
 
             // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
                 console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
+                if (alertId) _markAlertAsSpoken(alertId);
                 return;
             }
 
-            // FILTRO DE SILENCIO: Si el usuario silenci贸 las alertas (radarVoice=off), no reproducir voz ni audio
+            // Marcar inmediatamente para que jamás se vuelva a reproducir
+            if (alertId) {
+                _markAlertAsSpoken(alertId);
+            }
+
+            // FILTRO DE SILENCIO: Si el usuario silenció las alertas (radarVoice=off), no reproducir voz ni audio
             if (localStorage.getItem('radarVoice') === 'off') {
                 console.log('🔇 [VOZ-GLOBAL] Alerta recibida pero silenciada por el usuario (radarVoice=off).');
                 return;
@@ -311,9 +362,12 @@
 
                 // Prioridad 1: Delegar al servicio Android nativo (soporta segundo plano y audio focus de navegación)
                 if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.playAudio === 'function') {
-                    if (AndroidServices.playAudio(fullAudioUrl, fallbackText)) {
+                    try {
+                        AndroidServices.playAudio(fullAudioUrl, fallbackText);
                         console.log('🎵 [AUDIO-ORIGINAL] Delegado con éxito a AndroidServices.playAudio nativo');
                         return;
+                    } catch(e) {
+                        console.warn('⚠️ Error delegando a AndroidServices.playAudio:', e);
                     }
                 }
                 if (window.NativeServiceBridge && typeof window.NativeServiceBridge.playAudio === 'function') {
@@ -321,7 +375,9 @@
                         window.NativeServiceBridge.playAudio(fullAudioUrl, fallbackText);
                         console.log('🎵 [AUDIO-ORIGINAL] Delegado con éxito a NativeServiceBridge.playAudio nativo');
                         return;
-                    } catch(e) {}
+                    } catch(e) {
+                        console.warn('⚠️ Error delegando a NativeServiceBridge.playAudio:', e);
+                    }
                 }
 
                 let audioPlayed = false;
@@ -354,43 +410,19 @@
                     audio.src = fullAudioUrl;
                     audio.preload = 'auto';
 
+                    audio.onplay = () => {
+                        audioPlayed = true;
+                        clearTimeout(fallbackTimeout);
+                    };
+
                     audio.onerror = (err) => {
                         console.error('❌ [AUDIO-ORIGINAL] Error cargando el archivo de audio:', err);
                         clearTimeout(fallbackTimeout);
                         triggerFallback();
                     };
 
-                    let repeated = false;
                     audio.onended = () => {
-                        if (!repeated) {
-                            repeated = true;
-                            console.log('🎵 [AUDIO-ORIGINAL] Finalizado, iniciando repetición...');
-                            const playRepeat = () => {
-                                const repeatPromise = (typeof window.playAudioWithBoost === 'function')
-                                    ? window.playAudioWithBoost(audio, 3.0)
-                                    : audio.play();
-                                repeatPromise.catch(e => {
-                                    console.error('Error al repetir audio:', e);
-                                });
-                            };
-
-                            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
-                                AndroidServices.speak('Repito');
-                                setTimeout(playRepeat, 1000);
-                            } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
-                                try { window.NativeServiceBridge.speak('Repito'); } catch(e) {}
-                                setTimeout(playRepeat, 1000);
-                            } else if (window.speechSynthesis) {
-                                const utter = new SpeechSynthesisUtterance('Repito');
-                                utter.lang = 'es-AR';
-                                utter.onend = playRepeat;
-                                window.speechSynthesis.speak(utter);
-                            } else {
-                                playRepeat();
-                            }
-                        } else {
-                            console.log('🎵 [AUDIO-ORIGINAL] Repetición finalizada.');
-                        }
+                        console.log('🎵 [AUDIO-ORIGINAL] Reproducción finalizada exitosamente.');
                     };
 
                     const playPromise = (typeof window.playAudioWithBoost === 'function')

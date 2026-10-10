@@ -51,10 +51,12 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 
 /**
@@ -200,6 +202,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         alertVolumePercent = prefs.getInt("alert_volume_percent", 85);
         alertVolume = alertVolumePercent / 100.0f;
         isVoiceMuted = "off".equals(prefs.getString("radarVoice", "on"));
+        try {
+            Set<String> savedSpoken = prefs.getStringSet("spoken_alerts_set", null);
+            if (savedSpoken != null) {
+                synchronized (spokenAlertIds) {
+                    spokenAlertIds.addAll(savedSpoken);
+                }
+            }
+        } catch (Exception ignored) {}
         Log.i(TAG, "🔊 [PREFS] Volumen independiente cargado: " + alertVolumePercent + "% | Mute: " + isVoiceMuted);
 
         // 1. Thread de fondo prioritario
@@ -872,6 +882,29 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         return val.toString();
     }
 
+    private void markAlertSpoken(String id) {
+        if (id == null || id.isEmpty()) return;
+        synchronized (spokenAlertIds) {
+            if (!spokenAlertIds.contains(id)) {
+                spokenAlertIds.add(id);
+                if (spokenAlertIds.size() > 200) {
+                    spokenAlertIds.remove(0);
+                }
+                try {
+                    SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                    prefs.edit().putStringSet("spoken_alerts_set", new HashSet<>(spokenAlertIds)).apply();
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private boolean isAlertSpoken(String id) {
+        if (id == null || id.isEmpty()) return false;
+        synchronized (spokenAlertIds) {
+            return spokenAlertIds.contains(id);
+        }
+    }
+
     private final Map<String, TrafficAlert> activeAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
 
     private void updateAlertsFromSnapshot(DataSnapshot snapshot) {
@@ -891,6 +924,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 String status = getStringValue(child.child("status"));
                 Long expiresAt = getLongValue(child.child("expiresAt"));
                 String audioUrl = getStringValue(child.child("audioUrl"));
+                String authorName = getStringValue(child.child("authorName"));
+                String authorId = getStringValue(child.child("authorId"));
+
+                // Si el conductor actual es quien envió la alerta, silenciarla inmediatamente
+                if ((driverName != null && authorName != null && driverName.trim().equalsIgnoreCase(authorName.trim())) ||
+                    (userId != null && authorId != null && userId.trim().equalsIgnoreCase(authorId.trim()))) {
+                    markAlertSpoken(id);
+                    continue;
+                }
 
                 if (lat != null && lng != null && "active".equals(status) && (expiresAt == null || expiresAt > now)) {
                     TrafficAlert alert = new TrafficAlert(
@@ -906,14 +948,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     activeAlertsMap.put(id, alert);
                     loadedCount++;
 
-                    // Alerta reciente: tolerancia ampliada a 5 minutos (300000ms)
-                    boolean isNewOrRecent = alert.timestamp == 0 || alert.timestamp >= serviceStartTime - 30000 || Math.abs(now - alert.timestamp) < 300000;
-                    if (isNewOrRecent && !spokenAlertIds.contains(id)) {
-                        spokenAlertIds.add(id);
+                    // Alerta reciente: solo alertar si se generó después de que el servicio inició o dentro de los últimos 3 minutos
+                    long diff = alert.timestamp > 0 ? Math.abs(now - alert.timestamp) : 0;
+                    boolean isNewOrRecent = alert.timestamp > 0 && (alert.timestamp >= serviceStartTime - 10000) && (diff < 180000);
+                    if (isNewOrRecent && !isAlertSpoken(id)) {
+                        markAlertSpoken(id);
                         speakImmediateAlert(alert);
-                        if (spokenAlertIds.size() > 200) {
-                            spokenAlertIds.remove(0);
-                        }
+                    } else if (!isAlertSpoken(id)) {
+                        // Alerta antigua o histórica: marcarla para que nunca se reproduzca en bucle
+                        markAlertSpoken(id);
                     }
                 } else if (id != null) {
                     activeAlertsMap.remove(id);

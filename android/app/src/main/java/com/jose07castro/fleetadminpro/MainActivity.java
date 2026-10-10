@@ -495,17 +495,20 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void playAudio(String audioUrl, String fallbackText) {
-            if (audioUrl == null || audioUrl.trim().isEmpty()) return;
+        public boolean playAudio(String audioUrl, String fallbackText) {
+            if (audioUrl == null || audioUrl.trim().isEmpty()) return false;
             Log.i(TAG, "📱 JS → playAudio: " + audioUrl);
             try {
                 if (LocationTrackingService.instance != null) {
                     LocationTrackingService.instance.playAudioAlert(audioUrl, fallbackText);
+                    return true;
                 } else {
                     LocationTrackingService.speakText(fallbackText, MainActivity.this);
+                    return true;
                 }
             } catch (Exception e) {
                 Log.e(TAG, "❌ Error delegating playAudio to LocationTrackingService:", e);
+                return false;
             }
         }
 
