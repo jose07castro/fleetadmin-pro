@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v210';
+const CACHE_NAME = 'fleetadmin-pro-v211';
 const ASSETS = [
     './',
     './index.html?v=194',
@@ -31,7 +31,7 @@ const ASSETS = [
     './js/pwa-install.js?v=194',
     './js/ui-settings.js?v=194',
     './js/modules/radar-v126.js?v=194',
-    './js/modules/traffic-alerts.js?v=194',
+    './js/modules/traffic-alerts.js?v=211',
     './js/modules/copilot.js?v=205',
     './js/modules/voice-alert.js?v=194',
     './js/modules/kitt-voice.js?v=194',

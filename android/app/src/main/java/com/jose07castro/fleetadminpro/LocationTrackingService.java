@@ -175,8 +175,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         String originalText;
         long timestamp;
         String audioUrl;
+        String authorName;
+        String authorId;
 
-        TrafficAlert(String id, String type, double lat, double lng, String location, String originalText, long timestamp, String audioUrl) {
+        TrafficAlert(String id, String type, double lat, double lng, String location, String originalText, long timestamp, String audioUrl, String authorName, String authorId) {
             this.id = id;
             this.type = type;
             this.lat = lat;
@@ -185,6 +187,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             this.originalText = originalText;
             this.timestamp = timestamp;
             this.audioUrl = audioUrl;
+            this.authorName = authorName;
+            this.authorId = authorId;
         }
     }
 
@@ -793,6 +797,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             if (!activeAlerts.isEmpty()) {
                 synchronized (activeAlerts) {
                     for (TrafficAlert alert : activeAlerts) {
+                        // Si el chofer actual es quien reportó la alerta, no disparar aviso de proximidad a sí mismo
+                        if ((driverName != null && alert.authorName != null && driverName.trim().equalsIgnoreCase(alert.authorName.trim())) ||
+                            (userId != null && alert.authorId != null && userId.trim().equalsIgnoreCase(alert.authorId.trim()))) {
+                            continue;
+                        }
+
                         float[] results = new float[1];
                         Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
                                                alert.lat, alert.lng, results);
@@ -912,6 +922,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         long now = System.currentTimeMillis();
         int loadedCount = 0;
 
+        Map<String, TrafficAlert> freshAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
+
         for (DataSnapshot child : snapshot.getChildren()) {
             try {
                 String id = child.getKey();
@@ -943,9 +955,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         location != null ? location : "", 
                         originalText != null ? originalText : "", 
                         timestamp != null ? timestamp : 0L,
-                        audioUrl != null ? audioUrl : ""
+                        audioUrl != null ? audioUrl : "",
+                        authorName != null ? authorName : "",
+                        authorId != null ? authorId : ""
                     );
-                    activeAlertsMap.put(id, alert);
+                    freshAlertsMap.put(id, alert);
                     loadedCount++;
 
                     // Alerta reciente: solo alertar si se generó después de que el servicio inició o dentro de los últimos 3 minutos
@@ -958,8 +972,6 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         // Alerta antigua o histórica: marcarla para que nunca se reproduzca en bucle
                         markAlertSpoken(id);
                     }
-                } else if (id != null) {
-                    activeAlertsMap.remove(id);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "❌ [ALERTS] Error parsing alert child: " + child.getKey(), e);
@@ -967,6 +979,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
 
         synchronized (activeAlerts) {
+            activeAlertsMap.clear();
+            activeAlertsMap.putAll(freshAlertsMap);
             activeAlerts.clear();
             activeAlerts.addAll(activeAlertsMap.values());
         }
