@@ -255,7 +255,19 @@ app.get('/qr', async (req, res) => {
 app.get('/api/bot/diagnostics', (req, res) => {
     try {
         const diag = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDiagnostics === 'function' ? WhatsappBot.getDiagnostics() : {};
-        res.json({ ok: true, ...diag, timestamp: new Date().toISOString() });
+        const groups = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getGroupCache === 'function' ? WhatsappBot.getGroupCache() : {};
+        res.json({ ok: true, ...diag, groups, timestamp: new Date().toISOString() });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.get('/api/bot/live-events', async (req, res) => {
+    try {
+        const db = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (!db) return res.status(503).json({ ok: false, error: 'DB no disponible' });
+        const snap = await db.ref('bot_live_events').limitToLast(30).once('value');
+        res.json({ ok: true, events: snap.val() || {} });
     } catch(e) {
         res.status(500).json({ ok: false, error: e.message });
     }

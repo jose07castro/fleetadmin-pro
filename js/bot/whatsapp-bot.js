@@ -2572,7 +2572,7 @@ const WhatsappBot = (() => {
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
                 keepAliveIntervalMs: 25000,
-                markOnlineOnConnect: false,
+                markOnlineOnConnect: true,
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: true,
                 shouldSyncHistoryMessage: () => true,
@@ -2709,6 +2709,11 @@ const WhatsappBot = (() => {
                         }).catch(() => {});
                     }
 
+                    try {
+                        sock.sendPresenceUpdate('available').catch(() => {});
+                        console.log('🟢 [PRESENCE] Bot reportado ONLINE y listo para recibir flujo de mensajes en vivo.');
+                    } catch(e) {}
+
                     // Pre-popular y persistir el caché de nombres de grupo
                     try {
                         console.log('📡 [GROUP-CACHE] Solicitando lista de grupos en segundo plano...');
@@ -2786,6 +2791,26 @@ const WhatsappBot = (() => {
                         } catch (hErr) {}
                     }
                     console.log(`📚 [HISTORY-SYNC] Historial analizado. Candidatos encolados: ${candidatesCount}. Total en cola: ${_recentHistoricalQueue.length}`);
+
+                    // RECUPERACIÓN AUTOMÁTICA DE ALERTAS: Reenviar mensajes recientes (< 2.5 horas)
+                    // de grupos de tránsito a messages.upsert para no perder ninguna alerta por reinicios del servidor
+                    try {
+                        const nowSec = Math.floor(Date.now() / 1000);
+                        const recentTrafficCandidates = [];
+                        for (const histMsg of messages) {
+                            const jid = histMsg.key?.remoteJid;
+                            const msgSec = Number(histMsg.messageTimestamp) || 0;
+                            if (jid && jid.endsWith('@g.us') && msgSec > 0 && (nowSec - msgSec) <= 9000) {
+                                recentTrafficCandidates.push(histMsg);
+                            }
+                        }
+                        if (recentTrafficCandidates.length > 0) {
+                            console.log(`📡 [HISTORY-SYNC] Re-evaluando ${recentTrafficCandidates.length} mensajes recientes de grupos para alertas...`);
+                            sock.ev.emit('messages.upsert', { messages: recentTrafficCandidates, type: 'append' });
+                        }
+                    } catch(histRecoverErr) {
+                        console.warn('⚠️ [HISTORY-SYNC] Error recuperando alertas recientes:', histRecoverErr.message);
+                    }
                 }
             });
 
@@ -2834,9 +2859,10 @@ const WhatsappBot = (() => {
                     const nowSec = Math.floor(Date.now() / 1000);
                     const ageSec = nowSec - msgSec;
                     
-                    // Límite estricto de tiempo real para alertas de tránsito (máximo 20 minutos / 1200s):
-                    // No procesa historial viejo ni atrasado para evitar colapsos y solo alertar sobre situaciones activas.
-                    const maxAgeSec = 1200;
+                    // Validación de frescura para alertas de tránsito:
+                    // - type='notify': mensajes en vivo → hasta 45 minutos (2700s)
+                    // - type='append' o histórico: hasta 2.5 horas (9000s) para recuperar alertas de reinicio
+                    const maxAgeSec = (type === 'notify') ? 2700 : 9000;
                     
                     if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
                         console.log(`⏭️ [SKIP] Mensaje muy antiguo ignorado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
@@ -2918,6 +2944,21 @@ const WhatsappBot = (() => {
                                 }
                             }
                         }
+                    }
+
+                    // Registro de evento para monitoreo en vivo en Firebase
+                    if (db && isGroup) {
+                        try {
+                            db.ref('bot_live_events').push({
+                                type: type,
+                                group: groupName,
+                                jid: jid,
+                                text: (text || '').substring(0, 120),
+                                isAudio: isAudio,
+                                isImage: isImage,
+                                timestamp: Date.now()
+                            }).catch(() => {});
+                        } catch(e) {}
                     }
 
                     // 2. FILTRADO DE GRUPOS SELECCIONADOS
