@@ -23,6 +23,14 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
+// Agente Centinela IA oficial (@google/genai con Gemini 2.5 Flash)
+let geminiAgent = null;
+try {
+    geminiAgent = require('../../services/geminiAgent');
+} catch (e) {
+    try { geminiAgent = require('../services/geminiAgent'); } catch (e2) {}
+}
+
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 let _dynamicGeminiKey = null;
 let _lastQrCode = null;
@@ -83,6 +91,26 @@ async function callGeminiAudio(audioBuffer, mimeType, groupName = '') {
             } catch (dbErr) {}
         }
         return null;
+    }
+
+    // Prioridad 1: Agente Centinela IA (@google/genai con Gemini 2.5 Flash)
+    if (geminiAgent && typeof geminiAgent.transcribeAndClassifyAudio === 'function') {
+        try {
+            const sentinelAudio = await geminiAgent.transcribeAndClassifyAudio(audioBuffer, mimeType, { groupName });
+            if (sentinelAudio) {
+                return {
+                    isTrafficAlert: sentinelAudio.esAlerta,
+                    transcription: sentinelAudio.transcripcion || sentinelAudio.descripcion,
+                    type: sentinelAudio.tipo,
+                    address: sentinelAudio.ubicacion,
+                    reason: sentinelAudio.descripcion,
+                    vigenciaMinutos: sentinelAudio.vigenciaMinutos,
+                    isLifting: sentinelAudio.esLevantado
+                };
+            }
+        } catch(sErr) {
+            console.warn('⚠️ [GEMINI-AUDIO] Falló Agente Centinela para audio:', sErr.message);
+        }
     }
 
     const audioB64 = audioBuffer.toString('base64');
@@ -3711,6 +3739,30 @@ const WhatsappBot = (() => {
      * Analiza el mensaje con Gemini (HTTP directo) para detectar alertas.
      */
     async function _analyzeMessageWithAI(text, groupName = '') {
+        // Prioridad 1: Agente Centinela IA oficial (@google/genai con Gemini 2.5 Flash)
+        if (geminiAgent && typeof geminiAgent.classifyTrafficReport === 'function') {
+            try {
+                const sentinel = await geminiAgent.classifyTrafficReport(text, { groupName });
+                if (sentinel) {
+                    if (sentinel.esAlerta) {
+                        return {
+                            isAlert: true,
+                            type: sentinel.tipo || 'checkpoint',
+                            address: sentinel.ubicacion || null,
+                            description: sentinel.descripcion || text.substring(0, 60),
+                            confidence: sentinel.confianza || 0.85,
+                            vigenciaMinutos: sentinel.vigenciaMinutos || 60,
+                            isLifting: Boolean(sentinel.esLevantado)
+                        };
+                    } else {
+                        return { isAlert: false };
+                    }
+                }
+            } catch(sErr) {
+                console.warn('⚠️ [BOT-AI] Falló geminiAgent, usando fallback:', sErr.message);
+            }
+        }
+
         const key = getGeminiKey();
         if (!key) return null;
         

@@ -7,6 +7,9 @@ const PORT = process.env.PORT || 10000;
 // Importar Bot de WhatsApp (Escucha grupos en segundo plano)
 const WhatsappBot = require('./js/bot/whatsapp-bot');
 
+// Importar Agente Centinela IA (Google Gemini 2.5 Flash)
+const geminiAgent = require('./services/geminiAgent');
+
 // Habilitar CORS para todas las peticiones (requerido para clientes Capacitor/móviles)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1620,13 +1623,13 @@ function sanitizeForbiddenWords(text) {
     };
 }
 
-// Endpoint de Alertas Dinámicas en Tiempo Real
+// Endpoint de Alertas Dinámicas en Tiempo Real (Impulsado por Agente Centinela IA)
 app.post('/api/alerts/dynamic', async (req, res) => {
     try {
         const { text, audio, audioMimeType, lat, lng, type, authorName, fleetId, voiceMode = 'app' } = req.body;
 
-        if (!lat || !lng || !type || !authorName) {
-            return res.status(400).json({ error: 'Faltan parámetros requeridos: lat, lng, type, authorName' });
+        if (!lat || !lng || !authorName) {
+            return res.status(400).json({ error: 'Faltan parámetros requeridos: lat, lng, authorName' });
         }
 
         const db = WhatsappBot.getDb();
@@ -1640,30 +1643,85 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             municipal:  'Inspector municipal de tránsito',
             warning:    'Precaución en la vía',
             radar:      'Radar de velocidad',
-            accident:   'Accidente en la vía'
+            accident:   'Accidente en la vía',
+            traffic:    'Alerta de tráfico'
         };
-        const defaultTypeLabel = typeLabels[type] || 'Control o alerta de tránsito';
+        let assignedType = type || 'checkpoint';
+        const defaultTypeLabel = typeLabels[assignedType] || 'Control o alerta de tránsito';
 
         let originalText = text || '';
         let transcribedText = '';
         let audioUrl = null;
         let detectedBadWordsInAudio = false;
+        let vigenciaMinutos = 60;
+        let finalLat = Number(lat);
+        let finalLng = Number(lng);
+        let approximate = false;
+        let aiClassification = null;
 
         // 1. Si viene audio en base64
         if (audio) {
             console.log(`🎙️ [DYNAMIC-ALERT] Procesando audio de alerta (${audioMimeType || 'audio/webm'}) de ${authorName} (modo: ${voiceMode})...`);
             const audioBuffer = Buffer.from(audio, 'base64');
 
-            // Intentar transcribir con Gemini (para el texto de la alerta y para moderación)
-            const transcription = await callGeminiAudio(audioBuffer, audioMimeType);
-            if (transcription) {
-                transcribedText = transcription;
-                originalText = transcription;
-                console.log(`🎙️ [DYNAMIC-ALERT] Transcripción Gemini: "${transcribedText}"`);
+            // Procesar y clasificar con el Agente Centinela IA (Gemini 2.5 Flash)
+            try {
+                aiClassification = await geminiAgent.transcribeAndClassifyAudio(audioBuffer, audioMimeType || 'audio/webm', {
+                    groupName: `Reporte de voz de ${authorName}`,
+                    city: 'Rosario'
+                });
+            } catch (aiErr) {
+                console.warn('⚠️ [DYNAMIC-ALERT] Error consultando Agente Centinela para audio:', aiErr.message);
+            }
+
+            if (aiClassification && aiClassification.transcripcion) {
+                transcribedText = aiClassification.transcripcion;
+                originalText = aiClassification.transcripcion;
+                assignedType = aiClassification.tipo || assignedType;
+                vigenciaMinutos = aiClassification.vigenciaMinutos || 60;
+                console.log(`🎙️ [DYNAMIC-ALERT] Transcripción Centinela: "${transcribedText}" | Tipo: ${assignedType} | Vigencia: ${vigenciaMinutos}m`);
+                
+                // Si la IA identificó una intersección o calle específica en el audio, geocodificarla con precisión
+                if (aiClassification.ubicacion) {
+                    const geo = await geminiAgent.geocodeLocation(aiClassification.ubicacion, 'Rosario');
+                    if (geo && !geo.approximate) {
+                        finalLat = geo.lat;
+                        finalLng = geo.lng;
+                        console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación detectada en audio geocodificada con éxito: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng}`);
+                    }
+                }
             } else {
-                console.warn('⚠️ [DYNAMIC-ALERT] Falló la transcripción de Gemini. Usando etiqueta del tipo seleccionado.');
-                transcribedText = defaultTypeLabel;
-                originalText = defaultTypeLabel;
+                // Fallback clásico si la IA no transcribió
+                const transcription = await callGeminiAudio(audioBuffer, audioMimeType);
+                if (transcription) {
+                    transcribedText = transcription;
+                    originalText = transcription;
+                } else {
+                    transcribedText = defaultTypeLabel;
+                    originalText = defaultTypeLabel;
+                }
+            }
+        } else if (text) {
+            // Reporte escrito: clasificar con Agente Centinela
+            try {
+                aiClassification = await geminiAgent.classifyTrafficReport(text, {
+                    groupName: `Reporte escrito de ${authorName}`,
+                    city: 'Rosario'
+                });
+                if (aiClassification) {
+                    assignedType = aiClassification.tipo || assignedType;
+                    vigenciaMinutos = aiClassification.vigenciaMinutos || 60;
+                    if (aiClassification.ubicacion) {
+                        const geo = await geminiAgent.geocodeLocation(aiClassification.ubicacion, 'Rosario');
+                        if (geo && !geo.approximate) {
+                            finalLat = geo.lat;
+                            finalLng = geo.lng;
+                            console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación en texto geocodificada: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng}`);
+                        }
+                    }
+                }
+            } catch (aiErr) {
+                console.warn('⚠️ [DYNAMIC-ALERT] Error clasificando texto con Centinela:', aiErr.message);
             }
         }
 
@@ -1676,22 +1734,17 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             console.log(`🚫 [DYNAMIC-ALERT-CENSOR] Se detectaron insultos en la alerta de ${authorName}: [${moderation.removedWords.join(', ')}]. Palabras eliminadas. Texto limpio: "${moderation.cleanText}"`);
         }
 
-        // Si después de quitar insultos no quedó texto útil, usar etiqueta por defecto
         let cleanText = moderation.cleanText.trim();
         if (!cleanText || cleanText.length < 3) {
             cleanText = defaultTypeLabel;
         }
 
-        // Si el usuario eligió 'Mi Voz Real' pero el audio contenía insultos:
-        // NO podemos difundir el audio grabado porque contiene las malas palabras habladas.
-        // Se descarta el audio y se difunde con la voz limpia de la app (TTS) usando el texto saneado.
         if (audio && finalVoiceMode === 'real') {
             if (detectedBadWordsInAudio) {
                 console.log(`⚠️ [DYNAMIC-ALERT] Modo 'real' cambiado a 'app' porque el audio original contenía insultos. Se emitirá vía voz TTS limpia.`);
                 finalVoiceMode = 'app';
                 audioUrl = null;
             } else {
-                // Audio limpio sin insultos: guardar en disco y emitir audioUrl
                 try {
                     const ext = (audioMimeType && audioMimeType.includes('ogg')) ? 'ogg' :
                                 (audioMimeType && audioMimeType.includes('mp3')) ? 'mp3' : 'webm';
@@ -1709,43 +1762,41 @@ app.post('/api/alerts/dynamic', async (req, res) => {
         }
 
         const alertText = cleanText;
-
-        // 2. Publicar la alerta en Firebase
-        // Si finalVoiceMode === 'app' o audioUrl es null -> Los dispositivos la anuncian con voz sintetizada (TTS) limpia y anónima.
-        // Si finalVoiceMode === 'real', audioUrl tiene la ruta del audio limpio -> Los dispositivos reproducen el audio original del chofer.
         const alertId = `alert_dynamic_${Date.now()}`;
         const finalFleetId = fleetId || await WhatsappBot.getFleetId() || 'default_fleet';
 
         const alertData = {
             id: alertId,
-            type: type,
-            location: alertText,
-            lat: Number(lat),
-            lng: Number(lng),
+            type: assignedType,
+            location: (aiClassification && aiClassification.ubicacion) ? aiClassification.ubicacion : alertText,
+            lat: Number(finalLat),
+            lng: Number(finalLng),
             timestamp: Date.now(),
-            expiresAt: Date.now() + (60 * 60 * 1000), // Expiración: 60 minutos
+            expiresAt: Date.now() + (vigenciaMinutos * 60 * 1000),
             authorName: authorName,
             status: 'active',
             voiceMode: finalVoiceMode,
             audioUrl: (finalVoiceMode === 'real') ? audioUrl : null,
             originalText: alertText,
-            description: (finalVoiceMode === 'real') ? `Audio de ${authorName}` : alertText,
-            censorApplied: detectedBadWordsInAudio
+            description: (aiClassification && aiClassification.descripcion) ? aiClassification.descripcion : ((finalVoiceMode === 'real') ? `Audio de ${authorName}` : alertText),
+            censorApplied: detectedBadWordsInAudio,
+            vigenciaMinutos: vigenciaMinutos,
+            isLifting: Boolean(aiClassification && aiClassification.esLevantado)
         };
 
-        // Guardar en fleets/${fleetId}/traffic_alerts/
+        // Guardar en fleets/${fleetId}/traffic_alerts/ y en global_traffic_alerts/
         await db.ref(`fleets/${finalFleetId}/traffic_alerts/${alertId}`).set(alertData);
-
-        // Guardar en el nodo global global_traffic_alerts/ para que todos los dispositivos la escuchen
         await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
 
-        console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId} (modo: ${finalVoiceMode}, moderada: ${detectedBadWordsInAudio})`);
+        console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId} (tipo: ${assignedType}, vigencia: ${vigenciaMinutos}m, lat: ${finalLat}, lng: ${finalLng})`);
         res.json({
             ok: true,
             alertId,
             fleetId: finalFleetId,
             transcription: alertText,
-            location: alertText,
+            location: alertData.location,
+            type: assignedType,
+            vigenciaMinutos: vigenciaMinutos,
             voiceMode: finalVoiceMode,
             audioUrl: alertData.audioUrl,
             censorApplied: detectedBadWordsInAudio
@@ -1754,6 +1805,68 @@ app.post('/api/alerts/dynamic', async (req, res) => {
     } catch (e) {
         console.error('❌ [DYNAMIC-ALERT] Error en endpoint:', e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// ============================================
+// Endpoint del Agente Centinela IA (Gemini 2.5 Flash)
+// Procesa reportes de choferes o webhooks y despacha en tiempo real
+// ============================================
+app.post('/api/alerts/sentinel', async (req, res) => {
+    try {
+        const { text, audio, audioMimeType, groupName, authorName, fleetId } = req.body;
+        const db = typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+
+        if (!text && !audio) {
+            return res.status(400).json({ error: 'Se requiere texto o audio para procesar' });
+        }
+
+        let classification = null;
+        let audioUrl = null;
+
+        if (audio) {
+            const audioBuffer = Buffer.from(audio, 'base64');
+            classification = await geminiAgent.transcribeAndClassifyAudio(audioBuffer, audioMimeType || 'audio/ogg', { groupName });
+            if (classification && classification.esAlerta) {
+                try {
+                    const ext = (audioMimeType && audioMimeType.includes('mp3')) ? 'mp3' : 'ogg';
+                    const audioFileName = `sentinel_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+                    const audioPath = path.join(audioDir, audioFileName);
+                    fs.writeFileSync(audioPath, audioBuffer);
+                    audioUrl = `/audio/${audioFileName}`;
+                } catch(e) {}
+            }
+        } else {
+            classification = await geminiAgent.classifyTrafficReport(text, { groupName });
+        }
+
+        if (!classification) {
+            return res.status(500).json({ error: 'No se pudo clasificar el reporte con el Agente Centinela' });
+        }
+
+        let dispatchResult = { dispatched: false };
+        if (classification.esAlerta && db) {
+            const resolvedFleetId = fleetId || (typeof WhatsappBot.getFleetId === 'function' ? await WhatsappBot.getFleetId() : 'default_fleet');
+            dispatchResult = await geminiAgent.dispatchAlert(classification, {
+                authorName: authorName || groupName || 'Chofer',
+                groupName: groupName || 'App Conductor',
+                fleetId: resolvedFleetId,
+                originalText: text || classification.transcripcion || '',
+                audioUrl: audioUrl,
+                source: 'sentinel_api'
+            }, db);
+        }
+
+        res.json({
+            ok: true,
+            classification,
+            dispatched: dispatchResult.dispatched,
+            alertId: dispatchResult.alertId || null,
+            alertData: dispatchResult.alertData || null
+        });
+    } catch (err) {
+        console.error('❌ [SENTINEL-API] Error:', err);
+        res.status(500).json({ error: err.message });
     }
 });
 
