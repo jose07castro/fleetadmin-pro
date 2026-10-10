@@ -1,5 +1,5 @@
 // Service Worker para FleetAdmin Pro - Soporte offline
-const CACHE_NAME = 'fleetadmin-pro-v209';
+const CACHE_NAME = 'fleetadmin-pro-v210';
 const ASSETS = [
     './',
     './index.html?v=194',
@@ -48,16 +48,16 @@ const ASSETS = [
     './assets/auto-conductor2.png?v=181'
 ];
 
-// Instalar: cachear todos los archivos estÃƒÆ’Ã‚Â¡ticos + FORZAR activaciÃƒÆ’Ã‚Â³n inmediata
+// Instalar: cachear todos los archivos estáticos + FORZAR activación inmediata
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    // v111: FORZAR skipWaiting ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â el SW nuevo toma control AL INSTANTE
+    // v111: FORZAR skipWaiting — el SW nuevo toma control AL INSTANTE
     self.skipWaiting();
 });
 
-// Activar: limpiar cachÃƒÆ’Ã‚Â©s viejas
+// Activar: limpiar cachés viejas
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
@@ -67,7 +67,7 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch: Firebase y API van a red, estÃƒÆ’Ã‚Â¡ticos cache-first
+// Fetch: Firebase y API van a red, estáticos cache-first
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
@@ -86,7 +86,7 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // Archivos estÃƒÆ’Ã‚Â¡ticos: cache-first con fallback a red
+    // Archivos estáticos: cache-first con fallback a red
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
@@ -116,7 +116,7 @@ self.addEventListener('fetch', event => {
             });
 
         }).catch(() => {
-            // Fallback para navegaciÃƒÆ’Ã‚Â³n
+            // Fallback para navegación
             if (event.request.destination === 'document' || event.request.mode === 'navigate') {
                 return caches.match('./index.html?v=119')
                     .then(res => res || caches.match('./index.html'))
@@ -134,22 +134,22 @@ self.addEventListener('notificationclick', event => {
     const data = event.notification.data || {};
     const action = event.action;
 
-    // Si el usuario tocÃƒÆ’Ã‚Â³ "Ver Mapa" y tenemos URL de Google Maps
+    // Si el usuario tocó "Ver Mapa" y tenemos URL de Google Maps
     if (action === 'open-map' && data.mapsUrl) {
         event.waitUntil(clients.openWindow(data.mapsUrl));
         return;
     }
 
-    // Para cualquier otro click/acciÃƒÆ’Ã‚Â³n: abrir/focus la app
+    // Para cualquier otro click/acción: abrir/focus la app
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-            // Buscar si la app ya estÃƒÆ’Ã‚Â¡ abierta
+            // Buscar si la app ya está abierta
             for (let client of windowClients) {
                 if (client.url.includes(self.location.origin) && 'focus' in client) {
                     return client.focus();
                 }
             }
-            // Si no estÃƒÆ’Ã‚Â¡ abierta, abrir
+            // Si no está abierta, abrir
             if (clients.openWindow) {
                 return clients.openWindow(data.url || '/');
             }
@@ -158,29 +158,29 @@ self.addEventListener('notificationclick', event => {
 });
 
 // =============================================
-// ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ SOS: Listener de mensajes desde el main thread
+// 🚨 SOS: Listener de mensajes desde el main thread
 // Permite disparar notificaciones incluso cuando
-// el OS estÃƒÆ’Ã‚Â¡ suspendiendo la pestaÃƒÆ’Ã‚Â±a (background)
+// el OS está suspendiendo la pestaña (background)
 // =============================================
 self.addEventListener('message', event => {
     const msg = event.data;
     if (!msg) return;
 
-    // Mensaje del frontend para forzar activaciÃƒÆ’Ã‚Â³n del SW nuevo
+    // Mensaje del frontend para forzar activación del SW nuevo
     if (msg.type === 'SKIP_WAITING') {
-        console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ SW: SKIP_WAITING recibido ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â activando nueva versiÃƒÆ’Ã‚Â³n');
+        console.log('🔄 SW: SKIP_WAITING recibido — activando nueva versión');
         self.skipWaiting();
         return;
     }
 
     if (msg.type !== 'SOS_ALERT') return;
 
-    console.log('ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ SW: Mensaje SOS_ALERT recibido del main thread');
+    console.log('🚨 SW: Mensaje SOS_ALERT recibido del main thread');
 
     const alertData = msg.alertData || {};
     const typeLabel = alertData.emergencyTypeLabel || alertData.emergencyType || 'Emergencia';
-    const title = 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Ãƒâ€šÃ‚Â¡ALERTA SOS!';
-    const body = `${alertData.driverName || 'Un conductor'} necesita ayuda\n${typeLabel}\nÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â‚¬â€ ${alertData.vehicleName || 'VehÃƒÆ’Ã‚Â­culo'}`;
+    const title = '🚨 ¡ALERTA SOS!';
+    const body = `${alertData.driverName || 'Un conductor'} necesita ayuda\n${typeLabel}\n🚗 ${alertData.vehicleName || 'Vehículo'}`;
 
     event.waitUntil(
         self.registration.showNotification(title, {
@@ -196,21 +196,21 @@ self.addEventListener('message', event => {
                 mapsUrl: alertData.mapsUrl || null
             },
             actions: alertData.mapsUrl ? [
-                { action: 'open-map', title: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Ver Mapa' },
-                { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+                { action: 'open-map', title: '📍 Ver Mapa' },
+                { action: 'open-app', title: '🚨 Abrir App' }
             ] : [
-                { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+                { action: 'open-app', title: '🚨 Abrir App' }
             ]
         }).then(() => {
-            console.log('ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ SW: ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ NotificaciÃƒÆ’Ã‚Â³n SOS de background mostrada');
+            console.log('🚨 SW: ✅ Notificación SOS de background mostrada');
         }).catch(err => {
-            console.error('ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ SW: ÃƒÂ¢Ã‚ÂÃ…â€™ Error mostrando notificaciÃƒÆ’Ã‚Â³n:', err);
+            console.error('🚨 SW: ❌ Error mostrando notificación:', err);
         })
     );
 });
 
 // =============================================
-// ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â Firebase Cloud Messaging (FCM) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Service Worker
+// 🔥 Firebase Cloud Messaging (FCM) — Service Worker
 // Importar Firebase SDKs para manejar push en background
 // =============================================
 try {
@@ -229,15 +229,15 @@ try {
 
     const messaging = firebase.messaging();
 
-    // Handler para mensajes en background (cuando la app NO estÃƒÆ’Ã‚Â¡ en foreground)
-    // FCM invoca esto automÃƒÆ’Ã‚Â¡ticamente para data-only messages
+    // Handler para mensajes en background (cuando la app NO está en foreground)
+    // FCM invoca esto automáticamente para data-only messages
     messaging.onBackgroundMessage((payload) => {
-        console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â FCM SW: ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â© Background message recibido:', payload);
+        console.log('🔥 FCM SW: 📩 Background message recibido:', payload);
 
         const data = payload.data || {};
         const notification = payload.notification || {};
 
-        const title = notification.title || data.title || 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Ãƒâ€šÃ‚Â¡ALERTA SOS!';
+        const title = notification.title || data.title || '🚨 ¡ALERTA SOS!';
         const body = notification.body || data.body || 'Un conductor necesita ayuda inmediata.';
 
         const options = {
@@ -253,41 +253,41 @@ try {
                 mapsUrl: data.mapsUrl || null
             },
             actions: data.mapsUrl ? [
-                { action: 'open-map', title: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Ver Mapa' },
-                { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+                { action: 'open-map', title: '📍 Ver Mapa' },
+                { action: 'open-app', title: '🚨 Abrir App' }
             ] : [
-                { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+                { action: 'open-app', title: '🚨 Abrir App' }
             ]
         };
 
         return self.registration.showNotification(title, options);
     });
 
-    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â FCM SW: ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Firebase Messaging inicializado en Service Worker');
+    console.log('🔥 FCM SW: ✅ Firebase Messaging inicializado en Service Worker');
 
 } catch (e) {
-    console.warn('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â FCM SW: ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Error inicializando Firebase en SW (push manual sigue funcionando):', e.message);
+    console.warn('🔥 FCM SW: ⚠️ Error inicializando Firebase en SW (push manual sigue funcionando):', e.message);
 }
 
 // =============================================
-// ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â Push Event FALLBACK (para push genÃƒÆ’Ã‚Â©ricos sin FCM SDK)
+// 🔥 Push Event FALLBACK (para push genéricos sin FCM SDK)
 // Si Firebase Messaging SDK maneja el push, este handler
 // NO se ejecuta (FCM lo intercepta primero).
 // =============================================
 self.addEventListener('push', event => {
-    // Si Firebase messaging ya manejÃƒÆ’Ã‚Â³ el evento, no hacer nada
+    // Si Firebase messaging ya manejó el evento, no hacer nada
     if (event.__handled) return;
 
     let data = {};
     try {
         data = event.data ? event.data.json() : {};
     } catch (e) {
-        data = { title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Ãƒâ€šÃ‚Â¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
+        data = { title: '🚨 ¡ALERTA SOS!', body: 'Un conductor necesita ayuda' };
     }
 
-    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Â PUSH FALLBACK: Evento push recibido:', data);
+    console.log('🔥 PUSH FALLBACK: Evento push recibido:', data);
 
-    const title = data.title || data.notification?.title || 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Ãƒâ€šÃ‚Â¡ALERTA SOS!';
+    const title = data.title || data.notification?.title || '🚨 ¡ALERTA SOS!';
     const body = data.body || data.notification?.body || 'Un conductor necesita ayuda inmediata.';
     const pushData = data.data || data;
 
@@ -304,10 +304,10 @@ self.addEventListener('push', event => {
             mapsUrl: pushData.mapsUrl || null
         },
         actions: pushData.mapsUrl ? [
-            { action: 'open-map', title: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Ver Mapa' },
-            { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+            { action: 'open-map', title: '📍 Ver Mapa' },
+            { action: 'open-app', title: '🚨 Abrir App' }
         ] : [
-            { action: 'open-app', title: 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â¨ Abrir App' }
+            { action: 'open-app', title: '🚨 Abrir App' }
         ]
     };
 
