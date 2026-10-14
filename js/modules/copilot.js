@@ -3376,6 +3376,15 @@ const CopilotModule = (() => {
                 _playPassedChime();
                 _lastAlertTime[radar.id] = now;
                 _hideRadarHUD();
+
+                // Comprobar si hubo exceso de velocidad al pasar la fotomulta
+                const maxApproachSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed);
+                const limit = radar.limit || 40;
+                if (maxApproachSpeed > limit) {
+                    console.warn(`🚨 [COPILOTO] ¡Exceso de velocidad al pasar por fotomulta ${radar.name}! (${Math.round(maxApproachSpeed)} km/h vs límite ${limit})`);
+                    _reportSpeedInfractionToServer(radar, maxApproachSpeed);
+                }
+
                 _activeApproach = null;
                 return;
             }
@@ -3391,11 +3400,12 @@ const CopilotModule = (() => {
                 return;
             }
 
-            // Actualizar distancias
+            // Actualizar distancias y velocidad máxima registrada
             if (dist < _activeApproach.minDistance) {
                 _activeApproach.minDistance = dist;
             }
             _activeApproach.lastDistance = dist;
+            _activeApproach.maxSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed);
 
             // Actualizar HUD con distancia viva
             _showRadarHUD(radar, dist, currentSpeed);
@@ -3460,6 +3470,7 @@ const CopilotModule = (() => {
                 stage: 300,
                 minDistance: bestRadarDist,
                 lastDistance: bestRadarDist,
+                maxSpeed: currentSpeed,
                 startedAt: now
             };
 
@@ -3614,6 +3625,42 @@ const CopilotModule = (() => {
 
     function getRadarById(id) {
         return STATIC_RADARS.find(r => r.id === id) || null;
+    }
+
+    /**
+     * Notifica al servidor cuando el vehículo pasa por una cámara superando la velocidad máxima
+     */
+    function _reportSpeedInfractionToServer(radar, speed) {
+        try {
+            const userId = (typeof Auth !== 'undefined') ? (Auth.getUserId() || Auth.getUserName()) : null;
+            const userName = (typeof Auth !== 'undefined') ? Auth.getUserName() : null;
+            if (!userId) return;
+
+            const serverUrl = (typeof window !== 'undefined' && window.location && window.location.origin && !window.location.origin.includes('file://'))
+                ? window.location.origin
+                : 'https://fleetadmin-web-nueva.onrender.com';
+
+            fetch(`${serverUrl}/api/driver/speed-infraction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    driver_id: userId,
+                    driverName: userName,
+                    radarId: radar.id,
+                    radarName: radar.name,
+                    radarAddress: radar.address,
+                    radarLimit: radar.limit,
+                    speed: speed,
+                    timestamp: Date.now()
+                })
+            }).then(r => r.json()).then(res => {
+                console.log('📡 [COPILOTO] Infracción reportada al servidor:', res);
+            }).catch(err => {
+                console.warn('⚠️ [COPILOTO] Error enviando infracción:', err.message);
+            });
+        } catch (e) {
+            console.warn('⚠️ [COPILOTO] Error en _reportSpeedInfractionToServer:', e);
+        }
     }
 
     function dismissHUD() {
