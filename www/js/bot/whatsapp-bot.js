@@ -2879,6 +2879,14 @@ const WhatsappBot = (() => {
                     const jid = msg.key?.remoteJid;
                     if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
 
+                    // Identificación temprana de remitente y grupo
+                    const isGroupEarly = jid.endsWith('@g.us');
+                    const remitente = msg.key?.participant || (msg.key?.fromMe ? (sock.user?.id || 'Mi Usuario/Bot') : jid) || 'Desconocido';
+                    let nombreGrupo = isGroupEarly ? (groupNameCache[jid] || 'Grupo Desconocido') : (msg.key?.fromMe ? 'Chat Propio' : 'Chat Privado');
+
+                    // Log obligatorio solicitado por el usuario:
+                    console.log("[MSG-IN] Mensaje recibido de: " + remitente + " en grupo: " + nombreGrupo);
+
                     // Almacenar en caché de reintentos para re-cifrado E2EE
                     if (msg.key?.id && msg.message) {
                         storeMessage(msg.key, msg.message);
@@ -2933,10 +2941,11 @@ const WhatsappBot = (() => {
 
                     const isGroup = jid.endsWith('@g.us');
                     const senderJid = msg.key.participant || msg.key.remoteJid || '';
-                    const isFromTrustedAdmin = msg.key.fromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
+                    const isFromMe = Boolean(msg.key?.fromMe);
+                    const isFromTrustedAdmin = isFromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
                     
-                    // FILTRADO ESTRICTO DE PRIVACIDAD PARA ALERTAS DE TRÁNSITO: Omitir chats privados que no sean de un Admin de confianza
-                    if (!isGroup && !isFromTrustedAdmin) {
+                    // FILTRADO ESTRICTO DE PRIVACIDAD PARA ALERTAS DE TRÁNSITO: Omitir chats privados que no sean de un Admin de confianza o pruebas propias
+                    if (!isGroup && !isFromTrustedAdmin && !isFromMe) {
                         continue;
                     }
 
@@ -2948,16 +2957,18 @@ const WhatsappBot = (() => {
                     if (!jid) continue;
 
                     // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente y cache) ---
-                    let groupName = isGroup ? 'Grupo Desconocido' : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
+                    let groupName = isGroup ? (groupNameCache[jid] || nombreGrupo || 'Grupo Desconocido') : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
                     if (isGroup) {
                         if (groupNameCache[jid]) {
                             groupName = groupNameCache[jid];
+                            nombreGrupo = groupName;
                         } else {
                             try {
                                 const groupInfo = await sock.groupMetadata(jid);
                                 if (groupInfo?.subject) {
                                     groupName = groupInfo.subject;
                                     groupNameCache[jid] = groupName;
+                                    nombreGrupo = groupName;
                                     console.log(`💾 [GROUP-CACHE] Nombre guardado: ${jid?.substring(0,15)}... -> "${groupName}"`);
                                 }
                             } catch(ge) {
@@ -2966,6 +2977,12 @@ const WhatsappBot = (() => {
                             }
                         }
                     }
+
+                    const isTrabajoGroup = isGroup && (
+                        jid === '120363233913674611@g.us' ||
+                        _normalizeGroupName(groupName).includes('trabajo') ||
+                        _normalizeGroupName(nombreGrupo).includes('trabajo')
+                    );
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
@@ -3025,33 +3042,40 @@ const WhatsappBot = (() => {
                     // 2. FILTRADO DE GRUPOS SELECCIONADOS
                     // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Solo operativos de tránsito, etc).
                     // "Operativos Arroyo Seco" fue EXCLUIDO a pedido del admin (ver EXCLUDED_TRAFFIC_GROUPS).
-                    // Los chats privados del admin se permiten para diagnósticos.
+                    // El grupo "Trabajo" y mensajes enviados por el propio admin/usuario (fromMe) SIEMPRE están habilitados para pruebas.
                     let isTargetGroup = false;
                     if (isGroup) {
-                        // Exclusión explícita: se evalúa ANTES de cualquier coincidencia o rescate por palabras clave
-                        if (_isExcludedTrafficGroup(groupName)) {
-                            console.log(`🚫 [EXCLUDED-GROUP] Grupo excluido de alertas de tránsito: "${groupName}"`);
-                            continue;
-                        }
-                        const cleanedGroupName = _normalizeGroupName(groupName);
-                        isTargetGroup = cleanedGroupName.includes('solo operativos de transito') ||
-                                        cleanedGroupName.includes('alertas') ||
-                                        cleanedGroupName.includes('apps') ||
-                                        _isOperativoGroup(groupName);
-                        
-                        // RESCATE DIRECTO: Si el nombre del grupo es desconocido o no coincidió por metadata,
-                        // pero el mensaje contiene palabras clave explícitas de operativos/tránsito, ¡ACEPTARLO!
-                        if (!isTargetGroup && text && _hasTrafficKeywords(text)) {
-                            console.log(`🎯 [TARGET-RESCUE] Mensaje en grupo "${groupName}" aceptado por contener palabras de tránsito: "${text.substring(0, 50)}"`);
+                        // REGLA CENTINELA: Si es el grupo "Trabajo" o proviene de mi propio usuario (fromMe) o admin, PERMITIR SIEMPRE
+                        if (isTrabajoGroup || isFromMe || isFromTrustedAdmin) {
                             isTargetGroup = true;
-                        }
-                        
-                        if (!isTargetGroup) {
-                            console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);
-                            continue;
+                            console.log(`🎯 [TARGET-ALLOWED] Grupo "${groupName}" permitido explícitamente (esTrabajo=${isTrabajoGroup}, fromMe=${isFromMe}, admin=${isFromTrustedAdmin})`);
+                        } else {
+                            // Exclusión explícita: se evalúa ANTES de cualquier coincidencia o rescate por palabras clave
+                            if (_isExcludedTrafficGroup(groupName)) {
+                                console.log(`🚫 [EXCLUDED-GROUP] Grupo excluido de alertas de tránsito: "${groupName}"`);
+                                continue;
+                            }
+                            const cleanedGroupName = _normalizeGroupName(groupName);
+                            isTargetGroup = cleanedGroupName.includes('solo operativos de transito') ||
+                                            cleanedGroupName.includes('trabajo') ||
+                                            cleanedGroupName.includes('alertas') ||
+                                            cleanedGroupName.includes('apps') ||
+                                            _isOperativoGroup(groupName);
+                            
+                            // RESCATE DIRECTO: Si el nombre del grupo es desconocido o no coincidió por metadata,
+                            // pero el mensaje contiene palabras clave explícitas de operativos/tránsito, ¡ACEPTARLO!
+                            if (!isTargetGroup && text && _hasTrafficKeywords(text)) {
+                                console.log(`🎯 [TARGET-RESCUE] Mensaje en grupo "${groupName}" aceptado por contener palabras de tránsito: "${text.substring(0, 50)}"`);
+                                isTargetGroup = true;
+                            }
+                            
+                            if (!isTargetGroup) {
+                                console.log(`⏭️ [SKIP-GROUP] Ignorando grupo no objetivo: "${groupName}"`);
+                                continue;
+                            }
                         }
                     } else {
-                        // Si no es grupo pero llegó hasta aquí, es del admin
+                        // Si no es grupo pero llegó hasta aquí, es del admin o chat propio
                         isTargetGroup = true;
                     }
 
@@ -3090,7 +3114,7 @@ const WhatsappBot = (() => {
                         // familia u otros grupos que no sean de tránsito.
                         // "Grupo Desconocido" tampoco se procesa: si no pudimos leer el nombre,
                         // es más seguro saltarlo que arriesgar privacidad.
-                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup;
+                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup || isTrabajoGroup || isFromMe;
 
                         if (!shouldProcessAudio) {
                             console.log(`🔒 [PRIVACIDAD] Audio IGNORADO: el chat "${groupName}" no es un grupo de operativos ni un admin de confianza. No se descarga ni procesa.`);
@@ -3601,7 +3625,7 @@ const WhatsappBot = (() => {
                     // PRE-FILTRADO DE PALABRAS CLAVE (Optimización de cuota de Gemini)
                     const hasKeywords = _hasTrafficKeywords(text);
                     const hasIntersection = !!_extractIntersection(text);
-                    if (!hasKeywords && !hasIntersection && !isFromTrustedAdmin) {
+                    if (!hasKeywords && !hasIntersection && !isFromTrustedAdmin && !isTrabajoGroup && !isFromMe) {
                         console.log(`⏭️ [SKIP-NO-KEYWORDS] Omitiendo mensaje porque no contiene palabras clave de tránsito ni intersección: "${text.substring(0,60)}"`);
                         continue;
                     }
