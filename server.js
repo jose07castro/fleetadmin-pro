@@ -289,6 +289,43 @@ app.post('/api/bot/send-trabajo', async (req, res) => {
     }
 });
 
+app.post('/api/bot/simulate-group-message', async (req, res) => {
+    try {
+        const text = req.body?.text || 'Operativo de fiscalización en Belgrano y Rioja';
+        const groupJid = req.body?.jid || '120363233913674611@g.us';
+        const sender = req.body?.sender || '5493417327248@s.whatsapp.net';
+        const pushName = req.body?.pushName || 'Marianela González';
+        const mockMsg = {
+            key: {
+                remoteJid: groupJid,
+                fromMe: false,
+                id: 'SIM_' + Date.now(),
+                participant: sender
+            },
+            message: {
+                conversation: text
+            },
+            messageTimestamp: Math.floor(Date.now() / 1000),
+            pushName: pushName
+        };
+        const ok = typeof WhatsappBot.emitMockMessage === 'function'
+            ? WhatsappBot.emitMockMessage(mockMsg)
+            : false;
+        res.json({ ok, simulatedMessage: mockMsg });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/flush', (req, res) => {
+    try {
+        const ok = typeof WhatsappBot.flushBuffer === 'function' ? WhatsappBot.flushBuffer() : false;
+        res.json({ ok, message: 'Buffer vaciado' });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 // ============================================
 // Endpoint para Reporte de Infracción de Chofer (Copiloto / App)
 // ============================================

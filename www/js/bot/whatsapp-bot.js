@@ -5,11 +5,21 @@
    ============================================ */
 
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers, proto } = require('@whiskeysockets/baileys');
-// Logger completamente silencioso para Baileys (evita spam de llaves criptográficas)
+// Logger para Baileys con visibilidad de advertencias y errores (evita spam de trace/debug pero muestra fallos reales de descifrado)
 const P = () => ({
-    level: 'silent',
+    level: 'warn',
     trace: () => {}, debug: () => {}, info: () => {},
-    warn: () => {}, error: () => {}, fatal: () => {},
+    warn: (...args) => {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        if (!msg.includes('rate-overlimit')) {
+            console.warn('⚠️ [BAILEYS-WARN]', msg.substring(0, 200));
+        }
+    },
+    error: (...args) => {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        console.error('❌ [BAILEYS-ERR]', msg.substring(0, 300));
+    },
+    fatal: (...args) => console.error('💥 [BAILEYS-FATAL]', ...args),
     child: () => P()
 });
 try {
@@ -2405,21 +2415,31 @@ const WhatsappBot = (() => {
             }
             const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
-            // creds.json siempre es la prioridad absoluta (vital para sesión)
+            // 1. creds.json siempre es la prioridad absoluta (vital para sesión)
             if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
                 const credsKey = Buffer.from('creds.json').toString('base64');
                 backup[credsKey] = fs.readFileSync(path.join(AUTH_DIR, 'creds.json'), 'utf8');
             }
-            // Agregar solo los 35 archivos más recientes para no sobrecargar CPU
-            const nonCreds = cleanFiles.filter(f => f.endsWith('.json') && f !== 'creds.json')
+            // 2. Conservar TODOS los sender-keys (llaves de descifrado E2EE de grupos),
+            // sessions (chats directos) y app-state-sync-keys (sincronización con el teléfono).
+            // NUNCA limitar sender-keys porque provoca "Bad MAC" y mensajes indecifrables.
+            for (const file of cleanFiles) {
+                if (!file.endsWith('.json') || file === 'creds.json') continue;
+                if (file.startsWith('pre-key-')) continue; // pre-keys efímeras se podan abajo
+                try {
+                    const safeKey = Buffer.from(file).toString('base64');
+                    backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
+                } catch(e) {}
+            }
+            // 3. Agregar solo las 30 pre-keys más recientes para apretones de manos iniciales
+            const preKeys = cleanFiles.filter(f => f.startsWith('pre-key-') && f.endsWith('.json'))
                 .map(f => {
                     try { return { file: f, mtime: fs.statSync(path.join(AUTH_DIR, f)).mtimeMs }; } catch(e) { return null; }
                 })
                 .filter(Boolean)
                 .sort((a, b) => b.mtime - a.mtime)
-                .slice(0, 35);
-
-            for (const item of nonCreds) {
+                .slice(0, 30);
+            for (const item of preKeys) {
                 try {
                     const safeKey = Buffer.from(item.file).toString('base64');
                     backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, item.file), 'utf8');
@@ -2530,6 +2550,7 @@ const WhatsappBot = (() => {
         ? `${process.env.RENDER_SERVICE_NAME}_${(process.env.RENDER_INSTANCE_ID || Math.random().toString(36).substring(2, 7))}`
         : `local_${process.pid}_${Math.random().toString(36).substring(2, 7)}`;
     let _leaderHeartbeatInterval = null;
+    let _bufferFlushInterval = null;
 
     // Caché en memoria para re-cifrado E2EE (Soluciona "Esperando mensaje. Esto puede tomar tiempo...")
     const _messageStore = new Map();
@@ -2647,7 +2668,7 @@ const WhatsappBot = (() => {
                 version,
                 auth: state,
                 printQRInTerminal: true,
-                logger: P({ level: 'silent' }),
+                logger: P(),
                 browser: ['FleetAdmin Pro', 'MacOS', '20.0.04'],
                 connectTimeoutMs: 60000,
                 defaultQueryTimeoutMs: 0,
@@ -2655,7 +2676,6 @@ const WhatsappBot = (() => {
                 markOnlineOnConnect: true,
                 generateHighQualityLinkPreview: false,
                 syncFullHistory: false,
-                shouldSyncHistoryMessage: () => false,
                 getMessage: async (key) => {
                     if (!key || !key.id) return undefined;
                     let m = _messageStore.get(key.id) || (key.remoteJid ? _messageStore.get(`${key.remoteJid}_${key.id}`) : null);
@@ -2744,11 +2764,8 @@ const WhatsappBot = (() => {
                         // Retardo racional con desincronización aleatoria (Jitter)
                         // Evita que dos clones conecten exactamente al mismo milisegundo
                         const delay440 = 15000 + Math.floor(Math.random() * 15000); 
-                        console.log(`⚠️ [${statusCode}] Conflicto de sesión. Intento ${retryCount}. Esperando ${delay440/1000}s (Jitter)...`);
-                        
-                        if (retryCount >= 2) {
-                            await softResetAuthInfo();
-                        }
+                        console.log(`⚠️ [${statusCode}] Conflicto de sesión (instancia concurrente en Render). Intento ${retryCount}. Esperando ${delay440/1000}s (Jitter)...`);
+                        // NUNCA ejecutar softResetAuthInfo() automáticamente en 440: destruye las llaves de los grupos!
 
                         await new Promise(resolve => setTimeout(resolve, delay440));
                         await startSocket();
@@ -2788,6 +2805,24 @@ const WhatsappBot = (() => {
                             connectedAt: Date.now()
                         }).catch(() => {});
                     }
+
+                    // VACIADO INMEDIATO DEL BUFFER DE EVENTOS: Previene que Baileys deje mensajes pendientes en RAM
+                    try {
+                        if (sock?.ev && typeof sock.ev.flush === 'function') {
+                            sock.ev.flush();
+                            console.log('⚡ [EVENT-BUFFER] Buffer de eventos Baileys liberado (flush inmediato).');
+                        }
+                    } catch(fe) {}
+
+                    // Programar vaciado periódico continuo (cada 3s) para garantizar que ningún mensaje se quede atrapado
+                    if (_bufferFlushInterval) clearInterval(_bufferFlushInterval);
+                    _bufferFlushInterval = setInterval(() => {
+                        try {
+                            if (sock?.ev && typeof sock.ev.flush === 'function') {
+                                sock.ev.flush();
+                            }
+                        } catch(e) {}
+                    }, 3000);
 
                     try {
                         sock.sendPresenceUpdate('available').catch(() => {});
@@ -5202,6 +5237,24 @@ Si no hay movimientos financieros detectados, respondé: []`;
         getLastQr: () => _lastQrCode,
         getGroupCache: () => groupNameCache,
         sendTextMessage,
+        emitMockMessage: (msg, type = 'notify') => {
+            if (sock && sock.ev) {
+                try {
+                    sock.ev.emit('messages.upsert', { messages: [msg], type });
+                    return true;
+                } catch(e) {
+                    console.error('⚠️ [MOCK-EMIT] Error:', e.message);
+                }
+            }
+            return false;
+        },
+        flushBuffer: () => {
+            if (sock && sock.ev && typeof sock.ev.flush === 'function') {
+                sock.ev.flush();
+                return true;
+            }
+            return false;
+        },
         getTrustedAdminNumbers: () => [...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers],
         getDiagnostics: () => ({
             connected: _isConnectedState,
@@ -5211,7 +5264,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
             hasGeminiKey: !!getGeminiKey(),
             lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null,
             instanceId: INSTANCE_ID,
-            version: '206aab8-v5'
+            version: '206aab8-v6'
         })
     };
 })();
