@@ -244,8 +244,9 @@
     }
 
     const _spokenAlertIds = new Set();
+    const _spokenLocationHistory = new Map(); // key -> { count, lastTime }
 
-    function _isAlertAlreadySpoken(id) {
+    function _isAlertAlreadySpoken(id, locationText = '') {
         if (!id) return false;
         if (_spokenAlertIds.has(id)) return true;
         try {
@@ -254,16 +255,26 @@
                 _spokenAlertIds.add(id);
                 return true;
             }
-            const storedSession = JSON.parse(sessionStorage.getItem('fa_spoken_alerts') || '[]');
-            if (storedSession.includes(id)) {
-                _spokenAlertIds.add(id);
-                return true;
-            }
         } catch(e) {}
+
+        // LÍMITE ESTRICTO DE 2 REPETICIONES POR MENSAJE / UBICACIÓN:
+        if (locationText) {
+            const locKey = locationText.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (locKey) {
+                const hist = _spokenLocationHistory.get(locKey);
+                const now = Date.now();
+                if (hist && (now - hist.lastTime) < 15 * 60 * 1000) { // 15 minutos
+                    if (hist.count >= 2) {
+                        console.log(`🔇 [VOZ-GLOBAL] Límite de 2 repeticiones alcanzado para "${locationText}". Silenciado.`);
+                        return true;
+                    }
+                }
+            }
+        }
         return false;
     }
 
-    function _markAlertAsSpoken(id) {
+    function _markAlertAsSpoken(id, locationText = '') {
         if (!id) return;
         _spokenAlertIds.add(id);
         try {
@@ -274,6 +285,32 @@
                 localStorage.setItem('fa_spoken_alerts', JSON.stringify(stored));
                 sessionStorage.setItem('fa_spoken_alerts', JSON.stringify(stored));
             }
+        } catch(e) {}
+
+        if (locationText) {
+            const locKey = locationText.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (locKey) {
+                const hist = _spokenLocationHistory.get(locKey) || { count: 0, lastTime: 0 };
+                hist.count += 1;
+                hist.lastTime = Date.now();
+                _spokenLocationHistory.set(locKey, hist);
+                console.log(`🔊 [VOZ-GLOBAL] Conteo de repetición para "${locationText}": ${hist.count}/2`);
+            }
+        }
+    }
+
+    // Escuchar comando de silencio de emergencia desde el panel /qr
+    if (typeof firebaseDB !== 'undefined') {
+        try {
+            firebaseDB.ref('system_commands/silence').on('value', (snap) => {
+                const val = snap.val();
+                if (val && (Date.now() - val) < 30000) {
+                    console.log('🛑 [EMERGENCIA] Comando de silencio recibido desde panel admin. Deteniendo voz.');
+                    if (typeof window !== 'undefined' && window.speechSynthesis) {
+                        window.speechSynthesis.cancel();
+                    }
+                }
+            });
         } catch(e) {}
     }
 
@@ -318,11 +355,11 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
-            const alertId = alert.id || snap.key;
+            const locDesc = alert.location || alert.description || alert.originalText || '';
 
-            // FILTRO 0: DESDUPLICACIÓN ESTRICTA (Nunca repetir la misma alerta dos veces)
-            if (alertId && _isAlertAlreadySpoken(alertId)) {
-                console.log(`🔇 [VOZ-GLOBAL] Alerta ya reproducida en este dispositivo (${alertId}). Omitiendo repetición.`);
+            // FILTRO 0: DESDUPLICACIÓN ESTRICTA (Máximo 2 reproducciones por mensaje/lugar)
+            if (alertId && _isAlertAlreadySpoken(alertId, locDesc)) {
+                console.log(`🔇 [VOZ-GLOBAL] Alerta ya reproducida (${alertId} / "${locDesc}"). Omitiendo repetición.`);
                 return;
             }
 
@@ -332,7 +369,7 @@
                 if (currentUser && alert.authorName && currentUser.name) {
                     if (alert.authorName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) {
                         console.log(`🔇 [VOZ-GLOBAL] Alerta propia creada por el usuario (${alert.authorName}). Marcando y omitiendo.`);
-                        if (alertId) _markAlertAsSpoken(alertId);
+                        if (alertId) _markAlertAsSpoken(alertId, locDesc);
                         return;
                     }
                 }
@@ -344,20 +381,20 @@
             const isVeryRecent = alert.timestamp && (timeDiff < 180000 || alert.timestamp >= _appStartTime - 10000);
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
                 console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
-                if (alertId) _markAlertAsSpoken(alertId);
+                if (alertId) _markAlertAsSpoken(alertId, locDesc);
                 return; 
             }
 
             // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
                 console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
-                if (alertId) _markAlertAsSpoken(alertId);
+                if (alertId) _markAlertAsSpoken(alertId, locDesc);
                 return;
             }
 
-            // Marcar inmediatamente para que jamás se vuelva a reproducir
+            // Marcar inmediatamente para contar la reproducción
             if (alertId) {
-                _markAlertAsSpoken(alertId);
+                _markAlertAsSpoken(alertId, locDesc);
             }
 
             // FILTRO DE SILENCIO: Si el usuario silenció las alertas (radarVoice=off), no reproducir voz ni audio

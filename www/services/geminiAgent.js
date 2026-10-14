@@ -10,6 +10,24 @@ const axios = require('axios');
 let _aiClient = null;
 let _dynamicKey = null;
 
+let _agentConfig = {
+    sentinelEnabled: true,
+    maxRepeats: 2,
+    trafficKeywords: [],
+    forbiddenWords: []
+};
+
+function updateAgentConfig(cfg) {
+    if (cfg && typeof cfg === 'object') {
+        _agentConfig = { ..._agentConfig, ...cfg };
+        console.log(`🧠 [GEMINI-AGENT] Configuración de Centinela actualizada: centinela=${_agentConfig.sentinelEnabled ? 'ACTIVO' : 'PAUSADO'}`);
+    }
+}
+
+function getAgentConfig() {
+    return _agentConfig;
+}
+
 function setGeminiKey(key) {
     if (key && key !== _dynamicKey) {
         _dynamicKey = key;
@@ -78,6 +96,18 @@ async function classifyTrafficReport(reportText, options = {}) {
             ubicacion: null,
             vigenciaMinutos: 0,
             descripcion: 'Texto vacío',
+            esLevantado: false,
+            confianza: 0
+        };
+    }
+
+    if (_agentConfig && _agentConfig.sentinelEnabled === false) {
+        return {
+            esAlerta: false,
+            tipo: 'warning',
+            ubicacion: null,
+            vigenciaMinutos: 0,
+            descripcion: 'Centinela IA en pausa',
             esLevantado: false,
             confianza: 0
         };
@@ -336,6 +366,11 @@ async function geocodeLocation(ubicacion, city = 'Rosario') {
  * @returns {Promise<{dispatched: boolean, alertId: string|null, alertData: object|null}>}
  */
 async function dispatchAlert(classification, options = {}, db) {
+    if (_agentConfig && _agentConfig.sentinelEnabled === false) {
+        console.log('⏸️ [CENTINELA-DESPACHO] Omitido: Centinela IA está pausado por el usuario.');
+        return { dispatched: false, alertId: null, alertData: null, reason: 'sentinel_paused' };
+    }
+
     if (!classification || !classification.esAlerta) {
         return { dispatched: false, alertId: null, alertData: null, reason: 'not_an_alert' };
     }
@@ -432,5 +467,7 @@ module.exports = {
     classifyTrafficReport,
     transcribeAndClassifyAudio,
     geocodeLocation,
-    dispatchAlert
+    dispatchAlert,
+    updateAgentConfig,
+    getAgentConfig
 };

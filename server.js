@@ -165,17 +165,39 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
-// Endpoint HTML para vincular WhatsApp o ver estado en vivo
+// Endpoint HTML para vincular WhatsApp o panel de control en vivo
 app.get('/qr', async (req, res) => {
     try {
         let isConnected = false;
         let diag = {};
         let groups = {};
+        let botConfig = {
+            sentinel_enabled: true,
+            max_alert_repeats: 2,
+            traffic_keywords: [
+                'operativo', 'operativos', 'control', 'controles', 'zorros', 'fiscalizacion', 
+                'fiscalización', 'fisca', 'fizca', 'policia', 'policía', 'gorra', 'ratis', 
+                'chanchos', 'radar', 'fotomulta', 'camara', 'cámara', 'alcoholemia', 'carreton', 
+                'carretón', 'grua', 'grúa', 'accidente', 'choque', 'corte', 'cortada', 
+                'levantaron', 'limpio', 'via libre', 'vía libre', 'despejado'
+            ],
+            forbidden_words: [
+                'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'pija', 'culo', 'verga', 'poronga', 'traba',
+                'boludo', 'boluda', 'tarado', 'tarada', 'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra',
+                'pelotudo', 'pelotuda', 'orto', 'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada',
+                'chota', 'mierda', 'trola', 'trolo', 'sorete', 'cabron', 'malparido', 'imbecil',
+                'estafa', 'prestamo', 'préstamo', 'vendo', 'compro', 'sorteo', 'promo', 'promocion', 'promoción',
+                'transferencia', 'ganaste', 'loteria', 'lotería', 'porno', 'casino'
+            ],
+            group_settings: {}
+        };
+
         try {
             if (typeof WhatsappBot !== 'undefined') {
                 if (typeof WhatsappBot.isConnected === 'function') isConnected = WhatsappBot.isConnected();
                 if (typeof WhatsappBot.getDiagnostics === 'function') diag = WhatsappBot.getDiagnostics() || {};
                 if (typeof WhatsappBot.getGroupCache === 'function') groups = WhatsappBot.getGroupCache() || {};
+                if (typeof WhatsappBot.getBotConfig === 'function') botConfig = WhatsappBot.getBotConfig() || botConfig;
             }
         } catch(bErr) {
             console.warn('⚠️ [QR-ENDPOINT] Error leyendo bot:', bErr.message);
@@ -191,70 +213,639 @@ app.get('/qr', async (req, res) => {
                     if (stVal.qrUrl) qrUrl = stVal.qrUrl;
                     if (stVal.connected) isConnected = true;
                     if (stVal.phone && !diag.botNumber) diag.botNumber = stVal.phone;
+
+                    const cfgSnap = await db.ref('bot_config').once('value');
+                    const cVal = cfgSnap.val();
+                    if (cVal) {
+                        if (typeof cVal.sentinel_enabled === 'boolean') botConfig.sentinel_enabled = cVal.sentinel_enabled;
+                        if (typeof cVal.max_alert_repeats === 'number') botConfig.max_alert_repeats = cVal.max_alert_repeats;
+                        if (Array.isArray(cVal.traffic_keywords)) botConfig.traffic_keywords = cVal.traffic_keywords;
+                        if (Array.isArray(cVal.forbidden_words)) botConfig.forbidden_words = cVal.forbidden_words;
+                        if (cVal.group_settings) botConfig.group_settings = { ...botConfig.group_settings, ...cVal.group_settings };
+                    }
                 }
             } catch(dbErr) {}
         }
 
-        const groupList = Object.entries(groups).map(([jid, name]) => `<li><b>${name}</b> <small style="color:#888">(${jid.substring(0,18)}...)</small></li>`).join('');
+        const isSentinelActive = botConfig.sentinel_enabled !== false;
+        const maxRepeats = botConfig.max_alert_repeats || 2;
+        const trafficKeywordsStr = Array.isArray(botConfig.traffic_keywords) ? botConfig.traffic_keywords.join(', ') : '';
+        const forbiddenWordsStr = Array.isArray(botConfig.forbidden_words) ? botConfig.forbidden_words.join(', ') : '';
+
+        // Combinar grupos del bot y de la configuración
+        const allGroupsMap = { ...groups };
+        if (botConfig.group_settings) {
+            for (const item of Object.values(botConfig.group_settings)) {
+                if (item && item.jid && !allGroupsMap[item.jid]) {
+                    allGroupsMap[item.jid] = item.name || item.jid;
+                }
+            }
+        }
+
+        const groupRowsHtml = Object.entries(allGroupsMap).map(([jid, name]) => {
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const gConf = botConfig.group_settings ? (botConfig.group_settings[safeKey] || botConfig.group_settings[jid]) : null;
+            const isGroupActive = gConf ? gConf.enabled !== false : true;
+            const displayName = (gConf && gConf.name) ? gConf.name : name;
+
+            return `
+            <div class="group-row" data-jid="${jid}" data-name="${displayName}">
+                <div class="group-info">
+                    <span class="group-name">${displayName}</span>
+                    <span class="group-jid">${jid}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="badge-${safeKey}" class="badge ${isGroupActive ? 'badge-ok' : 'badge-paused'}">${isGroupActive ? 'Activo' : 'Silenciado'}</span>
+                    <button class="btn btn-sm ${isGroupActive ? 'btn-toggle-on' : 'btn-toggle-off'}" 
+                            data-active="${isGroupActive}" 
+                            onclick="toggleGroup('${jid}', this)">
+                        ${isGroupActive ? '🟢 Activo' : '⚪ Silenciado'}
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+
+        const totalGroupsCount = Object.keys(allGroupsMap).length;
 
         const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FleetAdmin Pro — Conexión WhatsApp</title>
+    <title>FleetAdmin Pro — Panel de Control Bot & Centinela IA</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; text-align: center; }
-        .card { background: #1e293b; border-radius: 16px; max-width: 520px; margin: 20px auto; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #334155; }
-        .badge { display: inline-block; padding: 6px 14px; border-radius: 9999px; font-weight: bold; font-size: 14px; }
-        .badge-ok { background: #065f46; color: #34d399; }
-        .badge-wait { background: #7c2d12; color: #fb923c; }
-        .qr-box { background: white; padding: 16px; border-radius: 12px; display: inline-block; margin: 20px 0; }
-        .btn { display: inline-block; padding: 10px 18px; margin: 6px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 14px; transition: 0.2s; }
-        .btn-blue { background: #2563eb; color: white; }
+        :root {
+            --bg-main: #090d16;
+            --card-bg: #131b2e;
+            --card-border: #1e293b;
+            --accent-blue: #0ea5e9;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-main);
+            color: var(--text-main);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 860px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 14px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-paused { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+        .badge-wait { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 16px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        .btn:active { transform: translateY(0); }
+        .btn-blue { background: #0284c7; color: white; }
+        .btn-emerald { background: #059669; color: white; }
         .btn-amber { background: #d97706; color: white; }
-        .btn-red { background: #dc2626; color: white; }
-        ul { text-align: left; max-height: 200px; overflow-y: auto; background: #0f172a; padding: 12px 24px; border-radius: 8px; font-size: 13px; }
+        .btn-rose { background: #e11d48; color: white; }
+        .btn-secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+        .btn-toggle-on { background: #059669; color: white; }
+        .btn-toggle-off { background: #334155; color: #94a3b8; }
+
+        .qr-box { background: white; padding: 14px; border-radius: 12px; display: inline-block; margin: 15px auto; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 680px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+        }
+        .form-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+        }
+        .form-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+            line-height: 1.4;
+        }
+        textarea.form-control, input.form-control, select.form-control {
+            width: 100%;
+            background: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            color: #f8fafc;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border 0.2s;
+        }
+        textarea.form-control:focus, input.form-control:focus, select.form-control:focus {
+            border-color: var(--accent-blue);
+        }
+        textarea.form-control {
+            resize: vertical;
+            min-height: 90px;
+            line-height: 1.5;
+        }
+        .group-search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .group-list-box {
+            max-height: 340px;
+            overflow-y: auto;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            background: #090d16;
+            padding: 4px;
+        }
+        .group-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            gap: 10px;
+        }
+        .group-row:last-child { border-bottom: none; }
+        .group-row:hover { background: rgba(255, 255, 255, 0.02); }
+        .group-info {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+            overflow: hidden;
+            flex: 1;
+        }
+        .group-name {
+            font-weight: 600;
+            font-size: 13.5px;
+            color: #f1f5f9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .group-jid {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #065f46;
+            color: #34d399;
+            border: 1px solid #059669;
+            padding: 12px 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            font-weight: 600;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
     ${!isConnected ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
 <body>
-    <div class="card">
-        <h2>🚗 FleetAdmin Pro — Bot de WhatsApp</h2>
-        <div style="margin: 15px 0;">
-            ${isConnected 
-                ? '<span class="badge badge-ok">✅ CONECTADO Y ACTIVO</span><p style="margin-top:10px;font-size:16px;">Número: <b>+' + (diag.botNumber || 'Vinculado') + '</b></p>' 
-                : '<span class="badge badge-wait">📱 ESCANEAR CÓDIGO QR</span><p style="margin-top:10px;color:#94a3b8;">Abrí WhatsApp en tu teléfono > Dispositivos vinculados > Vincular un dispositivo</p>'}
-        </div>
-
-        ${!isConnected && qrUrl ? `
-            <div class="qr-box">
-                <img src="${qrUrl}" alt="Código QR WhatsApp" style="width: 280px; height: 280px; display: block;" />
+    <div class="container">
+        <!-- 1. ESTADO WHATSAPP -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🚗 FleetAdmin Pro — Bot de WhatsApp</span>
+                <span class="badge ${isConnected ? 'badge-ok' : 'badge-wait'}">
+                    ${isConnected ? '✅ CONECTADO Y ACTIVO' : '📱 ESPERANDO QR'}
+                </span>
             </div>
-            <p style="color:#94a3b8;font-size:13px;">Esta pantalla se actualiza automáticamente cada 5 segundos.</p>
-        ` : ''}
+            
+            <div style="margin: 10px 0; text-align:center;">
+                ${isConnected 
+                    ? '<p style="font-size:15px; color:#cbd5e1;">Número Vinculado: <b style="color:#38bdf8;">+' + (diag.botNumber || 'Activo') + '</b></p>' 
+                    : '<p style="color:#94a3b8; font-size:13px;">Abrí WhatsApp en tu teléfono > Dispositivos vinculados > Vincular un dispositivo</p>'}
+            </div>
 
-        ${!isConnected && !qrUrl ? `
-            <p style="color:#fbbf24;padding:20px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR" abajo.</p>
-        ` : ''}
+            ${!isConnected && qrUrl ? `
+                <div style="text-align:center;">
+                    <div class="qr-box">
+                        <img src="${qrUrl}" alt="Código QR WhatsApp" style="width: 250px; height: 250px; display: block;" />
+                    </div>
+                    <p style="color:#94a3b8;font-size:12px;">Se actualiza automáticamente cada 5 segundos.</p>
+                </div>
+            ` : ''}
 
-        <div style="margin: 20px 0; display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">
-            <button class="btn btn-blue" onclick="fetch('/api/bot/test-alert', {method:'POST'}).then(r=>r.json()).then(d=>alert('Alerta de prueba enviada al mapa: ' + JSON.stringify(d)))">🚨 Enviar Alerta Prueba</button>
-            <button class="btn btn-amber" onclick="fetch('/api/bot/soft-reset', {method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message); location.reload();})">🔧 Curar Sesión (Soft Reset)</button>
-            <button class="btn btn-red" onclick="if(confirm('¿Seguro que querés desvincular y pedir QR nuevo?')) fetch('/api/bot/reset-session', {method:'POST'}).then(r=>r.json()).then(d=>{alert(d.message); location.reload();})">🔑 Generar Nuevo QR</button>
+            ${!isConnected && !qrUrl ? `
+                <p style="color:#fbbf24;padding:15px;text-align:center;font-size:14px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR".</p>
+            ` : ''}
+
+            <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:14px;">
+                <button class="btn btn-blue" onclick="fetch('/api/bot/test-alert', {method:'POST'}).then(r=>r.json()).then(d=>showToast('🚨 Alerta de prueba enviada al mapa'))">🚨 Enviar Alerta Prueba</button>
+                <button class="btn btn-amber" onclick="fetch('/api/bot/soft-reset', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>location.reload(), 800);})">🔧 Curar Sesión (Soft Reset)</button>
+                <button class="btn btn-rose" onclick="if(confirm('¿Desvincular WhatsApp y pedir QR nuevo?')) fetch('/api/bot/reset-session', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>location.reload(), 800);})">🔑 Generar Nuevo QR</button>
+            </div>
         </div>
 
-        <div style="margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px;">
-            <h4>Grupos de Operativos Conectados (${diag.groupsCount || 0}):</h4>
-            ${groupList ? `<ul>${groupList}</ul>` : '<p style="color:#94a3b8;font-size:13px;">Esperando sincronización de grupos...</p>'}
+        <!-- 2. CONTROL MAESTRO DEL CENTINELA IA -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🧠 Control Maestro del Centinela IA</span>
+                <span id="sentinelStatusBadge" class="badge ${isSentinelActive ? 'badge-ok' : 'badge-paused'}">
+                    ${isSentinelActive ? '🟢 ACTIVO Y ESCUCHANDO' : '🔴 PAUSADO (Silenciado)'}
+                </span>
+            </div>
+
+            <p style="text-align:left; color:#94a3b8; font-size:13px; margin-bottom:14px; line-height:1.5;">
+                Desde acá podés pausar el Centinela en cualquier momento para evitar que hable o publique alertas. También podés configurar el límite estricto de repetición de voz y silenciar el sistema si ocurre una emergencia.
+            </p>
+
+            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px;">
+                <button id="btnToggleSentinel" 
+                        class="btn ${isSentinelActive ? 'btn-rose' : 'btn-emerald'}" 
+                        onclick="toggleSentinel()">
+                    ${isSentinelActive ? '⏸️ Pausar Centinela IA' : '▶️ Reanudar Centinela IA'}
+                </button>
+                <button class="btn btn-rose" onclick="clearAlertsAndSilence()">
+                    🔇 Silenciar Voz y Limpiar Alertas Repetidas
+                </button>
+            </div>
+
+            <div class="form-group" style="max-width:320px;">
+                <label class="form-label">Límite de repetición de voz por alerta:</label>
+                <p class="form-hint">Máxima cantidad de veces que se reproduce por voz la misma ubicación (en 15 minutos).</p>
+                <select id="maxRepeatsSelect" class="form-control" onchange="saveMaxRepeats(this.value)">
+                    <option value="1" ${maxRepeats === 1 ? 'selected' : ''}>1 vez (Ultra silencioso)</option>
+                    <option value="2" ${maxRepeats === 2 ? 'selected' : ''}>2 veces (Recomendado por defecto)</option>
+                    <option value="3" ${maxRepeats === 3 ? 'selected' : ''}>3 veces</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 3. ADMINISTRACIÓN DE GRUPOS DE WHATSAPP -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">👥 Administración de Grupos (${totalGroupsCount} Conectados)</span>
+                <div style="display:flex; gap:6px;">
+                    <button class="btn btn-sm btn-secondary" onclick="toggleAll(true)">✅ Activar Todos</button>
+                    <button class="btn btn-sm btn-secondary" onclick="toggleAll(false)">🔇 Silenciar Todos</button>
+                </div>
+            </div>
+
+            <div class="group-search-box">
+                <input type="text" 
+                       id="groupSearchInput" 
+                       class="form-control" 
+                       placeholder="🔍 Buscar grupo por nombre o JID..." 
+                       oninput="filterGroups(this.value)" />
+            </div>
+
+            <div class="group-list-box">
+                ${groupRowsHtml ? groupRowsHtml : '<p style="color:#94a3b8; padding:20px; text-align:center;">No hay grupos sincronizados aún.</p>'}
+            </div>
+        </div>
+
+        <!-- 4. PALABRAS PERMITIDAS Y PROHIBIDAS -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📝 Palabras Permitidas y Prohibidas</span>
+                <button id="btnSaveKeywords" class="btn btn-emerald" onclick="saveKeywords()">
+                    💾 Guardar Cambios en Palabras Clave
+                </button>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label" style="color:#34d399;">🟢 Palabras Permitidas (Tránsito y Operativos)</label>
+                    <p class="form-hint">Términos que el Centinela clasifica como incidentes viales activos (separados por coma).</p>
+                    <textarea id="trafficKeywordsInput" class="form-control" rows="5">${trafficKeywordsStr}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="color:#fb7185;">🔴 Palabras Prohibidas (Filtro / Censura / Spam)</label>
+                    <p class="form-hint">Mensajes con spam, estafas o estas palabras son descartados o censurados automáticamente.</p>
+                    <textarea id="forbiddenWordsInput" class="form-control" rows="5">${forbiddenWordsStr}</textarea>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="toast">Acción completada</div>
+
+    <script>
+        function showToast(msg, isError = false) {
+            const t = document.getElementById('toast');
+            if (!t) return;
+            t.textContent = msg;
+            t.style.background = isError ? '#881337' : '#065f46';
+            t.style.color = isError ? '#fda4af' : '#34d399';
+            t.style.borderColor = isError ? '#e11d48' : '#059669';
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+
+        async function toggleSentinel() {
+            const btn = document.getElementById('btnToggleSentinel');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/bot/toggle-sentinel', { method: 'POST' });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(data.sentinel_enabled ? '✅ Centinela IA REANUDADO' : '⏸️ Centinela IA PAUSADO');
+                    setTimeout(() => location.reload(), 600);
+                } else {
+                    showToast('Error: ' + data.error, true);
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                showToast('Error de conexión', true);
+                btn.disabled = false;
+            }
+        }
+
+        async function clearAlertsAndSilence() {
+            if (!confirm('¿Seguro que querés silenciar y vaciar todas las alertas en el mapa y celulares?')) return;
+            try {
+                if (typeof window !== 'undefined' && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                }
+                const res = await fetch('/api/bot/clear-alerts', { method: 'POST' });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('🔇 Alertas limpiadas y voz detenida en todos los celulares');
+                } else {
+                    showToast('Error: ' + data.error, true);
+                }
+            } catch(e) {
+                showToast('Error de conexión', true);
+            }
+        }
+
+        async function saveKeywords() {
+            const btn = document.getElementById('btnSaveKeywords');
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+            try {
+                const trafficRaw = document.getElementById('trafficKeywordsInput').value;
+                const forbiddenRaw = document.getElementById('forbiddenWordsInput').value;
+                const maxRepeats = parseInt(document.getElementById('maxRepeatsSelect').value) || 2;
+
+                const traffic_keywords = trafficRaw.split(',').map(s => s.trim()).filter(Boolean);
+                const forbidden_words = forbiddenRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+                const res = await fetch('/api/bot/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        traffic_keywords,
+                        forbidden_words,
+                        max_alert_repeats: maxRepeats
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('💾 Configuración de palabras guardada con éxito');
+                } else {
+                    showToast('Error guardando: ' + (data.error || 'Desconocido'), true);
+                }
+            } catch(e) {
+                showToast('Error de red al guardar', true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '💾 Guardar Cambios en Palabras Clave';
+            }
+        }
+
+        async function saveMaxRepeats(val) {
+            try {
+                const repeats = parseInt(val) || 2;
+                await fetch('/api/bot/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ max_alert_repeats: repeats })
+                });
+                showToast('Límite actualizado a ' + repeats + ' repeticiones');
+            } catch(e) {}
+        }
+
+        async function toggleGroup(jid, btn) {
+            const isCurrentlyActive = btn.getAttribute('data-active') === 'true';
+            const newStatus = !isCurrentlyActive;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/bot/group-setting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jid, enabled: newStatus })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    btn.setAttribute('data-active', newStatus ? 'true' : 'false');
+                    btn.className = 'btn btn-sm ' + (newStatus ? 'btn-toggle-on' : 'btn-toggle-off');
+                    btn.textContent = newStatus ? '🟢 Activo' : '⚪ Silenciado';
+                    const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const badge = document.getElementById('badge-' + safeKey);
+                    if (badge) {
+                        badge.className = 'badge ' + (newStatus ? 'badge-ok' : 'badge-paused');
+                        badge.textContent = newStatus ? 'Activo' : 'Silenciado';
+                    }
+                    showToast(newStatus ? 'Grupo activado' : 'Grupo silenciado');
+                } else {
+                    showToast('Error: ' + data.error, true);
+                }
+            } catch(e) {
+                showToast('Error de conexión', true);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function toggleAll(enableAll) {
+            if (!confirm(enableAll ? '¿Activar alertas en todos los grupos?' : '¿Silenciar todos los grupos?')) return;
+            try {
+                const res = await fetch('/api/bot/group-toggle-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enableAll })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(enableAll ? 'Todos los grupos activados' : 'Todos los grupos silenciados');
+                    setTimeout(() => location.reload(), 600);
+                } else {
+                    showToast('Error: ' + data.error, true);
+                }
+            } catch(e) {
+                showToast('Error de conexión', true);
+            }
+        }
+
+        function filterGroups(query) {
+            const q = query.toLowerCase().trim();
+            const rows = document.querySelectorAll('.group-row');
+            rows.forEach(r => {
+                const name = (r.getAttribute('data-name') || '').toLowerCase();
+                const jid = (r.getAttribute('data-jid') || '').toLowerCase();
+                if (name.includes(q) || jid.includes(q)) {
+                    r.style.display = 'flex';
+                } else {
+                    r.style.display = 'none';
+                }
+            });
+        }
+    </script>
 </body>
 </html>`;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(html);
     } catch(err) {
         res.status(500).send('Error cargando QR: ' + err.message);
+    }
+});
+
+// ============================================
+// ENDPOINTS DE CONTROL DEL BOT & CENTINELA IA
+// ============================================
+app.get('/api/bot/config', async (req, res) => {
+    try {
+        const cfg = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getBotConfig === 'function'
+            ? WhatsappBot.getBotConfig()
+            : { sentinel_enabled: true, max_alert_repeats: 2, traffic_keywords: [], forbidden_words: [], group_settings: {}, groups: {} };
+        res.json({ ok: true, config: cfg });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/config', async (req, res) => {
+    try {
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.updateBotConfig === 'function') {
+            const updated = await WhatsappBot.updateBotConfig(req.body || {});
+            return res.json({ ok: true, config: updated });
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/toggle-sentinel', async (req, res) => {
+    try {
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.toggleSentinel === 'function') {
+            const result = await WhatsappBot.toggleSentinel(req.body?.enabled);
+            return res.json(result);
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/clear-alerts', async (req, res) => {
+    try {
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.clearAlertsAndSilence === 'function') {
+            const result = await WhatsappBot.clearAlertsAndSilence();
+            return res.json(result);
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/group-setting', async (req, res) => {
+    try {
+        const { jid, enabled, customName } = req.body || {};
+        if (!jid) return res.status(400).json({ ok: false, error: 'jid is required' });
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.setGroupSetting === 'function') {
+            const result = await WhatsappBot.setGroupSetting(jid, enabled, customName);
+            return res.json({ ok: true, group: result });
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/group-toggle-all', async (req, res) => {
+    try {
+        const { enabled } = req.body || {};
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.toggleAllGroups === 'function') {
+            const result = await WhatsappBot.toggleAllGroups(enabled);
+            return res.json(result);
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
     }
 });
 

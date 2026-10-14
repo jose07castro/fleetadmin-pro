@@ -729,21 +729,52 @@ const WhatsappBot = (() => {
     }
     
 
-    // Diccionario de Slang Rosarino (Sincronizado con el cliente)
-    const ALERT_KEYWORDS = ['gorra', 'operativo', 'control', 'zorros', 'chanchos', 'palo', 'parando', 'evitar', 'ratis'];
-
-    // Lista de palabras/insultos prohibidos para censura o moderación de alertas
-    const FORBIDDEN_WORDS = [
+    // =========================================================================
+    // CONFIGURACIÓN DINÁMICA DEL CENTINELA IA Y FILTROS (SINCRONIZADO CON FIREBASE)
+    // =========================================================================
+    let _sentinelEnabled = true;
+    let _maxAlertRepeats = 2;
+    let _trafficKeywords = [
+        'operativo', 'operativos', 'control', 'controles', 'zorros', 'fiscalizacion', 
+        'fiscalización', 'fisca', 'fizca', 'policia', 'policía', 'gorra', 'ratis', 
+        'chanchos', 'radar', 'fotomulta', 'camara', 'cámara', 'alcoholemia', 'carreton', 
+        'carretón', 'grua', 'grúa', 'accidente', 'choque', 'corte', 'cortada', 
+        'levantaron', 'limpio', 'via libre', 'vía libre', 'despejado', 'parando', 
+        'palo', 'inspeccion', 'motos', 'servicios publicos', 'reten', 'retenes'
+    ];
+    let _forbiddenWords = [
         'puto', 'puta', 'conchudo', 'conchuda', 'concha', 'pija', 'culo', 'verga', 'poronga', 'traba',
         'boludo', 'boluda', 'tarado', 'tarada', 'hijo de puta', 'hija de puta', 'hdp', 'forro', 'forra',
         'pelotudo', 'pelotuda', 'orto', 'pajero', 'pajera', 'cagon', 'cagona', 'culiao', 'culiada',
-        'chota', 'mierda', 'trola', 'trolo', 'sorete', 'cabron', 'malparido', 'imbecil'
+        'chota', 'mierda', 'trola', 'trolo', 'sorete', 'cabron', 'malparido', 'imbecil',
+        'estafa', 'prestamo', 'préstamo', 'vendo', 'compro', 'sorteo', 'promo', 'promocion', 'promoción',
+        'transferencia', 'ganaste', 'loteria', 'lotería', 'porno', 'casino', 'plata facil', 'inversion'
     ];
+    let _groupSettings = {}; // safeJid -> { jid, name, enabled: boolean }
+    const _alertDispatchHistory = new Map(); // locKey -> { count, lastTime }
+
+    function _syncGroupToSettings(jid, name) {
+        if (!jid) return;
+        const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (!_groupSettings[safeKey]) {
+            _groupSettings[safeKey] = {
+                jid: jid,
+                name: name || jid,
+                enabled: true
+            };
+        } else if (name && (!_groupSettings[safeKey].name || _groupSettings[safeKey].name === jid)) {
+            _groupSettings[safeKey].name = name;
+        }
+    }
 
     function _containsForbiddenWords(text) {
         if (!text) return false;
         const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        return FORBIDDEN_WORDS.some(word => normalized.includes(word));
+        return _forbiddenWords.some(word => {
+            if (!word) return false;
+            const wNorm = word.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            return wNorm && normalized.includes(wNorm);
+        });
     }
 
     /**
@@ -836,17 +867,11 @@ const WhatsappBot = (() => {
     function _hasTrafficKeywords(text) {
         if (!text) return false;
         const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        const keywords = [
-            'operativo', 'control', 'zorros', 'policia', 'municipal', 'transito', 
-            'chanchos', 'gorra', 'ratis', 'radar', 'movil', 'seguridad', 'camara', 
-            'fotomulta', 'evitar', 'cana', 'alertas', 'reporte', 'accidente', 'choque', 
-            'ambulancia', 'bomberos', 'heca', 'gendarme', 'gendarmeria', 'federal', 
-            'parando', 'palo', 'inspeccion', 'limpio', 'libre', 'corte', 'demora',
-            'motos', 'grua', 'carreton', 'fiscalizacion', 'fisca', 'servicios publicos',
-            'alcoholemia', 'narcolemia', 'patrulla', 'patrullero', 'prefectura',
-            'frenando', 'revisando', 'papeles', 'documentacion', 'reten', 'retenes'
-        ];
-        return keywords.some(kw => t.includes(kw));
+        return _trafficKeywords.some(kw => {
+            if (!kw) return false;
+            const kwNorm = kw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            return kwNorm && t.includes(kwNorm);
+        });
     }
 
     function _isObviousChatter(text) {
@@ -2300,6 +2325,49 @@ const WhatsappBot = (() => {
                     console.log(`📱 [ADMIN-NUMBERS] Administradores autorizados en vivo: [${[...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers].join(', ')}]`);
                 });
 
+                // Sincronización en tiempo real de bot_config (Centinela, Repeticiones, Palabras, Grupos)
+                db.ref('bot_config').on('value', (snap) => {
+                    const cfg = snap.val() || {};
+                    if (typeof cfg.sentinel_enabled === 'boolean') {
+                        _sentinelEnabled = cfg.sentinel_enabled;
+                    }
+                    if (typeof cfg.max_alert_repeats === 'number') {
+                        _maxAlertRepeats = cfg.max_alert_repeats;
+                    }
+                    if (Array.isArray(cfg.traffic_keywords) && cfg.traffic_keywords.length > 0) {
+                        _trafficKeywords = cfg.traffic_keywords;
+                    }
+                    if (Array.isArray(cfg.forbidden_words) && cfg.forbidden_words.length > 0) {
+                        _forbiddenWords = cfg.forbidden_words;
+                    }
+                    if (cfg.group_settings && typeof cfg.group_settings === 'object') {
+                        _groupSettings = { ..._groupSettings, ...cfg.group_settings };
+                    }
+                    if (geminiAgent && typeof geminiAgent.updateAgentConfig === 'function') {
+                        geminiAgent.updateAgentConfig({
+                            sentinelEnabled: _sentinelEnabled,
+                            maxRepeats: _maxAlertRepeats,
+                            trafficKeywords: _trafficKeywords,
+                            forbiddenWords: _forbiddenWords
+                        });
+                    }
+                    console.log(`⚙️ [BOT-CONFIG] Centinela=${_sentinelEnabled ? 'ACTIVO' : 'PAUSADO'} | MaxRep=${_maxAlertRepeats} | Palabras=${_trafficKeywords.length} | Prohibidas=${_forbiddenWords.length}`);
+                });
+
+                // Inicializar valores por defecto en Firebase si aún no existen
+                try {
+                    const cfgSnap = await db.ref('bot_config').once('value');
+                    const existingCfg = cfgSnap.val() || {};
+                    const cfgSeed = {};
+                    if (typeof existingCfg.sentinel_enabled !== 'boolean') cfgSeed['sentinel_enabled'] = true;
+                    if (typeof existingCfg.max_alert_repeats !== 'number') cfgSeed['max_alert_repeats'] = 2;
+                    if (!existingCfg.traffic_keywords) cfgSeed['traffic_keywords'] = _trafficKeywords;
+                    if (!existingCfg.forbidden_words) cfgSeed['forbidden_words'] = _forbiddenWords;
+                    if (Object.keys(cfgSeed).length > 0) {
+                        await db.ref('bot_config').update(cfgSeed);
+                    }
+                } catch(seedErr) {}
+
                 const queueSnap = await db.ref('bot_receipt_queue').limitToLast(500).once('value');
                 const savedQueue = queueSnap.val();
                 if (savedQueue && typeof savedQueue === 'object') {
@@ -2318,6 +2386,7 @@ const WhatsappBot = (() => {
                 for (const item of Object.values(savedGroups)) {
                     if (item && item.jid && item.name) {
                         groupNameCache[item.jid] = item.name;
+                        _syncGroupToSettings(item.jid, item.name);
                         restoredCount++;
                     }
                 }
@@ -2839,6 +2908,7 @@ const WhatsappBot = (() => {
                                 const subject = participatingGroups[groupJid]?.subject;
                                 if (subject) {
                                     groupNameCache[groupJid] = subject;
+                                    _syncGroupToSettings(groupJid, subject);
                                     toSave[groupJid.replace(/[^a-zA-Z0-9_-]/g, '_')] = { jid: groupJid, name: subject, updatedAt: Date.now() };
                                     cachedCount++;
                                 }
@@ -3094,6 +3164,26 @@ const WhatsappBot = (() => {
                         }
                     }
 
+                    // BLOQUEO ABSOLUTO DE BUCLE DE ECO / RESPUESTAS DEL BOT:
+                    if (text && (
+                        text.includes('[Centinela IA]') ||
+                        text.includes('Centinela') ||
+                        text.startsWith('🤖') ||
+                        text.includes('posible infracion') ||
+                        text.includes('posible infracción') ||
+                        text.includes('[Test Antigravity]') ||
+                        text.includes('Comprobante Registrado') ||
+                        text.includes('Alerta de texto procesada')
+                    )) {
+                        console.log('🛑 [ECHO-PREVENT] Ignorando mensaje propio de Centinela para frenar bucle.');
+                        continue;
+                    }
+
+                    // Ignorar mensajes de texto enviados desde la propia cuenta del bot
+                    if (isFromMe && !hasAudioMsg && !hasImageMsg) {
+                        continue;
+                    }
+
                     // Registro de evento para monitoreo en vivo en Firebase
                     if (db && isGroup) {
                         try {
@@ -3110,15 +3200,25 @@ const WhatsappBot = (() => {
                     }
 
                     // 2. FILTRADO DE GRUPOS SELECCIONADOS
-                    // Escanear grupos de operativos de tránsito y alertas (ej: 🚨ALERTAS2.0/APPS, Solo operativos de tránsito, etc).
-                    // "Operativos Arroyo Seco" fue EXCLUIDO a pedido del admin (ver EXCLUDED_TRAFFIC_GROUPS).
-                    // El grupo "Trabajo" y mensajes enviados por el propio admin/usuario (fromMe) SIEMPRE están habilitados para pruebas.
                     let isTargetGroup = false;
                     if (isGroup) {
+                        _syncGroupToSettings(jid, groupName);
+                        const safeJid = jid ? jid.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+                        const groupConf = _groupSettings[safeJid] || _groupSettings[jid];
+
+                        // Si el usuario desactivó / silenció este grupo específicamente desde el panel web:
+                        if (groupConf && groupConf.enabled === false) {
+                            console.log(`🔇 [GRUPO-SILENCIADO] Grupo "${groupName}" desactivado en la configuración. Omitiendo.`);
+                            continue;
+                        }
+
                         // REGLA CENTINELA: Si es el grupo "Trabajo" o proviene de mi propio usuario (fromMe) o admin, PERMITIR SIEMPRE
                         if (isTrabajoGroup || isFromMe || isFromTrustedAdmin) {
                             isTargetGroup = true;
                             console.log(`🎯 [TARGET-ALLOWED] Grupo "${groupName}" permitido explícitamente (esTrabajo=${isTrabajoGroup}, fromMe=${isFromMe}, admin=${isFromTrustedAdmin})`);
+                        } else if (groupConf && groupConf.enabled === true) {
+                            // Habilitado explícitamente por el usuario en el panel
+                            isTargetGroup = true;
                         } else {
                             // Exclusión explícita: se evalúa ANTES de cualquier coincidencia o rescate por palabras clave
                             if (_isExcludedTrafficGroup(groupName)) {
@@ -3132,8 +3232,7 @@ const WhatsappBot = (() => {
                                             cleanedGroupName.includes('apps') ||
                                             _isOperativoGroup(groupName);
                             
-                            // RESCATE DIRECTO: Si el nombre del grupo es desconocido o no coincidió por metadata,
-                            // pero el mensaje contiene palabras clave explícitas de operativos/tránsito, ¡ACEPTARLO!
+                            // RESCATE DIRECTO: Si contiene palabras clave de tránsito configuradas:
                             if (!isTargetGroup && text && _hasTrafficKeywords(text)) {
                                 console.log(`🎯 [TARGET-RESCUE] Mensaje en grupo "${groupName}" aceptado por contener palabras de tránsito: "${text.substring(0, 50)}"`);
                                 isTargetGroup = true;
@@ -3147,6 +3246,12 @@ const WhatsappBot = (() => {
                     } else {
                         // Si no es grupo pero llegó hasta aquí, es del admin o chat propio
                         isTargetGroup = true;
+                    }
+
+                    // FILTRO DE PALABRAS PROHIBIDAS / SPAM / ESTAFAS:
+                    if (text && _containsForbiddenWords(text)) {
+                        console.log(`🚫 [FORBIDDEN-WORD] Mensaje ignorado por contener palabra prohibida o spam configurado.`);
+                        continue;
                     }
 
                     const isKnownOperativoGroup = isTargetGroup;
@@ -3319,6 +3424,7 @@ const WhatsappBot = (() => {
                                     if (!audioAnalysis.isTrafficAlert) {
                                         // Audio irrelevante: música, tutorial, charla personal, etc.
                                         console.log(`🚫 [AUDIO-FILTER] Audio DESCARTADO — no es tránsito. Razón: "${audioAnalysis.reason}"`);
+                                        /*
                                         if (isTrabajoGroup) {
                                             try {
                                                 await sock.sendMessage(jid, {
@@ -3328,6 +3434,7 @@ const WhatsappBot = (() => {
                                                 }, { quoted: msg });
                                             } catch(replyErr) {}
                                         }
+                                        */
                                         continue; // Saltar este mensaje completamente
                                     }
                                     // Es alerta de tránsito: usar la transcripción como texto
@@ -3342,6 +3449,11 @@ const WhatsappBot = (() => {
                                     }
 
                                     isAudioOnlyAlert = false;
+                                    if (!_sentinelEnabled) {
+                                        console.log(`⏸️ [CENTINELA-PAUSADO] Centinela IA pausado desde el panel web. No se procesa audio vial.`);
+                                        continue;
+                                    }
+
                                     await _processAlert(
                                         audioAnalysis.address || null,
                                         text || '[REPORTE_DE_VOZ]',
@@ -3353,6 +3465,8 @@ const WhatsappBot = (() => {
                                         jid
                                     );
 
+                                    // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
+                                    /*
                                     if (isTrabajoGroup) {
                                         try {
                                             await sock.sendMessage(jid, {
@@ -3363,6 +3477,7 @@ const WhatsappBot = (() => {
                                             }, { quoted: msg });
                                         } catch(replyErr) {}
                                     }
+                                    */
                                     continue;
                                 } else {
                                     // Gemini no disponible o falló: publicar como checkpoint genérico (comportamiento anterior)
@@ -3778,8 +3893,15 @@ const WhatsappBot = (() => {
                             }
 
                             // Procesar la alerta pasando el message ID único, audioUrl y description
+                            if (!_sentinelEnabled) {
+                                console.log(`⏸️ [CENTINELA-PAUSADO] Centinela IA pausado desde el panel web. No se procesa alerta de texto.`);
+                                continue;
+                            }
+
                             await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description, jid);
 
+                            // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
+                            /*
                             if (isTrabajoGroup) {
                                 try {
                                     await sock.sendMessage(jid, {
@@ -3790,6 +3912,7 @@ const WhatsappBot = (() => {
                                     }, { quoted: msg });
                                 } catch(replyErr) {}
                             }
+                            */
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -4306,6 +4429,30 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
     }
 
      async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null) {
+        if (!_sentinelEnabled) {
+            console.log('⏸️ [CENTINELA-PAUSADO] Centinela IA está pausado por el usuario en el panel admin. Omitiendo alerta.');
+            return;
+        }
+
+        // CONTROL DE REPETICIÓN: Máximo _maxAlertRepeats (2) veces por mensaje/ubicación en 15 minutos
+        const rawLoc = address || originalText || description || '';
+        const locKey = rawLoc.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (locKey) {
+            const now = Date.now();
+            const hist = _alertDispatchHistory.get(locKey);
+            if (hist && (now - hist.lastTime) < 15 * 60 * 1000) {
+                if (hist.count >= _maxAlertRepeats) {
+                    console.log(`🔇 [CENTINELA-LIMIT] Límite de ${_maxAlertRepeats} repeticiones alcanzado para "${locKey}". Silenciando despacho.`);
+                    return;
+                }
+                hist.count += 1;
+                hist.lastTime = now;
+                console.log(`📢 [CENTINELA-REPEAT] Despacho ${hist.count}/${_maxAlertRepeats} para "${rawLoc.substring(0, 40)}"`);
+            } else {
+                _alertDispatchHistory.set(locKey, { count: 1, lastTime: now });
+            }
+        }
+
         const fleetId = await _resolveFleetId();
         // Generar una clave determinista basada en el ID de WhatsApp si existe.
         // Esto asegura que si se procesa el mismo mensaje 2 veces, se pise el registro en lugar de duplicarse en el mapa.
@@ -5256,15 +5403,117 @@ Si no hay movimientos financieros detectados, respondé: []`;
             return false;
         },
         getTrustedAdminNumbers: () => [...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers],
+        getBotConfig: () => ({
+            sentinel_enabled: _sentinelEnabled,
+            max_alert_repeats: _maxAlertRepeats,
+            traffic_keywords: _trafficKeywords,
+            forbidden_words: _forbiddenWords,
+            group_settings: _groupSettings,
+            groups: groupNameCache
+        }),
+        updateBotConfig: async (cfg) => {
+            if (!db) throw new Error('Base de datos no disponible');
+            const updates = {};
+            if (typeof cfg.sentinel_enabled === 'boolean') {
+                _sentinelEnabled = cfg.sentinel_enabled;
+                updates['sentinel_enabled'] = _sentinelEnabled;
+            }
+            if (typeof cfg.max_alert_repeats === 'number') {
+                _maxAlertRepeats = cfg.max_alert_repeats;
+                updates['max_alert_repeats'] = _maxAlertRepeats;
+            }
+            if (Array.isArray(cfg.traffic_keywords)) {
+                _trafficKeywords = cfg.traffic_keywords.filter(k => typeof k === 'string' && k.trim());
+                updates['traffic_keywords'] = _trafficKeywords;
+            }
+            if (Array.isArray(cfg.forbidden_words)) {
+                _forbiddenWords = cfg.forbidden_words.filter(w => typeof w === 'string' && w.trim());
+                updates['forbidden_words'] = _forbiddenWords;
+            }
+            if (cfg.group_settings && typeof cfg.group_settings === 'object') {
+                _groupSettings = { ..._groupSettings, ...cfg.group_settings };
+                updates['group_settings'] = _groupSettings;
+            }
+            await db.ref('bot_config').update(updates);
+            if (geminiAgent && typeof geminiAgent.updateAgentConfig === 'function') {
+                geminiAgent.updateAgentConfig({
+                    sentinelEnabled: _sentinelEnabled,
+                    maxRepeats: _maxAlertRepeats,
+                    trafficKeywords: _trafficKeywords,
+                    forbiddenWords: _forbiddenWords
+                });
+            }
+            return {
+                sentinel_enabled: _sentinelEnabled,
+                max_alert_repeats: _maxAlertRepeats,
+                traffic_keywords: _trafficKeywords,
+                forbidden_words: _forbiddenWords,
+                group_settings: _groupSettings
+            };
+        },
+        toggleSentinel: async (enabled) => {
+            const newState = typeof enabled === 'boolean' ? enabled : !_sentinelEnabled;
+            _sentinelEnabled = newState;
+            if (db) {
+                await db.ref('bot_config/sentinel_enabled').set(newState);
+            }
+            if (geminiAgent && typeof geminiAgent.updateAgentConfig === 'function') {
+                geminiAgent.updateAgentConfig({ sentinelEnabled: _sentinelEnabled });
+            }
+            return { ok: true, sentinel_enabled: _sentinelEnabled };
+        },
+        setGroupSetting: async (jid, enabled, customName = null) => {
+            if (!jid) throw new Error('JID requerido');
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const item = _groupSettings[safeKey] || { jid, name: groupNameCache[jid] || jid, enabled: true };
+            item.enabled = Boolean(enabled);
+            if (customName) item.name = customName;
+            _groupSettings[safeKey] = item;
+            if (db) {
+                await db.ref(`bot_config/group_settings/${safeKey}`).set(item);
+            }
+            return item;
+        },
+        toggleAllGroups: async (enabled) => {
+            const isEnabled = Boolean(enabled);
+            const updates = {};
+            for (const [jid, name] of Object.entries(groupNameCache)) {
+                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const item = _groupSettings[safeKey] || { jid, name };
+                item.enabled = isEnabled;
+                _groupSettings[safeKey] = item;
+                updates[safeKey] = item;
+            }
+            if (db && Object.keys(updates).length > 0) {
+                await db.ref('bot_config/group_settings').update(updates);
+            }
+            return { ok: true, enabled: isEnabled, count: Object.keys(updates).length };
+        },
+        clearAlertsAndSilence: async () => {
+            if (!db) throw new Error('Base de datos no disponible');
+            console.log('🔇 [EMERGENCIA] Ejecutando silenciador y vaciado de alertas viales...');
+            await db.ref('system_commands/silence').set(Date.now());
+            await db.ref('global_traffic_alerts').remove();
+            try {
+                const snap = await db.ref('fleets').once('value');
+                const fleets = snap.val() || {};
+                const removes = Object.keys(fleets).map(fId => db.ref(`fleets/${fId}/traffic_alerts`).remove());
+                await Promise.all(removes);
+            } catch(e) {}
+            _alertDispatchHistory.clear();
+            return { ok: true, message: 'Alertas eliminadas y voz silenciada en todos los dispositivos.' };
+        },
         getDiagnostics: () => ({
             connected: _isConnectedState,
             botNumber: sock?.user?.id ? sock.user.id.split(':')[0] : null,
             userName: sock?.user?.name || null,
             groupsCount: Object.keys(groupNameCache).length,
+            sentinelEnabled: _sentinelEnabled,
+            maxAlertRepeats: _maxAlertRepeats,
             hasGeminiKey: !!getGeminiKey(),
             lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null,
             instanceId: INSTANCE_ID,
-            version: '206aab8-v6'
+            version: '206aab8-v7'
         })
     };
 })();
