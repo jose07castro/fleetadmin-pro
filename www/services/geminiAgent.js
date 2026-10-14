@@ -4,6 +4,7 @@
    ========================================================================= */
 
 require('dotenv').config();
+const admin = require('firebase-admin');
 const { GoogleGenAI } = require('@google/genai');
 const axios = require('axios');
 
@@ -64,11 +65,11 @@ function getGeminiClient() {
     return _aiClient;
 }
 
-// Modelos priorizados: modelos estables y de alta cuota sin restricciones de 20 peticiones/día
+// Modelos priorizados: gemini-2.5-flash como principal, gemini-flash-lite-latest y gemini-3.5-flash-lite de respaldo
 const CENTINELA_MODELS = [
+    'gemini-2.5-flash',
     'gemini-flash-lite-latest',
-    'gemini-3.5-flash-lite',
-    'gemini-2.5-flash'
+    'gemini-3.5-flash-lite'
 ];
 
 // Coordenadas de referencia en Argentina (Rosario y alrededores)
@@ -240,10 +241,13 @@ JSON esperado: {"esAlerta":true,"tipo":"checkpoint","ubicacion":"Pellegrini y Co
                 try {
                     res = await ai.models.generateContent({
                         model: mName,
-                        contents: [
-                            { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
-                            { text: prompt }
-                        ],
+                        contents: [{
+                            role: 'user',
+                            parts: [
+                                { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
+                                { text: prompt }
+                            ]
+                        }],
                         config: {
                             responseMimeType: 'application/json'
                         }
@@ -422,7 +426,7 @@ async function dispatchAlert(classification, options = {}, db) {
         authorName: author,
         originalText: options.originalText || classification.descripcion || '',
         description: classification.descripcion,
-        confirmations: geo.approximate ? 0 : 1,
+        confirmations: 1,
         status: 'active',
         source: options.source || 'gemini_agent',
         approximate: geo.approximate,
@@ -464,15 +468,29 @@ async function dispatchAlert(classification, options = {}, db) {
 
             const tokensSnap = await db.ref('fcm_tokens').once('value');
             const tokensVal = tokensSnap.val() || {};
-            const tokens = Object.values(tokensVal).map(t => typeof t === 'object' ? t.token : t).filter(Boolean);
+            const tokens = Object.values(tokensVal).map(t => typeof t === 'object' ? t.token : t).filter(t => typeof t === 'string' && t.length > 10);
 
-            if (tokens.length > 0 && typeof admin !== 'undefined') {
+            if (tokens.length > 0) {
                 const message = {
                     notification: { title, body },
-                    data: { alertId: alertId, type: alertData.type },
+                    data: {
+                        alertId: alertId,
+                        type: alertData.type || 'checkpoint',
+                        location: alertData.location || '',
+                        description: alertData.description || ''
+                    },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            sound: 'default',
+                            channelId: 'traffic_alerts'
+                        }
+                    },
                     tokens: tokens
                 };
-                admin.messaging().sendMulticast(message).catch(() => {});
+                admin.messaging().sendEachForMulticast(message).catch((err) => {
+                    console.warn('⚠️ [CENTINELA-PUSH] Error en sendEachForMulticast:', err.message);
+                });
             }
         } catch (pushErr) {}
 

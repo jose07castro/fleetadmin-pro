@@ -55,9 +55,9 @@ function getGeminiKey() {
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -172,9 +172,9 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -2471,19 +2471,7 @@ const WhatsappBot = (() => {
 
         // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
-            const files = fs.readdirSync(AUTH_DIR);
-            // Poda preventiva: mantener AUTH_DIR limpio de pre-keys viejos para evitar colapso de CPU/RAM
-            const now = Date.now();
-            for (const file of files) {
-                if (file.startsWith('pre-key-') && file.endsWith('.json')) {
-                    try {
-                        const stat = fs.statSync(path.join(AUTH_DIR, file));
-                        if (now - stat.mtimeMs > 2 * 60 * 60 * 1000) { // más de 2 horas
-                            fs.unlinkSync(path.join(AUTH_DIR, file));
-                        }
-                    } catch(e) {}
-                }
-            }
+            // NUNCA borrar pre-keys del disco local AUTH_DIR para no romper descifrado E2EE (Bad MAC).
             const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
             // 1. creds.json siempre es la prioridad absoluta (vital para sesión)
@@ -3181,8 +3169,9 @@ const WhatsappBot = (() => {
                         continue;
                     }
 
-                    // Ignorar mensajes de texto enviados desde la propia cuenta del bot
-                    if (isFromMe && !hasAudioMsg && !hasImageMsg) {
+                    // Permitir mensajes de texto del propio bot/admin (isFromMe) cuando sean enviados en grupos operativos o de trabajo;
+                    // solo ignorar textos propios en chats privados que no sean de prueba (el bucle de eco se frena con ECHO-PREVENT arriba).
+                    if (isFromMe && !isGroup && !isFromTrustedAdmin && !hasAudioMsg && !hasImageMsg) {
                         continue;
                     }
 
@@ -3464,7 +3453,8 @@ const WhatsappBot = (() => {
                                         msg.key.id,
                                         finalAudioUrl,
                                         text.substring(0, 100),
-                                        jid
+                                        jid,
+                                        audioAnalysis.vigenciaMinutos || 60
                                     );
 
                                     // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
@@ -3900,7 +3890,17 @@ const WhatsappBot = (() => {
                                 continue;
                             }
 
-                            await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description, jid);
+                            await _processAlert(
+                                analysis.address,
+                                text,
+                                groupName,
+                                analysis.type,
+                                msg.key.id,
+                                audioUrl,
+                                analysis.description,
+                                jid,
+                                analysis.vigenciaMinutos || 60
+                            );
 
                             // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
                             /*
@@ -4430,7 +4430,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         return 'Rosario';
     }
 
-     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null) {
+     async function _processAlert(address, originalText, sourceGroup, aiType = null, messageId = null, audioUrl = null, description = null, jid = null, vigenciaMinutos = 60) {
         if (!_sentinelEnabled) {
             console.log('⏸️ [CENTINELA-PAUSADO] Centinela IA está pausado por el usuario en el panel admin. Omitiendo alerta.');
             return;
@@ -4597,18 +4597,19 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         const alertData = {
             id: alertId,
             type: type,
-            location: expandedAddress || "Ubicación desconocida",
+            location: expandedAddress || "Ubicación identificada",
             lat: lat,
             lng: lng,
             timestamp: Date.now(),
-            expiresAt: Date.now() + (60 * 60 * 1000),
+            expiresAt: Date.now() + ((Number(vigenciaMinutos) || 60) * 60 * 1000),
             authorName: sourceGroup,
             originalText: originalText,
             description: description || (originalText ? originalText.substring(0, 60) : ''),
-            confirmations: approximate ? 0 : 1,
+            confirmations: 1,
             status: 'active',
             source: 'whatsapp_bot',
-            approximate: approximate
+            approximate: approximate,
+            vigenciaMinutos: Number(vigenciaMinutos) || 60
         };
         if (audioUrl) {
             alertData.audioUrl = audioUrl;
@@ -4669,19 +4670,20 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 return;
             }
 
-            const adminTokens = [];
+            const fleetTokens = [];
             for (const [userId, tData] of Object.entries(tokensVal)) {
-                if (tData.token && tData.role === 'admin') {
-                    adminTokens.push(tData.token);
+                const token = typeof tData === 'string' ? tData : tData?.token;
+                if (token && typeof token === 'string' && token.length > 10) {
+                    fleetTokens.push(token);
                 }
             }
 
-            if (adminTokens.length === 0) {
-                console.log('🔔 [PUSH] No admin FCM tokens found.');
+            if (fleetTokens.length === 0) {
+                console.log('🔔 [PUSH] No FCM tokens found in DB.');
                 return;
             }
 
-            console.log(`🔔 [PUSH] Sending notification to ${adminTokens.length} admin(s): "${title} - ${body}"`);
+            console.log(`🔔 [PUSH] Sending notification to ${fleetTokens.length} device(s) (choferes y admins): "${title} - ${body}"`);
 
             const payload = {
                 notification: {
@@ -4693,13 +4695,21 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     body: body,
                     url: '/',
                     ...additionalData
+                },
+                android: {
+                    priority: 'high',
+                    notification: {
+                        sound: 'default',
+                        channelId: 'traffic_alerts'
+                    }
                 }
             };
 
             const response = await admin.messaging().sendEachForMulticast({
-                tokens: adminTokens,
+                tokens: fleetTokens,
                 notification: payload.notification,
-                data: payload.data
+                data: payload.data,
+                android: payload.android
             });
 
             console.log(`🔔 [PUSH] Multicast sent. Success: ${response.successCount}, Failure: ${response.failureCount}`);
@@ -4710,9 +4720,9 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                     if (!resp.success) {
                         const errCode = resp.error?.code;
                         if (errCode === 'messaging/registration-token-not-registered' || errCode === 'messaging/invalid-registration-token') {
-                            const tokenToRemove = adminTokens[idx];
+                            const tokenToRemove = fleetTokens[idx];
                             for (const [uId, tData] of Object.entries(tokensVal)) {
-                                if (tData.token === tokenToRemove) {
+                                if ((tData?.token === tokenToRemove) || (tData === tokenToRemove)) {
                                     console.log(`🧹 [PUSH] Removing inactive token for user: ${uId}`);
                                     await db.ref(`fcm_tokens/${uId}`).remove();
                                     break;
