@@ -1845,7 +1845,7 @@ app.post('/api/alerts/sentinel', async (req, res) => {
         }
 
         let dispatchResult = { dispatched: false };
-        if (classification.esAlerta && db) {
+        if (classification.esAlerta && db && req.body.autoDispatch !== false) {
             const resolvedFleetId = fleetId || (typeof WhatsappBot.getFleetId === 'function' ? await WhatsappBot.getFleetId() : 'default_fleet');
             dispatchResult = await geminiAgent.dispatchAlert(classification, {
                 authorName: authorName || groupName || 'Chofer',
