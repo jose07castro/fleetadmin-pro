@@ -1966,12 +1966,35 @@ app.get('*', (req, res) => {
 });
 
 // 3. Arranque del motor
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log('Servidor FleetAdmin Pro rugiendo en el puerto ' + PORT);
     
     // Iniciar Bot de WhatsApp de forma asíncrona para no bloquear el puerto
     console.log('⏳ Iniciando componente WhatsApp en segundo plano...');
     WhatsappBot.init();
+
+    // Manejo de apagado elegante (Render zero-downtime deploy)
+    process.on('SIGTERM', async () => {
+        console.log('🛑 [SHUTDOWN] SIGTERM recibido de Render. Liberando sesión...');
+        try {
+            const db = typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+            if (db) {
+                await db.ref('bot_active_leader').remove();
+            }
+        } catch(e) {}
+        process.exit(0);
+    });
+
+    process.on('SIGINT', async () => {
+        console.log('🛑 [SHUTDOWN] SIGINT recibido. Liberando sesión...');
+        try {
+            const db = typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+            if (db) {
+                await db.ref('bot_active_leader').remove();
+            }
+        } catch(e) {}
+        process.exit(0);
+    });
 
     // Iniciar el monitoreo en segundo plano de latidos (heartbeats) de choferes
     console.log('⏳ Iniciando verificador de latidos de choferes cada 60s...');

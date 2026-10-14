@@ -2310,9 +2310,9 @@ const WhatsappBot = (() => {
         }
         console.log(`🧠 Gemini IA: ${getGeminiKey() ? '✅ ACTIVO' : '❌ NO CONFIGURADO'}`);
         
-        // Esperar 50s al inicio para que el proceso anterior de Render muera
-        console.log('⏳ Esperando 50s para que el proceso anterior libere la sesión...');
-        await new Promise(r => setTimeout(r, 50000));
+        // Esperar 5s al inicio para que el proceso anterior de Render cierre su socket
+        console.log('⏳ Esperando 5s para inicializar conexión...');
+        await new Promise(r => setTimeout(r, 5000));
         console.log('✅ Espera terminada. Conectando a WhatsApp...');
         
         // Auto-ping cada 10 minutos para evitar que Render (free tier) duerma el servicio
@@ -2566,10 +2566,12 @@ const WhatsappBot = (() => {
                 if (isAnotherLeaderActive) {
                     if (isWebNueva && currentLeader && (currentLeader.id?.includes('fleetadmin-pro') || currentLeader.serviceName?.startsWith('fleetadmin-pro'))) {
                         console.log(`👑 [DISTRIBUTED-LOCK] ${INSTANCE_ID} (web-nueva) tiene máxima prioridad sobre la instancia secundaria ${currentLeader.id}. Reclamando liderazgo.`);
+                    } else if (isWebNueva && currentLeader && currentLeader.serviceName?.includes('web-nueva') && (now - (currentLeader.startedAt || 0)) > 25000) {
+                        console.log(`👑 [DISTRIBUTED-LOCK] Nueva versión desplegada (${INSTANCE_ID}) asume liderazgo sobre la versión anterior (${currentLeader.id}).`);
                     } else {
                         console.warn(`🛡️ [DISTRIBUTED-LOCK] Otra instancia activa detectada: "${currentLeader.id}". Esta instancia (${INSTANCE_ID}) queda en standby sin iniciar WhatsApp para evitar expulsión 440.`);
                         isConnecting = false;
-                        setTimeout(() => { if (!_isConnectedState) startSocket(); }, 35000);
+                        setTimeout(() => { if (!_isConnectedState) startSocket(); }, 15000);
                         return;
                     }
                 }
@@ -2887,6 +2889,20 @@ const WhatsappBot = (() => {
                     // Log obligatorio solicitado por el usuario:
                     console.log("[MSG-IN] Mensaje recibido de: " + remitente + " en grupo: " + nombreGrupo);
 
+                    if (db) {
+                        try {
+                            db.ref('bot_live_events').push({
+                                type: type,
+                                group: nombreGrupo,
+                                remitente: remitente,
+                                jid: jid,
+                                fromMe: Boolean(msg.key?.fromMe),
+                                hasAudio: Boolean(_recursiveFindAudio(msg.message, 0)),
+                                timestamp: Date.now()
+                            }).catch(() => {});
+                        } catch(e) {}
+                    }
+
                     // Almacenar en caché de reintentos para re-cifrado E2EE
                     if (msg.key?.id && msg.message) {
                         storeMessage(msg.key, msg.message);
@@ -2924,39 +2940,12 @@ const WhatsappBot = (() => {
                     const hasImageMsg = isImage;
                     const hasAudioMsg = isAudio;
                     
-                    const msgSec = Number(msg.messageTimestamp) || 0;
-                    const nowSec = Math.floor(Date.now() / 1000);
-                    const ageSec = nowSec - msgSec;
-                    
-                    // Validación de frescura para alertas de tránsito:
-                    // - type='notify': mensajes en vivo → hasta 45 minutos (2700s)
-                    // - type='append' o histórico: hasta 2.5 horas (9000s) para recuperar alertas de reinicio
-                    const maxAgeSec = (type === 'notify') ? 2700 : 9000;
-                    
-                    if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg) {
-                        console.log(`⏭️ [SKIP] Mensaje muy antiguo ignorado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
-                        continue;
-                    }
-
-
                     const isGroup = jid.endsWith('@g.us');
-                    const senderJid = msg.key.participant || msg.key.remoteJid || '';
+                    const senderJid = msg.key?.participant || msg.key?.remoteJid || '';
                     const isFromMe = Boolean(msg.key?.fromMe);
                     const isFromTrustedAdmin = isFromMe || _isTrustedAdmin(senderJid) || _isTrustedAdmin(jid);
-                    
-                    // FILTRADO ESTRICTO DE PRIVACIDAD PARA ALERTAS DE TRÁNSITO: Omitir chats privados que no sean de un Admin de confianza o pruebas propias
-                    if (!isGroup && !isFromTrustedAdmin && !isFromMe) {
-                        continue;
-                    }
 
-                    if (isFromTrustedAdmin) {
-                        console.log(`🐛 [ADMIN-RAW-MSG] ID=${msg.key.id} | HasMessage=${!!msg.message} | Keys=${Object.keys(msg.message || {})}`);
-                        console.log(`🐛 [ADMIN-RAW-JSON] ${JSON.stringify(msg)}`);
-                    }
-                    
-                    if (!jid) continue;
-
-                    // --- EXTRAER CONTEXTO DEL GRUPO (con fallback inteligente y cache) ---
+                    // Extraer contexto del grupo (con fallback inteligente y cache)
                     let groupName = isGroup ? (groupNameCache[jid] || nombreGrupo || 'Grupo Desconocido') : (isFromTrustedAdmin ? 'Admin Privado' : 'Chat Privado');
                     if (isGroup) {
                         if (groupNameCache[jid]) {
@@ -2983,6 +2972,27 @@ const WhatsappBot = (() => {
                         _normalizeGroupName(groupName).includes('trabajo') ||
                         _normalizeGroupName(nombreGrupo).includes('trabajo')
                     );
+
+                    // VALIDACIÓN DE FRESCURA PARA ALERTAS DE TRÁNSITO:
+                    // - type='notify': mensajes en vivo → hasta 45 minutos (2700s)
+                    // - type='append' o histórico: hasta 2.5 horas (9000s) para recuperar alertas de reinicio
+                    // IMPORTANTE: En el grupo "Trabajo", o mensajes del admin / fromMe (pruebas), NUNCA se descarta por antigüedad.
+                    const maxAgeSec = (type === 'notify') ? 2700 : 9000;
+                    
+                    if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg && !isTrabajoGroup && !isFromTrustedAdmin && !isFromMe) {
+                        console.log(`⏭️ [SKIP] Mensaje muy antiguo ignorado (${ageSec}s de antigüedad, límite=${maxAgeSec}s, type=${type}).`);
+                        continue;
+                    }
+
+                    // FILTRADO ESTRICTO DE PRIVACIDAD PARA ALERTAS DE TRÁNSITO: Omitir chats privados que no sean de un Admin de confianza o pruebas propias
+                    if (!isGroup && !isFromTrustedAdmin && !isFromMe) {
+                        continue;
+                    }
+
+                    if (isFromTrustedAdmin) {
+                        console.log(`🐛 [ADMIN-RAW-MSG] ID=${msg.key.id} | HasMessage=${!!msg.message} | Keys=${Object.keys(msg.message || {})}`);
+                        console.log(`🐛 [ADMIN-RAW-JSON] ${JSON.stringify(msg)}`);
+                    }
 
                     // Extraer texto: cubrimos TODOS los formatos de mensaje de WhatsApp
                     let text = '';
@@ -3145,11 +3155,19 @@ const WhatsappBot = (() => {
                                 key: msg.key,
                                 message: { audioMessage: resolvedAudioMsg }
                             };
-                            audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
-                                logger: P({ level: 'silent' }),
-                                reuploadRequest: sock.updateMediaMessage
-                            });
-                            console.log(`🎙️ [AUDIO] Descargado ${audioBuffer.length} bytes.`);
+                            try {
+                                audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
+                                    logger: P({ level: 'silent' }),
+                                    reuploadRequest: sock.updateMediaMessage
+                                });
+                            } catch(dlErr1) {
+                                console.warn(`⚠️ [AUDIO-DL] Falló cleanMsg (${dlErr1.message}), reintentando con mensaje original completo...`);
+                                audioBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                                    logger: P({ level: 'silent' }),
+                                    reuploadRequest: sock.updateMediaMessage
+                                });
+                            }
+                            console.log(`🎙️ [AUDIO] Descargado ${audioBuffer ? audioBuffer.length : 0} bytes.`);
 
                             // Determinar la extensión del archivo de audio
                             let extension = 'ogg';
@@ -5129,7 +5147,9 @@ Si no hay movimientos financieros detectados, respondé: []`;
             userName: sock?.user?.name || null,
             groupsCount: Object.keys(groupNameCache).length,
             hasGeminiKey: !!getGeminiKey(),
-            lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null
+            lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null,
+            instanceId: INSTANCE_ID,
+            version: '206aab8-v3'
         })
     };
 })();
