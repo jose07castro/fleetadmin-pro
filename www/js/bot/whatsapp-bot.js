@@ -55,9 +55,9 @@ function getGeminiKey() {
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -172,9 +172,9 @@ Respuesta EXACTAMENTE en este formato:
 
     // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -966,7 +966,9 @@ const WhatsappBot = (() => {
     function _isTrustedAdmin(jid) {
         if (!jid) return false;
         if (jid === 'status@broadcast' || jid.endsWith('@broadcast')) return false;
-        const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '');
+        if (sock?.user?.id && (jid.includes(sock.user.id.split(':')[0]) || jid.includes(sock.user.id.split('@')[0]))) return true;
+        if (sock?.user?.lid && jid.includes(sock.user.lid.split('@')[0])) return true;
+        const num = jid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/[^0-9]/g, '');
         if (!num) return false;
         const allTrusted = [...TRUSTED_ADMIN_NUMBERS, ..._dynamicTrustedNumbers];
         return allTrusted.some(t => num.endsWith(t) || t.endsWith(num));

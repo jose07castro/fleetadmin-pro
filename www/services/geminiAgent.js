@@ -64,6 +64,13 @@ function getGeminiClient() {
     return _aiClient;
 }
 
+// Modelos priorizados: modelos estables y de alta cuota sin restricciones de 20 peticiones/día
+const CENTINELA_MODELS = [
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash'
+];
+
 // Coordenadas de referencia en Argentina (Rosario y alrededores)
 const CITY_COORDINATES = {
     'Rosario': { lat: -32.9468, lng: -60.6393 },
@@ -157,13 +164,21 @@ REGLAS DE EVALUACIÓN:
 Responde ÚNICAMENTE con JSON válido (responseMimeType application/json) con las claves:
 esAlerta, tipo, ubicacion, vigenciaMinutos, descripcion, esLevantado, confianza`;
 
-            const res = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                    responseMimeType: 'application/json'
+            let res = null;
+            for (const mName of CENTINELA_MODELS) {
+                try {
+                    res = await ai.models.generateContent({
+                        model: mName,
+                        contents: prompt,
+                        config: {
+                            responseMimeType: 'application/json'
+                        }
+                    });
+                    if (res && res.text) break;
+                } catch(mErr) {
+                    console.warn(`⚠️ [CENTINELA-GEMINI] Modelo ${mName} no disponible (${mErr.status || mErr.message}), intentando fallback...`);
                 }
-            });
+            }
 
             if (res && res.text) {
                 const parsed = JSON.parse(res.text.trim());
@@ -220,16 +235,24 @@ Clasifica:
 
 JSON esperado: {"esAlerta":true,"tipo":"checkpoint","ubicacion":"Pellegrini y Corrientes","vigenciaMinutos":60,"descripcion":"Control vehicular en Pellegrini y Corrientes","transcripcion":"...","esLevantado":false,"confianza":0.9}`;
 
-            const res = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
-                    { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
-                    { text: prompt }
-                ],
-                config: {
-                    responseMimeType: 'application/json'
+            let res = null;
+            for (const mName of CENTINELA_MODELS) {
+                try {
+                    res = await ai.models.generateContent({
+                        model: mName,
+                        contents: [
+                            { inlineData: { mimeType: cleanMimeType, data: audioB64 } },
+                            { text: prompt }
+                        ],
+                        config: {
+                            responseMimeType: 'application/json'
+                        }
+                    });
+                    if (res && res.text) break;
+                } catch (mErr) {
+                    console.warn(`⚠️ [CENTINELA-AUDIO] Modelo ${mName} no disponible (${mErr.status || mErr.message}), intentando fallback...`);
                 }
-            });
+            }
 
             if (res && res.text) {
                 const parsed = JSON.parse(res.text.trim());
