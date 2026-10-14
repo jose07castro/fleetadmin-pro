@@ -8,9 +8,30 @@ const { GoogleGenAI } = require('@google/genai');
 const axios = require('axios');
 
 let _aiClient = null;
+let _dynamicKey = null;
+
+function setGeminiKey(key) {
+    if (key && key !== _dynamicKey) {
+        _dynamicKey = key;
+        _aiClient = new GoogleGenAI({ apiKey: key });
+        console.log('🧠 [GEMINI-AGENT] Clave API configurada dinámicamente con éxito ✅');
+    }
+}
 
 function getGeminiKey() {
-    return process.env.GEMINI_API_KEY || null;
+    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+    if (_dynamicKey) return _dynamicKey;
+    try {
+        const wb = require('../js/bot/whatsapp-bot');
+        if (wb && typeof wb.getGeminiKey === 'function') {
+            const k = wb.getGeminiKey();
+            if (k) {
+                _dynamicKey = k;
+                return k;
+            }
+        }
+    } catch(e) {}
+    return null;
 }
 
 function getGeminiClient() {
@@ -406,6 +427,7 @@ async function dispatchAlert(classification, options = {}, db) {
 
 module.exports = {
     getGeminiKey,
+    setGeminiKey,
     getGeminiClient,
     classifyTrafficReport,
     transcribeAndClassifyAudio,

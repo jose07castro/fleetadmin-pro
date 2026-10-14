@@ -276,6 +276,16 @@ app.get('/api/bot/live-events', async (req, res) => {
     }
 });
 
+app.post('/api/bot/send-trabajo', async (req, res) => {
+    try {
+        const text = req.body?.text || '🤖 FleetAdmin Centinela activo y listo en el grupo Trabajo.';
+        const result = await WhatsappBot.sendTextMessage('120363233913674611@g.us', text);
+        res.json({ ok: true, result });
+    } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 
 // Endpoint de diagnóstico para verificar los archivos de audio en Render
 app.get('/api/debug/audio-files', (req, res) => {

@@ -36,7 +36,11 @@ let _dynamicGeminiKey = null;
 let _lastQrCode = null;
 
 function getGeminiKey() {
-    return process.env.GEMINI_API_KEY || _dynamicGeminiKey || null;
+    const k = process.env.GEMINI_API_KEY || _dynamicGeminiKey || null;
+    if (k && geminiAgent && typeof geminiAgent.setGeminiKey === 'function') {
+        geminiAgent.setGeminiKey(k);
+    }
+    return k;
 }
 
 // Modelos estables actuales y validados de Google AI Studio para esta Key
@@ -2261,10 +2265,18 @@ const WhatsappBot = (() => {
                 const keySnap = await db.ref('bot_config/gemini_api_key').once('value');
                 if (keySnap.val()) {
                     _dynamicGeminiKey = keySnap.val();
+                    if (geminiAgent && typeof geminiAgent.setGeminiKey === 'function') {
+                        geminiAgent.setGeminiKey(_dynamicGeminiKey);
+                    }
                     console.log('🧠 [GEMINI] Clave de Gemini cargada desde Firebase RTDB ✅');
                 }
                 db.ref('bot_config/gemini_api_key').on('value', (s) => {
-                    if (s.val()) _dynamicGeminiKey = s.val();
+                    if (s.val()) {
+                        _dynamicGeminiKey = s.val();
+                        if (geminiAgent && typeof geminiAgent.setGeminiKey === 'function') {
+                            geminiAgent.setGeminiKey(_dynamicGeminiKey);
+                        }
+                    }
                 });
 
                 // Cargar números de administradores dinámicos (ej: Jose IMOWI y otras líneas)
@@ -2381,35 +2393,47 @@ const WhatsappBot = (() => {
         // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
             const files = fs.readdirSync(AUTH_DIR);
-            // Poda preventiva: si hay más de 200 archivos, eliminar pre-keys viejos (> 12h) para evitar colapso de CPU/RAM
-            if (files.length > 200) {
-                const now = Date.now();
-                for (const file of files) {
-                    if (file.startsWith('pre-key-') && file.endsWith('.json')) {
-                        try {
-                            const stat = fs.statSync(path.join(AUTH_DIR, file));
-                            if (now - stat.mtimeMs > 12 * 60 * 60 * 1000) {
-                                fs.unlinkSync(path.join(AUTH_DIR, file));
-                            }
-                        } catch(e) {}
-                    }
+            // Poda preventiva: mantener AUTH_DIR limpio de pre-keys viejos para evitar colapso de CPU/RAM
+            const now = Date.now();
+            for (const file of files) {
+                if (file.startsWith('pre-key-') && file.endsWith('.json')) {
+                    try {
+                        const stat = fs.statSync(path.join(AUTH_DIR, file));
+                        if (now - stat.mtimeMs > 2 * 60 * 60 * 1000) { // más de 2 horas
+                            fs.unlinkSync(path.join(AUTH_DIR, file));
+                        }
+                    } catch(e) {}
                 }
             }
             const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
-            for (const file of cleanFiles) {
-                if (file.endsWith('.json')) {
-                    const safeKey = Buffer.from(file).toString('base64');
-                    backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
-                }
+            // creds.json siempre es la prioridad absoluta (vital para sesión)
+            if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+                const credsKey = Buffer.from('creds.json').toString('base64');
+                backup[credsKey] = fs.readFileSync(path.join(AUTH_DIR, 'creds.json'), 'utf8');
+            }
+            // Agregar solo los 35 archivos más recientes para no sobrecargar CPU
+            const nonCreds = cleanFiles.filter(f => f.endsWith('.json') && f !== 'creds.json')
+                .map(f => {
+                    try { return { file: f, mtime: fs.statSync(path.join(AUTH_DIR, f)).mtimeMs }; } catch(e) { return null; }
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.mtime - a.mtime)
+                .slice(0, 35);
+
+            for (const item of nonCreds) {
+                try {
+                    const safeKey = Buffer.from(item.file).toString('base64');
+                    backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, item.file), 'utf8');
+                } catch(e) {}
             }
             return backup;
         };
 
-        // 3. Hacer backup a Firebase cada vez que cambien los credenciales, pero con debounce
+        // 3. Hacer backup a Firebase cuando cambien credenciales con debounce inteligente (30s)
         let saveTimeout = null;
         const saveCredsToFirebase = async () => {
-            await saveCreds(); // Guardar local
+            await saveCreds(); // Guardar local siempre
             
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
@@ -2417,12 +2441,12 @@ const WhatsappBot = (() => {
                     try {
                         const backup = _createBackupObject();
                         await db.ref('bot_auth_backup').set(backup);
-                        console.log(`🔑 [AUTH] Backup en la nube actualizado (${Object.keys(backup).length} archivos) ✅`);
+                        console.log(`🔑 [AUTH] Backup en la nube actualizado (${Object.keys(backup).length} archivos clave) ✅`);
                     } catch (e) {
                         console.error('🔑 [AUTH] Error guardando backup en Firebase:', e.message);
                     }
                 }
-            }, 5000); // Esperar 5s para agrupar escrituras
+            }, 30000); // 30s debounce para agrupar escrituras y liberar el event loop
         };
 
         // 4. Sync activo de llaves (cada 5 minutos para evitar saturación de CPU y permitir flujo fluido de mensajes)
@@ -2632,8 +2656,8 @@ const WhatsappBot = (() => {
                 keepAliveIntervalMs: 25000,
                 markOnlineOnConnect: true,
                 generateHighQualityLinkPreview: false,
-                syncFullHistory: true,
-                shouldSyncHistoryMessage: () => true,
+                syncFullHistory: false,
+                shouldSyncHistoryMessage: () => false,
                 getMessage: async (key) => {
                     if (!key || !key.id) return undefined;
                     let m = _messageStore.get(key.id) || (key.remoteJid ? _messageStore.get(`${key.remoteJid}_${key.id}`) : null);
@@ -5062,29 +5086,35 @@ Si no hay movimientos financieros detectados, respondé: []`;
             return { success: false, reason: 'bot_disconnected' };
         }
         try {
-            let cleanNum = String(targetPhone).replace(/[^0-9]/g, '');
-            if (!cleanNum.startsWith('54') && cleanNum.startsWith('341')) {
-                cleanNum = '549' + cleanNum;
-            }
+            let targetJid;
+            if (String(targetPhone).endsWith('@g.us')) {
+                targetJid = String(targetPhone).trim();
+                console.log(`👥 [SEND-GROUP] Enviando mensaje directo al grupo: ${targetJid}`);
+            } else {
+                let cleanNum = String(targetPhone).replace(/[^0-9]/g, '');
+                if (!cleanNum.startsWith('54') && cleanNum.startsWith('341')) {
+                    cleanNum = '549' + cleanNum;
+                }
 
-            // En Argentina, WhatsApp registra números como 549... o 54... (sin el 9).
-            // Usamos sock.onWhatsApp para consultar a los servidores de Meta cuál JID existe realmente.
-            let targetJid = `${cleanNum}@s.whatsapp.net`;
-            try {
-                const candidates = [cleanNum];
-                if (cleanNum.startsWith('549')) {
-                    candidates.push('54' + cleanNum.slice(3));
-                } else if (cleanNum.startsWith('54')) {
-                    candidates.push('549' + cleanNum.slice(2));
+                // En Argentina, WhatsApp registra números como 549... o 54... (sin el 9).
+                // Usamos sock.onWhatsApp para consultar a los servidores de Meta cuál JID existe realmente.
+                targetJid = `${cleanNum}@s.whatsapp.net`;
+                try {
+                    const candidates = [cleanNum];
+                    if (cleanNum.startsWith('549')) {
+                        candidates.push('54' + cleanNum.slice(3));
+                    } else if (cleanNum.startsWith('54')) {
+                        candidates.push('549' + cleanNum.slice(2));
+                    }
+                    const onWa = await sock.onWhatsApp(...candidates);
+                    const found = onWa?.find(w => w.exists);
+                    if (found?.jid) {
+                        targetJid = found.jid;
+                        console.log(`📱 [RESOLVE-JID] ${targetPhone} verificado en WhatsApp como: ${targetJid}`);
+                    }
+                } catch(waErr) {
+                    console.warn('⚠️ [ON-WHATSAPP] Falló validación de JID, usando directo:', waErr.message);
                 }
-                const onWa = await sock.onWhatsApp(...candidates);
-                const found = onWa?.find(w => w.exists);
-                if (found?.jid) {
-                    targetJid = found.jid;
-                    console.log(`📱 [RESOLVE-JID] ${targetPhone} verificado en WhatsApp como: ${targetJid}`);
-                }
-            } catch(waErr) {
-                console.warn('⚠️ [ON-WHATSAPP] Falló validación de JID, usando directo:', waErr.message);
             }
 
             const sentMsg = await sock.sendMessage(targetJid, { text: messageText });
@@ -5149,7 +5179,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
             hasGeminiKey: !!getGeminiKey(),
             lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null,
             instanceId: INSTANCE_ID,
-            version: '206aab8-v3'
+            version: '206aab8-v4'
         })
     };
 })();
