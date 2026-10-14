@@ -46,9 +46,8 @@ function getGeminiKey() {
 // Modelos estables actuales y validados de Google AI Studio para esta Key
 const GEMINI_MODELS = [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
 ];
 let GEMINI_URL = null; // Se inicializa al primer uso exitoso
 let GEMINI_AUDIO_URL = null; // Se inicializa al primer uso de audio exitoso
@@ -164,9 +163,8 @@ Respuesta EXACTAMENTE en este formato:
     // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent'
     ];
 
     const cleanMimeType = (mimeType || 'audio/ogg').split(';')[0].trim();
@@ -892,9 +890,6 @@ const WhatsappBot = (() => {
     // Grupos EXCLUIDOS explícitamente de las alertas de tránsito (a pedido del admin).
     // Se comparan contra el nombre normalizado (sin acentos, emojis ni signos).
     const EXCLUDED_TRAFFIC_GROUPS = [
-        'operativos arroyo seco',
-        'operativos arroyo',
-        'arroyo seco',
         'resina',
         'bisuteria'
     ];
@@ -3004,6 +2999,9 @@ const WhatsappBot = (() => {
                     // - type='notify': mensajes en vivo → hasta 45 minutos (2700s)
                     // - type='append' o histórico: hasta 2.5 horas (9000s) para recuperar alertas de reinicio
                     // IMPORTANTE: En el grupo "Trabajo", o mensajes del admin / fromMe (pruebas), NUNCA se descarta por antigüedad.
+                    const msgSec = Number(msg.messageTimestamp) || 0;
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const ageSec = msgSec > 0 ? Math.max(0, nowSec - msgSec) : 0;
                     const maxAgeSec = (type === 'notify') ? 2700 : 9000;
                     
                     if (msgSec > 0 && ageSec > maxAgeSec && !hasImageMsg && !isTrabajoGroup && !isFromTrustedAdmin && !isFromMe) {

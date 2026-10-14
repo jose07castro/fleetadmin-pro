@@ -10,6 +10,9 @@ const WhatsappBot = require('./js/bot/whatsapp-bot');
 // Importar Agente Centinela IA (Google Gemini 2.5 Flash)
 const geminiAgent = require('./services/geminiAgent');
 
+// Importar Servicio de Fotomultas e Infracciones de Velocidad
+const SpeedInfractions = require('./services/speedInfractions');
+
 // Habilitar CORS para todas las peticiones (requerido para clientes Capacitor/móviles)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -282,6 +285,64 @@ app.post('/api/bot/send-trabajo', async (req, res) => {
         const result = await WhatsappBot.sendTextMessage('120363233913674611@g.us', text);
         res.json({ ok: true, result });
     } catch(e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// ============================================
+// Endpoint para Reporte de Infracción de Chofer (Copiloto / App)
+// ============================================
+app.post('/api/driver/speed-infraction', async (req, res) => {
+    try {
+        const { driver_id, driverName, radarId, radarName, radarAddress, radarLimit, speed } = req.body;
+        if (!driver_id) {
+            return res.status(400).json({ ok: false, error: 'driver_id is required' });
+        }
+
+        let radar = null;
+        const allRadars = SpeedInfractions.getRadars();
+        if (radarId) {
+            radar = allRadars.find(r => r.id === radarId);
+        }
+        if (!radar && radarName) {
+            radar = allRadars.find(r => r.name.toLowerCase() === radarName.toLowerCase());
+        }
+        if (!radar) {
+            radar = {
+                id: radarId || 'radar_custom',
+                name: radarName || 'Fotomulta',
+                address: radarAddress || radarName || 'Rosario',
+                limit: radarLimit || 40
+            };
+        }
+
+        const result = await SpeedInfractions.reportInfraction({
+            driverId: driver_id,
+            driverName: driverName,
+            radar: radar,
+            speed: parseFloat(speed) || 0,
+            source: 'client_copilot'
+        });
+
+        res.json(result);
+    } catch (e) {
+        console.error('❌ Error en /api/driver/speed-infraction:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Endpoint de prueba manual para enviar reporte de fotomulta al grupo Trabajo
+app.post('/api/bot/test-speed-infraction', async (req, res) => {
+    try {
+        const { driverName, vehicleName, radarIndex, speed } = req.body;
+        const result = await SpeedInfractions.testInfraction(
+            driverName || 'Pablo',
+            vehicleName || 'Chevrolet Cobalt LT (01)',
+            radarIndex !== undefined ? parseInt(radarIndex) : 0,
+            speed !== undefined ? parseFloat(speed) : 58
+        );
+        res.json({ ok: true, result });
+    } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
 });
@@ -1489,6 +1550,19 @@ app.post('/api/driver/location', async (req, res) => {
 
         await db.ref(`driver_positions/${driver_id}`).update(updateData);
         res.json({ ok: true, lat: finalLat, lng: finalLng, corrected });
+
+        // Verificación en segundo plano de posibles infracciones de fotomulta
+        if (SpeedInfractions && typeof SpeedInfractions.checkPosition === 'function') {
+            SpeedInfractions.checkPosition({
+                driverId: driver_id,
+                driverName: updateData.driverName,
+                lat: finalLat,
+                lng: finalLng,
+                speed: updateData.speed,
+                heading: updateData.heading,
+                source: updateData._source
+            }).catch(se => console.warn('⚠️ [SPEED-CHECK] Error:', se.message));
+        }
     } catch (e) {
         console.error('❌ Error updating driver location:', e.message);
         res.status(500).json({ ok: false, error: e.message });
@@ -2009,6 +2083,39 @@ app.listen(PORT, '0.0.0.0', () => {
     // Iniciar el monitoreo en segundo plano de latidos (heartbeats) de choferes
     console.log('⏳ Iniciando verificador de latidos de choferes cada 60s...');
     setInterval(checkActiveDriverHeartbeats, 60000);
+
+    // Iniciar servicio de monitoreo de fotomultas y exceso de velocidad
+    setTimeout(() => {
+        try {
+            const db = typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+            SpeedInfractions.init(db, WhatsappBot);
+
+            if (db) {
+                db.ref('driver_positions').on('child_changed', (snap) => {
+                    try {
+                        const driverId = snap.key;
+                        const pos = snap.val();
+                        if (pos && pos.status === 'active' && pos.lat && pos.lng) {
+                            SpeedInfractions.checkPosition({
+                                driverId: driverId,
+                                driverName: pos.driverName,
+                                lat: pos.lat,
+                                lng: pos.lng,
+                                speed: pos.speed,
+                                heading: pos.heading,
+                                source: pos._source || 'firebase_live'
+                            });
+                        }
+                    } catch (err) {
+                        console.error('❌ Error procesando posición en listener de fotomultas:', err.message);
+                    }
+                });
+                console.log('📡 [SPEED-INFRACTIONS] Listener en tiempo real de driver_positions activado ✅');
+            }
+        } catch (e) {
+            console.error('❌ Error inicializando SpeedInfractions:', e.message);
+        }
+    }, 4000);
 
     // ============================================================
     // KEEP-ALIVE: Auto-ping cada 10 minutos para evitar que Render
