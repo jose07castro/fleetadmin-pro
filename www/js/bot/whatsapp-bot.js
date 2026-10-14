@@ -871,9 +871,12 @@ const WhatsappBot = (() => {
     }
 
     function _recursiveFindAudio(obj, depth = 0) {
-        if (!obj || typeof obj !== 'object' || depth > 8) return null;
+        if (!obj || typeof obj !== 'object' || depth > 12) return null;
         if ((obj.audioMessage && typeof obj.audioMessage === 'object') || (obj.pttMessage && typeof obj.pttMessage === 'object')) {
             return obj.audioMessage || obj.pttMessage;
+        }
+        if (obj.documentMessage && typeof obj.documentMessage === 'object' && obj.documentMessage.mimetype?.startsWith('audio/')) {
+            return obj.documentMessage;
         }
         for (const k of Object.keys(obj)) {
             if (k === 'messageContextInfo' || k === 'contextInfo') continue;
@@ -3283,6 +3286,15 @@ const WhatsappBot = (() => {
                                     if (!audioAnalysis.isTrafficAlert) {
                                         // Audio irrelevante: música, tutorial, charla personal, etc.
                                         console.log(`🚫 [AUDIO-FILTER] Audio DESCARTADO — no es tránsito. Razón: "${audioAnalysis.reason}"`);
+                                        if (isTrabajoGroup) {
+                                            try {
+                                                await sock.sendMessage(jid, {
+                                                    text: `🤖 *[Centinela IA]* Nota de voz analizada ℹ️\n` +
+                                                          `🎙️ *Escuchado:* "${audioAnalysis.transcription || 'Sin voz clara'}"\n` +
+                                                          `❌ *Clasificación:* No detectado como control vial (${audioAnalysis.reason || 'Charla general'})`
+                                                }, { quoted: msg });
+                                            } catch(replyErr) {}
+                                        }
                                         continue; // Saltar este mensaje completamente
                                     }
                                     // Es alerta de tránsito: usar la transcripción como texto
@@ -3307,6 +3319,17 @@ const WhatsappBot = (() => {
                                         text.substring(0, 100),
                                         jid
                                     );
+
+                                    if (isTrabajoGroup) {
+                                        try {
+                                            await sock.sendMessage(jid, {
+                                                text: `🤖 *[Centinela IA]* ¡Nota de voz procesada y publicada en el mapa! 🚨\n` +
+                                                      `📍 *Ubicación:* ${audioAnalysis.address || 'Rosario y alrededores'}\n` +
+                                                      `🏷️ *Tipo:* ${audioAnalysis.type}\n` +
+                                                      `🎙️ *Transcripción:* "${text}"`
+                                            }, { quoted: msg });
+                                        } catch(replyErr) {}
+                                    }
                                     continue;
                                 } else {
                                     // Gemini no disponible o falló: publicar como checkpoint genérico (comportamiento anterior)
@@ -3723,6 +3746,17 @@ const WhatsappBot = (() => {
 
                             // Procesar la alerta pasando el message ID único, audioUrl y description
                             await _processAlert(analysis.address, text, groupName, analysis.type, msg.key.id, audioUrl, analysis.description, jid);
+
+                            if (isTrabajoGroup) {
+                                try {
+                                    await sock.sendMessage(jid, {
+                                        text: `🤖 *[Centinela IA]* ¡Alerta de texto procesada y publicada en el mapa! 🚨\n` +
+                                              `📍 *Ubicación:* ${analysis.address || 'Rosario y alrededores'}\n` +
+                                              `🏷️ *Tipo:* ${analysis.type}\n` +
+                                              `💬 *Texto:* "${text}"`
+                                    }, { quoted: msg });
+                                } catch(replyErr) {}
+                            }
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -5179,7 +5213,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
             hasGeminiKey: !!getGeminiKey(),
             lastQr: _lastQrCode ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(_lastQrCode)}&size=400x400` : null,
             instanceId: INSTANCE_ID,
-            version: '206aab8-v4'
+            version: '206aab8-v5'
         })
     };
 })();
