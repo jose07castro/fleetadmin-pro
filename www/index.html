@@ -100,8 +100,9 @@
     <script src="js/components.js?v=194"></script>
     <script src="js/modules/onboarding.js?v=211"></script>
     <script src="js/router.js?v=194"></script>
-    <!-- Prevenir alertas de autenticación y billing de Google Maps -->
+    <!-- Prevenir alertas de autenticación y asegurar Google Maps API Key oficial -->
     <script>
+        window.GOOGLE_MAPS_API_KEY = window.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
         window.gm_authFailure = function() {
             console.warn('[GoogleMaps] Notificación de autenticación/billing interceptada silenciosamente.');
         };
@@ -110,7 +111,7 @@
     <script src="js/modules/radar-v126.js?v=212"></script>
     <script src="js/modules/traffic-alerts.js?v=212"></script>
     <script src="js/modules/copilot.js?v=212"></script>
-    <script src="js/modules/sos.js?v=194"></script>
+    <script src="js/modules/sos.js?v=212"></script>
     <script src="js/modules/voice-alert.js?v=194"></script>
     <script src="js/modules/kitt-voice.js?v=194"></script>
     <script src="js/gps-permissions.js?v=194"></script>
@@ -119,7 +120,7 @@
     <script src="js/pwa-install.js?v=194"></script>
     <script src="js/ui-settings.js?v=194"></script>
     <script src="js/android-services.js?v=212"></script>
-    <script src="js/app.js?v=194"></script>
+    <script src="js/app.js?v=212"></script>
 
     <script>
         // =============================================

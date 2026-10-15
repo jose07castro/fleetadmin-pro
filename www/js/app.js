@@ -542,6 +542,7 @@ const App = (() => {
 
     // Restaurar sesión y refrescar vista si estamos logueados
     // REGLA DE ORO: NUNCA redirigir a login por un error de red.
+    let _lastResumeTime = 0;
     async function _restoreSessionOnResume() {
         // Debounce: no restaurar más de 1 vez cada 3 segundos 
         const now = Date.now();

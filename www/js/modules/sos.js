@@ -1195,17 +1195,18 @@ const SOSModule = (() => {
     }
 
     /**
-     * Background Keep-Alive — Usa fetch con keepalive:true para mantener
-     * la conexión de red activa cuando la app está en background.
-     * Android permite fetch keepalive por ~30s después de ir a background.
+     * Background Keep-Alive — Usa el SDK oficial de Firebase (.info/connected)
+     * o el endpoint /api/health para mantener la conexión sin disparar HTTP 401 Unauthorized.
      */
     function _backgroundKeepAlive() {
         try {
-            // Ping silencioso a Firebase para mantener la conexión
-            fetch('https://fleetadmin-pro-default-rtdb.firebaseio.com/.json?shallow=true&timeout=1s', {
-                keepalive: true,
-                signal: AbortSignal.timeout(5000)
-            }).catch(() => {}); // Ignorar errores — es solo un keep-alive
+            if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof firebaseDB.ref === 'function') {
+                firebaseDB.ref('.info/connected').once('value').catch(() => {});
+            } else if (typeof firebase !== 'undefined' && firebase.database && typeof firebase.database === 'function') {
+                firebase.database().ref('.info/connected').once('value').catch(() => {});
+            } else {
+                fetch('/api/health', { keepalive: true, signal: AbortSignal.timeout(5000) }).catch(() => {});
+            }
         } catch(e) { /* ignorar */ }
     }
 

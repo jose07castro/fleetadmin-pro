@@ -46,6 +46,9 @@ const RadarModule = (() => {
     let _HTMLMapMarkerClass = null;
     function _getHTMLMapMarkerClass() {
         if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
+        if (typeof google === 'undefined' || !google.maps || !google.maps.OverlayView) {
+            return null;
+        }
         
         _HTMLMapMarkerClass = class extends google.maps.OverlayView {
             constructor(latlng, html, popupHtml, offsetX = 30, offsetY = 40) {
@@ -332,7 +335,29 @@ const RadarModule = (() => {
 
     // ============ GOOGLE MAP INIT ============
 
+    function _ensureGoogleMapsScript() {
+        if (typeof document === 'undefined') return;
+        let script = document.querySelector('script[src*="maps.googleapis.com"]');
+        const apiKey = (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+        if (!script) {
+            script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+            script.async = true;
+            document.head.appendChild(script);
+            console.log('[RADAR] Etiqueta de Google Maps inyectada con clave GCP oficial.');
+        } else if (script.src.includes('key=&') || script.src.includes('key=null') || script.src.includes('key=undefined')) {
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+        }
+    }
+
     function _initMap() {
+        if (typeof google === 'undefined' || !google.maps) {
+            console.warn('[RADAR] Google Maps API no está cargado todavía. Reintentando en 300ms...');
+            _ensureGoogleMapsScript();
+            setTimeout(_initMap, 300);
+            return;
+        }
+
         // Default center: Rosario, Argentina (approximate fleet location)
         const defaultLat = -33.0232;
         const defaultLng = -60.6389;
@@ -500,6 +525,7 @@ const RadarModule = (() => {
 
     async function _updateMarker(driverId, data, shift, vehicle) {
         if (!_map || !data || !data.lat || !data.lng) return null;
+        if (typeof google === 'undefined' || !google.maps) return null;
 
         // v119: Filtro de autorretrato - Ocultar mi propio marcador en el mapa SOLO si soy conductor sin turno
         // Un administrador/dueño SIEMPRE debe ver toda su flota en el mapa.
@@ -793,6 +819,18 @@ const RadarModule = (() => {
 
     // ============ FIREBASE LISTENER (ADMIN) ============
 
+    // Recargar alertas de tráfico (detiene, reinicia y sincroniza)
+    function _loadTrafficAlerts() {
+        try {
+            console.log('[RADAR] Recargando alertas de tráfico en resume...');
+            _stopAlertListener();
+            _startAlertListener();
+            _syncAndRenderAlerts();
+        } catch (e) {
+            console.warn('[RADAR] Error en _loadTrafficAlerts:', e);
+        }
+    }
+
     // Reconectar Firebase cuando la app vuelve del background (Android Doze Mode fix)
     let _visibilityHandler = null;
     function _setupReconnectOnResume() {
@@ -1051,7 +1089,8 @@ const RadarModule = (() => {
     }
 
     function _updateAlertMarker(id, data) {
-        if (!_map) return;
+        if (!_map || !data) return;
+        if (typeof google === 'undefined' || !google.maps) return;
 
         const lat = parseFloat(data.lat);
         const lng = parseFloat(data.lng);

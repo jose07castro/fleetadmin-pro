@@ -49,6 +49,11 @@ app.get('/', (req, res) => {
     res.send('🚀 FleetAdmin Pro Backend is ONLINE');
 });
 
+// Endpoint oficial de Healthcheck y Keep-Alive autenticado/seguro
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), time: Date.now() });
+});
+
 // ============================================
 // WhatsApp Bot Webhook
 // Receives group messages and filters them for alerts
