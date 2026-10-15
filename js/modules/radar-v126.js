@@ -821,6 +821,7 @@ const RadarModule = (() => {
 
     // Recargar alertas de tráfico (detiene, reinicia y sincroniza)
     function _loadTrafficAlerts() {
+        window._loadTrafficAlerts = _loadTrafficAlerts;
         try {
             console.log('[RADAR] Recargando alertas de tráfico en resume...');
             _stopAlertListener();
@@ -1343,6 +1344,9 @@ const RadarModule = (() => {
             })
             .catch(e => {
                 console.warn('Play directo falló, esperando evento canplay:', e);
+                if (e && e.name === 'NotAllowedError' && typeof window.showAudioUnlockBanner === 'function') {
+                    window.showAudioUnlockBanner();
+                }
             });
 
         // Evento alternativo más seguro para móviles que canplaythrough
@@ -1631,6 +1635,7 @@ const RadarModule = (() => {
     }
 
     function testAlerts() {
+        if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
         if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.testAlert === 'function') {
             // Probar alternando entre fotomulta y alerta de tránsito
             const lastType = RadarModule._lastTestType === 'transito' ? 'fotomulta' : 'transito';
@@ -1656,6 +1661,6 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts, zoomIn, zoomOut
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts, zoomIn, zoomOut, loadTrafficAlerts: _loadTrafficAlerts
     };
 })();

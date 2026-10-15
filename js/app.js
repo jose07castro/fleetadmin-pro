@@ -1,6 +1,155 @@
 // ==========================================
-// 🛡️ AJUSTE ANTIGRAVITY - MODO WEB
+// 🛡️ AJUSTE ANTIGRAVITY - MODO WEB & AUDIO UNLOCK
 // ==========================================
+
+// Variable global blindada para reanudación de sesión
+window._lastResumeTime = window._lastResumeTime || 0;
+
+/**
+ * Desbloquea y reanuda el AudioContext global y el canal de síntesis de voz en Web (PC y Móvil).
+ * Llamado al hacer clic en cualquier parte de la pantalla o en el botón 'Probar'.
+ */
+window.unlockGlobalAudio = function() {
+    try {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioClass) {
+            if (!window._sharedAudioContext) {
+                window._sharedAudioContext = new AudioClass();
+            }
+            if (window._sharedAudioContext.state === 'suspended') {
+                window._sharedAudioContext.resume().then(() => {
+                    console.log('🔊 [AUDIO] AudioContext global reanudado con éxito');
+                }).catch(e => console.warn('🔊 [AUDIO] Error al resumir AudioContext:', e));
+            }
+        }
+
+        // Reanudar SpeechSynthesis si el navegador lo suspendió
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            if (window.speechSynthesis.paused) {
+                try { window.speechSynthesis.resume(); } catch (_) {}
+            }
+        }
+
+        // Ocultar banner de desbloqueo si existía
+        const banner = document.getElementById('audio-unlock-banner');
+        if (banner) {
+            banner.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            banner.style.opacity = '0';
+            banner.style.transform = 'translate(-50%, 20px)';
+            setTimeout(() => { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 300);
+        }
+    } catch (e) {
+        console.warn('🔊 [AUDIO] Error en unlockGlobalAudio:', e);
+    }
+};
+
+// Escuchar interacciones del usuario en cualquier parte de la pantalla para desbloqueo automático
+if (typeof document !== 'undefined') {
+    const _autoUnlockEvents = ['click', 'pointerdown', 'touchstart', 'keydown'];
+    _autoUnlockEvents.forEach(evt => {
+        document.addEventListener(evt, () => {
+            window.unlockGlobalAudio();
+        }, { capture: true, passive: true });
+    });
+}
+
+/**
+ * Muestra un banner flotante visible cuando 'Audio.play()' es rechazado por la política de autoplay
+ * requiriendo una interacción simple del usuario para desbloquear el canal de sonido de alertas.
+ */
+window.showAudioUnlockBanner = function() {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('audio-unlock-banner')) return; // Ya en pantalla
+
+    const banner = document.createElement('div');
+    banner.id = 'audio-unlock-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 999999;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+        color: #f8fafc;
+        border: 2px solid #38bdf8;
+        border-radius: 16px;
+        padding: 14px 22px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 25px rgba(56, 189, 248, 0.35);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 0.92rem;
+        max-width: calc(100vw - 32px);
+        width: max-content;
+        cursor: pointer;
+        animation: audioBannerPop 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    `;
+
+    banner.innerHTML = `
+        <div style="font-size: 1.8rem; animation: audioIconPulse 1.2s infinite ease-in-out;">🔊</div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-weight: 700; color: #38bdf8; font-size: 0.95rem;">Sonido silenciado por el navegador</span>
+            <span style="font-size: 0.82rem; color: #cbd5e1;">Hacé clic aquí para activar las alertas de voz y pitidos de radares</span>
+        </div>
+        <button type="button" style="
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-size: 0.86rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
+            white-space: nowrap;
+        ">Activar Sonido</button>
+    `;
+
+    if (!document.getElementById('audio-unlock-style')) {
+        const style = document.createElement('style');
+        style.id = 'audio-unlock-style';
+        style.textContent = `
+            @keyframes audioBannerPop {
+                from { opacity: 0; transform: translate(-50%, 25px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
+            @keyframes audioIconPulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.18); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const activate = (e) => {
+        if (e) e.stopPropagation();
+        window.unlockGlobalAudio();
+        // Feedback sonoro suave de confirmación
+        try {
+            if (window._sharedAudioContext && window._sharedAudioContext.state === 'running') {
+                const now = window._sharedAudioContext.currentTime;
+                const osc = window._sharedAudioContext.createOscillator();
+                const gain = window._sharedAudioContext.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(659.25, now);
+                osc.frequency.setValueAtTime(880.00, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(window._sharedAudioContext.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        } catch (_) {}
+    };
+
+    banner.addEventListener('click', activate);
+    document.body.appendChild(banner);
+};
 
 window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
     // Detectar si estamos en entorno nativo / móvil
@@ -17,11 +166,27 @@ window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
 
     if (isNative && isCrossOrigin) {
         console.log('🎵 [AUDIO-BOOST] Detectado audio cross-origin en nativo. Evitando boost para prevenir silencio de CORS.');
-        return audioElement.play();
+        const p = audioElement.play();
+        if (p !== undefined) {
+            p.catch(err => {
+                if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
+                    window.showAudioUnlockBanner();
+                }
+            });
+        }
+        return p;
     }
 
     if (!window.AudioContext && !window.webkitAudioContext) {
-        return audioElement.play();
+        const p = audioElement.play();
+        if (p !== undefined) {
+            p.catch(err => {
+                if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
+                    window.showAudioUnlockBanner();
+                }
+            });
+        }
+        return p;
     }
     try {
         if (!window._sharedAudioContext) {
@@ -29,12 +194,11 @@ window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
         }
         const ctx = window._sharedAudioContext;
         if (ctx.state === 'suspended') {
-            ctx.resume();
+            ctx.resume().catch(() => {});
         }
         
         // Evitar doble conexión si se recicla el elemento
         if (!audioElement._isBoosted) {
-            // Un error común es CORS en el createMediaElementSource si el audio no tiene crossOrigin
             audioElement.crossOrigin = 'anonymous'; 
             const source = ctx.createMediaElementSource(audioElement);
             const gainNode = ctx.createGain();
@@ -43,13 +207,29 @@ window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
             gainNode.connect(ctx.destination);
             audioElement._isBoosted = true;
         }
-        return audioElement.play();
+        const p = audioElement.play();
+        if (p !== undefined) {
+            p.catch(err => {
+                console.warn('🎵 [AUDIO-BOOST] Autoplay bloqueado por el navegador:', err);
+                if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
+                    window.showAudioUnlockBanner();
+                }
+            });
+        }
+        return p;
     } catch(e) {
         console.warn('Audio boost falló, usando volumen normal', e);
-        return audioElement.play();
+        const p = audioElement.play();
+        if (p !== undefined) {
+            p.catch(err => {
+                if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
+                    window.showAudioUnlockBanner();
+                }
+            });
+        }
+        return p;
     }
 };
-
 // import { BackgroundMode } from '@anuradev/capacitor-background-mode';
 
 // Interceptor global de fetch para móviles (redirige rutas relativas a la URL de producción)
@@ -72,11 +252,22 @@ if (window.location.hostname === 'localhost' ||
    ============================================ */
 
 const App = (() => {
+    let _lastResumeTime = 0; // Top-level App IIFE
 
     // Listener refs para limpieza
     let realtimeListenersActive = false;
 
     // Auto-despertar servidor (Keep-Alive) para evitar que Render duerma el servicio
+    
+    // 25s keepalive loop for Firebase background stability
+    setInterval(() => {
+        try {
+            if (typeof firebase !== 'undefined' && firebase.database) {
+                firebase.database().goOnline();
+            }
+        } catch (_) {}
+    }, 25000);
+
     function startWebHeartbeat() {
         const heartbeat = () => {
             fetch('/api/bot/status')
@@ -494,6 +685,7 @@ const App = (() => {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 console.log('📱 App volvió al primer plano');
+                if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
                 _restoreSessionOnResume();
             } else {
                 // Al ir a background: hacer un ping a Firebase para mantener conexión
@@ -542,12 +734,18 @@ const App = (() => {
 
     // Restaurar sesión y refrescar vista si estamos logueados
     // REGLA DE ORO: NUNCA redirigir a login por un error de red.
-    let _lastResumeTime = 0;
+    // _lastResumeTime inicializado al inicio de App
     async function _restoreSessionOnResume() {
         // Debounce: no restaurar más de 1 vez cada 3 segundos 
         const now = Date.now();
         if (now - _lastResumeTime < 3000) return;
         _lastResumeTime = now;
+        window._lastResumeTime = now;
+        if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
+        // Activar WebWakeLock hack para PWA
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.enableWebWakeLockHack === 'function') {
+            AndroidServices.enableWebWakeLockHack();
+        }
 
         try {
             // 1. Recuperar sesión con cascada completa (localStorage > sessionStorage > IndexedDB)

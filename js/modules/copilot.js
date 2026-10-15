@@ -2458,12 +2458,13 @@ const CopilotModule = (() => {
      * Inicializa / desbloquea el sintetizador de sonido Web Audio API.
      */
     function _getAudioContext() {
-        if (!_audioCtx) {
+        if (!window._sharedAudioContext) {
             const AudioClass = window.AudioContext || window.webkitAudioContext;
             if (AudioClass) {
-                _audioCtx = new AudioClass();
+                window._sharedAudioContext = new AudioClass();
             }
         }
+        _audioCtx = window._sharedAudioContext;
         if (_audioCtx && _audioCtx.state === 'suspended') {
             _audioCtx.resume().catch(() => {});
         }
@@ -3516,6 +3517,7 @@ const CopilotModule = (() => {
      * @param {'fotomulta'|'transito'|string} typeOrRadarId
      */
     function testAlert(typeOrRadarId = 'fotomulta') {
+        if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
         if (!_isVoiceEnabled) {
             _isVoiceEnabled = true;
             localStorage.setItem('radarVoice', 'on');

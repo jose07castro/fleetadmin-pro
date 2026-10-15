@@ -471,6 +471,7 @@ const AndroidServices = (() => {
                     console.log('🛡️ WebWakeLock: Audio silencioso activado — PWA no se suspenderá');
                 }).catch(() => {
                     console.warn('🛡️ WebWakeLock: Audio silencioso bloqueado por autoplay policy');
+                    if (typeof window.showAudioUnlockBanner === 'function') window.showAudioUnlockBanner();
                 });
             }
         } catch (e) {
@@ -586,6 +587,7 @@ const AndroidServices = (() => {
 
     function speakWithAntiCutoff(text, options = {}) {
         if (typeof window === 'undefined' || !window.speechSynthesis) return false;
+        if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
 
         try {
             window.speechSynthesis.cancel();

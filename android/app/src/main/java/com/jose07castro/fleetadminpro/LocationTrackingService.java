@@ -71,8 +71,10 @@ import java.util.TimeZone;
 public class LocationTrackingService extends Service implements TextToSpeech.OnInitListener {
 
     private static final String TAG = "FleetGPS";
-    private static final String CHANNEL_ID = "fleet_gps_tracking_v2";
+    public static final String CHANNEL_ID = "fleet_gps_tracking_v2";
+    public static final String ALERT_CHANNEL_ID = "fleet_traffic_alerts_high";
     private static final int NOTIFICATION_ID = 7001;
+    private static final int ALERT_NOTIFICATION_ID = 7002;
     private static final String PREFS_NAME = "fleet_gps_prefs";
     public static boolean isAppInForeground = false;
     public static LocationTrackingService instance = null;
@@ -925,6 +927,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             message = String.format(Locale.getDefault(), "%sAtención, %s a quinientos metros.", prefix, typeLabel);
         }
         Log.i(TAG, "🚨 [PROXIMITY-ALERT] Advertencia dinámica: " + message);
+        postUrgentAlertNotification("🚨 " + typeLabel.toUpperCase(), message);
+        wakeScreenForAlert();
         speak(message);
     }
 
@@ -1084,6 +1088,35 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         try {
             FirebaseDatabase.getInstance().goOnline();
         } catch (Exception ignored) {}
+
+        // Escuchador de conectividad interna de Firebase para auto-reconexión agresiva
+        try {
+            DatabaseReference connectedRef = FirebaseDatabase.getInstance().getReference(".info/connected");
+            connectedRef.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    Boolean connected = snapshot.getValue(Boolean.class);
+                    boolean isConnected = connected != null && connected;
+                    Log.i(TAG, "📡 [FIREBASE-STATE] .info/connected = " + isConnected);
+                    if (!isConnected && isTracking) {
+                        if (serviceHandler != null) {
+                            serviceHandler.postDelayed(() -> {
+                                try {
+                                    if (isTracking) {
+                                        FirebaseDatabase.getInstance().goOnline();
+                                    }
+                                } catch (Exception ignored) {}
+                            }, 1500);
+                        }
+                    }
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {}
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error agregando listener .info/connected:", e);
+        }
 
         if (alertsRef != null) {
             Log.i(TAG, "📡 [ALERTS] Removing previous fleet database listener");
@@ -1564,6 +1597,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void speakImmediateAlert(TrafficAlert alert) {
         String fullText = getImmediateAlertText(alert);
         Log.i(TAG, "🔊 [IMMEDIATE ALERTS] Speaking new alert: " + fullText);
+        postUrgentAlertNotification("⚠️ " + (alert.type != null ? alert.type.toUpperCase() : "ALERTA"), fullText);
+        wakeScreenForAlert();
         if (alert.audioUrl != null && !alert.audioUrl.trim().isEmpty()) {
             playAudioAlert(alert.audioUrl, fullText);
         } else {
@@ -1768,10 +1803,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     stopLocationUpdates();
                     startLocationUpdates();
                 }
-                watchdogHandler.postDelayed(this, 45000); // Revisar cada 45s
+                watchdogHandler.postDelayed(this, 25000); // Revisar cada 25s para mantener socket Doze activo
             }
         };
-        watchdogHandler.postDelayed(watchdogRunnable, 45000);
+        watchdogHandler.postDelayed(watchdogRunnable, 25000);
     }
 
     private void sendToWebView(double lat, double lng, float speed, float bearing) {
@@ -1831,6 +1866,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager == null) return;
+
+            // 1. Canal persistente para el Foreground Service (silencioso, protege de Doze y LMK)
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, 
                 "Servicio de Rastreo Permanente y Radar", 
@@ -1839,8 +1878,71 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             channel.setDescription("Mantiene el GPS activo en segundo plano y recibe alertas de tránsito en vivo.");
             channel.setSound(null, null); // Silencioso para no pitar en cada fix GPS
             channel.enableVibration(false);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) manager.createNotificationChannel(channel);
+            manager.createNotificationChannel(channel);
+
+            // 2. Canal de Alta Prioridad para Alertas Urgentes (suena y despierta con pantalla apagada)
+            NotificationChannel alertChannel = new NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Alertas Urgentes de Tránsito y Radar",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            alertChannel.setDescription("Alertas inmediatas de fotomultas, operativos y controles policiales.");
+            alertChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            alertChannel.enableVibration(true);
+            alertChannel.setVibrationPattern(new long[]{0, 300, 150, 300});
+            alertChannel.setShowBadge(true);
+            alertChannel.setBypassDnd(true);
+            manager.createNotificationChannel(alertChannel);
+        }
+    }
+
+    public void wakeScreenForAlert() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                @SuppressWarnings("deprecation")
+                PowerManager.WakeLock screenLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
+                    "FleetGPS:ScreenAlertWakeLock"
+                );
+                screenLock.acquire(8000); // 8 segundos para que el conductor vea y escuche
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ No se pudo encender pantalla para alerta: " + e.getMessage());
+        }
+    }
+
+    public void postUrgentAlertNotification(String title, String body) {
+        try {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 
+                (int) System.currentTimeMillis(), 
+                intent, 
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setDefaults(Notification.DEFAULT_ALL);
+
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify(ALERT_NOTIFICATION_ID, builder.build());
+            }
+
+            wakeScreenForAlert();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error posting urgent alert notification:", e);
         }
     }
 

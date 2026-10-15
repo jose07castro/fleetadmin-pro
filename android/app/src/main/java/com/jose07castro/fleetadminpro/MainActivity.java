@@ -268,6 +268,17 @@ public class MainActivity extends BridgeActivity {
          */
         @JavascriptInterface
         public void startTracking(String userId, String driverName, String fleetId, String serverUrl) {
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                SharedPreferences.Editor editor = prefs.edit();
+                editor.putString("userId", userId);
+                if (driverName != null) editor.putString("driverName", driverName);
+                if (fleetId != null) editor.putString("fleetId", fleetId);
+                if (serverUrl != null) editor.putString("serverUrl", serverUrl);
+                editor.apply();
+            } catch (Exception e) {
+                Log.e(TAG, "Error guardando credenciales en SharedPreferences:", e);
+            }
             Log.i(TAG, "📱 JS → startTracking('" + userId + "', '" + driverName + "', '" + fleetId + "', '" + serverUrl + "')");
             
             Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
