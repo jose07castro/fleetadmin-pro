@@ -192,17 +192,6 @@ const RadarModule = (() => {
                         style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border-color:${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};">
                         📷 Cámaras (80)
                     </button>
-                    <div class="radar-volume-box" id="radarVolumeBox" title="Volumen independiente de alertas">
-                        <button class="radar-voice-btn" id="radarVoiceBtn"
-                            onclick="RadarModule.toggleVoice()"
-                            title="Activar/desactivar voz">
-                            ${_voiceEnabled ? '🔊' : '🔇'}
-                        </button>
-                        <input type="range" min="10" max="100" step="5" value="${localStorage.getItem('radarVolumePercent') || 85}"
-                            id="radarVolSlider" class="radar-vol-slider" title="Volumen independiente de alertas"
-                            oninput="if(typeof CopilotModule!=='undefined'&&CopilotModule.setVolume)CopilotModule.setVolume(this.value);" />
-                        <span id="radarVolLabel" style="font-size:10px;font-weight:700;color:#38bdf8;min-width:24px;text-align:right;">${localStorage.getItem('radarVolumePercent') || 85}%</span>
-                    </div>
                 </div>
                 <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
                     ✕ Salir

@@ -165,6 +165,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private float lastBearing = 0;
     private long lastGPSTimestamp = 0;
 
+    // Estabilizador del velocímetro
+    private float smoothedSpeedKmh = 0f;
+    private boolean isSmoothedSpeedInit = false;
+    private Location lastCalcLocation = null;
+
     // Entity for internal alert tracking
     private static class TrafficAlert {
         String id;
@@ -505,7 +510,48 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void processNewLocation(Location location) {
         lastLat = location.getLatitude();
         lastLng = location.getLongitude();
-        lastSpeed = location.getSpeed() * 3.6f;
+
+        // Estabilización del velocímetro:
+        // a) Priorizar valor de hardware nativo 'coords.speed' provisto por chip GPS
+        float rawSpeedKmh = -1f;
+        if (location.hasSpeed() && location.getSpeed() >= 0f) {
+            rawSpeedKmh = location.getSpeed() * 3.6f;
+        } else if (lastCalcLocation != null) {
+            // b) Fallback Haversine con delta de tiempo >= 1.5s y descarte si accuracy > 15m
+            long timeDeltaMs = location.getTime() - lastCalcLocation.getTime();
+            float timeDeltaSec = timeDeltaMs / 1000f;
+            boolean accuracyOk = !location.hasAccuracy() || location.getAccuracy() <= 15.0f;
+            boolean prevAccuracyOk = !lastCalcLocation.hasAccuracy() || lastCalcLocation.getAccuracy() <= 15.0f;
+
+            if (timeDeltaSec >= 1.5f && timeDeltaSec <= 15.0f && accuracyOk && prevAccuracyOk) {
+                float distMeters = lastCalcLocation.distanceTo(location);
+                float calculatedKmh = (distMeters / timeDeltaSec) * 3.6f;
+                if (calculatedKmh <= 180f) {
+                    rawSpeedKmh = calculatedKmh;
+                }
+            }
+        }
+
+        if (lastCalcLocation == null || (location.getTime() - lastCalcLocation.getTime() >= 1500)) {
+            lastCalcLocation = new Location(location);
+        }
+
+        // c) Filtro de suavizado (Media Móvil Exponencial - EMA con factor alfa ~0.3)
+        if (rawSpeedKmh >= 0f) {
+            if (!isSmoothedSpeedInit) {
+                smoothedSpeedKmh = rawSpeedKmh;
+                isSmoothedSpeedInit = true;
+            } else {
+                smoothedSpeedKmh = (0.30f * rawSpeedKmh) + (0.70f * smoothedSpeedKmh);
+            }
+        }
+
+        // d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario
+        if (smoothedSpeedKmh < 4.0f) {
+            smoothedSpeedKmh = 0f;
+        }
+
+        lastSpeed = smoothedSpeedKmh;
         Float reliable = getReliableBearing(location);
         lastBearing = (reliable != null) ? reliable : -1.0f;
         lastGPSTimestamp = System.currentTimeMillis();
@@ -607,14 +653,33 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     /**
-     * Valida de manera estricta si el vehículo circula en la misma calle y carril que la cámara,
-     * descartando en un 100% calles paralelas (separadas por >= 90m en Rosario) y perpendiculares.
+     * Estructura del resultado de evaluación vectorial del corredor.
      */
-    private boolean isCorridorAligned(Location carLoc, Float reliableBearing, RosarioRadars.StaticRadar radar, float distance) {
-        // En cuadrícula urbana, si el vehículo no se desplaza o no hay rumbo seguro:
-        // A más de 35 metros NUNCA alertar para evitar falsos positivos de calles paralelas
+    private static class CorridorResult {
+        boolean aligned;
+        float angleDiff;
+        double crossTrack;
+        double alongTrack;
+
+        CorridorResult(boolean aligned, float angleDiff, double crossTrack, double alongTrack) {
+            this.aligned = aligned;
+            this.angleDiff = angleDiff;
+            this.crossTrack = crossTrack;
+            this.alongTrack = alongTrack;
+        }
+    }
+
+    /**
+     * Algoritmo de vector de avance y corredor estricto para fotomultas en Android:
+     * a) Rumbo de avance (Heading): orientación real del desplazamiento
+     * b) Ángulo hacia la cámara (Bearing): cono frontal < 30°
+     * c) Desviación lateral (Cross-Track Distance): descarte absoluto si > 35m (calles paralelas)
+     * d) Distancia frontal (Along-Track Distance): proyección en línea de marcha
+     * e) Sentido de circulación: rechazo de mano contraria o perpendiculares
+     */
+    private CorridorResult evaluateCorridor(Location carLoc, Float reliableBearing, RosarioRadars.StaticRadar radar, float distance) {
         if (reliableBearing == null) {
-            return distance <= 35.0f;
+            return new CorridorResult(false, 180f, 999.0, -999.0);
         }
 
         Location targetLoc = new Location("");
@@ -626,33 +691,36 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         float angleDiff = Math.abs(reliableBearing - targetBearing) % 360.0f;
         if (angleDiff > 180.0f) angleDiff = 360.0f - angleDiff;
 
-        // 1. Cono frontal hacia la cámara:
-        // En una paralela a 100m, a 200m el desvío es de 26.5°. Exigir cono estrecho:
-        float maxAngle = (radar.limit >= 70) ? 18.0f : 22.0f;
-        if (angleDiff > maxAngle) {
-            return false;
+        // b & e) Ángulo hacia la cámara: SOLO aproximación frontal menor a 30°
+        // Descarta mano contraria (dif > 150°) y calles transversales/perpendiculares
+        if (angleDiff >= 30.0f) {
+            return new CorridorResult(false, angleDiff, 999.0, -999.0);
         }
 
-        // 2. Corredor transversal (Cross-track distance):
-        // Distancia perpendicular lateral desde la trayectoria del vehículo hasta la cámara.
-        // En Rosario, las calles paralelas están a >= 90m. En la misma calle la cámara está a <= 15m.
-        // Tolerancia máxima: 20m para calles urbanas, 28m para autopistas.
-        double crossTrack = distance * Math.sin(Math.toRadians(angleDiff));
-        double maxLateral = (radar.limit >= 70) ? 28.0 : 20.0;
-
-        if (crossTrack > maxLateral) {
-            return false; // Calle paralela descartada
+        double rad = Math.toRadians(angleDiff);
+        // c) Desviación lateral (Cross-Track Distance): distancia perpendicular al vector de marcha.
+        // Si el vehículo está a más de 35 metros hacia los lados (calle paralela), DESCARTAR por completo.
+        double crossTrack = distance * Math.abs(Math.sin(rad));
+        if (crossTrack > 35.0) {
+            return new CorridorResult(false, angleDiff, crossTrack, -999.0);
         }
 
-        return true;
+        // d) Distancia frontal (Along-Track Distance): proyectada a lo largo del rumbo de marcha
+        double alongTrack = distance * Math.cos(rad);
+
+        return new CorridorResult(true, angleDiff, crossTrack, alongTrack);
+    }
+
+    private boolean isCorridorAligned(Location carLoc, Float reliableBearing, RosarioRadars.StaticRadar radar, float distance) {
+        CorridorResult cr = evaluateCorridor(carLoc, reliableBearing, radar, distance);
+        return cr.aligned;
     }
 
     private void playBgProximityTone(int distanceStage) {
-        if (isVoiceMuted) return;
+        // Alerta obligatoria de fotomulta (sin muteo)
         try {
-            int streamVol = (int)(alertVolume * 100);
             if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(AudioManager.STREAM_MUSIC, Math.max(10, Math.min(100, streamVol)));
+                bgToneGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
             }
             if (distanceStage <= 35) {
                 bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 130);
@@ -669,11 +737,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void playBgPassedTone() {
-        if (isVoiceMuted) return;
+        // Alerta obligatoria de confirmación (sin muteo)
         try {
-            int streamVol = (int)(alertVolume * 100);
             if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(AudioManager.STREAM_MUSIC, Math.max(10, Math.min(100, streamVol)));
+                bgToneGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
             }
             bgToneGen.startTone(ToneGenerator.TONE_PROP_PROMPT, 150);
         } catch (Exception e) {}
@@ -685,8 +752,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         String message = String.format(Locale.getDefault(), 
             "%sfoto multa a %d metros, máxima %d.", 
             prefix, distanceStage, radar.limit);
-        Log.i(TAG, "📷 [RADAR NATIVO] Locución concisa (" + distanceStage + "m): \"" + message + "\"");
-        speak(message);
+        Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Locución obligatoria (" + distanceStage + "m): \"" + message + "\"");
+        speakMandatory(message);
     }
 
     private void checkProximityToAlerts(Location myLocation) {
@@ -708,9 +775,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
                                        radar.lat, radar.lng, results);
                 float distance = results[0];
+                CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
 
-                // A) Cámara superada (<= 18m o la distancia aumentó tras haber estado muy cerca)
-                if (distance <= 18.0f || (activeBgApproach.minDistance < 35.0f && distance > activeBgApproach.minDistance + 10.0f)) {
+                // A) Cámara superada (<= 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras haber estado < 35m)
+                boolean passedByAlongTrack = cr.alongTrack <= 0 && distance <= 40.0f;
+                boolean passedByDistanceIncrease = activeBgApproach.minDistance < 35.0f && distance > activeBgApproach.minDistance + 10.0f;
+                if (distance <= 18.0f || passedByAlongTrack || passedByDistanceIncrease) {
                     Log.i(TAG, "📷 [RADAR NATIVO] 🏁 Cámara superada en background: " + radar.name);
                     playBgPassedTone();
                     lastRadarAlertTimestamps.put(radar.id, now);
@@ -718,12 +788,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     return;
                 }
 
-                // B) Vehículo dobló, se alejó o se desvió de la calle (cancelar inmediatamente sin seguir pitando)
-                boolean stillAligned = isCorridorAligned(myLocation, reliableBearing, radar, distance);
+                // B) Vehículo dobló, se alejó o se desvió lateralmente (> 35m)
                 boolean isMovingAway = distance > activeBgApproach.lastDistance + 9.0f;
-
-                if (isMovingAway || (!stillAligned && distance > 35.0f)) {
-                    Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se alejó, cancelando: " + radar.name);
+                if (isMovingAway || (!cr.aligned && distance > 35.0f)) {
+                    Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se desvió de corredor, cancelando: " + radar.name);
                     activeBgApproach = null;
                     return;
                 }
@@ -763,8 +831,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 return;
             }
 
-            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS (ALINEADA)
-            // Filtrar candidatos dentro del radio que estén estrictamente alineados con la calle de circulación
+            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA ÚTIL (350m a 50m)
             RosarioRadars.StaticRadar bestRadar = null;
             float bestRadarDistance = Float.MAX_VALUE;
 
@@ -774,10 +841,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                                        radar.lat, radar.lng, results);
                 float distance = results[0];
 
-                if (distance <= RADAR_PROXIMITY_RADIUS_M) {
+                if (distance <= 400.0f) {
                     long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
                     if (now - lastTime > RADAR_COOLDOWN_MS) {
-                        if (isCorridorAligned(myLocation, reliableBearing, radar, distance)) {
+                        CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
+                        // d) Alertar únicamente cuando el auto se acerque dentro de la ventana útil (entre 350m y 50m antes del radar)
+                        if (cr.aligned && cr.alongTrack >= 50.0 && cr.alongTrack <= 350.0) {
                             if (distance < bestRadarDistance) {
                                 bestRadarDistance = distance;
                                 bestRadar = radar;
@@ -1329,6 +1398,38 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         } else {
             Log.w(TAG, "⏳ [TTS] Motor TTS aún no listo. Encolando texto para despacho inmediato: " + text);
+            synchronized (pendingSpeakQueue) {
+                if (pendingSpeakQueue.size() < 10) {
+                    pendingSpeakQueue.add(text);
+                }
+            }
+        }
+    }
+
+    /**
+     * Locución obligatoria para fotomultas: ignora silencio total y suena con volumen completo del SO.
+     */
+    public void speakMandatory(String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        long now = System.currentTimeMillis();
+        // Evitar repetición idéntica en menos de 8 segundos
+        if (text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 8000) {
+            return;
+        }
+        lastSpokenTime = now;
+        lastSpokenText = text;
+
+        Log.i(TAG, "🔊 [TTS-MANDATORY] speak obligatorio al volumen del SO: \"" + text + "\"");
+        if (isTtsInitialized && tts != null) {
+            requestNavigationAudioFocus();
+            Bundle params = new Bundle();
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "mandatory_" + System.currentTimeMillis());
+            if (result == TextToSpeech.ERROR) {
+                Log.e(TAG, "❌ [TTS-MANDATORY] tts.speak() returned ERROR");
+                releaseNavigationAudioFocus();
+            }
+        } else {
             synchronized (pendingSpeakQueue) {
                 if (pendingSpeakQueue.size() < 10) {
                     pendingSpeakQueue.add(text);

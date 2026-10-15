@@ -604,7 +604,7 @@ const GPSPermissions = (() => {
 
                     // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo, sin importar turno) ---
                     if (typeof CopilotModule !== 'undefined') {
-                        CopilotModule.checkProximity(location.latitude, location.longitude, location.speed, location.bearing || location.heading);
+                        CopilotModule.checkProximity(location.latitude, location.longitude, location.speed, location.bearing || location.heading, location.accuracy);
                     }
 
                     if (!inShift) return;
@@ -834,7 +834,7 @@ const GPSPermissions = (() => {
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed, pos.heading);
+                CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed, pos.heading, pos.accuracy);
             }
 
             await window.sendLocationToServer(
@@ -871,7 +871,7 @@ const GPSPermissions = (() => {
         if (!pos || !pos.coords) return;
         _lastCopilotFixTime = Date.now();
         if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function') {
-            CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading);
+            CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading, pos.coords.accuracy);
         }
     }
 

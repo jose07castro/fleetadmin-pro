@@ -2554,10 +2554,10 @@ const CopilotModule = (() => {
 
     /**
      * Pitidos de proximidad cada 30 metros con volumen y tono ascendente.
+     * Alerta obligatoria y prioritaria (sin opción de silencio total para fotomultas).
      * @param {number} distanceMeters - Distancia aproximada (120, 90, 60 o 30)
      */
     function _playProximityBeep(distanceMeters) {
-        if (!_isVoiceEnabled) return;
         try {
             const ctx = _getAudioContext();
             if (!ctx) return;
@@ -2565,7 +2565,8 @@ const CopilotModule = (() => {
             const playTone = () => {
                 try {
                     const now = ctx.currentTime;
-                    const baseVol = Math.max(0.1, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    // Volumen predeterminado del sistema operativo (máxima claridad)
+                    const baseVol = 1.0;
 
                     let freq = 820;
                     let beeps = 1;
@@ -2619,9 +2620,9 @@ const CopilotModule = (() => {
 
     /**
      * Tono armónico agradable cuando se supera la cámara con éxito.
+     * Alerta obligatoria de confirmación al volumen predeterminado del SO.
      */
     function _playPassedChime() {
-        if (!_isVoiceEnabled) return;
         try {
             const ctx = _getAudioContext();
             if (!ctx) return;
@@ -2629,7 +2630,7 @@ const CopilotModule = (() => {
             const playPassed = () => {
                 try {
                     const now = ctx.currentTime;
-                    const baseVol = Math.max(0.1, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    const baseVol = 1.0;
                     const masterGain = ctx.createGain();
                     masterGain.gain.setValueAtTime(baseVol * 0.45, now);
                     masterGain.connect(ctx.destination);
@@ -2745,7 +2746,7 @@ const CopilotModule = (() => {
 
     /**
      * Obtiene el rumbo real de desplazamiento vehicular.
-     * Si no hay sensor nativo o la velocidad es baja, calcula el vector contra un punto previo (10m - 75m).
+     * Lee la orientación real del GPS o la calcula geodésicamente de los puntos recientes.
      */
     function _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, speedKmh) {
         const now = Date.now();
@@ -2754,8 +2755,8 @@ const CopilotModule = (() => {
             _gpsHistory.shift();
         }
 
-        // 1. Si el sensor o GPS nativo reporta rumbo válido y velocidad de marcha
-        if (typeof rawBearing === 'number' && !isNaN(rawBearing) && rawBearing > 0 && speedKmh !== null && speedKmh >= 8) {
+        // 1. Si el sensor o GPS nativo reporta rumbo válido y velocidad de marcha (>= 4 km/h)
+        if (typeof rawBearing === 'number' && !isNaN(rawBearing) && rawBearing >= 0 && speedKmh !== null && speedKmh >= 4) {
             return rawBearing;
         }
 
@@ -2773,52 +2774,68 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Verifica con rigor geométrico si el vehículo circula por la misma calle que la cámara.
-     * Descarta calles paralelas (en Rosario siempre separadas por 90m a 125m) y perpendiculares.
+     * Algoritmo de vector de avance y corredor estricto para fotomultas:
+     * a) Rumbo de avance (Heading): orientación real del vehículo
+     * b) Ángulo hacia la cámara (Bearing): cono frontal < 30°
+     * c) Desviación lateral (Cross-Track Distance): descarte absoluto si > 35m (calles paralelas)
+     * d) Distancia frontal (Along-Track Distance): proyección en línea de marcha
+     * e) Sentido de circulación: rechazo absoluto a vehículos en sentido contrario o perpendiculares
+     *
      * @param {number} carLat
      * @param {number} carLng
-     * @param {number|null} carHeading - Rumbo de trayectoria confirmado
+     * @param {number|null} carHeading
      * @param {number} camLat
      * @param {number} camLng
-     * @param {number} distance - Distancia en metros
-     * @param {number} [speedLimit=40]
-     * @returns {boolean}
+     * @param {number} distance
+     * @returns {{aligned: boolean, angleDiff: number, crossTrack: number, alongTrack: number}}
      */
-    function _isCorridorAligned(carLat, carLng, carHeading, camLat, camLng, distance, speedLimit = 40) {
-        // En cuadrícula urbana, si el vehículo no se desplaza o no hay rumbo seguro:
-        // A más de 35 metros NUNCA alertar para evitar falsos positivos de calles paralelas
+    function _evaluateCorridor(carLat, carLng, carHeading, camLat, camLng, distance) {
         if (carHeading === null || isNaN(carHeading)) {
-            return distance <= 35;
+            return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
         }
 
+        // b) Ángulo hacia la cámara (Bearing)
         const targetBearing = _calculateBearing(carLat, carLng, camLat, camLng);
         const angleDiff = _getAngleDifference(carHeading, targetBearing);
 
-        // 1. Cono frontal hacia la cámara:
-        // En una paralela a 100m, a 200m el desvío es de 26.5°. Exigir cono estrecho:
-        const maxAngle = (speedLimit >= 70) ? 18 : 22;
-        if (angleDiff > maxAngle) {
-            return false;
+        // b & e) Sentido de circulación y aproximación frontal:
+        // La alerta SOLO se activa si la diferencia angular entre la marcha y el objetivo es menor a 30°.
+        // Descarta mano contraria (dif > 150°) y calles transversales.
+        if (angleDiff >= 30.0) {
+            return { aligned: false, angleDiff, crossTrack: 999, alongTrack: -999 };
         }
 
-        // 2. Corredor transversal (Cross-track distance):
-        // Distancia perpendicular lateral desde la trayectoria del vehículo hasta la cámara.
-        // En Rosario, las calles paralelas están a >= 90m. En la misma calle la cámara está a <= 15m.
-        // Tolerancia máxima: 20m para calles urbanas, 28m para autopistas.
-        const crossTrack = distance * Math.sin(angleDiff * (Math.PI / 180));
-        const maxLateral = (speedLimit >= 70) ? 28 : 20;
+        const rad = angleDiff * (Math.PI / 180);
 
-        if (crossTrack > maxLateral) {
-            return false; // Calle paralela descartada
+        // c) Desviación lateral (Cross-Track Distance): perpendicular al vector de marcha.
+        // Si el vehículo está a más de 35 metros hacia los lados (calle paralela), DESCARTAR por completo.
+        const crossTrack = distance * Math.abs(Math.sin(rad));
+        if (crossTrack > 35.0) {
+            return { aligned: false, angleDiff, crossTrack, alongTrack: -999 };
         }
 
-        return true;
+        // d) Distancia frontal (Along-Track Distance): proyectada a lo largo del rumbo de marcha
+        const alongTrack = distance * Math.cos(rad);
+
+        return {
+            aligned: true,
+            angleDiff,
+            crossTrack,
+            alongTrack
+        };
+    }
+
+    function _isCorridorAligned(carLat, carLng, carHeading, camLat, camLng, distance, speedLimit = 40) {
+        const cr = _evaluateCorridor(carLat, carLng, carHeading, camLat, camLng, distance);
+        return cr.aligned;
     }
 
     /**
      * Envia texto a síntesis de voz nativa / Web Speech de forma confiable.
+     * @param {string} text
+     * @param {boolean} [isMandatory=false] - Si es true, ignora muteo y usa volumen total del SO
      */
-    function _speakTextDirect(text) {
+    function _speakTextDirect(text, isMandatory = false) {
         let spoken = false;
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
             spoken = AndroidServices.speak(text);
@@ -2834,7 +2851,8 @@ const CopilotModule = (() => {
                 utter.lang = 'es-AR';
                 utter.rate = 1.05;
                 utter.pitch = 1.0;
-                utter.volume = Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
+                // Para avisos obligatorios de fotomulta: volumen predeterminado completo del SO (1.0)
+                utter.volume = isMandatory ? 1.0 : Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
 
                 const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
                 if (voices && voices.length > 0) {
@@ -2852,18 +2870,17 @@ const CopilotModule = (() => {
 
     /**
      * Locución concisa y personalizada para fotomultas (a 300m y a 150m).
-     * Estructura exacta: "(nombre chofer) foto multa a 300 metros, máxima 60"
+     * Obligatoria y prioritaria al volumen del SO (sin opción de silencio total).
      */
     function _speakRadarConcise(target, distanceStage) {
-        if (!_isVoiceEnabled) return;
         const firstName = _getDriverFirstName();
         const prefix = firstName ? `${firstName}, ` : '';
         const limit = target.limit || 60;
         const distText = distanceStage === 150 ? '150' : '300';
         const text = `${prefix}foto multa a ${distText} metros, máxima ${limit}.`;
 
-        console.log(`🔊 [COPILOTO] Locución concisa (${distText}m): "${text}"`);
-        _speakTextDirect(text);
+        console.log(`🔊 [COPILOTO-MANDATORY] Locución concisa (${distText}m): "${text}"`);
+        _speakTextDirect(text, true);
     }
 
     /**
@@ -3073,61 +3090,32 @@ const CopilotModule = (() => {
             .copilot-hud-bottom-row {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
+                justify-content: flex-start;
                 gap: 8px;
-                flex-wrap: wrap;
-                margin-top: 3px;
-            }
-            .copilot-hud-vol-control {
-                display: inline-flex;
-                align-items: center;
-                gap: 5px;
-                background: rgba(0, 0, 0, 0.45);
-                padding: 2px 7px;
-                border-radius: 10px;
-                border: 1px solid rgba(255, 255, 255, 0.15);
-            }
-            .copilot-hud-vol-icon {
-                font-size: 11px;
-                cursor: pointer;
-                user-select: none;
-            }
-            .copilot-hud-slider {
-                width: 58px;
-                height: 4px;
-                accent-color: #38bdf8;
-                cursor: pointer;
-                outline: none;
-                margin: 0;
-            }
-            .copilot-hud-vol-label {
-                font-size: 10px;
-                font-weight: 800;
-                color: #38bdf8;
-                min-width: 26px;
-                text-align: right;
-                user-select: none;
+                margin-top: 4px;
+                width: 100%;
             }
         `;
         document.head.appendChild(style);
     }
 
+    // Variables de estabilización de UI y velocímetro
+    let _smoothedSpeed = null;
+    let _lastSpeedSamplePos = null;
+    let _lastUIThrottleTime = 0;
+    let _lastDisplayedSpeed = 0;
+
     /**
      * Muestra o actualiza el banner HUD de gran visibilidad en la pantalla.
      * Soporta tanto cámaras fijas (Fotomultas) como alertas de tránsito en vivo.
+     * Incorpora UI Throttle (refresco cada 800ms-1s) y elimina sliders de volumen.
      */
     function _showRadarHUD(target, dist, currentSpeed) {
         if (typeof document === 'undefined') return;
         _ensureHUDStyles();
 
+        const now = Date.now();
         let hud = document.getElementById('radarCopilotHUD');
-        if (!hud) {
-            hud = document.createElement('div');
-            hud.id = 'radarCopilotHUD';
-            hud.setAttribute('role', 'alert');
-            hud.setAttribute('aria-live', 'assertive');
-            document.body.appendChild(hud);
-        }
 
         const isTraffic = !!target.isTrafficAlert;
         const isSpeeding = (!isTraffic && target.limit && currentSpeed !== null && currentSpeed > target.limit);
@@ -3137,20 +3125,25 @@ const CopilotModule = (() => {
             distLabel = isTraffic ? '📍 ¡EN EL LUGAR!' : '📍 ¡PASANDO CÁMARA!';
         }
 
+        // Determinar velocidad redondeada estabilizada
+        if (now - _lastUIThrottleTime >= 800 || _lastDisplayedSpeed === 0) {
+            _lastUIThrottleTime = now;
+            _lastDisplayedSpeed = (currentSpeed !== null && currentSpeed > 0) ? Math.round(currentSpeed) : 0;
+        }
+
         let speedBadgeHtml = '';
         if (!isTraffic) {
-            if (currentSpeed !== null && currentSpeed > 0) {
-                const speedKmh = Math.round(currentSpeed);
-                if (isSpeeding) {
-                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over">⚠️ EXCESO: ${speedKmh} km/h (MÁX ${target.limit})</div>`;
+            if (_lastDisplayedSpeed > 0) {
+                if (_lastDisplayedSpeed > target.limit) {
+                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over" id="copilotHudSpeedGauge">⚠️ EXCESO: ${_lastDisplayedSpeed} km/h (MÁX ${target.limit})</div>`;
                 } else {
-                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok">✅ Velocidad OK: ${speedKmh} km/h</div>`;
+                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok" id="copilotHudSpeedGauge">✅ Velocidad OK: ${_lastDisplayedSpeed} km/h</div>`;
                 }
             } else {
-                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral">⏱️ Respete el límite indicado (${target.limit} km/h)</div>`;
+                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⏱️ Respete el límite indicado (${target.limit} km/h)</div>`;
             }
         } else {
-            speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral">⚠️ Conduzca con precaución en la zona</div>`;
+            speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⚠️ Conduzca con precaución en la zona</div>`;
         }
 
         // Icono y distintivo
@@ -3192,99 +3185,55 @@ const CopilotModule = (() => {
 
         const cardClass = isSpeeding ? 'copilot-hud-card hud-speeding' : 'copilot-hud-card';
 
-        hud.innerHTML = `
-            <div class="${cardClass}" style="border-color:${cardBorderColor};">
-                ${signHtml}
-                <div class="copilot-hud-main">
-                    <div class="copilot-hud-pill-row">
-                        ${badgeHtml}
-                        <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
-                    </div>
-                    <div class="copilot-hud-name" title="${target.name}">${target.name}</div>
-                    <div class="copilot-hud-desc">${target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito')}</div>
-                    <div class="copilot-hud-bottom-row">
-                        ${speedBadgeHtml}
-                        <div class="copilot-hud-vol-control" title="Volumen independiente de la voz">
-                            <span class="copilot-hud-vol-icon" id="copilotHudVolIcon">${_isVoiceEnabled ? '🔊' : '🔇'}</span>
-                            <input type="range" min="10" max="100" step="5" value="${_alertVolumePercent}" id="copilotHudVolSlider" class="copilot-hud-slider" title="Ajustar volumen" />
-                            <span class="copilot-hud-vol-label" id="copilotHudVolLabel">${_alertVolumePercent}%</span>
+        if (!hud) {
+            hud = document.createElement('div');
+            hud.id = 'radarCopilotHUD';
+            hud.setAttribute('role', 'alert');
+            hud.setAttribute('aria-live', 'assertive');
+            hud.innerHTML = `
+                <div class="${cardClass}" id="copilotHudCard" style="border-color:${cardBorderColor};">
+                    ${signHtml}
+                    <div class="copilot-hud-main">
+                        <div class="copilot-hud-pill-row">
+                            ${badgeHtml}
+                            <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
+                        </div>
+                        <div class="copilot-hud-name" id="copilotHudName" title="${target.name}">${target.name}</div>
+                        <div class="copilot-hud-desc" id="copilotHudDesc">${target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito')}</div>
+                        <div class="copilot-hud-bottom-row" id="copilotHudBottomRow">
+                            ${speedBadgeHtml}
                         </div>
                     </div>
+                    <div class="copilot-hud-actions">
+                        <button class="copilot-hud-btn" id="copilotCloseBtn" title="Cerrar aviso">✕</button>
+                    </div>
                 </div>
-                <div class="copilot-hud-actions">
-                    <button class="copilot-hud-btn ${_isVoiceEnabled ? '' : 'is-muted'}" id="copilotVoiceToggleBtn" title="Silenciar / Activar voz">
-                        ${_isVoiceEnabled ? '🔊' : '🔇'}
-                    </button>
-                    <button class="copilot-hud-btn" id="copilotCloseBtn" title="Cerrar aviso y silenciar">✕</button>
-                </div>
-            </div>
-        `;
+            `;
+            document.body.appendChild(hud);
 
-        // Eventos de botones
-        const closeBtn = document.getElementById('copilotCloseBtn');
-        if (closeBtn) {
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                _stopAllAudio();
-                _hideRadarHUD();
-            };
-        }
-        const voiceBtn = document.getElementById('copilotVoiceToggleBtn');
-        if (voiceBtn) {
-            voiceBtn.onclick = (e) => {
-                e.stopPropagation();
-                _isVoiceEnabled = !_isVoiceEnabled;
-                localStorage.setItem('radarVoice', _isVoiceEnabled ? 'on' : 'off');
-                voiceBtn.textContent = _isVoiceEnabled ? '🔊' : '🔇';
-                voiceBtn.classList.toggle('is-muted', !_isVoiceEnabled);
-                
-                const volIcon = document.getElementById('copilotHudVolIcon');
-                if (volIcon) volIcon.textContent = _isVoiceEnabled ? '🔊' : '🔇';
-
-                if (!_isVoiceEnabled) {
+            const closeBtn = document.getElementById('copilotCloseBtn');
+            if (closeBtn) {
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
                     _stopAllAudio();
-                    if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
-                        AndroidServices.setVoiceMuted(true);
-                    }
-                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setVoiceMuted === 'function') {
-                        try { window.NativeServiceBridge.setVoiceMuted(true); } catch (_) {}
-                    }
-                    if (typeof Components !== 'undefined' && Components.showToast) {
-                        Components.showToast('🔇 Alerta silenciada', 'info');
-                    }
-                } else {
-                    if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setVoiceMuted === 'function') {
-                        AndroidServices.setVoiceMuted(false);
-                    }
-                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.setVoiceMuted === 'function') {
-                        try { window.NativeServiceBridge.setVoiceMuted(false); } catch (_) {}
-                    }
-                    if (typeof Components !== 'undefined' && Components.showToast) {
-                        Components.showToast('🔊 Alertas de voz activadas', 'success');
-                    }
-                }
-            };
-        }
+                    _hideRadarHUD();
+                };
+            }
+        } else {
+            // Actualización suave sin reconstrucción de DOM (evita parpadeos y saltos)
+            const distEl = document.getElementById('copilotHudDist');
+            if (distEl) distEl.textContent = distLabel;
 
-        const volSlider = document.getElementById('copilotHudVolSlider');
-        if (volSlider) {
-            volSlider.oninput = (e) => {
-                e.stopPropagation();
-                const newVol = parseInt(volSlider.value, 10);
-                _setAlertVolume(newVol);
-                const label = document.getElementById('copilotHudVolLabel');
-                if (label) label.textContent = newVol + '%';
-            };
-            volSlider.onclick = (e) => e.stopPropagation();
-            volSlider.ontouchstart = (e) => e.stopPropagation();
-        }
+            const card = document.getElementById('copilotHudCard');
+            if (card) {
+                card.className = isSpeeding ? 'copilot-hud-card hud-speeding' : 'copilot-hud-card';
+                card.style.borderColor = cardBorderColor;
+            }
 
-        const volIconBtn = document.getElementById('copilotHudVolIcon');
-        if (volIconBtn) {
-            volIconBtn.onclick = (e) => {
-                e.stopPropagation();
-                if (voiceBtn) voiceBtn.click();
-            };
+            const bottomRow = document.getElementById('copilotHudBottomRow');
+            if (bottomRow) {
+                bottomRow.innerHTML = speedBadgeHtml;
+            }
         }
 
         // Activar transición visible
@@ -3320,44 +3269,73 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Procesa la velocidad provista o la calcula geodésicamente.
+     * Estabilización del velocímetro:
+     * a) Prioriza el valor de hardware nativo 'coords.speed' provisto por el chip GPS (m/s * 3.6 -> km/h).
+     * b) Fallback Haversine con delta de tiempo >= 1.5s y descarte si accuracy > 15m.
+     * c) Filtro de suavizado EMA (Media Móvil Exponencial con factor alfa ~0.3).
+     * d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario.
      */
-    function _calculateSpeed(lat, lng, rawSpeed) {
-        // 1. Si el GPS provee velocidad directa
-        if (typeof rawSpeed === 'number' && !isNaN(rawSpeed) && rawSpeed >= 0) {
-            return rawSpeed > 45 ? rawSpeed : (rawSpeed * 3.6);
-        }
+    function _calculateSpeed(lat, lng, rawSpeed = null, accuracy = null) {
+        let speedKmh = null;
 
-        // 2. Si no hay velocidad, estimarla por delta de coordenadas y tiempo
-        const now = Date.now();
-        if (_lastPosition && _lastPosition.time) {
-            const timeDeltaSec = (now - _lastPosition.time) / 1000;
-            if (timeDeltaSec >= 2 && timeDeltaSec <= 35) {
-                const distMeters = _getDistance(_lastPosition.lat, _lastPosition.lng, lat, lng);
-                const speedKmh = (distMeters / timeDeltaSec) * 3.6;
-                if (speedKmh <= 180) {
-                    return speedKmh;
+        // a) Priorizar valor de hardware nativo provisto por chip GPS
+        if (typeof rawSpeed === 'number' && !isNaN(rawSpeed) && rawSpeed >= 0) {
+            speedKmh = rawSpeed > 45 ? rawSpeed : (rawSpeed * 3.6);
+        } else {
+            // b) Fallback Haversine con delta de 1.5s a 15s y descarte si accuracy > 15m
+            const now = Date.now();
+            const isAccuracyValid = (accuracy === null || isNaN(accuracy) || accuracy <= 15);
+
+            if (_lastSpeedSamplePos && _lastSpeedSamplePos.time && isAccuracyValid) {
+                const timeDeltaSec = (now - _lastSpeedSamplePos.time) / 1000;
+                if (timeDeltaSec >= 1.5 && timeDeltaSec <= 15) {
+                    const distMeters = _getDistance(_lastSpeedSamplePos.lat, _lastSpeedSamplePos.lng, lat, lng);
+                    const calcKmh = (distMeters / timeDeltaSec) * 3.6;
+                    if (calcKmh <= 180) {
+                        speedKmh = calcKmh;
+                    }
                 }
             }
         }
-        return null;
+
+        const now = Date.now();
+        if (!_lastSpeedSamplePos || (now - _lastSpeedSamplePos.time >= 1500)) {
+            _lastSpeedSamplePos = { lat, lng, time: now };
+        }
+
+        // c) Filtro de suavizado (Media Móvil Exponencial - EMA con factor alfa ~0.3)
+        if (speedKmh !== null && !isNaN(speedKmh) && speedKmh >= 0) {
+            if (_smoothedSpeed === null) {
+                _smoothedSpeed = speedKmh;
+            } else {
+                const ALPHA = 0.30;
+                _smoothedSpeed = (ALPHA * speedKmh) + ((1 - ALPHA) * _smoothedSpeed);
+            }
+        }
+
+        // d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario
+        if (_smoothedSpeed !== null && _smoothedSpeed < 4.0) {
+            _smoothedSpeed = 0;
+        }
+
+        return _smoothedSpeed;
     }
 
     /**
      * Chequea la posición actual respecto a radares fijos Y alertas de tránsito en tiempo real.
-     * Incorpora filtro direccional de carril/calle (elimina falsos positivos de calles paralelas),
-     * aviso conciso a 300m, repetición a 150m y pitidos ascendentes cada 30m.
+     * Algoritmo de corredor y vector frontal con tolerancia estricta lateral (<= 35m).
      * @param {number} currentLat - Latitud WGS84
      * @param {number} currentLng - Longitud WGS84
      * @param {number} [rawSpeed] - Velocidad actual en m/s o km/h
      * @param {number} [rawBearing] - Rumbo/dirección actual en grados (0-360)
+     * @param {number} [accuracy] - Precisión GPS en metros
      */
-    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null) {
+    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null, accuracy = null) {
         if (!_isEnabled) return;
         if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) return;
 
         const now = Date.now();
-        const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed);
+        const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed, accuracy);
 
         // Determinar rumbo (bearing) confiable de trayectoria vehicular
         const reliableBearing = _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, currentSpeed);
@@ -3369,16 +3347,19 @@ const CopilotModule = (() => {
         if (_activeApproach) {
             const radar = _activeApproach.target;
             const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
+            const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
 
-            // A) Superó la cámara (pasó a menos de 18m o la distancia aumentó tras estar muy cerca)
-            if (dist <= 18 || (_activeApproach.minDistance < 35 && dist > _activeApproach.minDistance + 10)) {
+            // A) Superó la cámara (pasó a menos de 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras estar < 35m)
+            const passedByAlongTrack = cr.alongTrack !== undefined && cr.alongTrack <= 0 && dist <= 40;
+            const passedByDistanceIncrease = _activeApproach.minDistance < 35 && dist > _activeApproach.minDistance + 10;
+            if (dist <= 18 || passedByAlongTrack || passedByDistanceIncrease) {
                 console.log(`📡 [COPILOTO] 🏁 Cámara superada: ${radar.name}`);
                 _playPassedChime();
                 _lastAlertTime[radar.id] = now;
                 _hideRadarHUD();
 
                 // Comprobar si hubo exceso de velocidad al pasar la fotomulta
-                const maxApproachSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed);
+                const maxApproachSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed || 0);
                 const limit = radar.limit || 40;
                 if (maxApproachSpeed > limit) {
                     console.warn(`🚨 [COPILOTO] ¡Exceso de velocidad al pasar por fotomulta ${radar.name}! (${Math.round(maxApproachSpeed)} km/h vs límite ${limit})`);
@@ -3389,12 +3370,10 @@ const CopilotModule = (() => {
                 return;
             }
 
-            // B) Vehículo dobló, se alejó o se desvió de la calle (cancelar inmediatamente sin seguir pitando)
-            const stillAligned = _isCorridorAligned(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar.limit);
+            // B) Vehículo dobló, se desvió lateralmente (> 35m) o se aleja (cancelar inmediatamente)
             const isMovingAway = dist > _activeApproach.lastDistance + 9;
-
-            if (isMovingAway || (!stillAligned && dist > 35)) {
-                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o se alejó, cancelando aproximación a: ${radar.name}`);
+            if (isMovingAway || (!cr.aligned && dist > 35)) {
+                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o se desvió de corredor, cancelando aproximación a: ${radar.name}`);
                 _hideRadarHUD();
                 _activeApproach = null;
                 return;
@@ -3405,9 +3384,9 @@ const CopilotModule = (() => {
                 _activeApproach.minDistance = dist;
             }
             _activeApproach.lastDistance = dist;
-            _activeApproach.maxSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed);
+            _activeApproach.maxSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed || 0);
 
-            // Actualizar HUD con distancia viva
+            // Actualizar HUD con distancia viva y velocímetro estabilizado
             _showRadarHUD(radar, dist, currentSpeed);
 
             // C) ETAPAS DE APROXIMACIÓN:
@@ -3443,17 +3422,18 @@ const CopilotModule = (() => {
             return;
         }
 
-        // --- 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE 315 METROS ---
-        // Filtrar candidatos dentro del radio que estén estrictamente alineados con la calle de circulación
+        // --- 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA ÚTIL (350m a 50m) ---
         let bestRadar = null;
         let bestRadarDist = Infinity;
 
         for (const radar of STATIC_RADARS) {
             const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
-            if (dist <= WARNING_DISTANCE_METERS) {
+            if (dist <= 400) {
                 const lastAlert = _lastAlertTime[radar.id] || 0;
                 if (now - lastAlert > COOLDOWN_MS) {
-                    if (_isCorridorAligned(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar.limit)) {
+                    const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
+                    // d) Alertar únicamente cuando el auto se acerque dentro de la ventana útil (entre 350m y 50m antes del radar)
+                    if (cr.aligned && cr.alongTrack >= 50 && cr.alongTrack <= 350) {
                         if (dist < bestRadarDist) {
                             bestRadarDist = dist;
                             bestRadar = radar;
@@ -3470,13 +3450,13 @@ const CopilotModule = (() => {
                 stage: 300,
                 minDistance: bestRadarDist,
                 lastDistance: bestRadarDist,
-                maxSpeed: currentSpeed,
+                maxSpeed: currentSpeed || 0,
                 startedAt: now
             };
 
             _showRadarHUD(bestRadar, bestRadarDist, currentSpeed);
             _triggerVibration(false);
-            // Locución concisa y personalizada a 300m:
+            // Locución obligatoria y prioritaria a 300m:
             _speakRadarConcise(bestRadar, 300);
             return;
         }

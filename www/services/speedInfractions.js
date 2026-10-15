@@ -264,7 +264,22 @@ async function reportInfraction({ driverId, driverName, radar, speed, source = '
 }
 
 /**
+ * Calcula el rumbo (bearing) geodésico de un punto A a un punto B en grados (0-360)
+ */
+function calculateBearing(lat1, lon1, lat2, lon2) {
+    const toRad = deg => deg * Math.PI / 180;
+    const toDeg = rad => rad * 180 / Math.PI;
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+              Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    let brng = toDeg(Math.atan2(y, x));
+    return (brng + 360) % 360;
+}
+
+/**
  * Evalúa la posición y velocidad actual de un chofer contra los radares oficiales
+ * incorporando validación de corredor y descarte de calles paralelas.
  */
 async function checkPosition({ driverId, driverName, lat, lng, speed, heading, source = 'gps' }) {
     if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
@@ -283,6 +298,16 @@ async function checkPosition({ driverId, driverName, lat, lng, speed, heading, s
 
         const dist = getDistanceMeters(lat, lng, radar.lat, radar.lng);
         if (dist <= PROXIMITY_METERS) {
+            // Validar corredor vectorial si hay rumbo (heading) reportado
+            if (typeof heading === 'number' && !isNaN(heading) && heading >= 0) {
+                const targetBearing = calculateBearing(lat, lng, radar.lat, radar.lng);
+                let angleDiff = Math.abs(heading - targetBearing) % 360;
+                if (angleDiff > 180) angleDiff = 360 - angleDiff;
+                const crossTrack = dist * Math.abs(Math.sin(angleDiff * Math.PI / 180));
+                // Descarte de calles paralelas si la desviación lateral supera 35m
+                if (crossTrack > 35.0) continue;
+            }
+
             // El vehículo está pasando por la cámara superando el límite de velocidad
             await reportInfraction({
                 driverId,
