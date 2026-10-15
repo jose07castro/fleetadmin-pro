@@ -19,3 +19,4 @@ Imagenes/
 *.apk
 inspect_*.js
 scratch/
+.firebase/
