@@ -2964,8 +2964,12 @@ const WhatsappBot = (() => {
                         for (const histMsg of messages) {
                             const jid = histMsg.key?.remoteJid;
                             const msgSec = Number(histMsg.messageTimestamp) || 0;
-                            if (jid && jid.endsWith('@g.us') && msgSec > 0 && (nowSec - msgSec) <= 9000) {
-                                recentTrafficCandidates.push(histMsg);
+                            if (jid && jid.endsWith('@g.us') && !histMsg.key?.fromMe && !_isGroupDeleted(jid) && msgSec > 0 && (nowSec - msgSec) <= 9000) {
+                                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                                const groupConf = _groupSettings[safeKey] || _groupSettings[jid];
+                                if (!groupConf || groupConf.enabled !== false) {
+                                    recentTrafficCandidates.push(histMsg);
+                                }
                             }
                         }
                         if (recentTrafficCandidates.length > 0) {
@@ -2987,16 +2991,37 @@ const WhatsappBot = (() => {
                     const jid = msg.key?.remoteJid;
                     if (!jid || jid === 'status@broadcast' || jid.endsWith('@broadcast')) continue;
 
-                    // Identificación temprana de remitente y grupo
-                    const isGroupEarly = jid.endsWith('@g.us');
+                    // ========================================================
+                    // 🔒 BLINDAJE DE PRIVACIDAD ESTRICTO: CHATS PRIVADOS Y MENSAJES PROPIOS
+                    // ========================================================
 
-                    // REGLA ESTRICTA DE BOT: Los grupos eliminados no deben recibir alertas ni procesar comandos bajo ninguna circunstancia.
-                    if (isGroupEarly && _isGroupDeleted(jid)) {
+                    // 1. Si m.key.fromMe === true: IGNORAR INMEDIATAMENTE
+                    // Ningún mensaje enviado por el administrador debe ser procesado, enviado a la web ni reproducido por voz.
+                    if (msg.key?.fromMe) {
                         continue;
                     }
 
-                    const remitente = msg.key?.participant || (msg.key?.fromMe ? (sock.user?.id || 'Mi Usuario/Bot') : jid) || 'Desconocido';
-                    let nombreGrupo = isGroupEarly ? (groupNameCache[jid] || 'Grupo Desconocido') : (msg.key?.fromMe ? 'Chat Propio' : 'Chat Privado');
+                    // 2. Si el chat NO es un grupo (@g.us): IGNORAR INMEDIATAMENTE
+                    // Ningún chat privado (@s.whatsapp.net) debe entrar al Centinela ni a la cola de voz.
+                    if (!jid.endsWith('@g.us')) {
+                        continue;
+                    }
+
+                    // 3. Si el grupo (@g.us) fue eliminado o está marcado como 'Silenciado' en la base de datos: IGNORAR
+                    if (_isGroupDeleted(jid)) {
+                        continue;
+                    }
+
+                    const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const groupConf = _groupSettings[safeKey] || _groupSettings[jid];
+                    if (groupConf && groupConf.enabled === false) {
+                        continue;
+                    }
+
+                    // Identificación garantizada de grupo (validado @g.us)
+                    const isGroupEarly = true;
+                    const remitente = msg.key?.participant || jid || 'Desconocido';
+                    let nombreGrupo = groupNameCache[jid] || 'Grupo Desconocido';
 
                     // Log obligatorio solicitado por el usuario:
                     console.log("[MSG-IN] Mensaje recibido de: " + remitente + " en grupo: " + nombreGrupo);
@@ -3192,16 +3217,16 @@ const WhatsappBot = (() => {
                         const safeJid = jid ? jid.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
                         const groupConf = _groupSettings[safeJid] || _groupSettings[jid];
 
-                        // Si el usuario desactivó / silenció este grupo específicamente desde el panel web (excepto Trabajo o admin/fromMe):
-                        if (groupConf && groupConf.enabled === false && !isTrabajoGroup && !isFromMe && !isFromTrustedAdmin) {
+                        // Si el usuario desactivó / silenció este grupo específicamente desde el panel web:
+                        if (groupConf && groupConf.enabled === false) {
                             console.log(`🔇 [GRUPO-SILENCIADO] Grupo "${groupName}" desactivado en la configuración. Omitiendo.`);
                             continue;
                         }
 
-                        // REGLA CENTINELA: Si es el grupo "Trabajo" o proviene de mi propio usuario (fromMe) o admin, PERMITIR SIEMPRE
-                        if (isTrabajoGroup || isFromMe || isFromTrustedAdmin) {
+                        // REGLA CENTINELA: Si es el grupo "Trabajo", PERMITIR SIEMPRE
+                        if (isTrabajoGroup) {
                             isTargetGroup = true;
-                            console.log(`🎯 [TARGET-ALLOWED] Grupo "${groupName}" permitido explícitamente (esTrabajo=${isTrabajoGroup}, fromMe=${isFromMe}, admin=${isFromTrustedAdmin})`);
+                            console.log(`🎯 [TARGET-ALLOWED] Grupo "${groupName}" permitido explícitamente (esTrabajo=${isTrabajoGroup})`);
                         } else if (groupConf && groupConf.enabled === true) {
                             // Habilitado explícitamente por el usuario en el panel
                             isTargetGroup = true;
@@ -3230,8 +3255,8 @@ const WhatsappBot = (() => {
                             }
                         }
                     } else {
-                        // Si no es grupo pero llegó hasta aquí, es del admin o chat propio
-                        isTargetGroup = true;
+                        // Si no es grupo, ignorar inmediatamente
+                        continue;
                     }
 
                     // FILTRO DE PALABRAS PROHIBIDAS / SPAM / ESTAFAS:
@@ -3266,16 +3291,9 @@ const WhatsappBot = (() => {
                         const isTestCommand = text.trim().toLowerCase().startsWith('.test_audio');
 
                         // FILTRO ESTRICTO DE PRIVACIDAD:
-                        // Solo procesar audio de:
-                        //   1. Grupos conocidos de operativos/tránsito (nombre validado)
-                        //   2. Chat privado de un admin de confianza
-                        //   3. Comando .test_audio del admin
-                        //
-                        // NUNCA procesar audios de chats personales, grupos de amigos,
-                        // familia u otros grupos que no sean de tránsito.
-                        // "Grupo Desconocido" tampoco se procesa: si no pudimos leer el nombre,
-                        // es más seguro saltarlo que arriesgar privacidad.
-                        const shouldProcessAudio = isTestCommand || isFromTrustedAdmin || isKnownOperativoGroup || isTrabajoGroup || isFromMe;
+                        // Solo procesar audio de grupos conocidos de operativos o de trabajo.
+                        // NUNCA procesar audios de chats privados ni de remitente propio.
+                        const shouldProcessAudio = isKnownOperativoGroup || isTrabajoGroup;
 
                         if (!shouldProcessAudio) {
                             console.log(`🔒 [PRIVACIDAD] Audio IGNORADO: el chat "${groupName}" no es un grupo de operativos ni un admin de confianza. No se descarga ni procesa.`);
@@ -4473,6 +4491,20 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         if (!_sentinelEnabled) {
             console.log('⏸️ [CENTINELA-PAUSADO] Centinela IA está pausado por el usuario en el panel admin. Omitiendo alerta.');
             return;
+        }
+
+        // BLINDAJE DE PRIVACIDAD EN DISPATCHER DE ALERTAS:
+        if (jid) {
+            if (!jid.endsWith('@g.us') || _isGroupDeleted(jid)) {
+                console.warn(`🛑 [PRIVACY-SHIELD] Bloqueada alerta de chat no permitido o eliminado: ${jid}`);
+                return;
+            }
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const groupConf = _groupSettings[safeKey] || _groupSettings[jid];
+            if (groupConf && groupConf.enabled === false) {
+                console.warn(`🔇 [PRIVACY-SHIELD] Bloqueada alerta de grupo silenciado: ${jid}`);
+                return;
+            }
         }
 
         // CONTROL DE REPETICIÓN: Máximo _maxAlertRepeats (2) veces por mensaje/ubicación en 15 minutos
