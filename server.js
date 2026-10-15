@@ -232,8 +232,19 @@ app.get('/qr', async (req, res) => {
         const trafficKeywordsStr = Array.isArray(botConfig.traffic_keywords) ? botConfig.traffic_keywords.join(', ') : '';
         const forbiddenWordsStr = Array.isArray(botConfig.forbidden_words) ? botConfig.forbidden_words.join(', ') : '';
 
-        // Combinar grupos del bot y de la configuración
+        // Combinar grupos del bot y de la configuración (excluyendo grupos eliminados)
         const allGroupsMap = { ...groups };
+        const deletedJids = new Set(
+            (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDeletedGroups === 'function')
+                ? WhatsappBot.getDeletedGroups()
+                : []
+        );
+        if (botConfig.deleted_groups) {
+            for (const val of Object.values(botConfig.deleted_groups)) {
+                if (typeof val === 'string') deletedJids.add(val);
+                else if (val && val.jid) deletedJids.add(val.jid);
+            }
+        }
         if (botConfig.group_settings) {
             for (const item of Object.values(botConfig.group_settings)) {
                 if (item && item.jid && !allGroupsMap[item.jid]) {
@@ -241,17 +252,30 @@ app.get('/qr', async (req, res) => {
                 }
             }
         }
+        // Excluir grupos eliminados estrictamente
+        for (const dJid of deletedJids) {
+            delete allGroupsMap[dJid];
+            const dSafe = dJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            delete allGroupsMap[dSafe];
+        }
 
         const groupRowsHtml = Object.entries(allGroupsMap).map(([jid, name]) => {
             const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
             const gConf = botConfig.group_settings ? (botConfig.group_settings[safeKey] || botConfig.group_settings[jid]) : null;
             const isGroupActive = gConf ? gConf.enabled !== false : true;
             const displayName = (gConf && gConf.name) ? gConf.name : name;
+            const safeDisplay = displayName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
             return `
-            <div class="group-row" data-jid="${jid}" data-name="${displayName}">
+            <div class="group-row" id="group-row-${safeKey}" data-jid="${jid}" data-name="${safeDisplay}">
                 <div class="group-info">
-                    <span class="group-name">${displayName}</span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span id="name-${safeKey}" class="group-name">${displayName}</span>
+                        <button class="btn btn-sm btn-secondary edit-inline-btn" 
+                                style="display:none; padding:2px 6px; font-size:11px;" 
+                                title="Editar nombre visible" 
+                                onclick="editGroupName('${jid}', '${displayName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">✏️</button>
+                    </div>
                     <span class="group-jid">${jid}</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -260,6 +284,12 @@ app.get('/qr', async (req, res) => {
                             data-active="${isGroupActive}" 
                             onclick="toggleGroup('${jid}', this)">
                         ${isGroupActive ? '🟢 Activo' : '⚪ Silenciado'}
+                    </button>
+                    <button class="btn btn-sm btn-rose edit-delete-btn" 
+                            style="display:none;" 
+                            title="Eliminar grupo del bot" 
+                            onclick="deleteGroup('${jid}', '${displayName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
+                        🗑️ Eliminar
                     </button>
                 </div>
             </div>`;
@@ -475,6 +505,43 @@ app.get('/qr', async (req, res) => {
             opacity: 1;
             transform: translateY(0);
         }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: 16px;
+        }
+        .modal-box {
+            background: #131b2e;
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 460px;
+            padding: 22px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 10px;
+        }
+        .modal-close-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .modal-close-btn:hover { color: #f8fafc; }
     </style>
     ${!isConnected ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
@@ -553,8 +620,10 @@ app.get('/qr', async (req, res) => {
         <!-- 3. ADMINISTRACIÓN DE GRUPOS DE WHATSAPP -->
         <div class="card">
             <div class="card-header">
-                <span class="card-title">👥 Administración de Grupos (${totalGroupsCount} Conectados)</span>
-                <div style="display:flex; gap:6px;">
+                <span class="card-title">👥 Administración de Grupos (<span id="totalGroupsCount">${totalGroupsCount}</span> Conectados)</span>
+                <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                    <button class="btn btn-sm btn-blue" onclick="openAddGroupModal()">➕ Agregar Grupo</button>
+                    <button id="btnToggleEditMode" class="btn btn-sm btn-secondary" onclick="toggleEditMode()">✏️ Editar Lista</button>
                     <button class="btn btn-sm btn-secondary" onclick="toggleAll(true)">✅ Activar Todos</button>
                     <button class="btn btn-sm btn-secondary" onclick="toggleAll(false)">🔇 Silenciar Todos</button>
                 </div>
@@ -594,6 +663,39 @@ app.get('/qr', async (req, res) => {
                     <p class="form-hint">Mensajes con spam, estafas o estas palabras son descartados o censurados automáticamente.</p>
                     <textarea id="forbiddenWordsInput" class="form-control" rows="5">${forbiddenWordsStr}</textarea>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL AGREGAR GRUPO -->
+    <div id="modalAddGroup" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span style="font-weight:700; font-size:16px;">➕ Agregar Nuevo Grupo</span>
+                <button class="modal-close-btn" onclick="closeAddGroupModal()">&times;</button>
+            </div>
+            <p style="color:#94a3b8; font-size:12px; margin-bottom:14px; text-align:left;">
+                Ingresá el nombre y el identificador único (JID) del grupo de WhatsApp. El JID debe terminar en <b style="color:#38bdf8;">@g.us</b>.
+            </p>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">Nombre del Grupo:</label>
+                <input type="text" id="newGroupName" class="form-control" placeholder="Ej: Operativos Zona Norte / Alertas Rápidas" />
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">JID del Grupo:</label>
+                <input type="text" id="newGroupJid" class="form-control" placeholder="120363233913674611@g.us" />
+                <p class="form-hint">Si pegás solo los números, se agregará @g.us automáticamente.</p>
+            </div>
+            <div class="form-group" style="margin-bottom:18px;">
+                <label class="form-label">Estado Inicial:</label>
+                <select id="newGroupStatus" class="form-control">
+                    <option value="true">🟢 Activo (Escucha y emite alertas)</option>
+                    <option value="false">⚪ Silenciado (No emite alertas)</option>
+                </select>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button class="btn btn-secondary" onclick="closeAddGroupModal()">Cancelar</button>
+                <button id="btnSubmitAddGroup" class="btn btn-blue" onclick="submitAddGroup()">➕ Registrar Grupo</button>
             </div>
         </div>
     </div>
@@ -762,6 +864,139 @@ app.get('/qr', async (req, res) => {
                 }
             });
         }
+
+        let isEditMode = false;
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('btnToggleEditMode');
+            const deleteBtns = document.querySelectorAll('.edit-delete-btn');
+            const inlineBtns = document.querySelectorAll('.edit-inline-btn');
+
+            if (isEditMode) {
+                if (btn) {
+                    btn.className = 'btn btn-sm btn-amber';
+                    btn.textContent = '🔒 Finalizar Edición';
+                }
+                deleteBtns.forEach(b => b.style.display = 'inline-flex');
+                inlineBtns.forEach(b => b.style.display = 'inline-flex');
+                showToast('✏️ Modo edición activado: podés editar nombres o eliminar grupos');
+            } else {
+                if (btn) {
+                    btn.className = 'btn btn-sm btn-secondary';
+                    btn.textContent = '✏️ Editar Lista';
+                }
+                deleteBtns.forEach(b => b.style.display = 'none');
+                inlineBtns.forEach(b => b.style.display = 'none');
+            }
+        }
+
+        function openAddGroupModal() {
+            document.getElementById('newGroupName').value = '';
+            document.getElementById('newGroupJid').value = '';
+            document.getElementById('newGroupStatus').value = 'true';
+            document.getElementById('modalAddGroup').style.display = 'flex';
+            setTimeout(() => document.getElementById('newGroupName').focus(), 100);
+        }
+
+        function closeAddGroupModal() {
+            document.getElementById('modalAddGroup').style.display = 'none';
+        }
+
+        async function submitAddGroup() {
+            const name = document.getElementById('newGroupName').value.trim();
+            let jid = document.getElementById('newGroupJid').value.trim();
+            const enabled = document.getElementById('newGroupStatus').value === 'true';
+
+            if (!jid) {
+                showToast('Ingresá el JID del grupo', true);
+                return;
+            }
+            if (!jid.endsWith('@g.us')) {
+                jid = jid.replace(/@.*$/, '') + '@g.us';
+            }
+
+            const btn = document.getElementById('btnSubmitAddGroup');
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+
+            try {
+                const res = await fetch('/api/grupos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jid, name: name || jid, enabled })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('✅ Grupo agregado con éxito a la lista activa');
+                    closeAddGroupModal();
+                    setTimeout(() => location.reload(), 600);
+                } else {
+                    showToast('Error: ' + (data.error || 'No se pudo agregar'), true);
+                }
+            } catch(e) {
+                showToast('Error de red al registrar grupo', true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '➕ Registrar Grupo';
+            }
+        }
+
+        async function editGroupName(jid, currentName) {
+            const newName = prompt('Editar nombre visible del grupo:', currentName);
+            if (newName === null) return;
+            const cleanName = newName.trim();
+            if (!cleanName) return;
+
+            try {
+                const res = await fetch('/api/grupos/' + encodeURIComponent(jid), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: cleanName })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const nameEl = document.getElementById('name-' + safeKey);
+                    if (nameEl) nameEl.textContent = cleanName;
+                    const row = document.getElementById('group-row-' + safeKey);
+                    if (row) row.setAttribute('data-name', cleanName);
+                    showToast('Nombre actualizado a "' + cleanName + '"');
+                } else {
+                    showToast('Error: ' + data.error, true);
+                }
+            } catch(e) {
+                showToast('Error de red al actualizar nombre', true);
+            }
+        }
+
+        async function deleteGroup(jid, groupName) {
+            if (!confirm('⚠️ ¿Seguro que querés ELIMINAR el grupo "' + groupName + '"?\\n\\nEl bot dejará de escuchar y procesar mensajes de este JID inmediatamente.')) return;
+
+            try {
+                const res = await fetch('/api/grupos/' + encodeURIComponent(jid), {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const row = document.getElementById('group-row-' + safeKey);
+                    if (row) {
+                        row.remove();
+                    }
+                    const totalEl = document.getElementById('totalGroupsCount');
+                    if (totalEl) {
+                        const count = document.querySelectorAll('.group-row').length;
+                        totalEl.textContent = count;
+                    }
+                    showToast('🗑️ Grupo "' + groupName + '" eliminado del bot');
+                } else {
+                    showToast('Error: ' + (data.error || 'No se pudo eliminar'), true);
+                }
+            } catch(e) {
+                showToast('Error de conexión al eliminar grupo', true);
+            }
+        }
     </script>
 </body>
 </html>`;
@@ -815,6 +1050,137 @@ app.post('/api/bot/clear-alerts', async (req, res) => {
         if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.clearAlertsAndSilence === 'function') {
             const result = await WhatsappBot.clearAlertsAndSilence();
             return res.json(result);
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// ============================================
+// ENDPOINTS GESTIÓN COMPLETA DE GRUPOS (CRUD & WHITELIST)
+// ============================================
+
+app.get('/api/grupos', async (req, res) => {
+    try {
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getGroupsList === 'function') {
+            const groups = WhatsappBot.getGroupsList();
+            return res.json({ ok: true, groups });
+        }
+        const db = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (db) {
+            const [cfgSnap, namesSnap, delSnap] = await Promise.all([
+                db.ref('bot_config/group_settings').once('value'),
+                db.ref('bot_group_names').once('value'),
+                db.ref('bot_config/deleted_groups').once('value')
+            ]);
+            const deletedMap = delSnap.val() || {};
+            const deletedJids = new Set(Object.values(deletedMap).map(v => typeof v === 'string' ? v : v?.jid).filter(Boolean));
+            const groupSettings = cfgSnap.val() || {};
+            const groupNames = namesSnap.val() || {};
+            const list = [];
+            const seen = new Set();
+            for (const item of Object.values(groupSettings)) {
+                if (item && item.jid && !deletedJids.has(item.jid) && !deletedJids.has(item.jid.replace(/[^a-zA-Z0-9_-]/g, '_'))) {
+                    seen.add(item.jid);
+                    list.push({ jid: item.jid, name: item.name || item.jid, enabled: item.enabled !== false });
+                }
+            }
+            for (const item of Object.values(groupNames)) {
+                if (item && item.jid && !deletedJids.has(item.jid) && !deletedJids.has(item.jid.replace(/[^a-zA-Z0-9_-]/g, '_')) && !seen.has(item.jid)) {
+                    seen.add(item.jid);
+                    list.push({ jid: item.jid, name: item.name || item.jid, enabled: true });
+                }
+            }
+            return res.json({ ok: true, groups: list });
+        }
+        res.status(503).json({ ok: false, error: 'Servicio no disponible' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/grupos', async (req, res) => {
+    try {
+        let { jid, name, enabled } = req.body || {};
+        if (!jid) return res.status(400).json({ ok: false, error: 'El JID del grupo es obligatorio' });
+        jid = String(jid).trim();
+        if (!jid.endsWith('@g.us')) {
+            jid = jid.replace(/@.*$/, '') + '@g.us';
+        }
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.addGroup === 'function') {
+            const group = await WhatsappBot.addGroup(jid, name, enabled !== false);
+            return res.json({ ok: true, group });
+        }
+        const db = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (db) {
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const groupName = (name && String(name).trim()) ? String(name).trim() : jid;
+            const item = { jid, name: groupName, enabled: enabled !== false, updatedAt: Date.now() };
+            await db.ref(`bot_config/deleted_groups/${safeKey}`).remove().catch(() => {});
+            await db.ref(`bot_config/group_settings/${safeKey}`).set(item);
+            await db.ref(`bot_group_names/${safeKey}`).set({ jid, name: groupName });
+            return res.json({ ok: true, group: item });
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.put(['/api/grupos/:jid', '/api/grupos'], async (req, res) => {
+    try {
+        let rawJid = req.params?.jid || req.body?.jid;
+        if (!rawJid) return res.status(400).json({ ok: false, error: 'JID es requerido' });
+        let jid = decodeURIComponent(String(rawJid)).trim();
+        if (!jid.endsWith('@g.us')) {
+            jid = jid.replace(/@.*$/, '') + '@g.us';
+        }
+        const { name, enabled } = req.body || {};
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.setGroupSetting === 'function') {
+            const group = await WhatsappBot.setGroupSetting(jid, enabled, name);
+            return res.json({ ok: true, group });
+        }
+        const db = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (db) {
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            await db.ref(`bot_config/deleted_groups/${safeKey}`).remove().catch(() => {});
+            const snap = await db.ref(`bot_config/group_settings/${safeKey}`).once('value');
+            const item = snap.val() || { jid, name: jid, enabled: true };
+            if (typeof enabled !== 'undefined') item.enabled = Boolean(enabled);
+            if (name && String(name).trim()) item.name = String(name).trim();
+            item.updatedAt = Date.now();
+            await db.ref(`bot_config/group_settings/${safeKey}`).set(item);
+            if (item.name) {
+                await db.ref(`bot_group_names/${safeKey}`).set({ jid, name: item.name });
+            }
+            return res.json({ ok: true, group: item });
+        }
+        res.status(503).json({ ok: false, error: 'Bot no inicializado' });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.delete(['/api/grupos/:jid', '/api/grupos'], async (req, res) => {
+    try {
+        let rawJid = req.params?.jid || req.body?.jid || req.query?.jid;
+        if (!rawJid) return res.status(400).json({ ok: false, error: 'JID es requerido para eliminar' });
+        let jid = decodeURIComponent(String(rawJid)).trim();
+        if (!jid.endsWith('@g.us')) {
+            jid = jid.replace(/@.*$/, '') + '@g.us';
+        }
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.deleteGroup === 'function') {
+            const result = await WhatsappBot.deleteGroup(jid);
+            return res.json({ ok: true, message: 'Grupo eliminado correctamente', ...result });
+        }
+        const db = typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function' ? WhatsappBot.getDb() : null;
+        if (db) {
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            await db.ref(`bot_config/deleted_groups/${safeKey}`).set(jid);
+            await db.ref(`bot_config/group_settings/${safeKey}`).remove().catch(() => {});
+            await db.ref(`bot_group_names/${safeKey}`).remove().catch(() => {});
+            return res.json({ ok: true, message: 'Grupo eliminado correctamente', jid });
         }
         res.status(503).json({ ok: false, error: 'Bot no inicializado' });
     } catch (e) {

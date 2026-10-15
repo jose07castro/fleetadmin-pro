@@ -14,11 +14,12 @@ const SettingsModule = (() => {
             const whatsappAuthPhone = (await DB.getSetting('whatsapp_authorized_phone')) || '';
             const googleSheetId = (await DB.getSetting('google_sheet_id')) || '';
 
-            // Wiring post-mount: load user list for owners
+            // Wiring post-mount: load user list and whatsapp groups for owners
             setTimeout(() => { 
                 if (Auth.isOwner()) {
                     loadUserList(); 
                     loadInstallationsList();
+                    loadWhatsappGroups();
                 }
             }, 100);
 
@@ -380,6 +381,46 @@ const SettingsModule = (() => {
                             <button class="btn btn-secondary btn-sm" onclick="SettingsModule.testGoogleSheetsConnection()" style="font-weight:600; font-size:12px; color:#22c55e;">
                                 🧪 Probar Conexión
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Administración de Grupos de WhatsApp -->
+                <div class="settings-section">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-3); flex-wrap:wrap; gap:8px;">
+                        <div class="settings-section-title" style="margin-bottom:0;">
+                            👥 Administración de Grupos (<span id="settingsGroupsCount">0</span> Conectados)
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                            <button class="btn btn-primary btn-sm" onclick="SettingsModule.openAddGroupModal()" style="background:#0284c7; border-color:#0284c7; color:#fff; font-weight:700;">
+                                ➕ Agregar Grupo
+                            </button>
+                            <button id="settingsBtnToggleEditMode" class="btn btn-secondary btn-sm" onclick="SettingsModule.toggleEditMode()" style="font-weight:600;">
+                                ✏️ Editar Lista
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.toggleAllGroups(true)">
+                                ✅ Activar Todos
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="SettingsModule.toggleAllGroups(false)">
+                                🔇 Silenciar Todos
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:var(--space-2);">
+                        <div class="settings-item-desc">
+                            Gestioná la lista blanca de grupos para el Bot de WhatsApp y Centinela IA. Solo los grupos activos procesan alertas viales y comandos.
+                        </div>
+
+                        <div style="margin-top:4px; margin-bottom:6px;">
+                            <input type="text" id="settingsGroupSearchInput" class="form-input" 
+                                placeholder="🔍 Buscar grupo por nombre o JID..." 
+                                oninput="SettingsModule.filterGroups(this.value)" 
+                                style="font-size:13px !important; width:100%;">
+                        </div>
+
+                        <div id="settingsGroupsListContainer" style="max-height:360px; overflow-y:auto; border:1px solid var(--border-color); border-radius:10px; background:rgba(0,0,0,0.15); padding:4px;">
+                            <p style="color:var(--text-secondary); text-align:center; padding:15px; font-size:13px;">⏳ Cargando grupos de WhatsApp...</p>
                         </div>
                     </div>
                 </div>
@@ -1979,6 +2020,387 @@ const SettingsModule = (() => {
         }
     }
 
+    // ============================================
+    // GESTIÓN DE GRUPOS DE WHATSAPP (PARIDAD WEB & ANDROID)
+    // ============================================
+    let _whatsappGroups = [];
+    let _isGroupsEditMode = false;
+
+    function getBackendOrigin() {
+        if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            return window.location.origin;
+        }
+        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http') && !window.location.hostname.includes('capacitor')) {
+            return window.location.origin;
+        }
+        return 'https://fleetadmin-web-nueva.onrender.com';
+    }
+
+    async function loadWhatsappGroups() {
+        const container = document.getElementById('settingsGroupsListContainer');
+        if (!container) return;
+
+        try {
+            const origin = getBackendOrigin();
+            const res = await fetch(`${origin}/api/grupos`, { cache: 'no-store' });
+            const data = await res.json();
+            if (data.ok && Array.isArray(data.groups)) {
+                _whatsappGroups = data.groups;
+                renderWhatsappGroupsList();
+                return;
+            }
+        } catch(apiErr) {
+            console.warn('⚠️ [SETTINGS-GROUPS] API /api/grupos no accesible, intentando Firebase directo...', apiErr.message);
+        }
+
+        // Fallback a Firebase directo para Android/Web offline
+        try {
+            const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null;
+            if (db) {
+                const [cfgSnap, namesSnap, delSnap] = await Promise.all([
+                    db.ref('bot_config/group_settings').once('value'),
+                    db.ref('bot_group_names').once('value'),
+                    db.ref('bot_config/deleted_groups').once('value')
+                ]);
+                const deletedMap = delSnap.val() || {};
+                const deletedJids = new Set(Object.values(deletedMap).map(v => typeof v === 'string' ? v : v?.jid).filter(Boolean));
+                const groupSettings = cfgSnap.val() || {};
+                const groupNames = namesSnap.val() || {};
+                const list = [];
+                const seen = new Set();
+                for (const item of Object.values(groupSettings)) {
+                    if (item && item.jid && !deletedJids.has(item.jid) && !deletedJids.has(item.jid.replace(/[^a-zA-Z0-9_-]/g, '_'))) {
+                        seen.add(item.jid);
+                        list.push({ jid: item.jid, name: item.name || item.jid, enabled: item.enabled !== false });
+                    }
+                }
+                for (const item of Object.values(groupNames)) {
+                    if (item && item.jid && !deletedJids.has(item.jid) && !deletedJids.has(item.jid.replace(/[^a-zA-Z0-9_-]/g, '_')) && !seen.has(item.jid)) {
+                        seen.add(item.jid);
+                        list.push({ jid: item.jid, name: item.name || item.jid, enabled: true });
+                    }
+                }
+                _whatsappGroups = list;
+                renderWhatsappGroupsList();
+                return;
+            }
+        } catch(fbErr) {
+            console.error('🔴 [SETTINGS-GROUPS] Error cargando de Firebase:', fbErr);
+        }
+
+        if (container) {
+            container.innerHTML = '<p style="color:var(--text-secondary); text-align:center; padding:15px; font-size:13px;">No se pudieron cargar los grupos en este momento.</p>';
+        }
+    }
+
+    function renderWhatsappGroupsList(filterQuery = '') {
+        const container = document.getElementById('settingsGroupsListContainer');
+        const countBadge = document.getElementById('settingsGroupsCount');
+        if (!container) return;
+
+        const q = filterQuery.toLowerCase().trim();
+        const filtered = _whatsappGroups.filter(g => {
+            if (!g || !g.jid) return false;
+            if (!q) return true;
+            const name = (g.name || '').toLowerCase();
+            const jid = (g.jid || '').toLowerCase();
+            return name.includes(q) || jid.includes(q);
+        });
+
+        if (countBadge) {
+            countBadge.textContent = _whatsappGroups.length;
+        }
+
+        if (filtered.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:25px 15px; color:var(--text-secondary);">
+                    <div style="font-size:2rem; margin-bottom:6px;">👥</div>
+                    <div style="font-size:13px; font-weight:600;">${q ? 'No hay grupos que coincidan con la búsqueda' : 'No hay grupos sincronizados aún'}</div>
+                    <div style="font-size:11px; margin-top:4px;">Hacé clic en "+ Agregar Grupo" para registrar uno manualmente.</div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = filtered.map(group => {
+            const safeKey = group.jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const safeDisplay = (group.name || group.jid).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const safeEscaped = (group.name || group.jid).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const isAct = group.enabled !== false;
+
+            return `
+            <div class="settings-group-row" id="sgroup-${safeKey}" data-jid="${group.jid}" data-name="${safeDisplay}" 
+                 style="display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;">
+                <div style="display:flex; flex-direction:column; text-align:left; overflow:hidden; flex:1;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span id="sname-${safeKey}" style="font-weight:600; font-size:13px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${group.name || group.jid}</span>
+                        <button class="btn btn-sm btn-secondary sgroup-inline-btn" 
+                                style="display:${_isGroupsEditMode ? 'inline-flex' : 'none'}; padding:2px 6px; font-size:11px;" 
+                                title="Editar nombre visible" 
+                                onclick="SettingsModule.editGroupName('${group.jid}', '${safeEscaped}')">✏️</button>
+                    </div>
+                    <span style="font-size:11px; color:var(--text-secondary); font-family:monospace;">${group.jid}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="sbadge-${safeKey}" style="font-size:11px; font-weight:700; padding:4px 8px; border-radius:9999px; ${isAct ? 'background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);' : 'background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3);'}">
+                        ${isAct ? 'Activo' : 'Silenciado'}
+                    </span>
+                    <button class="btn btn-sm" id="sbtn-toggle-${safeKey}" 
+                            style="padding:5px 10px; font-size:11px; font-weight:600; border-radius:8px; cursor:pointer; ${isAct ? 'background:#059669; color:#fff;' : 'background:#334155; color:#94a3b8;'}"
+                            onclick="SettingsModule.toggleGroupStatus('${group.jid}', ${!isAct})">
+                        ${isAct ? '🟢 Activo' : '⚪ Silenciado'}
+                    </button>
+                    <button class="btn btn-sm sgroup-delete-btn" 
+                            style="display:${_isGroupsEditMode ? 'inline-flex' : 'none'}; padding:5px 10px; font-size:11px; font-weight:600; background:#dc2626; border:1px solid #b91c1c; color:#fff; border-radius:8px; cursor:pointer;" 
+                            title="Eliminar grupo del bot" 
+                            onclick="SettingsModule.deleteGroup('${group.jid}', '${safeEscaped}')">
+                        🗑️ Eliminar
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function toggleEditMode() {
+        _isGroupsEditMode = !_isGroupsEditMode;
+        const btn = document.getElementById('settingsBtnToggleEditMode');
+        if (btn) {
+            btn.className = _isGroupsEditMode ? 'btn btn-warning btn-sm' : 'btn btn-secondary btn-sm';
+            btn.style.background = _isGroupsEditMode ? '#d97706' : '';
+            btn.style.color = _isGroupsEditMode ? '#fff' : '';
+            btn.textContent = _isGroupsEditMode ? '🔒 Finalizar Edición' : '✏️ Editar Lista';
+        }
+        document.querySelectorAll('.sgroup-delete-btn').forEach(b => b.style.display = _isGroupsEditMode ? 'inline-flex' : 'none');
+        document.querySelectorAll('.sgroup-inline-btn').forEach(b => b.style.display = _isGroupsEditMode ? 'inline-flex' : 'none');
+        Components.showToast(_isGroupsEditMode ? '✏️ Modo edición activado: podés editar nombres o eliminar grupos' : 'Modo edición finalizado', 'info');
+    }
+
+    async function toggleGroupStatus(jid, newStatus) {
+        try {
+            const origin = getBackendOrigin();
+            fetch(`${origin}/api/grupos/${encodeURIComponent(jid)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: newStatus })
+            }).catch(() => {});
+
+            // Actualización paralela en Firebase para reflejo inmediato
+            const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null;
+            if (db) {
+                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                db.ref(`bot_config/group_settings/${safeKey}/enabled`).set(newStatus).catch(() => {});
+            }
+
+            const g = _whatsappGroups.find(item => item.jid === jid);
+            if (g) g.enabled = newStatus;
+
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const badge = document.getElementById(`sbadge-${safeKey}`);
+            const btn = document.getElementById(`sbtn-toggle-${safeKey}`);
+            if (badge) {
+                badge.style.cssText = `font-size:11px; font-weight:700; padding:4px 8px; border-radius:9999px; ${newStatus ? 'background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);' : 'background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3);'}`;
+                badge.textContent = newStatus ? 'Activo' : 'Silenciado';
+            }
+            if (btn) {
+                btn.style.cssText = `padding:5px 10px; font-size:11px; font-weight:600; border-radius:8px; cursor:pointer; ${newStatus ? 'background:#059669; color:#fff;' : 'background:#334155; color:#94a3b8;'}`;
+                btn.textContent = newStatus ? '🟢 Activo' : '⚪ Silenciado';
+                btn.setAttribute('onclick', `SettingsModule.toggleGroupStatus('${jid}', ${!newStatus})`);
+            }
+            Components.showToast(newStatus ? 'Grupo activado ✅' : 'Grupo silenciado 🔇', 'success');
+        } catch(e) {
+            Components.showToast('Error al cambiar estado: ' + e.message, 'danger');
+        }
+    }
+
+    async function toggleAllGroups(enableAll) {
+        if (!window.confirm(enableAll ? '¿Activar alertas en todos los grupos?' : '¿Silenciar todos los grupos?')) return;
+        try {
+            const origin = getBackendOrigin();
+            fetch(`${origin}/api/bot/group-toggle-all`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enableAll })
+            }).catch(() => {});
+
+            _whatsappGroups.forEach(g => { g.enabled = enableAll; });
+            renderWhatsappGroupsList(document.getElementById('settingsGroupSearchInput')?.value || '');
+            Components.showToast(enableAll ? 'Todos los grupos activados ✅' : 'Todos los grupos silenciados 🔇', 'success');
+        } catch(e) {
+            Components.showToast('Error: ' + e.message, 'danger');
+        }
+    }
+
+    function openAddGroupModal() {
+        const bodyHTML = `
+            <div style="padding:var(--space-2);">
+                <p style="color:var(--text-secondary); font-size:12px; margin-bottom:14px; text-align:left; line-height:1.4;">
+                    Ingresá el nombre y el JID del grupo. El JID debe terminar en <b style="color:#0284c7;">@g.us</b>.
+                </p>
+                <div class="form-group" style="margin-bottom:12px; text-align:left;">
+                    <label class="form-label" style="font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:4px; display:block;">Nombre del Grupo:</label>
+                    <input type="text" id="modalNewGroupName" class="form-input" placeholder="Ej: Operativos Zona Norte / Alertas" style="width:100%; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:12px; text-align:left;">
+                    <label class="form-label" style="font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:4px; display:block;">JID del Grupo (WhatsApp):</label>
+                    <input type="text" id="modalNewGroupJid" class="form-input" placeholder="120363233913674611@g.us" style="width:100%; box-sizing:border-box;">
+                    <small style="color:var(--text-secondary); font-size:11px; margin-top:2px; display:block;">Si pegás solo los números, se agregará @g.us automáticamente.</small>
+                </div>
+                <div class="form-group" style="margin-bottom:14px; text-align:left;">
+                    <label class="form-label" style="font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:4px; display:block;">Estado Inicial:</label>
+                    <select id="modalNewGroupStatus" class="form-input" style="width:100%; box-sizing:border-box;">
+                        <option value="true">🟢 Activo (Procesa y emite alertas)</option>
+                        <option value="false">⚪ Silenciado (No emite alertas)</option>
+                    </select>
+                </div>
+            </div>
+        `;
+
+        const footerHTML = `
+            <div style="display:flex; justify-content:flex-end; gap:8px; width:100%;">
+                <button class="btn btn-secondary" onclick="Components.closeModal()">Cancelar</button>
+                <button class="btn btn-primary" id="btnSubmitAddGroupModal" onclick="SettingsModule.submitAddGroup()" style="background:#0284c7; border-color:#0284c7; color:#fff; font-weight:700;">
+                    ➕ Registrar Grupo
+                </button>
+            </div>
+        `;
+
+        Components.showModal('➕ Agregar Grupo a Lista Blanca', bodyHTML, footerHTML);
+        setTimeout(() => document.getElementById('modalNewGroupName')?.focus(), 150);
+    }
+
+    async function submitAddGroup() {
+        const nameInput = document.getElementById('modalNewGroupName');
+        const jidInput = document.getElementById('modalNewGroupJid');
+        const statusSelect = document.getElementById('modalNewGroupStatus');
+        const submitBtn = document.getElementById('btnSubmitAddGroupModal');
+
+        let name = nameInput?.value.trim() || '';
+        let jid = jidInput?.value.trim() || '';
+        const enabled = statusSelect?.value === 'true';
+
+        if (!jid) {
+            Components.showToast('Por favor ingresá el JID del grupo', 'warning');
+            return;
+        }
+        if (!jid.endsWith('@g.us')) {
+            jid = jid.replace(/@.*$/, '') + '@g.us';
+        }
+        if (!name) name = jid;
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Guardando...';
+        }
+
+        try {
+            const origin = getBackendOrigin();
+            const res = await fetch(`${origin}/api/grupos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jid, name, enabled })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                Components.showToast(`✅ Grupo "${name}" agregado con éxito`, 'success');
+                Components.closeModal();
+                loadWhatsappGroups();
+            } else {
+                Components.showToast('Error: ' + (data.error || 'No se pudo agregar'), 'danger');
+            }
+        } catch(err) {
+            // Guardar en Firebase directamente si la API falló
+            try {
+                const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null;
+                if (db) {
+                    const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    await db.ref(`bot_config/deleted_groups/${safeKey}`).remove();
+                    await db.ref(`bot_config/group_settings/${safeKey}`).set({ jid, name, enabled, updatedAt: Date.now() });
+                    await db.ref(`bot_group_names/${safeKey}`).set({ jid, name });
+                    Components.showToast(`✅ Grupo "${name}" registrado en Firebase`, 'success');
+                    Components.closeModal();
+                    loadWhatsappGroups();
+                    return;
+                }
+            } catch(fbErr) {}
+            Components.showToast('Error de red al agregar grupo', 'danger');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '➕ Registrar Grupo';
+            }
+        }
+    }
+
+    async function editGroupName(jid, currentName) {
+        const newName = prompt('Editar nombre visible del grupo:', currentName);
+        if (newName === null) return;
+        const cleanName = newName.trim();
+        if (!cleanName) return;
+
+        try {
+            const origin = getBackendOrigin();
+            fetch(`${origin}/api/grupos/${encodeURIComponent(jid)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: cleanName })
+            }).catch(() => {});
+
+            // Firebase directo
+            const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null;
+            if (db) {
+                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                db.ref(`bot_config/group_settings/${safeKey}/name`).set(cleanName).catch(() => {});
+                db.ref(`bot_group_names/${safeKey}/name`).set(cleanName).catch(() => {});
+            }
+
+            const g = _whatsappGroups.find(item => item.jid === jid);
+            if (g) g.name = cleanName;
+
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const nameEl = document.getElementById(`sname-${safeKey}`);
+            if (nameEl) nameEl.textContent = cleanName;
+            Components.showToast(`Nombre actualizado a "${cleanName}"`, 'success');
+        } catch(e) {
+            Components.showToast('Error al editar nombre: ' + e.message, 'danger');
+        }
+    }
+
+    async function deleteGroup(jid, groupName) {
+        if (!window.confirm(`⚠️ ¿Seguro que deseas ELIMINAR el grupo "${groupName}"?\n\nEl bot dejará de escuchar y procesar mensajes de este JID inmediatamente.`)) return;
+
+        try {
+            const origin = getBackendOrigin();
+            fetch(`${origin}/api/grupos/${encodeURIComponent(jid)}`, {
+                method: 'DELETE'
+            }).catch(() => {});
+
+            // Firebase directo
+            const db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database() : null;
+            if (db) {
+                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                db.ref(`bot_config/deleted_groups/${safeKey}`).set(jid).catch(() => {});
+                db.ref(`bot_config/group_settings/${safeKey}`).remove().catch(() => {});
+                db.ref(`bot_group_names/${safeKey}`).remove().catch(() => {});
+            }
+
+            _whatsappGroups = _whatsappGroups.filter(item => item.jid !== jid);
+            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const row = document.getElementById(`sgroup-${safeKey}`);
+            if (row) row.remove();
+
+            const countBadge = document.getElementById('settingsGroupsCount');
+            if (countBadge) countBadge.textContent = _whatsappGroups.length;
+
+            Components.showToast(`🗑️ Grupo "${groupName}" eliminado del bot`, 'success');
+        } catch(e) {
+            Components.showToast('Error al eliminar grupo: ' + e.message, 'danger');
+        }
+    }
+
+    function filterGroups(query) {
+        renderWhatsappGroupsList(query);
+    }
+
     return {
         render, renderCompleteProfile, saveCompleteProfile,
         exportData, importData, resetData, showUserManager, saveUser,
@@ -1991,7 +2413,10 @@ const SettingsModule = (() => {
         loadInstallationsList,
         toggleWhatsappScanner, saveWhatsappAuthPhone, saveGoogleSheetId,
         autoCreateGoogleSheet, scanHistoricalWhatsApp, copyImportFormula,
-        showGoogleSheetsScriptModal, testGoogleSheetsConnection
+        showGoogleSheetsScriptModal, testGoogleSheetsConnection,
+        loadWhatsappGroups, renderWhatsappGroupsList, toggleEditMode,
+        toggleGroupStatus, toggleAllGroups, openAddGroupModal,
+        submitAddGroup, editGroupName, deleteGroup, filterGroups
     };
 })();
 

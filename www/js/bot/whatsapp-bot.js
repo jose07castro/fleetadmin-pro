@@ -751,10 +751,18 @@ const WhatsappBot = (() => {
         'transferencia', 'ganaste', 'loteria', 'lotería', 'porno', 'casino', 'plata facil', 'inversion'
     ];
     let _groupSettings = {}; // safeJid -> { jid, name, enabled: boolean }
+    const _deletedGroups = new Set(); // JIDs o safeKeys de grupos eliminados/bloqueados
     const _alertDispatchHistory = new Map(); // locKey -> { count, lastTime }
 
+    function _isGroupDeleted(jid) {
+        if (!jid) return false;
+        const cleanJid = String(jid).trim();
+        const safeKey = cleanJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+        return _deletedGroups.has(cleanJid) || _deletedGroups.has(safeKey);
+    }
+
     function _syncGroupToSettings(jid, name) {
-        if (!jid) return;
+        if (!jid || _isGroupDeleted(jid)) return;
         const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
         if (!_groupSettings[safeKey]) {
             _groupSettings[safeKey] = {
@@ -2342,8 +2350,21 @@ const WhatsappBot = (() => {
                     if (Array.isArray(cfg.forbidden_words) && cfg.forbidden_words.length > 0) {
                         _forbiddenWords = cfg.forbidden_words;
                     }
+                    if (cfg.deleted_groups && typeof cfg.deleted_groups === 'object') {
+                        _deletedGroups.clear();
+                        for (const val of Object.values(cfg.deleted_groups)) {
+                            if (typeof val === 'string') _deletedGroups.add(val);
+                            else if (val && val.jid) _deletedGroups.add(val.jid);
+                        }
+                    }
                     if (cfg.group_settings && typeof cfg.group_settings === 'object') {
                         _groupSettings = { ..._groupSettings, ...cfg.group_settings };
+                        for (const dJid of _deletedGroups) {
+                            const dSafe = dJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                            delete _groupSettings[dSafe];
+                            delete _groupSettings[dJid];
+                            delete groupNameCache[dJid];
+                        }
                     }
                     if (geminiAgent && typeof geminiAgent.updateAgentConfig === 'function') {
                         geminiAgent.updateAgentConfig({
@@ -2381,12 +2402,22 @@ const WhatsappBot = (() => {
                     console.log(`📦 [QUEUE-RESTORE] Restaurados ${_recentHistoricalQueue.length} mensajes candidatos a comprobantes desde Firebase ✅`);
                 }
 
+                // Restaurar grupos eliminados primero para evitar revivirlos
+                try {
+                    const delSnap = await db.ref('bot_config/deleted_groups').once('value');
+                    const savedDeleted = delSnap.val() || {};
+                    for (const val of Object.values(savedDeleted)) {
+                        if (typeof val === 'string') _deletedGroups.add(val);
+                        else if (val && val.jid) _deletedGroups.add(val.jid);
+                    }
+                } catch(delErr) {}
+
                 // Restaurar nombres de grupos de WhatsApp guardados previamente
                 const groupSnap = await db.ref('bot_group_names').once('value');
                 const savedGroups = groupSnap.val() || {};
                 let restoredCount = 0;
                 for (const item of Object.values(savedGroups)) {
-                    if (item && item.jid && item.name) {
+                    if (item && item.jid && item.name && !_isGroupDeleted(item.jid)) {
                         groupNameCache[item.jid] = item.name;
                         _syncGroupToSettings(item.jid, item.name);
                         restoredCount++;
@@ -2471,38 +2502,20 @@ const WhatsappBot = (() => {
 
         // Función auxiliar para crear el objeto de backup usando Base64 keys
         const _createBackupObject = () => {
-            // NUNCA borrar pre-keys del disco local AUTH_DIR para no romper descifrado E2EE (Bad MAC).
+            if (!fs.existsSync(AUTH_DIR)) return {};
             const cleanFiles = fs.readdirSync(AUTH_DIR);
             const backup = {};
-            // 1. creds.json siempre es la prioridad absoluta (vital para sesión)
-            if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
-                const credsKey = Buffer.from('creds.json').toString('base64');
-                backup[credsKey] = fs.readFileSync(path.join(AUTH_DIR, 'creds.json'), 'utf8');
-            }
-            // 2. Conservar TODOS los sender-keys (llaves de descifrado E2EE de grupos),
-            // sessions (chats directos) y app-state-sync-keys (sincronización con el teléfono).
-            // NUNCA limitar sender-keys porque provoca "Bad MAC" y mensajes indecifrables.
+            // Guardar absolutamente todos los archivos .json de la carpeta AUTH_DIR
+            // (incluyendo creds.json, todas las sender-key-*, session-*, app-state-sync-* y pre-key-*)
+            // sin recortar con .slice() ni filtrar las pre-keys, blindando el descifrado E2EE de los 25 grupos.
             for (const file of cleanFiles) {
-                if (!file.endsWith('.json') || file === 'creds.json') continue;
-                if (file.startsWith('pre-key-')) continue; // pre-keys efímeras se podan abajo
+                if (!file.endsWith('.json')) continue;
                 try {
                     const safeKey = Buffer.from(file).toString('base64');
                     backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, file), 'utf8');
-                } catch(e) {}
-            }
-            // 3. Agregar solo las 30 pre-keys más recientes para apretones de manos iniciales
-            const preKeys = cleanFiles.filter(f => f.startsWith('pre-key-') && f.endsWith('.json'))
-                .map(f => {
-                    try { return { file: f, mtime: fs.statSync(path.join(AUTH_DIR, f)).mtimeMs }; } catch(e) { return null; }
-                })
-                .filter(Boolean)
-                .sort((a, b) => b.mtime - a.mtime)
-                .slice(0, 30);
-            for (const item of preKeys) {
-                try {
-                    const safeKey = Buffer.from(item.file).toString('base64');
-                    backup[safeKey] = fs.readFileSync(path.join(AUTH_DIR, item.file), 'utf8');
-                } catch(e) {}
+                } catch (e) {
+                    console.error(`⚠️ Error leyendo archivo de auth para backup (${file}):`, e.message);
+                }
             }
             return backup;
         };
@@ -2560,48 +2573,24 @@ const WhatsappBot = (() => {
     }
 
     /**
-     * Cuidado de emergencia (SOFT RESET): Borra llaves corruptas pero MANTIENE creds.json
-     * Esto soluciona el error de "MAC Malo" y "Conflicto 440" sin pedir escanear el QR de vuelta!
+     * Cuidado de emergencia (SOFT RESET): NO DESTRUCTIVO
+     * Jamás borra archivos locales ni limpia las carpetas de autenticación de forma agresiva,
+     * evitando que se pierdan las llaves de los 25 grupos (sender-keys) y provocando 'Bad MAC'.
      */
     async function softResetAuthInfo() {
-        console.log('🔧 [SOFT-RESET] Intentando curación rápida de MAC corrupto (Conservando QR)...');
+        console.log('🛡️ [SOFT-RESET] Preservación protegida: Manteniendo todas las llaves de descifrado y sender-keys de los 25 grupos...');
         try {
             if (fs.existsSync(AUTH_DIR)) {
                 const files = fs.readdirSync(AUTH_DIR);
-                let removedCount = 0;
-                for (const file of files) {
-                    // Conservar estrictamente creds.json que contiene el emparejamiento
-                    if (file !== 'creds.json') {
-                        try {
-                            fs.unlinkSync(path.join(AUTH_DIR, file));
-                            removedCount++;
-                        } catch(e) {}
-                    }
-                }
-                console.log(`🧹 [SOFT-RESET] ${removedCount} archivos efímeros eliminados. creds.json a salvo.`);
+                const senderKeys = files.filter(f => f.startsWith('sender-key-')).length;
+                const sessions = files.filter(f => f.startsWith('session-')).length;
+                const preKeys = files.filter(f => f.startsWith('pre-key-')).length;
+                console.log(`🔒 [SOFT-RESET] Llaves preservadas intactas en disco: ${files.length} archivos (${senderKeys} sender-keys de grupos, ${sessions} sesiones, ${preKeys} pre-keys). Ningún archivo fue eliminado.`);
             }
-            
-            if (db) {
-                // En Firebase: Bajar backup, dejar solo creds.json y volver a subir
-                const snap = await db.ref('bot_auth_backup').once('value');
-                const backup = snap.val();
-                if (backup) {
-                    const cleanBackup = {};
-                    const targetKey = Buffer.from('creds.json').toString('base64');
-                    
-                    if (backup[targetKey]) {
-                        cleanBackup[targetKey] = backup[targetKey];
-                        await db.ref('bot_auth_backup').set(cleanBackup);
-                        console.log('🧹 [SOFT-RESET] Backup en la nube curado, solo conservado creds.json.');
-                    } else if (backup['creds.json']) {
-                        cleanBackup['creds.json'] = backup['creds.json'];
-                        await db.ref('bot_auth_backup').set(cleanBackup);
-                        console.log('🧹 [SOFT-RESET] Backup nube curado (legacy mapping).');
-                    }
-                }
-            }
+            // En Firebase tampoco se purgan las sender-keys ni pre-keys; se conserva el respaldo íntegro.
+            console.log('🛡️ [SOFT-RESET] Respaldo íntegro en Firebase protegido contra purgas agresivas.');
         } catch (e) {
-            console.error('⚠️ [SOFT-RESET] Falló autocuración:', e.message);
+            console.error('⚠️ [SOFT-RESET] Error en verificación de credenciales protegidas:', e.message);
         }
     }
 
@@ -3000,6 +2989,12 @@ const WhatsappBot = (() => {
 
                     // Identificación temprana de remitente y grupo
                     const isGroupEarly = jid.endsWith('@g.us');
+
+                    // REGLA ESTRICTA DE BOT: Los grupos eliminados no deben recibir alertas ni procesar comandos bajo ninguna circunstancia.
+                    if (isGroupEarly && _isGroupDeleted(jid)) {
+                        continue;
+                    }
+
                     const remitente = msg.key?.participant || (msg.key?.fromMe ? (sock.user?.id || 'Mi Usuario/Bot') : jid) || 'Desconocido';
                     let nombreGrupo = isGroupEarly ? (groupNameCache[jid] || 'Grupo Desconocido') : (msg.key?.fromMe ? 'Chat Propio' : 'Chat Privado');
 
@@ -3197,8 +3192,8 @@ const WhatsappBot = (() => {
                         const safeJid = jid ? jid.replace(/[^a-zA-Z0-9_-]/g, '_') : '';
                         const groupConf = _groupSettings[safeJid] || _groupSettings[jid];
 
-                        // Si el usuario desactivó / silenció este grupo específicamente desde el panel web:
-                        if (groupConf && groupConf.enabled === false) {
+                        // Si el usuario desactivó / silenció este grupo específicamente desde el panel web (excepto Trabajo o admin/fromMe):
+                        if (groupConf && groupConf.enabled === false && !isTrabajoGroup && !isFromMe && !isFromTrustedAdmin) {
                             console.log(`🔇 [GRUPO-SILENCIADO] Grupo "${groupName}" desactivado en la configuración. Omitiendo.`);
                             continue;
                         }
@@ -3457,19 +3452,29 @@ const WhatsappBot = (() => {
                                         audioAnalysis.vigenciaMinutos || 60
                                     );
 
-                                    // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
-                                    /*
-                                    if (isTrabajoGroup) {
+                                    // Confirmación visual opcional: reacción emoji inmediata en WhatsApp
+                                    if (isTrabajoGroup || isFromTrustedAdmin) {
                                         try {
-                                            await sock.sendMessage(jid, {
-                                                text: `🤖 *[Centinela IA]* ¡Nota de voz procesada y publicada en el mapa! 🚨\n` +
-                                                      `📍 *Ubicación:* ${audioAnalysis.address || 'Rosario y alrededores'}\n` +
-                                                      `🏷️ *Tipo:* ${audioAnalysis.type}\n` +
-                                                      `🎙️ *Transcripción:* "${text}"`
-                                            }, { quoted: msg });
-                                        } catch(replyErr) {}
+                                            await sock.sendMessage(jid, { react: { text: '🚨', key: msg.key } });
+                                        } catch(reactErr) {}
                                     }
-                                    */
+
+                                    // Confirmación visual opcional en texto para el grupo Trabajo (con ECHO-PREVENT anti-bucles)
+                                    const shouldSendAudioReply = (isTrabajoGroup && process.env.SILENT_WORK_GROUP !== 'true') || 
+                                                                 process.env.CONFIRMAR_ALERTAS === 'true' || 
+                                                                 process.env.ENABLE_WORK_GROUP_REPLY === 'true';
+                                    if (shouldSendAudioReply && isTrabajoGroup) {
+                                        try {
+                                            const replyText = `🤖 *[Centinela IA]* ¡Nota de voz procesada y publicada en el mapa! 🚨\n` +
+                                                              `📍 *Ubicación:* ${audioAnalysis.address || 'Rosario y alrededores'}\n` +
+                                                              `🏷️ *Tipo:* ${audioAnalysis.type}\n` +
+                                                              `🎙️ *Transcripción:* "${text}"`;
+                                            await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                                            _trackBandwidth(replyText, 'out');
+                                        } catch(replyErr) {
+                                            console.warn('⚠️ [REPLY] Error al enviar confirmación visual a Trabajo:', replyErr.message);
+                                        }
+                                    }
                                     continue;
                                 } else {
                                     // Gemini no disponible o falló: publicar como checkpoint genérico (comportamiento anterior)
@@ -3715,7 +3720,7 @@ const WhatsappBot = (() => {
                             }
 
                             // 2. Si no es comprobante, continuar con verificación de alertas de tránsito si corresponde
-                            const shouldProcessImage = isFromTrustedAdmin || isKnownOperativoGroup;
+                            const shouldProcessImage = isFromTrustedAdmin || isKnownOperativoGroup || isTrabajoGroup || isFromMe;
                             if (shouldProcessImage) {
                                 const imageAnalysis = await callGeminiImage(imageBuffer, mimeType);
                                 if (imageAnalysis && imageAnalysis.isTrafficAlert) {
@@ -3740,6 +3745,30 @@ const WhatsappBot = (() => {
                                             timestamp: Date.now()
                                         });
                                     }
+
+                                    // Confirmación visual opcional: reacción emoji inmediata en WhatsApp
+                                    if (isTrabajoGroup || isFromTrustedAdmin) {
+                                        try {
+                                            await sock.sendMessage(jid, { react: { text: '🚨', key: msg.key } });
+                                        } catch(reactErr) {}
+                                    }
+
+                                    // Confirmación visual opcional en texto para el grupo Trabajo
+                                    const shouldSendImageReply = (isTrabajoGroup && process.env.SILENT_WORK_GROUP !== 'true') || 
+                                                                 process.env.CONFIRMAR_ALERTAS === 'true' || 
+                                                                 process.env.ENABLE_WORK_GROUP_REPLY === 'true';
+                                    if (shouldSendImageReply && isTrabajoGroup) {
+                                        try {
+                                            const replyText = `🤖 *[Centinela IA]* ¡Imagen vial procesada y publicada en el mapa! 🚨\n` +
+                                                              `📍 *Ubicación:* ${imageAnalysis.address || 'Rosario y alrededores'}\n` +
+                                                              `🏷️ *Tipo:* ${imageAnalysis.type}\n` +
+                                                              `📸 *Detalle:* "${text}"`;
+                                            await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                                            _trackBandwidth(replyText, 'out');
+                                        } catch(replyErr) {
+                                             console.warn('⚠️ [REPLY] Error al enviar confirmación visual a Trabajo:', replyErr.message);
+                                        }
+                                    }
                                     continue;
                                 }
                             }
@@ -3749,7 +3778,7 @@ const WhatsappBot = (() => {
                     }
 
                     // --- 2.5 DETECCIÓN DE TRANSFERENCIAS / PAGOS EN MENSAJES DE TEXTO ---
-                    if (text && !msg.key.fromMe && getGeminiKey()) {
+                    if (text && (!msg.key.fromMe || isTrabajoGroup || isFromTrustedAdmin) && getGeminiKey()) {
                         try {
                             const senderNum = (msg.key.participant || msg.key.remoteJid || '').replace('@s.whatsapp.net', '').replace('@c.us', '');
                             const fleetMatch = await _findFleetForPhone(senderNum);
@@ -3857,7 +3886,7 @@ const WhatsappBot = (() => {
                         
                         // RESCATE DIRECTO: Si estamos en un grupo operativo (o mensaje de admin) y contiene una intersección
                         // pero Gemini devolvió isAlert=false (ej: solo pasaron nombres de calles como "rioja entre mitre y entre rios"):
-                        if ((!analysis || !analysis.isAlert) && (isKnownOperativoGroup || isFromTrustedAdmin)) {
+                        if ((!analysis || !analysis.isAlert) && (isKnownOperativoGroup || isFromTrustedAdmin || isTrabajoGroup || isFromMe)) {
                             const directIntersection = _extractIntersection(text);
                             if (directIntersection) {
                                 console.log(`🎯 [OPERATIVO-INTERSECTION] Grupo "${groupName}" reporta intersección ("${directIntersection}"). Aceptado como operativo.`);
@@ -3902,19 +3931,29 @@ const WhatsappBot = (() => {
                                 analysis.vigenciaMinutos || 60
                             );
 
-                            // SILENCIO ABSOLUTO AL GRUPO PARA EVITAR BUCLES DE ECO DE WHATSAPP
-                            /*
-                            if (isTrabajoGroup) {
+                            // Confirmación visual opcional: reacción emoji inmediata en WhatsApp (100% segura contra bucles de eco)
+                            if (isTrabajoGroup || isFromTrustedAdmin) {
                                 try {
-                                    await sock.sendMessage(jid, {
-                                        text: `🤖 *[Centinela IA]* ¡Alerta de texto procesada y publicada en el mapa! 🚨\n` +
-                                              `📍 *Ubicación:* ${analysis.address || 'Rosario y alrededores'}\n` +
-                                              `🏷️ *Tipo:* ${analysis.type}\n` +
-                                              `💬 *Texto:* "${text}"`
-                                    }, { quoted: msg });
-                                } catch(replyErr) {}
+                                    await sock.sendMessage(jid, { react: { text: '🚨', key: msg.key } });
+                                } catch(reactErr) {}
                             }
-                            */
+
+                            // Confirmación visual opcional en texto para el grupo Trabajo (bloqueo anti-eco garantizado por ECHO-PREVENT)
+                            const shouldSendTextReply = (isTrabajoGroup && process.env.SILENT_WORK_GROUP !== 'true') || 
+                                                        process.env.CONFIRMAR_ALERTAS === 'true' || 
+                                                        process.env.ENABLE_WORK_GROUP_REPLY === 'true';
+                            if (shouldSendTextReply && isTrabajoGroup) {
+                                try {
+                                    const replyText = `🤖 *[Centinela IA]* ¡Alerta de texto procesada y publicada en el mapa! 🚨\n` +
+                                                      `📍 *Ubicación:* ${analysis.address || 'Rosario y alrededores'}\n` +
+                                                      `🏷️ *Tipo:* ${analysis.type}\n` +
+                                                      `💬 *Texto:* "${text}"`;
+                                    await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                                    _trackBandwidth(replyText, 'out');
+                                } catch(replyErr) {
+                                    console.warn('⚠️ [REPLY] Error al enviar confirmación visual a Trabajo:', replyErr.message);
+                                }
+                            }
                             
                         } else {
                             // Si no es alerta, ver si es una pregunta directa al bot
@@ -5307,6 +5346,10 @@ Si no hay movimientos financieros detectados, respondé: []`;
     }
 
     async function sendTextMessage(targetPhone, messageText) {
+        if (String(targetPhone).endsWith('@g.us') && _isGroupDeleted(targetPhone)) {
+            console.warn(`🚫 [SEND-GROUP-BLOCKED] Intento de enviar mensaje a grupo eliminado: ${targetPhone}`);
+            return { success: false, reason: 'group_deleted' };
+        }
         if (!sock || !_isConnectedState) {
             console.warn('⚠️ [SEND-TEXT] Bot no conectado para enviar mensaje a', targetPhone);
             return { success: false, reason: 'bot_disconnected' };
@@ -5421,7 +5464,8 @@ Si no hay movimientos financieros detectados, respondé: []`;
             traffic_keywords: _trafficKeywords,
             forbidden_words: _forbiddenWords,
             group_settings: _groupSettings,
-            groups: groupNameCache
+            groups: groupNameCache,
+            deleted_groups: Array.from(_deletedGroups)
         }),
         updateBotConfig: async (cfg) => {
             if (!db) throw new Error('Base de datos no disponible');
@@ -5474,15 +5518,118 @@ Si no hay movimientos financieros detectados, respondé: []`;
             }
             return { ok: true, sentinel_enabled: _sentinelEnabled };
         },
+        addGroup: async (jid, name, enabled = true) => {
+            if (!jid) throw new Error('JID requerido');
+            let cleanJid = String(jid).trim();
+            if (!cleanJid.endsWith('@g.us')) {
+                cleanJid = cleanJid.replace(/@.*$/, '') + '@g.us';
+            }
+            const safeKey = cleanJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+            
+            _deletedGroups.delete(cleanJid);
+            _deletedGroups.delete(safeKey);
+            if (db) {
+                await db.ref(`bot_config/deleted_groups/${safeKey}`).remove().catch(() => {});
+            }
+
+            const groupName = (name && String(name).trim()) ? String(name).trim() : cleanJid;
+            const isEnabled = enabled !== false;
+
+            groupNameCache[cleanJid] = groupName;
+            const item = {
+                jid: cleanJid,
+                name: groupName,
+                enabled: isEnabled,
+                updatedAt: Date.now()
+            };
+            _groupSettings[safeKey] = item;
+
+            if (db) {
+                await db.ref(`bot_config/group_settings/${safeKey}`).set(item);
+                await db.ref(`bot_group_names/${safeKey}`).set({ jid: cleanJid, name: groupName });
+            }
+            console.log(`➕ [GROUP-ADDED] Grupo registrado en lista activa: "${groupName}" (${cleanJid}) [Activo: ${isEnabled}]`);
+            return item;
+        },
+        deleteGroup: async (jid) => {
+            if (!jid) throw new Error('JID requerido');
+            let cleanJid = String(jid).trim();
+            if (!cleanJid.endsWith('@g.us')) {
+                cleanJid = cleanJid.replace(/@.*$/, '') + '@g.us';
+            }
+            const safeKey = cleanJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            _deletedGroups.add(cleanJid);
+            _deletedGroups.add(safeKey);
+
+            delete _groupSettings[safeKey];
+            delete _groupSettings[cleanJid];
+            delete groupNameCache[cleanJid];
+
+            if (db) {
+                await db.ref(`bot_config/deleted_groups/${safeKey}`).set(cleanJid);
+                await db.ref(`bot_config/group_settings/${safeKey}`).remove().catch(() => {});
+                await db.ref(`bot_group_names/${safeKey}`).remove().catch(() => {});
+            }
+            console.log(`🗑️ [GROUP-DELETED] Grupo removido y bloqueado de inmediato del bot: ${cleanJid}`);
+            return { ok: true, jid: cleanJid, safeKey };
+        },
+        getGroupsList: () => {
+            const list = [];
+            const seen = new Set();
+            for (const [safeKey, item] of Object.entries(_groupSettings)) {
+                if (!item || !item.jid) continue;
+                if (_isGroupDeleted(item.jid)) continue;
+                seen.add(item.jid);
+                list.push({
+                    jid: item.jid,
+                    name: item.name || groupNameCache[item.jid] || item.jid,
+                    enabled: item.enabled !== false
+                });
+            }
+            for (const [jid, name] of Object.entries(groupNameCache)) {
+                if (!jid || _isGroupDeleted(jid) || seen.has(jid)) continue;
+                seen.add(jid);
+                const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const gConf = _groupSettings[safeKey];
+                list.push({
+                    jid: jid,
+                    name: (gConf && gConf.name) ? gConf.name : name,
+                    enabled: gConf ? gConf.enabled !== false : true
+                });
+            }
+            return list;
+        },
+        getDeletedGroups: () => Array.from(_deletedGroups),
+        isGroupDeleted: _isGroupDeleted,
         setGroupSetting: async (jid, enabled, customName = null) => {
             if (!jid) throw new Error('JID requerido');
-            const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
-            const item = _groupSettings[safeKey] || { jid, name: groupNameCache[jid] || jid, enabled: true };
-            item.enabled = Boolean(enabled);
-            if (customName) item.name = customName;
+            let cleanJid = String(jid).trim();
+            if (!cleanJid.endsWith('@g.us')) {
+                cleanJid = cleanJid.replace(/@.*$/, '') + '@g.us';
+            }
+            const safeKey = cleanJid.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            // Si estaba en deleted_groups y se está configurando, des-eliminar
+            _deletedGroups.delete(cleanJid);
+            _deletedGroups.delete(safeKey);
+            if (db) {
+                await db.ref(`bot_config/deleted_groups/${safeKey}`).remove().catch(() => {});
+            }
+
+            const item = _groupSettings[safeKey] || { jid: cleanJid, name: groupNameCache[cleanJid] || cleanJid, enabled: true };
+            if (typeof enabled !== 'undefined') item.enabled = Boolean(enabled);
+            if (customName && String(customName).trim()) {
+                item.name = String(customName).trim();
+                groupNameCache[cleanJid] = item.name;
+            }
+            item.updatedAt = Date.now();
             _groupSettings[safeKey] = item;
             if (db) {
                 await db.ref(`bot_config/group_settings/${safeKey}`).set(item);
+                if (item.name) {
+                    await db.ref(`bot_group_names/${safeKey}`).set({ jid: cleanJid, name: item.name });
+                }
             }
             return item;
         },
