@@ -217,13 +217,16 @@
 
         console.log(`🔊 [GLOBAL VOZ] Hablando (Voz nativa): "${fullText}"`);
 
-        // === VOZ NATIVA DIRECTA (Android TTS / Web Speech) ===
+        // === VOZ NATIVA DIRECTA (Android TTS / Web Speech Blindada) ===
         let spoken = false;
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
             spoken = AndroidServices.speak(fullText);
         }
         if (!spoken && window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
             try { window.NativeServiceBridge.speak(fullText); spoken = true; } catch(e) {}
+        }
+        if (!spoken && typeof AndroidServices !== 'undefined' && typeof AndroidServices.speakWithAntiCutoff === 'function') {
+            spoken = AndroidServices.speakWithAntiCutoff(fullText);
         }
         if (!spoken && typeof window !== 'undefined' && window.speechSynthesis) {
             try {

@@ -523,6 +523,149 @@ const AndroidServices = (() => {
         }
     }
 
+    // =========================================================================
+    // MOTOR DE SÍNTESIS DE VOZ BLINDADO (Anti-Recorte Chrome / WebView)
+    // =========================================================================
+    window._faActiveSpeechUtterances = window._faActiveSpeechUtterances || new Set();
+    let _ttsHeartbeat = null;
+    let _ttsSentenceQueue = [];
+    let _isSpeakingTtsQueue = false;
+
+    function _splitIntoShortSentences(text) {
+        if (!text) return [];
+        const clean = text
+            .replace(/[*_~`#]/g, '')
+            .replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // Dividir por delimitadores de puntuación preservando el flujo natural
+        const parts = clean.match(/[^.,;!?:\n]+[.,;!?:\n]*/g) || [clean];
+        const chunks = [];
+        let current = '';
+
+        for (const p of parts) {
+            const trimmed = p.trim();
+            if (!trimmed) continue;
+            if ((current + ' ' + trimmed).length > 95 && current.length > 0) {
+                chunks.push(current.trim());
+                current = trimmed;
+            } else {
+                current = current ? (current + ' ' + trimmed) : trimmed;
+            }
+        }
+        if (current.trim()) chunks.push(current.trim());
+        return chunks.length > 0 ? chunks : [clean];
+    }
+
+    function _startTtsHeartbeat() {
+        if (_ttsHeartbeat) return;
+        _ttsHeartbeat = setInterval(() => {
+            if (typeof window !== 'undefined' && window.speechSynthesis) {
+                if (window.speechSynthesis.speaking) {
+                    if (window.speechSynthesis.paused) {
+                        window.speechSynthesis.resume();
+                    } else {
+                        // Workaround de Chromium para el bug de interrupción a los 15s
+                        window.speechSynthesis.pause();
+                        window.speechSynthesis.resume();
+                    }
+                } else if (_ttsSentenceQueue.length === 0) {
+                    _stopTtsHeartbeat();
+                }
+            }
+        }, 5000);
+    }
+
+    function _stopTtsHeartbeat() {
+        if (_ttsHeartbeat) {
+            clearInterval(_ttsHeartbeat);
+            _ttsHeartbeat = null;
+        }
+    }
+
+    function speakWithAntiCutoff(text, options = {}) {
+        if (typeof window === 'undefined' || !window.speechSynthesis) return false;
+
+        try {
+            window.speechSynthesis.cancel();
+        } catch (_) {}
+        window._faActiveSpeechUtterances.clear();
+        _ttsSentenceQueue = [];
+        _isSpeakingTtsQueue = false;
+
+        const chunks = _splitIntoShortSentences(text);
+        if (chunks.length === 0) return false;
+
+        _ttsSentenceQueue = [...chunks];
+        _startTtsHeartbeat();
+        _processNextTtsChunk(options);
+        return true;
+    }
+
+    function _processNextTtsChunk(options) {
+        if (_ttsSentenceQueue.length === 0) {
+            _isSpeakingTtsQueue = false;
+            _stopTtsHeartbeat();
+            if (typeof options.onComplete === 'function') options.onComplete();
+            return;
+        }
+
+        _isSpeakingTtsQueue = true;
+        const chunk = _ttsSentenceQueue.shift();
+
+        try {
+            if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+
+            const utter = new SpeechSynthesisUtterance(chunk);
+            utter.lang = options.lang || 'es-AR';
+            utter.rate = options.rate || 1.02;
+            utter.pitch = options.pitch || 1.0;
+
+            const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
+            utter.volume = typeof options.volume === 'number' ? options.volume : Math.max(0.1, Math.min(1.0, volPercent / 100.0));
+
+            const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
+            if (voices && voices.length > 0) {
+                const esVoice = voices.find(v => v.lang && (v.lang.includes('es-AR') || v.lang.includes('es_AR'))) ||
+                                voices.find(v => v.lang && v.lang.startsWith('es'));
+                if (esVoice) utter.voice = esVoice;
+            }
+
+            // Anclaje en Set global para evitar recolección por Garbage Collector de V8
+            window._faActiveSpeechUtterances.add(utter);
+
+            let finished = false;
+            let chunkTimeout = null;
+            const completeChunk = () => {
+                if (finished) return;
+                finished = true;
+                window._faActiveSpeechUtterances.delete(utter);
+                if (chunkTimeout) clearTimeout(chunkTimeout);
+                // Breve pausa para dicción fluida y encadenamiento seguro
+                setTimeout(() => _processNextTtsChunk(options), 40);
+            };
+
+            utter.onend = () => completeChunk();
+            utter.onerror = (err) => {
+                console.warn('⚠️ [SafeTTS] Error en fragmento:', err);
+                completeChunk();
+            };
+
+            // Timeout de rescate por oración (si el navegador falla en disparar onend)
+            const maxDurationMs = Math.max(2500, (chunk.length * 120) + 1500);
+            chunkTimeout = setTimeout(() => {
+                console.warn('⚠️ [SafeTTS] Watchdog activado para fragmento, encadenando siguiente...');
+                completeChunk();
+            }, maxDurationMs);
+
+            window.speechSynthesis.speak(utter);
+        } catch (err) {
+            console.error('❌ [SafeTTS] Error al reproducir fragmento:', err);
+            _processNextTtsChunk(options);
+        }
+    }
+
     function speak(text) {
         if (!text || typeof text !== 'string') return false;
         const cleanText = text.trim();
@@ -538,32 +681,8 @@ const AndroidServices = (() => {
             }
         }
 
-        // 2. Fallback universal Web Speech API (PWA, Chrome Android, WebView, Desktop)
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-            try {
-                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-                window.speechSynthesis.cancel();
-                const utter = new SpeechSynthesisUtterance(cleanText);
-                utter.lang = 'es-AR';
-                utter.rate = 1.05;
-                utter.pitch = 1.0;
-                const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
-                utter.volume = Math.max(0.05, Math.min(1.0, volPercent / 100.0));
-
-                const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
-                if (voices && voices.length > 0) {
-                    const esVoice = voices.find(v => v.lang && (v.lang.includes('es-AR') || v.lang.includes('es_AR'))) ||
-                                    voices.find(v => v.lang && v.lang.startsWith('es'));
-                    if (esVoice) utter.voice = esVoice;
-                }
-
-                window.speechSynthesis.speak(utter);
-                return true;
-            } catch (e) {
-                console.warn('⚠️ Error en fallback Web Speech:', e);
-            }
-        }
-        return false;
+        // 2. Fallback universal Web Speech API con motor anti-recorte y encadenamiento de oraciones
+        return speakWithAntiCutoff(cleanText);
     }
 
     function playAudio(audioUrl, fallbackText) {

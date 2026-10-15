@@ -1401,6 +1401,8 @@ const RadarModule = (() => {
                 AndroidServices.speak(fullText);
             } else if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
                 try { window.NativeServiceBridge.speak(fullText); } catch(e) {}
+            } else if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speakWithAntiCutoff === 'function') {
+                AndroidServices.speakWithAntiCutoff(fullText);
             } else if (window.speechSynthesis) {
                 if (window.speechSynthesis.paused) window.speechSynthesis.resume();
                 window.speechSynthesis.cancel();

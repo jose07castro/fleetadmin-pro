@@ -41,6 +41,14 @@ try {
     try { geminiAgent = require('../services/geminiAgent'); } catch (e2) {}
 }
 
+// Atlas Geográfico de Rosario (Normalización, Intersecciones, Midpoints "entre A y B", Anti-Centroide)
+let rosarioGeoAtlas = null;
+try {
+    rosarioGeoAtlas = require('../../services/rosarioGeoAtlas');
+} catch (e1) {
+    try { rosarioGeoAtlas = require('../services/rosarioGeoAtlas'); } catch (e2) {}
+}
+
 // Gemini via HTTP directo (sin SDK, evita problemas de versiones)
 let _dynamicGeminiKey = null;
 let _lastQrCode = null;
@@ -143,7 +151,7 @@ async function callGeminiAudio(audioBuffer, mimeType, groupName = '') {
         return null;
     }
 
-    const prompt = `Sos un asistente de seguridad vial para taxistas en Argentina.
+    const prompt = `Sos un asistente de seguridad vial para taxistas en Rosario y alrededores, Argentina.
 Escuchá este audio de un grupo de WhatsApp y respondé SOLO con JSON válido (sin markdown).
 
 CONTEXTO GEOGRÁFICO DE ORIGEN:
@@ -152,11 +160,15 @@ CONTEXTO GEOGRÁFICO DE ORIGEN:
 REGLA DE DEDUCCIÓN ESPACIAL (CRÍTICA):
 Los conductores raramente dicen la ciudad completa en el audio. Debes DEDUCIR e INFERIR la ubicación basándote fuertemente en el NOMBRE DEL GRUPO o en palabras clave que escuches.
 - Ciudades comunes en la región: "Rosario", "Arroyo Seco", "Pueblo Esther", "Funes", "Roldán", "San Lorenzo", "Granadero Baigorria", "Capitán Bermúdez", "Villa Constitución", "Pérez", "Ibarlucea", "Alvear", "Villa Gobernador Gálvez" (VGG).
-- Si el nombre del grupo menciona una de estas ciudades (ej: "Operativos Arroyo Seco"), asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas (por ejemplo, si dicen "están en la entrada" en el grupo de Arroyo Seco, pon "Acceso, Arroyo Seco").
+- Si el nombre del grupo menciona una de estas ciudades (ej: "Operativos Arroyo Seco"), asume ese contexto geográfico y agrégalo explícitamente a la dirección que devuelvas.
+
+REGLAS DE NORMALIZACIÓN DE CALLES DE ROSARIO:
+- Normalizar números de avenidas y jerga: "27" -> "Av. 27 de Febrero", "Pelle" -> "Av. Pellegrini", "Circunvalacion" -> "Av. Circunvalación", "Rondeau" -> "Bv. Rondeau", "Ovidio Lagos" -> "Av. Ovidio Lagos", "San Martin" -> "Av. San Martín", "Oroño" -> "Bv. Oroño", "Peron" -> "Av. Presidente Perón".
+- Si dice "entre calle A y calle B" (ej: "Alem entre 27 de Febrero y Gálvez"), normalizar con ese formato exacto: "Alem entre Av. 27 de Febrero y Gálvez".
 
 Determiná:
 1. Si el audio reporta alguna situación de tránsito activa: operativo policial, control de tránsito, radar/fotomulta, accidente, corte de calle, embotellamiento, camión volcado, etc.
-2. La transcripción de lo que dice el audio. REGLA ESTRICTA DE MODERACIÓN: Si en el audio dicen palabras desagradables o insultos (como puto, puta, concha, pija, culo, verga, poronga, traba, boludo, pelotudo, forro, etc.), ELIMINÁ esas palabras por completo de la transcripción y transcribí únicamente el resto del mensaje informativo vial de forma clara y limpia.
+2. La transcripción de lo que dice el audio. REGLA ESTRICTA DE MODERACIÓN: Si en el audio dicen palabras desagradables o insultos (como puto, puta, concha, pija, culo, verga, poronga, traba, boludo, pelotudo, forro, etc.), ELIMINÁ esas palabras por completo de la transcripción y transcribí únicamente el resto del mensaje informativo vial de forma clara y limpia. NO RECORTAR LA INFORMACIÓN: Conservar motos, conos, grúa, mano de circulación o dirección.
 3. El tipo de alerta: police / checkpoint / radar / accident / traffic / warning
 4. La dirección o intersección mencionada (null si no hay ninguna)
 
@@ -168,7 +180,7 @@ REGLA DE EXCLUSIÓN DE PREGUNTAS Y CONSULTAS (CRÍTICA):
 Si el audio es: conversación personal, música, tutorial, broma, saludos, venta de productos, noticias generales, o cualquier cosa NO relacionada con el tránsito activo en las calles → "isTrafficAlert": false.
 
 Respuesta EXACTAMENTE en este formato:
-{"isTrafficAlert":true,"transcription":"texto del audio","type":"checkpoint","address":"Bv Oroño y Corrientes","reason":"menciona control policial en intersección"}`;
+{"isTrafficAlert":true,"transcription":"texto completo del audio","type":"checkpoint","address":"Av. Pellegrini y Corrientes","reason":"control municipal parando motos con conos"}`;
 
     // Los modelos Flash soportan audio inline.
     const audioModels = GEMINI_AUDIO_URL ? [GEMINI_AUDIO_URL] : [
@@ -3319,11 +3331,14 @@ const WhatsappBot = (() => {
                         }
 
                         try {
-                            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                            const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeysockets/baileys');
                             const cleanMsg = {
                                 key: msg.key,
                                 message: { audioMessage: resolvedAudioMsg }
                             };
+                            const expectedBytes = Number(resolvedAudioMsg?.fileLength?.low ?? resolvedAudioMsg?.fileLength ?? 0);
+
+                            // 1. Descarga inicial con mensaje limpio
                             try {
                                 audioBuffer = await downloadMediaMessage(cleanMsg, 'buffer', {}, {
                                     logger: P({ level: 'silent' }),
@@ -3331,12 +3346,40 @@ const WhatsappBot = (() => {
                                 });
                             } catch(dlErr1) {
                                 console.warn(`⚠️ [AUDIO-DL] Falló cleanMsg (${dlErr1.message}), reintentando con mensaje original completo...`);
-                                audioBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
-                                    logger: P({ level: 'silent' }),
-                                    reuploadRequest: sock.updateMediaMessage
-                                });
                             }
-                            console.log(`🎙️ [AUDIO] Descargado ${audioBuffer ? audioBuffer.length : 0} bytes.`);
+
+                            // 2. Reintento si falló o si el buffer vino truncado (< 95% del tamaño declarado)
+                            if (!audioBuffer || (expectedBytes > 0 && audioBuffer.length < expectedBytes * 0.95)) {
+                                try {
+                                    console.warn(`⚠️ [AUDIO-DL] Buffer incompleto (${audioBuffer ? audioBuffer.length : 0} / ${expectedBytes} bytes). Reintentando con msg original...`);
+                                    audioBuffer = await downloadMediaMessage(msg, 'buffer', {}, {
+                                        logger: P({ level: 'silent' }),
+                                        reuploadRequest: sock.updateMediaMessage
+                                    });
+                                } catch(dlErr2) {
+                                    console.warn(`⚠️ [AUDIO-DL] Falló con mensaje original (${dlErr2.message})`);
+                                }
+                            }
+
+                            // 3. Fallback a stream completo de Baileys para asegurar el buffer íntegro de principio a fin
+                            if (!audioBuffer || (expectedBytes > 0 && audioBuffer.length < expectedBytes * 0.95)) {
+                                try {
+                                    console.log(`🔄 [AUDIO-DL] Acumulando stream completo directamente desde downloadContentFromMessage...`);
+                                    const stream = await downloadContentFromMessage(resolvedAudioMsg, 'audio');
+                                    const chunks = [];
+                                    for await (const chunk of stream) {
+                                        chunks.push(chunk);
+                                    }
+                                    const streamedBuffer = Buffer.concat(chunks);
+                                    if (streamedBuffer && streamedBuffer.length > (audioBuffer ? audioBuffer.length : 0)) {
+                                        audioBuffer = streamedBuffer;
+                                    }
+                                } catch(streamErr) {
+                                    console.warn(`⚠️ [AUDIO-DL] Falló stream directo de Baileys: ${streamErr.message}`);
+                                }
+                            }
+
+                            console.log(`🎙️ [AUDIO] Descarga completa e íntegra: ${audioBuffer ? audioBuffer.length : 0} bytes (esperados: ${expectedBytes || 'n/a'}).`);
 
                             // Determinar la extensión del archivo de audio
                             let extension = 'ogg';
@@ -4386,6 +4429,9 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
      */
     function _expandStreetNames(address) {
         if (!address) return address;
+        if (rosarioGeoAtlas && typeof rosarioGeoAtlas.normalizeRosarioStreets === 'function') {
+            return rosarioGeoAtlas.normalizeRosarioStreets(address);
+        }
         
         // Separar por " y " (intersección) o por " al " (altura)
         let parts;
@@ -4571,11 +4617,28 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             } else {
                 expandedAddress = _expandStreetNames(address);
                 let isResolved = false;
+
+                // --- NIVEL 0: ROSARIO GEO ATLAS ("entre A y B", Intersecciones y Anti-Centroide) ---
+                if (rosarioGeoAtlas && typeof rosarioGeoAtlas.geocodeRosarioLocation === 'function') {
+                    try {
+                        const atlasRes = rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
+                        if (atlasRes && !atlasRes.isFallbackCentroid) {
+                            lat = atlasRes.lat;
+                            lng = atlasRes.lng;
+                            approximate = Boolean(atlasRes.approximate);
+                            isResolved = true;
+                            if (atlasRes.address) expandedAddress = atlasRes.address;
+                            console.log(`📍 [GEO-ATLAS] ✅ ${atlasRes.type || 'Resuelto'}: "${expandedAddress}" -> Lat=${lat}, Lng=${lng} (aprox=${approximate})`);
+                        }
+                    } catch (atlasErr) {
+                        console.warn('⚠️ [GEO-ATLAS] Error en atlas:', atlasErr.message);
+                    }
+                }
                 
                 // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
                 // Dado que el usuario ya cuenta con facturación vinculada y clave oficial, habilitamos este canal ultrapreciso.
                 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
-                if (googleApiKey && !_googleGeocodeDisabled) {
+                if (!isResolved && googleApiKey && !_googleGeocodeDisabled) {
                     try {
                         console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}" en ciudad: "${city}"`);
                         // Buscamos forzando la región y el idioma en Argentina
@@ -4642,14 +4705,28 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                             lng = tempLng;
                             lat = tempLat;
                             approximate = false;
+                            isResolved = true;
                             console.log(`📍 [GEO-PHOTON] ✅ Ubicación válida a ${distKm.toFixed(1)}km del centro: ${lat}, ${lng}`);
                         } else {
                             console.warn(`⚠️ [GEO-PHOTON] Resultado a ${distKm.toFixed(1)}km del centro de ${city} — demasiado lejos, descartando. Usando ubicación aproximada de la ciudad.`);
-                            // approximate = true ya es el valor por defecto
                         }
                     } else {
                         console.log(`⚠️ [GEO-PHOTON] Sin resultados.`);
                     }
+                }
+
+                // --- NIVEL 3: BLINDAJE ANTI-CENTROIDE DE ROSARIO ---
+                if (!isResolved && rosarioGeoAtlas && typeof rosarioGeoAtlas.geocodeRosarioLocation === 'function') {
+                    try {
+                        const fallbackAtlas = rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
+                        if (fallbackAtlas && !fallbackAtlas.isFallbackCentroid) {
+                            lat = fallbackAtlas.lat;
+                            lng = fallbackAtlas.lng;
+                            approximate = true;
+                            isResolved = true;
+                            console.log(`📍 [GEO-ANTI-CENTROIDE] Ubicado en corredor de calle "${expandedAddress}" -> Lat=${lat}, Lng=${lng}`);
+                        }
+                    } catch (_) {}
                 }
             }
         } catch (err) {

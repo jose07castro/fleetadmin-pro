@@ -2837,11 +2837,15 @@ const CopilotModule = (() => {
      */
     function _speakTextDirect(text, isMandatory = false) {
         let spoken = false;
+        const targetVol = isMandatory ? 1.0 : Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
-            spoken = AndroidServices.speak(text);
+            spoken = AndroidServices.speak(text, { volume: targetVol });
         }
         if (!spoken && window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
             try { window.NativeServiceBridge.speak(text); spoken = true; } catch (_) {}
+        }
+        if (!spoken && typeof AndroidServices !== 'undefined' && typeof AndroidServices.speakWithAntiCutoff === 'function') {
+            spoken = AndroidServices.speakWithAntiCutoff(text, { volume: targetVol });
         }
         if (!spoken && typeof window !== 'undefined' && window.speechSynthesis) {
             try {
@@ -2852,7 +2856,7 @@ const CopilotModule = (() => {
                 utter.rate = 1.05;
                 utter.pitch = 1.0;
                 // Para avisos obligatorios de fotomulta: volumen predeterminado completo del SO (1.0)
-                utter.volume = isMandatory ? 1.0 : Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
+                utter.volume = targetVol;
 
                 const voices = (typeof window.speechSynthesis.getVoices === 'function') ? window.speechSynthesis.getVoices() : [];
                 if (voices && voices.length > 0) {

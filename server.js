@@ -2578,8 +2578,8 @@ async function callGeminiAudio(audioBuffer, mimeType) {
     const key = process.env.GEMINI_API_KEY || (typeof WhatsappBot.getGeminiKey === 'function' ? WhatsappBot.getGeminiKey() : null);
     if (!key || !audioBuffer) return null;
     const audioB64 = audioBuffer.toString('base64');
-    const prompt = `Sos un transcriptor de mensajes de seguridad vial y tránsito para una flota en Argentina.
-Transcribí de forma clara el audio de este mensaje.
+    const prompt = `Sos un transcriptor de mensajes de seguridad vial y tránsito para una flota en Rosario y alrededores, Argentina.
+Transcribí de forma clara y COMPLETA el audio de este mensaje de principio a fin, sin recortar ni omitir detalles situacionales (como motos, conos, grúa, mano de circulación o dirección).
 REGLA ESTRICTA DE MODERACIÓN: Si el audio contiene insultos, palabras groseras o desagradables (como puto, puta, concha, pija, culo, verga, poronga, traba, boludo, pelotudo, forro, mierda, etc.), ELIMINÁ esas palabras por completo de la transcripción. No uses asteriscos ni notas, simplemente quitalas y transcribí el resto del mensaje informativo sobre el tránsito o control vial con redacción limpia y coherente.
 Devolvé únicamente el texto limpio final, sin añadir comentarios, explicaciones ni formato.`;
     const axios = require('axios');
@@ -2762,10 +2762,11 @@ app.post('/api/alerts/dynamic', async (req, res) => {
                 // Si la IA identificó una intersección o calle específica en el audio, geocodificarla con precisión
                 if (aiClassification.ubicacion) {
                     const geo = await geminiAgent.geocodeLocation(aiClassification.ubicacion, 'Rosario');
-                    if (geo && !geo.approximate) {
+                    if (geo && !geo.isFallbackCentroid && typeof geo.lat === 'number') {
                         finalLat = geo.lat;
                         finalLng = geo.lng;
-                        console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación detectada en audio geocodificada con éxito: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng}`);
+                        approximate = Boolean(geo.approximate);
+                        console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación detectada en audio geocodificada con éxito: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng} (approx=${approximate})`);
                     }
                 }
             } else {
@@ -2791,10 +2792,11 @@ app.post('/api/alerts/dynamic', async (req, res) => {
                     vigenciaMinutos = aiClassification.vigenciaMinutos || 60;
                     if (aiClassification.ubicacion) {
                         const geo = await geminiAgent.geocodeLocation(aiClassification.ubicacion, 'Rosario');
-                        if (geo && !geo.approximate) {
+                        if (geo && !geo.isFallbackCentroid && typeof geo.lat === 'number') {
                             finalLat = geo.lat;
                             finalLng = geo.lng;
-                            console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación en texto geocodificada: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng}`);
+                            approximate = Boolean(geo.approximate);
+                            console.log(`🎯 [DYNAMIC-ALERT-GEO] Ubicación en texto geocodificada: "${aiClassification.ubicacion}" -> ${finalLat}, ${finalLng} (approx=${approximate})`);
                         }
                     }
                 }

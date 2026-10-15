@@ -7,6 +7,7 @@ require('dotenv').config();
 const admin = require('firebase-admin');
 const { GoogleGenAI } = require('@google/genai');
 const axios = require('axios');
+const rosarioGeoAtlas = require('./rosarioGeoAtlas');
 
 let _aiClient = null;
 let _dynamicKey = null;
@@ -136,7 +137,7 @@ Contexto de origen: "${groupName}"
 REGLAS DE EVALUACIÓN:
 1. esAlerta (boolean):
    - true si reporta un control policial, inspector municipal, operativo de tránsito, radar, accidente, choque, corte de calle o si se levantó/limpió un control vial.
-   - true si el mensaje dentro de un grupo de choferes/operativos menciona una intersección de calles (ej: "Rioja entre Mitre y Entre Ríos", "San Lorenzo y Alsina", "Pellegrini y Corrientes").
+   - true si el mensaje dentro de un grupo de choferes/operativos menciona una intersección de calles (ej: "Alem entre 27 de Febrero y Gálvez", "Rioja entre Mitre y Entre Ríos", "San Lorenzo y Alsina", "Pellegrini y Corrientes").
    - false si es un saludo ("buen día", "hola"), agradecimiento ("gracias viejo"), consulta/pregunta ("¿hay algo en la ruta?"), o charla personal/anécdota ajena.
 2. tipo (string):
    - "municipal": inspectores municipales, "zorros", "chanchos", "fiscalización", "fisca", "grúa", "carretón", control de motos, alcoholemia municipal.
@@ -147,7 +148,21 @@ REGLAS DE EVALUACIÓN:
    - "traffic": congestión pesada, cortes, calles anegadas.
    - "warning": precaución general.
 3. ubicacion (string o null):
-   - Intersección de calles o dirección exacta mencionada en el texto (ej: "San Lorenzo y Alsina", "Rioja y Mitre", "Pellegrini al 1500").
+   - Normalizar SIEMPRE la jerga rosarina a su nombre formal:
+     * "27" o "27 de febrero" -> "Av. 27 de Febrero"
+     * "Pelle" o "Pellegrini" -> "Av. Pellegrini"
+     * "Circunvalacion" -> "Av. Circunvalación"
+     * "Rondeau" -> "Bv. Rondeau"
+     * "Ovidio Lagos" o "lagos" -> "Av. Ovidio Lagos"
+     * "San Martin" -> "Av. San Martín"
+     * "Oroño" -> "Bv. Oroño"
+     * "Peron" -> "Av. Presidente Perón"
+     * "Newbery" -> "Av. Jorge Newbery"
+     * "Avellaneda" -> "Bv. Avellaneda"
+     * "Segui" -> "Av. Seguí"
+     * "Uriburu" -> "Av. Uriburu"
+     * "Arijon" / "Arizona" -> "Av. Arijón"
+   - Si dice "entre calle A y calle B" (ej: "Alem entre 27 de Febrero y Gálvez"), normalizar a ese formato exacto: "Alem entre Av. 27 de Febrero y Gálvez".
    - Si no se menciona ninguna calle o cruce, pon null. No inventes direcciones.
 4. vigenciaMinutos (number):
    - Estimación de tiempo de validez del evento:
@@ -156,7 +171,9 @@ REGLAS DE EVALUACIÓN:
      * Accidente o corte de calle: 45 a 60 minutos.
      * Radar móvil: 120 minutos.
 5. descripcion (string):
-   - Resumen ultra-breve (máximo 8 palabras) en español, sin emojis, optimizado para ser leído por el motor de voz (TTS) de la app mientras el chofer conduce.
+   - Resumen situacional claro y COMPLETO (entre 12 y 25 palabras, NO recortar a 8 palabras).
+   - Debe redactarse en español argentino neutral para ser leído por voz TTS al chofer mientras conduce.
+   - Debe CONSERVAR TODO EL CONTEXTO: tipo de control, calles/altura, mano o sentido de circulación (ej: mano al centro o mano al sur), y detalles clave como motos (si paran motos), conos (si hay conos puestos), grúa (si hay grúa/carretón remolcando), o alcoholemia.
 6. esLevantado (boolean):
    - true si el reporte avisa afirmativamente que el control se fue, se levantó o "ya está limpio".
 7. confianza (number):
@@ -183,13 +200,14 @@ esAlerta, tipo, ubicacion, vigenciaMinutos, descripcion, esLevantado, confianza`
 
             if (res && res.text) {
                 const parsed = JSON.parse(res.text.trim());
-                console.log(`🤖 [CENTINELA-GEMINI] Alerta=${parsed.esAlerta} | Tipo=${parsed.tipo} | Ubicación="${parsed.ubicacion}" | Vigencia=${parsed.vigenciaMinutos}m | "${parsed.descripcion}"`);
+                const cleanUbicacion = parsed.ubicacion ? rosarioGeoAtlas.normalizeRosarioStreets(parsed.ubicacion) : null;
+                console.log(`🤖 [CENTINELA-GEMINI] Alerta=${parsed.esAlerta} | Tipo=${parsed.tipo} | Ubicación="${cleanUbicacion}" | Vigencia=${parsed.vigenciaMinutos}m | "${parsed.descripcion}"`);
                 return {
                     esAlerta: Boolean(parsed.esAlerta),
                     tipo: String(parsed.tipo || 'checkpoint'),
-                    ubicacion: parsed.ubicacion || null,
+                    ubicacion: cleanUbicacion,
                     vigenciaMinutos: Number(parsed.vigenciaMinutos) || 60,
-                    descripcion: String(parsed.descripcion || text.substring(0, 60)),
+                    descripcion: String(parsed.descripcion || text.substring(0, 120)),
                     esLevantado: Boolean(parsed.esLevantado),
                     confianza: Number(parsed.confianza) || 0.85
                 };
@@ -220,21 +238,28 @@ async function transcribeAndClassifyAudio(audioBuffer, mimeType = 'audio/ogg', o
         try {
             const audioB64 = audioBuffer.toString('base64');
             const prompt = `Sos el Agente Centinela de Tránsito de FleetAdmin Pro para choferes en ${city}, Argentina.
-Escuchá este audio y responde ÚNICAMENTE en JSON válido (responseMimeType: application/json).
+Escuchá este audio atentamente y responde ÚNICAMENTE en JSON válido (responseMimeType: application/json).
 
-MODERACIÓN: Si el audio dice insultos (puto, puta, concha, pija, culo, verga, boludo, pelotudo, forro, etc.), ELIMINÁ esas palabras y transcribí solo el resto del reporte vial limpio.
+MODERACIÓN: Si el audio dice insultos (puto, puta, concha, pija, culo, verga, boludo, pelotudo, forro, etc.), ELIMINÁ esas palabras y transcribí el resto del mensaje vial informativo de manera limpia y completa.
 
-Clasifica:
-1. esAlerta (boolean): true si reporta control, operativo, accidente, radar o control levantado/limpio. false si es charla común.
-2. tipo (string): police, checkpoint, municipal, radar, accident, traffic, warning.
-3. ubicacion (string o null): intersección de calles deducida o null.
-4. vigenciaMinutos (number): minutos de vigencia estimados (30 para levantado, 60 a 90 para control activo, 45 para accidente).
-5. descripcion (string): resumen ultra-breve (máx 8 palabras) sin insultos ni emojis.
-6. transcripcion (string): lo que dice el audio de forma limpia.
+REGLAS DE EXTRACCIÓN (CONSERVAR CONTEXTO COMPLETO SIN MUTILAR):
+1. transcripcion (string): Transcripción fiel, completa y de principio a fin de todo lo que se dice en el audio, sin cortar oraciones ni resumir.
+2. descripcion (string): Frase informativa y completa para locución TTS (entre 12 y 25 palabras, sin recorte artificial a 8 palabras). Debe conservar TODO el contexto operativo:
+   - Si advierten sobre motos ("están parando solo motos" / "cuidado las motos")
+   - Si hay conos en el asfalto ("con conos puestos")
+   - Si hay grúa o carretón ("con grúa levantando autos")
+   - Mano de circulación o sentido ("mano hacia el centro", "mano al sur", "carril rápido")
+   - Documentación o alcoholemia ("piden seguro y tarjeta verde", "alcoholemia")
+3. ubicacion (string o null): Normalizar jerga rosarina a su nombre formal:
+   - "27" -> "Av. 27 de Febrero", "Pelle" -> "Av. Pellegrini", "Circunvalacion" -> "Av. Circunvalación", "Rondeau" -> "Bv. Rondeau", "Ovidio Lagos" -> "Av. Ovidio Lagos", "San Martin" -> "Av. San Martín", "Oroño" -> "Bv. Oroño", "Peron" -> "Av. Presidente Perón".
+   - Si dice "entre calle A y calle B" (ej: "Alem entre 27 de Febrero y Gálvez"), normalizar a ese formato exacto: "Alem entre Av. 27 de Febrero y Gálvez".
+4. esAlerta (boolean): true si reporta control, operativo, accidente, radar o control levantado/limpio. false si es charla común o consulta ("¿hay algo en...?").
+5. tipo (string): municipal, police, checkpoint, radar, accident, traffic, warning.
+6. vigenciaMinutos (number): minutos de vigencia estimados (30 para levantado, 60 a 90 para control activo, 45 para accidente).
 7. esLevantado (boolean): true si avisa que el operativo se fue o está limpio.
 8. confianza (number): 0.0 a 1.0.
 
-JSON esperado: {"esAlerta":true,"tipo":"checkpoint","ubicacion":"Pellegrini y Corrientes","vigenciaMinutos":60,"descripcion":"Control vehicular en Pellegrini y Corrientes","transcripcion":"...","esLevantado":false,"confianza":0.9}`;
+JSON esperado: {"esAlerta":true,"tipo":"municipal","ubicacion":"Alem entre Av. 27 de Febrero y Gálvez","vigenciaMinutos":60,"descripcion":"Control municipal con conos y grúa en Alem entre 27 de Febrero y Gálvez, mano al centro parando motos","transcripcion":"...","esLevantado":false,"confianza":0.9}`;
 
             let res = null;
             for (const mName of CENTINELA_MODELS) {
@@ -260,11 +285,12 @@ JSON esperado: {"esAlerta":true,"tipo":"checkpoint","ubicacion":"Pellegrini y Co
 
             if (res && res.text) {
                 const parsed = JSON.parse(res.text.trim());
-                console.log(`🎙️ [CENTINELA-AUDIO] Alerta=${parsed.esAlerta} | Tipo=${parsed.tipo} | Ubicacion="${parsed.ubicacion}" | Vigencia=${parsed.vigenciaMinutos}m`);
+                const cleanUbicacion = parsed.ubicacion ? rosarioGeoAtlas.normalizeRosarioStreets(parsed.ubicacion) : null;
+                console.log(`🎙️ [CENTINELA-AUDIO] Alerta=${parsed.esAlerta} | Tipo=${parsed.tipo} | Ubicacion="${cleanUbicacion}" | Vigencia=${parsed.vigenciaMinutos}m`);
                 return {
                     esAlerta: Boolean(parsed.esAlerta),
                     tipo: String(parsed.tipo || 'checkpoint'),
-                    ubicacion: parsed.ubicacion || null,
+                    ubicacion: cleanUbicacion,
                     vigenciaMinutos: Number(parsed.vigenciaMinutos) || 60,
                     descripcion: String(parsed.descripcion || 'Reporte de voz'),
                     transcripcion: String(parsed.transcripcion || ''),
@@ -298,11 +324,17 @@ function fallbackHeuristicClassifier(text, groupName = '') {
     else if (/accidente|choque/.test(t)) tipo = 'accident';
     else if (/corte|trafico|bache|inundacion/.test(t)) tipo = 'traffic';
 
-    // Extracción de calles
-    const match = text.match(/([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s]+?)\s+[yYeE]\s+([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s]+)/i);
-    const ubicacion = match ? `${match[1].trim()} y ${match[2].trim()}` : null;
+    // Extracción de calles: entre calle A y calle B, o calle y calle
+    let ubicacion = null;
+    const entreMatch = text.match(/([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ.\s]+?)\s+(?:entre|e\/)\s+([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ.\s]+?)\s+[yYeE]\s+([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ.\s]+)/i);
+    if (entreMatch) {
+        ubicacion = rosarioGeoAtlas.normalizeRosarioStreets(`${entreMatch[1].trim()} entre ${entreMatch[2].trim()} y ${entreMatch[3].trim()}`);
+    } else {
+        const match = text.match(/([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ.\s]+?)\s+[yYeE]\s+([a-zA-Z0-9áéíóúñÁÉÍÓÚÑ.\s]+)/i);
+        ubicacion = match ? rosarioGeoAtlas.normalizeRosarioStreets(`${match[1].trim()} y ${match[2].trim()}`) : null;
+    }
 
-    const hasKeywords = /operativo|control|policia|zorros|fiscalizacion|fisca|accidente|radar|chanchos/.test(t);
+    const hasKeywords = /operativo|control|policia|zorros|fiscalizacion|fisca|accidente|radar|chanchos|motos|grua|conos/.test(t);
     const esAlerta = hasKeywords || !!ubicacion;
 
     return {
@@ -317,72 +349,14 @@ function fallbackHeuristicClassifier(text, groupName = '') {
 }
 
 /**
- * 3. Geocodificación inteligente (Google Geocode con fallback de alta precisión Photon)
+ * 3. Geocodificación inteligente (Rosario Geo Atlas + Fallback Photon)
+ * Resuelve con precisión puntos medios "entre Calle A y Calle B" y prohíbe caer en el centroide de Rosario.
  * @param {string} ubicacion
  * @param {string} city
  * @returns {Promise<{lat: number, lng: number, approximate: boolean, formattedAddress: string}>}
  */
 async function geocodeLocation(ubicacion, city = 'Rosario') {
-    const cityCoords = CITY_COORDINATES[city] || CITY_COORDINATES['Rosario'];
-    let lat = cityCoords.lat;
-    let lng = cityCoords.lng;
-    let approximate = true;
-    let formattedAddress = ubicacion || city;
-
-    if (!ubicacion || ubicacion === 'null') {
-        return { lat, lng, approximate: true, formattedAddress: city };
-    }
-
-    // 1. Google Maps Geocoding API
-    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
-    if (googleApiKey) {
-        try {
-            const queryAddress = `${ubicacion}, ${city}, Santa Fe, Argentina`;
-            const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(queryAddress)}&language=es&region=AR&key=${googleApiKey}`;
-            const gResponse = await axios.get(gUrl, { timeout: 5000 });
-
-            if (gResponse.data?.status === 'OK' && gResponse.data.results?.length > 0) {
-                const loc = gResponse.data.results[0].geometry.location;
-                const tempLat = parseFloat(loc.lat);
-                const tempLng = parseFloat(loc.lng);
-                const distKm = Math.hypot((tempLat - cityCoords.lat) * 111, (tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180));
-
-                if (distKm <= 60) {
-                    lat = tempLat;
-                    lng = tempLng;
-                    approximate = false;
-                    formattedAddress = gResponse.data.results[0].formatted_address || ubicacion;
-                    return { lat, lng, approximate, formattedAddress };
-                }
-            }
-        } catch (e) {}
-    }
-
-    // 2. Photon Geocoding Fallback
-    try {
-        const cleanAddressForGeo = ubicacion.replace(/\s+[yY]\s+/gi, ', ');
-        const fullAddress = `${cleanAddressForGeo}, ${city}, Argentina`;
-        const pUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullAddress)}&limit=1&lat=${cityCoords.lat}&lon=${cityCoords.lng}`;
-        const pResponse = await axios.get(pUrl, { timeout: 6000 });
-
-        if (pResponse.data?.features?.length > 0) {
-            const coords = pResponse.data.features[0].geometry.coordinates;
-            const tempLng = parseFloat(coords[0]);
-            const tempLat = parseFloat(coords[1]);
-            const distKm = Math.hypot((tempLat - cityCoords.lat) * 111, (tempLng - cityCoords.lng) * 111 * Math.cos(cityCoords.lat * Math.PI / 180));
-
-            if (distKm <= 60) {
-                lat = tempLat;
-                lng = tempLng;
-                approximate = false;
-                formattedAddress = pResponse.data.features[0].properties?.name ? `${pResponse.data.features[0].properties.name}, ${city}` : ubicacion;
-            }
-        }
-    } catch (e) {
-        console.warn(`⚠️ [CENTINELA-GEO] Error en Photon: ${e.message}`);
-    }
-
-    return { lat, lng, approximate, formattedAddress };
+    return await rosarioGeoAtlas.geocodeRosarioLocation(ubicacion, city);
 }
 
 /**
