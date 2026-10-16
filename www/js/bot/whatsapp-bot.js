@@ -17,6 +17,10 @@ const P = () => ({
     },
     error: (...args) => {
         const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        // Ignorar eventos internos de sincronización entre dispositivos vinculados (@lid / fromMe) que no afectan a los grupos
+        if (msg.includes('@lid') || (msg.includes('PreKeyError') && msg.includes('fromMe'))) {
+            return;
+        }
         console.error('❌ [BAILEYS-ERR]', msg.substring(0, 300));
     },
     fatal: (...args) => console.error('💥 [BAILEYS-FATAL]', ...args),
