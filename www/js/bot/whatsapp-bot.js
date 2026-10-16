@@ -4637,7 +4637,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 
                 // --- NIVEL 1: GOOGLE MAPS GEOCODING API (Gold Standard) ---
                 // Dado que el usuario ya cuenta con facturación vinculada y clave oficial, habilitamos este canal ultrapreciso.
-                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyCYbKjTGjzumG0hLc8jy0NNapVlBl8wd7g';
                 if (!isResolved && googleApiKey && !_googleGeocodeDisabled) {
                     try {
                         console.log(`🔍 [GEO-GOOGLE] Intentando geocodificación prémium para: "${expandedAddress}" en ciudad: "${city}"`);

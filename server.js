@@ -2505,7 +2505,7 @@ app.post('/api/driver/location', async (req, res) => {
         if (false) {
             try {
                 const axios = require('axios');
-                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+                const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyCYbKjTGjzumG0hLc8jy0NNapVlBl8wd7g';
                 const url = `https://roads.googleapis.com/v1/snapToRoads?path=${finalLat},${finalLng}&key=${googleApiKey}`;
                 const response = await axios.get(url, { timeout: 4000 });
                 if (response.data && response.data.snappedPoints && response.data.snappedPoints.length > 0) {

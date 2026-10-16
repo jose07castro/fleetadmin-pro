@@ -338,7 +338,7 @@ const RadarModule = (() => {
     function _ensureGoogleMapsScript() {
         if (typeof document === 'undefined') return;
         let script = document.querySelector('script[src*="maps.googleapis.com"]');
-        const apiKey = (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || 'AIzaSyATwi1CCdw5q-8nYXTsTn8VCKoP13jbHBE';
+        const apiKey = (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) || 'AIzaSyCYbKjTGjzumG0hLc8jy0NNapVlBl8wd7g';
         if (!script) {
             script = document.createElement('script');
             script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
