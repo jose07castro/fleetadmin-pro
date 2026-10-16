@@ -382,7 +382,33 @@ async function dispatchAlert(classification, options = {}, db) {
     }
 
     const city = options.city || 'Rosario';
-    const geo = await geocodeLocation(classification.ubicacion, city);
+    const rawLoc = classification.ubicacion || options.originalText || '';
+    const cleanUbicacion = (rosarioGeoAtlas && typeof rosarioGeoAtlas.cleanAddressForGeocoding === 'function')
+        ? rosarioGeoAtlas.cleanAddressForGeocoding(rawLoc, city)
+        : rawLoc;
+
+    let geo = null;
+    try {
+        geo = await geocodeLocation(cleanUbicacion, city);
+    } catch (gErr) {
+        console.warn(`⚠️ [CENTINELA-DESPACHO] Error en geocodeLocation: ${gErr.message}`);
+    }
+
+    const cityCoords = (rosarioGeoAtlas && typeof rosarioGeoAtlas.getCityCentroid === 'function')
+        ? rosarioGeoAtlas.getCityCentroid(city)
+        : { lat: -32.9468, lng: -60.6393 };
+
+    let finalLat = (geo && typeof geo.lat === 'number' && !isNaN(geo.lat)) ? geo.lat : cityCoords.lat;
+    let finalLng = (geo && typeof geo.lng === 'number' && !isNaN(geo.lng)) ? geo.lng : cityCoords.lng;
+    let isApprox = geo ? Boolean(geo.approximate) : true;
+
+    // Sanitización de seguridad previa a construir el objeto
+    if (typeof finalLat !== 'number' || isNaN(finalLat) || typeof finalLng !== 'number' || isNaN(finalLng)) {
+        finalLat = -32.9468;
+        finalLng = -60.6393;
+        isApprox = true;
+        console.warn(`⚠️ [CENTINELA-DESPACHO] Fallback de seguridad a centroide de Rosario (-32.9468, -60.6393)`);
+    }
 
     const safeMsgId = options.messageId ? `wsp_${options.messageId.replace(/[^a-zA-Z0-9_]/g, '_')}` : `ia_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const alertId = safeMsgId;
@@ -392,18 +418,18 @@ async function dispatchAlert(classification, options = {}, db) {
     const alertData = {
         id: alertId,
         type: classification.tipo || 'checkpoint',
-        location: classification.ubicacion || geo.formattedAddress || 'Ubicación identificada',
-        lat: geo.lat,
-        lng: geo.lng,
+        location: cleanUbicacion || (geo && geo.formattedAddress) || 'Ubicación identificada',
+        lat: finalLat,
+        lng: finalLng,
         timestamp: Date.now(),
         expiresAt: Date.now() + vigenciaMs,
         authorName: author,
         originalText: options.originalText || classification.descripcion || '',
-        description: classification.descripcion,
+        description: classification.descripcion || options.originalText || '',
         confirmations: 1,
         status: 'active',
         source: options.source || 'gemini_agent',
-        approximate: geo.approximate,
+        approximate: isApprox,
         isLifting: Boolean(classification.esLevantado),
         vigenciaMinutos: classification.vigenciaMinutos || 60,
         confianza: classification.confianza || 0.85
@@ -411,6 +437,17 @@ async function dispatchAlert(classification, options = {}, db) {
 
     if (options.audioUrl) {
         alertData.audioUrl = options.audioUrl;
+    }
+
+    // SANITIZACIÓN ESTRICTA PREVIA A FIREBASE:
+    // Eliminar cualquier propiedad undefined que rompa Firebase Realtime Database
+    Object.keys(alertData).forEach(k => {
+        if (alertData[k] === undefined) delete alertData[k];
+    });
+
+    if (typeof alertData.lat !== 'number' || isNaN(alertData.lat) || typeof alertData.lng !== 'number' || isNaN(alertData.lng)) {
+        console.error(`🚨 [CENTINELA-DESPACHO] ABORTANDO guardado en Firebase: Coordenadas inválidas en alerta ${alertId}`);
+        return { dispatched: false, alertId: null, alertData: null, reason: 'invalid_coordinates' };
     }
 
     try {

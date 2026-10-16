@@ -20,8 +20,87 @@ const CITY_CENTROIDS = {
     'Villa Gobernador Gálvez': { lat: -33.0333, lng: -60.6333 },
     'Pérez': { lat: -32.9989, lng: -60.7681 },
     'Ibarlucea': { lat: -32.8589, lng: -60.7961 },
-    'Alvear': { lat: -33.0906, lng: -60.6278 }
+    'Alvear': { lat: -33.0906, lng: -60.6278 },
+    'Villa Constitución': { lat: -33.2274, lng: -60.3294 }
 };
+
+/**
+ * Obtiene el centroide de una localidad con normalización flexible de nombres.
+ * Siempre garantiza retornar un objeto { lat: number, lng: number } válido.
+ */
+function getCityCentroid(cityName) {
+    if (!cityName || typeof cityName !== 'string') return CITY_CENTROIDS['Rosario'];
+    const norm = cityName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (norm.includes('esther')) return CITY_CENTROIDS['Pueblo Esther'];
+    if (norm.includes('arroyo') || norm.includes('seco')) return CITY_CENTROIDS['Arroyo Seco'];
+    if (norm.includes('funes')) return CITY_CENTROIDS['Funes'];
+    if (norm.includes('roldan')) return CITY_CENTROIDS['Roldán'];
+    if (norm.includes('lorenzo')) return CITY_CENTROIDS['San Lorenzo'];
+    if (norm.includes('baigorria')) return CITY_CENTROIDS['Granadero Baigorria'];
+    if (norm.includes('bermudez')) return CITY_CENTROIDS['Capitán Bermúdez'];
+    if (norm.includes('galvez') || norm.includes('vgg')) return CITY_CENTROIDS['Villa Gobernador Gálvez'];
+    if (norm.includes('perez')) return CITY_CENTROIDS['Pérez'];
+    if (norm.includes('ibarlucea')) return CITY_CENTROIDS['Ibarlucea'];
+    if (norm.includes('alvear')) return CITY_CENTROIDS['Alvear'];
+    if (norm.includes('constitucion')) return CITY_CENTROIDS['Villa Constitución'];
+    if (CITY_CENTROIDS[cityName]) return CITY_CENTROIDS[cityName];
+    return CITY_CENTROIDS['Rosario'];
+}
+
+/**
+ * Limpieza de cadenas de dirección viales para optimizar la resolución en geocodificadores.
+ * Remueve coletillas descriptivas ("entrada a...", "cerca de...", "frente a...", etc.)
+ * y preserva limpias las intersecciones (ej: "Ruta 21 y Bv. Oroño, Pueblo Esther, Santa Fe").
+ */
+function cleanAddressForGeocoding(text, city = '') {
+    if (!text || typeof text !== 'string') return '';
+    let s = text.trim();
+
+    // 1. Quitar exclamaciones y encabezados viales comunes
+    s = s.replace(/^(?:atenci[oó]n|alerta|ojo|cuidado)[\s,:!-]+/gi, '');
+    s = s.replace(/^(?:est[aá]n\s+(?:parando|haciendo\s+control|apostados)?|hay\s+(?:un\s+)?control\s+(?:en|sobre)?|control\s+en|operativo\s+en)\s+/gi, '');
+
+    // 2. Limpiar coletillas de aproximación y acceso al inicio
+    s = s.replace(/^(?:(?:cerca|pegado|al\s+lado)\s+(?:de(?:l)?|a(?:l)?)\s+(?:la\s+)?)?(?:entrada|ingreso|acceso|salida)\s+(?:a(?:l)?|de(?:l)?)\s+/gi, '');
+    s = s.replace(/^(?:cerca|pegado|al\s+lado)\s+de(?:l)?\s+(?:la\s+)?/gi, '');
+    s = s.replace(/^(?:frente|en\s+frente)\s+(?:a(?:l)?|de(?:l)?)\s+(?:la\s+|el\s+)?/gi, '');
+    s = s.replace(/^(?:a\s+la\s+altura\s+de(?:l)?|a\s+metros\s+de(?:l)?|pasando|llegando\s+a|antes\s+de|camino\s+a|yendo\s+(?:a|hacia)|mano\s+(?:a|hacia)|sentido\s+(?:a|hacia))\s+/gi, '');
+    s = s.replace(/^(?:sobre|por|en)\s+/gi, '');
+
+    // 3. Si comienza con nombre de localidad seguido de conectores ('por', 'en', coma)
+    const knownCities = [
+        'pueblo esther', 'rosario', 'funes', 'roldan', 'roldán', 'arroyo seco',
+        'san lorenzo', 'baigorria', 'granadero baigorria', 'bermudez', 'bermúdez',
+        'capitan bermudez', 'capitán bermúdez', 'vgg', 'villa gobernador galvez',
+        'villa gobernador gálvez', 'alvear', 'perez', 'pérez', 'ibarlucea',
+        'villa constitucion', 'villa constitución'
+    ];
+    for (const c of knownCities) {
+        const cityRegex = new RegExp('^' + c + '(?:\\s+(?:por|sobre|en)|[,;\\s]+)+', 'i');
+        if (cityRegex.test(s)) {
+            s = s.replace(cityRegex, '').trim();
+            break;
+        }
+    }
+
+    // 4. Si hay una referencia a landmark antes de una coma e intersección: "la comisaría, Pellegrini y Corrientes" -> "Pellegrini y Corrientes"
+    if (/^[^,]+,\s*(.+?\s+(?:[yYeE]|entre)\s+.+)$/i.test(s)) {
+        s = s.replace(/^[^,]+,\s*/, '');
+    }
+
+    // 5. Si hay una intersección clara (' y ' o ' entre '), podar coletillas descriptivas intermedias o finales
+    if (/\s+[yYeE]\s+|\s+entre\s+/i.test(s)) {
+        s = s.replace(/\s+(?:frente\s+a(?:l)?|en\s+frente\s+de(?:l)?|cerca\s+de(?:l)?|pegado\s+a(?:l)?|al\s+lado\s+de(?:l)?|a\s+metros\s+de(?:l)?|mano\s+(?:a|hacia)\s+[^,]+|sentido\s+(?:a|hacia)\s+[^,]+)[\s\S]*$/i, '');
+    }
+
+    // 6. Normalizar conectores de intersección
+    s = s.replace(/\s+(?:cruce\s+con|esquina|esq\.?)\s+/gi, ' y ');
+    s = s.replace(/\s+(?:a\s+la\s+altura\s+de(?:l)?|altura)\s+/gi, ' y ');
+
+    // 7. Limpieza final de signos de puntuación sueltos
+    s = s.replace(/^[,.\-;:/\s]+|[,.\-;:/\s]+$/g, '').trim();
+    return s;
+}
 
 // 1. Normalización de jerga local y números de avenidas
 function normalizeRosarioStreets(text) {
@@ -339,131 +418,143 @@ async function queryPhotonSinglePoint(address, city, cityCoords) {
  * c) Regla anti-centroide: prohíbe caer en el centroide de Rosario si la calle fue identificada.
  */
 async function geocodeRosarioLocation(ubicacion, city = 'Rosario') {
-    const cityCoords = CITY_CENTROIDS[city] || CITY_CENTROIDS['Rosario'];
-    let defaultLat = cityCoords.lat;
-    let defaultLng = cityCoords.lng;
+    const cityCoords = getCityCentroid(city);
+    const defaultLat = cityCoords.lat;
+    const defaultLng = cityCoords.lng;
 
-    if (!ubicacion || ubicacion === 'null' || ubicacion.trim() === '') {
+    if (!ubicacion || ubicacion === 'null' || typeof ubicacion !== 'string' || ubicacion.trim() === '') {
         return { lat: defaultLat, lng: defaultLng, approximate: true, formattedAddress: city };
     }
 
-    // 1. Normalizar nombres
-    const normalized = normalizeRosarioStreets(ubicacion);
+    try {
+        // 1. Limpieza de coletillas descriptivas ("entrada a...", "cerca de...", "frente a...")
+        const cleaned = cleanAddressForGeocoding(ubicacion, city);
+        const queryText = cleaned || ubicacion;
 
-    // 2. Verificar si es formato "entre Calle A y Calle B"
-    const entreData = parseEntrePattern(normalized);
-    if (entreData) {
-        const { mainStreet, cross1, cross2 } = entreData;
-        console.log(`🧭 [GEO-ENTRE] Procesando cuadra: "${mainStreet}" entre "${cross1}" y "${cross2}" (${city})`);
+        // 2. Normalizar nombres
+        const normalized = normalizeRosarioStreets(queryText);
 
-        // Corner 1: mainStreet y cross1
-        const cornerQuery1 = `${mainStreet} y ${cross1}`;
-        let point1 = resolveFromAtlas(cornerQuery1);
-        if (!point1) {
-            point1 = await queryPhotonSinglePoint(cornerQuery1, city, cityCoords);
+        // 3. Verificar si es formato "entre Calle A y Calle B"
+        const entreData = parseEntrePattern(normalized);
+        if (entreData) {
+            const { mainStreet, cross1, cross2 } = entreData;
+            console.log(`🧭 [GEO-ENTRE] Procesando cuadra: "${mainStreet}" entre "${cross1}" y "${cross2}" (${city})`);
+
+            // Corner 1: mainStreet y cross1
+            const cornerQuery1 = `${mainStreet} y ${cross1}`;
+            let point1 = resolveFromAtlas(cornerQuery1);
+            if (!point1) {
+                point1 = await queryPhotonSinglePoint(cornerQuery1, city, cityCoords);
+            }
+
+            // Corner 2: mainStreet y cross2
+            const cornerQuery2 = `${mainStreet} y ${cross2}`;
+            let point2 = resolveFromAtlas(cornerQuery2);
+            if (!point2) {
+                point2 = await queryPhotonSinglePoint(cornerQuery2, city, cityCoords);
+            }
+
+            // Si ambos puntos resolvieron, calcular el punto medio exacto de la cuadra
+            if (point1 && point2 && typeof point1.lat === 'number' && typeof point2.lat === 'number') {
+                const midLat = (point1.lat + point2.lat) / 2.0;
+                const midLng = (point1.lng + point2.lng) / 2.0;
+                const formatted = `${mainStreet} entre ${cross1} y ${cross2}, ${city}`;
+                console.log(`🎯 [GEO-ENTRE] ✅ Punto medio exacto calculado: (${midLat.toFixed(6)}, ${midLng.toFixed(6)})`);
+                return {
+                    lat: Number(midLat.toFixed(6)),
+                    lng: Number(midLng.toFixed(6)),
+                    approximate: false,
+                    formattedAddress: formatted
+                };
+            }
+
+            // Si solo resolvió el Corner 1 (primera transversal mencionada), ubicar en Corner 1 (Regla 1c)
+            if (point1 && typeof point1.lat === 'number' && !isNaN(point1.lat)) {
+                const formatted = `${mainStreet} y ${cross1}, ${city}`;
+                console.log(`🎯 [GEO-ENTRE] Fallback a 1ra transversal resuelta ("${cornerQuery1}"): (${point1.lat}, ${point1.lng})`);
+                return {
+                    lat: point1.lat,
+                    lng: point1.lng,
+                    approximate: false,
+                    formattedAddress: formatted
+                };
+            }
+
+            // Si solo resolvió el Corner 2
+            if (point2 && typeof point2.lat === 'number' && !isNaN(point2.lat)) {
+                const formatted = `${mainStreet} y ${cross2}, ${city}`;
+                console.log(`🎯 [GEO-ENTRE] Fallback a 2da transversal resuelta ("${cornerQuery2}"): (${point2.lat}, ${point2.lng})`);
+                return {
+                    lat: point2.lat,
+                    lng: point2.lng,
+                    approximate: false,
+                    formattedAddress: formatted
+                };
+            }
+
+            // Si fallaron ambas transversales, ubicar sobre mainStreet sin caer al centroide (Regla 1c)
+            const streetOnly = resolveFromAtlas(mainStreet);
+            if (streetOnly && typeof streetOnly.lat === 'number' && !isNaN(streetOnly.lat)) {
+                console.log(`🎯 [GEO-ENTRE] Fallback sobre calle principal ("${mainStreet}"): (${streetOnly.lat}, ${streetOnly.lng})`);
+                return {
+                    lat: streetOnly.lat,
+                    lng: streetOnly.lng,
+                    approximate: true,
+                    formattedAddress: `${mainStreet}, ${city}`
+                };
+            }
         }
 
-        // Corner 2: mainStreet y cross2
-        const cornerQuery2 = `${mainStreet} y ${cross2}`;
-        let point2 = resolveFromAtlas(cornerQuery2);
-        if (!point2) {
-            point2 = await queryPhotonSinglePoint(cornerQuery2, city, cityCoords);
-        }
-
-        // Si ambos puntos resolvieron, calcular el punto medio exacto de la cuadra
-        if (point1 && point2) {
-            const midLat = (point1.lat + point2.lat) / 2.0;
-            const midLng = (point1.lng + point2.lng) / 2.0;
-            const formatted = `${mainStreet} entre ${cross1} y ${cross2}, ${city}`;
-            console.log(`🎯 [GEO-ENTRE] ✅ Punto medio exacto calculado: (${midLat.toFixed(6)}, ${midLng.toFixed(6)})`);
+        // 4. Consulta de intersección simple o calle individual
+        // A) Atlas local (instantáneo, sin red, máxima fidelidad)
+        const atlasRes = resolveFromAtlas(normalized);
+        if (atlasRes && typeof atlasRes.lat === 'number' && !isNaN(atlasRes.lat) && typeof atlasRes.lng === 'number' && !isNaN(atlasRes.lng)) {
+            console.log(`📍 [GEO-ATLAS] ✅ Resuelto localmente para "${normalized}": (${atlasRes.lat}, ${atlasRes.lng})`);
             return {
-                lat: Number(midLat.toFixed(6)),
-                lng: Number(midLng.toFixed(6)),
-                approximate: false,
-                formattedAddress: formatted
+                lat: atlasRes.lat,
+                lng: atlasRes.lng,
+                approximate: Boolean(atlasRes.approximate),
+                formattedAddress: `${normalized}, ${city}`
             };
         }
 
-        // Si solo resolvió el Corner 1 (primera transversal mencionada), ubicar en Corner 1 (Regla 1c)
-        if (point1) {
-            const formatted = `${mainStreet} y ${cross1}, ${city}`;
-            console.log(`🎯 [GEO-ENTRE] Fallback a 1ra transversal resuelta ("${cornerQuery1}"): (${point1.lat}, ${point1.lng})`);
-            return {
-                lat: point1.lat,
-                lng: point1.lng,
-                approximate: false,
-                formattedAddress: formatted
-            };
+        // B) Photon API
+        const photonRes = await queryPhotonSinglePoint(normalized, city, cityCoords);
+        if (photonRes && typeof photonRes.lat === 'number' && !isNaN(photonRes.lat) && typeof photonRes.lng === 'number' && !isNaN(photonRes.lng)) {
+            console.log(`📍 [GEO-PHOTON] ✅ Resuelto vía Photon para "${normalized}": (${photonRes.lat}, ${photonRes.lng})`);
+            return photonRes;
         }
 
-        // Si solo resolvió el Corner 2
-        if (point2) {
-            const formatted = `${mainStreet} y ${cross2}, ${city}`;
-            console.log(`🎯 [GEO-ENTRE] Fallback a 2da transversal resuelta ("${cornerQuery2}"): (${point2.lat}, ${point2.lng})`);
-            return {
-                lat: point2.lat,
-                lng: point2.lng,
-                approximate: false,
-                formattedAddress: formatted
-            };
+        // C) Si se extrajo una intersección "calleA y calleB", intentar con la primera transversal
+        const matchAnd = normalized.match(/^(.+?)\s+[yYeE]\s+(.+)$/);
+        if (matchAnd) {
+            const c1 = matchAnd[1].trim();
+            const streetRes = resolveFromAtlas(c1);
+            if (streetRes && typeof streetRes.lat === 'number' && !isNaN(streetRes.lat)) {
+                console.log(`🎯 [GEO-FALLBACK-1RA] Ubicado sobre 1ra calle mencionada ("${c1}"): (${streetRes.lat}, ${streetRes.lng})`);
+                return {
+                    lat: streetRes.lat,
+                    lng: streetRes.lng,
+                    approximate: true,
+                    formattedAddress: `${c1}, ${city}`
+                };
+            }
         }
 
-        // Si fallaron ambas transversales, ubicar sobre mainStreet sin caer al centroide (Regla 1c)
-        const streetOnly = resolveFromAtlas(mainStreet);
-        if (streetOnly) {
-            console.log(`🎯 [GEO-ENTRE] Fallback sobre calle principal ("${mainStreet}"): (${streetOnly.lat}, ${streetOnly.lng})`);
-            return {
-                lat: streetOnly.lat,
-                lng: streetOnly.lng,
-                approximate: true,
-                formattedAddress: `${mainStreet}, ${city}`
-            };
-        }
+        // D) Solo si no se identificó ninguna calle en absoluto, devolver centroide de la localidad solicitada
+        console.warn(`⚠️ [GEO-CENTROIDE] Calle no identificable en el mapa ("${normalized}"). Usando centro de ${city} (${defaultLat}, ${defaultLng})`);
+        return { lat: defaultLat, lng: defaultLng, approximate: true, formattedAddress: (normalized || city), isFallbackCentroid: true };
+
+    } catch (err) {
+        console.error(`⚠️ [GEO-ATLAS-ERROR] Excepción geocodificando "${ubicacion}" en ${city}:`, err.message);
+        return { lat: defaultLat, lng: defaultLng, approximate: true, formattedAddress: (ubicacion || city), isFallbackCentroid: true };
     }
-
-    // 3. Consulta de intersección simple o calle individual
-    // A) Atlas local (instantáneo, sin red, máxima fidelidad)
-    const atlasRes = resolveFromAtlas(normalized);
-    if (atlasRes) {
-        console.log(`📍 [GEO-ATLAS] ✅ Resuelto localmente para "${normalized}": (${atlasRes.lat}, ${atlasRes.lng})`);
-        return {
-            lat: atlasRes.lat,
-            lng: atlasRes.lng,
-            approximate: atlasRes.approximate,
-            formattedAddress: `${normalized}, ${city}`
-        };
-    }
-
-    // B) Photon API
-    const photonRes = await queryPhotonSinglePoint(normalized, city, cityCoords);
-    if (photonRes) {
-        console.log(`📍 [GEO-PHOTON] ✅ Resuelto vía Photon para "${normalized}": (${photonRes.lat}, ${photonRes.lng})`);
-        return photonRes;
-    }
-
-    // C) Si se extrajo una intersección "calleA y calleB", intentar con la primera transversal
-    const matchAnd = normalized.match(/^(.+?)\s+[yYeE]\s+(.+)$/);
-    if (matchAnd) {
-        const c1 = matchAnd[1].trim();
-        const streetRes = resolveFromAtlas(c1);
-        if (streetRes) {
-            console.log(`🎯 [GEO-FALLBACK-1RA] Ubicado sobre 1ra calle mencionada ("${c1}"): (${streetRes.lat}, ${streetRes.lng})`);
-            return {
-                lat: streetRes.lat,
-                lng: streetRes.lng,
-                approximate: true,
-                formattedAddress: `${c1}, ${city}`
-            };
-        }
-    }
-
-    // D) Solo si no se identificó ninguna calle en absoluto, devolver centroide aproximado
-    console.warn(`⚠️ [GEO-CENTROIDE] Calle no identificable en el mapa. Usando centro de ${city}`);
-    return { lat: defaultLat, lng: defaultLng, approximate: true, formattedAddress: city };
 }
 
 module.exports = {
     CITY_CENTROIDS,
+    getCityCentroid,
+    cleanAddressForGeocoding,
     normalizeRosarioStreets,
     parseEntrePattern,
     resolveFromAtlas,

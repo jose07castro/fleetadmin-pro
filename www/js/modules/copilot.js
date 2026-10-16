@@ -6,10 +6,10 @@
 
 const CopilotModule = (() => {
     // Configuración de proximidad y alertas
-    const WARNING_DISTANCE_METERS = 315;  // 300m para fotomultas (con margen de tolerancia GPS)
+    const WARNING_DISTANCE_METERS = 315;  // 300m para fotomultas fijas (base)
     const TRAFFIC_WARNING_METERS = 500;   // 500m para operativos dinámicos de tránsito
     const PASSING_DISTANCE_METERS = 20;   // Distancia mínima para considerar cámara superada
-    const COOLDOWN_MS = 3 * 60 * 1000;    // 3 minutos de enfriamiento por cámara
+    const COOLDOWN_MS = 15 * 60 * 1000;   // 15 minutos de enfriamiento estricto por cámara o alerta
 
     // Estado del módulo
     let _isEnabled = localStorage.getItem('copilotRadar') !== 'off';
@@ -2369,17 +2369,30 @@ const CopilotModule = (() => {
 ];
 
     /**
-     * Calcula la distancia geodésica en metros entre dos coordenadas (Haversine).
+     * Calcula la distancia geodésica en metros entre dos coordenadas (Fórmula de Haversine con R=6371e3 m).
+     * Prohíbe comparaciones directas de grados decimales para radios de proximidad.
      */
-    function _getDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000; // Radio terrestre en metros
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
+    function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+        if (lat1 === null || lon1 === null || lat2 === null || lon2 === null ||
+            isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+            return Infinity;
+        }
+        const R = 6371e3; // Radio medio terrestre = 6.371.000 metros (WGS84 estándar)
+        const toRad = Math.PI / 180;
+        const dLat = (lat2 - lat1) * toRad;
+        const dLon = (lon2 - lon1) * toRad;
+        const phi1 = lat1 * toRad;
+        const phi2 = lat2 * toRad;
+
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.cos(phi1) * Math.cos(phi2) *
                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
+    }
+    const _getDistance = getDistanceInMeters;
+    if (typeof window !== 'undefined') {
+        window.getDistanceInMeters = getDistanceInMeters;
     }
 
     // ============ SINCRONIZACIÓN DE ALERTAS DE TRÁNSITO EN VIVO ============
@@ -2881,7 +2894,7 @@ const CopilotModule = (() => {
         const firstName = _getDriverFirstName();
         const prefix = firstName ? `${firstName}, ` : '';
         const limit = target.limit || 60;
-        const distText = distanceStage === 150 ? '150' : '300';
+        const distText = (distanceStage === 150) ? '150' : (distanceStage === 500 ? '500' : '300');
         const text = `${prefix}foto multa a ${distText} metros, máxima ${limit}.`;
 
         console.log(`🔊 [COPILOTO-MANDATORY] Locución concisa (${distText}m): "${text}"`);
@@ -3339,19 +3352,35 @@ const CopilotModule = (() => {
         if (!_isEnabled) return;
         if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) return;
 
+        // FILTRO DE PRECISIÓN GPS:
+        // Si la precisión es mayor a 50 metros (o viene en timeout), descartar lectura para evitar falsos positivos
+        if (accuracy !== null && !isNaN(accuracy) && accuracy > 50) {
+            console.warn(`📡 [COPILOTO] Lectura descartada por imprecisión GPS (${Math.round(accuracy)}m > 50m)`);
+            return;
+        }
+
         const now = Date.now();
         const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed, accuracy);
+
+        // Umbral dinámico de proximidad según velocidad:
+        // Si velocidadKmH > 60: radioAlerta = 500m.
+        // Si velocidadKmH <= 60 (o reposo/no disponible): radioAlerta = 300m.
+        const speedKmh = (currentSpeed !== null && currentSpeed >= 0) ? currentSpeed : 0;
+        const radioAlerta = (speedKmh > 60) ? 500 : 300;
 
         // Determinar rumbo (bearing) confiable de trayectoria vehicular
         const reliableBearing = _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, currentSpeed);
 
-        // Guardar última posición
-        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed, bearing: reliableBearing };
+        // Guardar última posición confirmada con timestamp y accuracy
+        _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: currentSpeed, bearing: reliableBearing, accuracy: accuracy };
+        if (typeof window !== 'undefined') {
+            window._cachedGpsPosition = _lastPosition;
+        }
 
         // --- 1. PROCESAR RADAR ACTIVO EN SEGUIMIENTO ---
         if (_activeApproach) {
             const radar = _activeApproach.target;
-            const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
+            const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
             const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
 
             // A) Superó la cámara (pasó a menos de 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras estar < 35m)
@@ -3395,6 +3424,13 @@ const CopilotModule = (() => {
             _showRadarHUD(radar, dist, currentSpeed);
 
             // C) ETAPAS DE APROXIMACIÓN:
+            // Transición de 500m a 300m si venía a alta velocidad
+            if (_activeApproach.stage === 500 && dist <= 330 && dist >= 270) {
+                _activeApproach.stage = 300;
+                _speakRadarConcise(radar, 300);
+                return;
+            }
+
             // Etapa 150 metros (Repetición concisa de voz)
             if (_activeApproach.stage === 300 && dist <= 165 && dist >= 130) {
                 _activeApproach.stage = 150;
@@ -3427,18 +3463,18 @@ const CopilotModule = (() => {
             return;
         }
 
-        // --- 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA ÚTIL (350m a 50m) ---
+        // --- 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA DINÁMICA (radioAlerta a 50m) ---
         let bestRadar = null;
         let bestRadarDist = Infinity;
 
         for (const radar of STATIC_RADARS) {
-            const dist = _getDistance(currentLat, currentLng, radar.lat, radar.lng);
-            if (dist <= 400) {
+            const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
+            if (dist <= (radioAlerta + 50)) {
                 const lastAlert = _lastAlertTime[radar.id] || 0;
                 if (now - lastAlert > COOLDOWN_MS) {
                     const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
-                    // d) Alertar únicamente cuando el auto se acerque dentro de la ventana útil (entre 350m y 50m antes del radar)
-                    if (cr.aligned && cr.alongTrack >= 50 && cr.alongTrack <= 350) {
+                    // Alertar únicamente dentro del cono frontal y dentro del rango dinámico
+                    if (cr.aligned && cr.alongTrack >= 50 && cr.alongTrack <= radioAlerta) {
                         if (dist < bestRadarDist) {
                             bestRadarDist = dist;
                             bestRadar = radar;
@@ -3452,7 +3488,7 @@ const CopilotModule = (() => {
             _activeApproach = {
                 radarId: bestRadar.id,
                 target: bestRadar,
-                stage: 300,
+                stage: radioAlerta,
                 minDistance: bestRadarDist,
                 lastDistance: bestRadarDist,
                 maxSpeed: currentSpeed || 0,
@@ -3461,8 +3497,8 @@ const CopilotModule = (() => {
 
             _showRadarHUD(bestRadar, bestRadarDist, currentSpeed);
             _triggerVibration(false);
-            // Locución obligatoria y prioritaria a 300m:
-            _speakRadarConcise(bestRadar, 300);
+            // Locución obligatoria y prioritaria según radioAlerta (500m o 300m):
+            _speakRadarConcise(bestRadar, radioAlerta);
             return;
         }
 
@@ -3470,7 +3506,7 @@ const CopilotModule = (() => {
         let nearestTraffic = null;
         let minTrafficDist = Infinity;
         for (const tr of _liveTrafficAlerts) {
-            const dist = _getDistance(currentLat, currentLng, tr.lat, tr.lng);
+            const dist = getDistanceInMeters(currentLat, currentLng, tr.lat, tr.lng);
             if (dist < minTrafficDist) {
                 minTrafficDist = dist;
                 nearestTraffic = tr;
@@ -3483,19 +3519,19 @@ const CopilotModule = (() => {
                 _warnedTrafficApproaches.delete(nearestTraffic.id);
             }
 
-            if (minTrafficDist <= TRAFFIC_WARNING_METERS) {
+            if (minTrafficDist <= radioAlerta) {
                 // 1. Si está detenido o a paso de hombre (< 7 km/h) y muy cerca (< 70m), NO disparar voz en bucle
-                const isStationaryAtAlert = ((currentSpeed === null || currentSpeed < 7) && minTrafficDist < 70);
+                const isStationaryAtAlert = (speedKmh < 7 && minTrafficDist < 70);
 
                 // 2. Si el conductor actual es el creador de la alerta, silenciarla
                 const driverFirst = _getDriverFirstName();
                 const isOwnAlert = nearestTraffic.authorName && driverFirst &&
                     nearestTraffic.authorName.trim().toLowerCase() === driverFirst.trim().toLowerCase();
 
-                // 3. Ya advertido en esta aproximación o en cooldown de 30 min
+                // 3. Ya advertido en esta aproximación o en cooldown estricto de 15 min
                 const alreadyWarned = _warnedTrafficApproaches.has(nearestTraffic.id);
                 const lastAlert = _lastAlertTime[nearestTraffic.id] || 0;
-                const inCooldown = (now - lastAlert < 30 * 60 * 1000); // 30 min cooldown
+                const inCooldown = (now - lastAlert < COOLDOWN_MS); // 15 min cooldown
 
                 if (!isStationaryAtAlert && !isOwnAlert && !alreadyWarned && !inCooldown) {
                     _warnedTrafficApproaches.add(nearestTraffic.id);
@@ -3504,7 +3540,7 @@ const CopilotModule = (() => {
                     _playWarningChime(false);
                     _speakWarning(nearestTraffic, minTrafficDist, currentSpeed);
                     _triggerVibration(false);
-                } else if (!isOwnAlert) {
+                } else if (!isOwnAlert && !alreadyWarned) {
                     // Actualizar el HUD visual sin repetir la locución de voz
                     _showRadarHUD(nearestTraffic, minTrafficDist, currentSpeed);
                 }
@@ -3666,6 +3702,8 @@ const CopilotModule = (() => {
         getAllRadars,
         getLiveTrafficAlerts,
         getRadarById,
+        getLastPosition: () => _lastPosition,
+        getDistanceInMeters: getDistanceInMeters,
         dismissHUD,
         testAlert
     };

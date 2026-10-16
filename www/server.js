@@ -2850,12 +2850,20 @@ app.post('/api/alerts/dynamic', async (req, res) => {
         const alertId = `alert_dynamic_${Date.now()}`;
         const finalFleetId = fleetId || await WhatsappBot.getFleetId() || 'default_fleet';
 
+        let safeLat = Number(finalLat);
+        let safeLng = Number(finalLng);
+        if (typeof safeLat !== 'number' || isNaN(safeLat) || typeof safeLng !== 'number' || isNaN(safeLng)) {
+            safeLat = -32.9468;
+            safeLng = -60.6393;
+            console.warn(`⚠️ [DYNAMIC-ALERT] Coordenadas inválidas recibidas, aplicando fallback de Rosario (-32.9468, -60.6393)`);
+        }
+
         const alertData = {
             id: alertId,
             type: assignedType,
             location: (aiClassification && aiClassification.ubicacion) ? aiClassification.ubicacion : alertText,
-            lat: Number(finalLat),
-            lng: Number(finalLng),
+            lat: safeLat,
+            lng: safeLng,
             timestamp: Date.now(),
             expiresAt: Date.now() + (vigenciaMinutos * 60 * 1000),
             authorName: authorName,
@@ -2868,6 +2876,11 @@ app.post('/api/alerts/dynamic', async (req, res) => {
             vigenciaMinutos: vigenciaMinutos,
             isLifting: Boolean(aiClassification && aiClassification.esLevantado)
         };
+
+        // Sanitización estricta previa a Firebase
+        Object.keys(alertData).forEach(k => {
+            if (alertData[k] === undefined) delete alertData[k];
+        });
 
         // Guardar en fleets/${fleetId}/traffic_alerts/ y en global_traffic_alerts/
         await db.ref(`fleets/${finalFleetId}/traffic_alerts/${alertId}`).set(alertData);

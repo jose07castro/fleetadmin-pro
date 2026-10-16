@@ -87,11 +87,29 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static final float MIN_DISTANCE_M = 0f;
 
     // Proximity Config (Radarbot)
-    private static final int PROXIMITY_RADIUS_M = 600;  // Avisar a 600 metros de operativos dinámicos
-    private static final long COOLDOWN_MS = 4 * 60 * 1000; // 4 min entre avisos del mismo punto dinámico
-    private static final int RADAR_PROXIMITY_RADIUS_M = 315; // 300 metros para fotomultas fijas (conciso)
-    private static final long RADAR_COOLDOWN_MS = 3 * 60 * 1000; // 3 min entre avisos de la misma cámara
+    private static final int PROXIMITY_RADIUS_M = 500;  // Radio dinámico base (300m / 500m)
+    private static final long COOLDOWN_MS = 15 * 60 * 1000L; // 15 min entre avisos del mismo punto dinámico
+    private static final int RADAR_PROXIMITY_RADIUS_M = 300; // 300 metros para fotomultas fijas (conciso)
+    private static final long RADAR_COOLDOWN_MS = 15 * 60 * 1000L; // 15 min entre avisos de la misma cámara
     private final Map<String, Long> lastRadarAlertTimestamps = new HashMap<>();
+
+    /**
+     * Fórmula de Haversine con radio terrestre R = 6371e3 metros (6.371.000m).
+     * Prohíbe comparaciones directas de grados decimales para radios de proximidad.
+     */
+    public static double getDistanceInMeters(double lat1, double lon1, double lat2, double lon2) {
+        final double R = 6371e3;
+        double phi1 = Math.toRadians(lat1);
+        double phi2 = Math.toRadians(lat2);
+        double deltaPhi = Math.toRadians(lat2 - lat1);
+        double deltaLambda = Math.toRadians(lon2 - lon1);
+
+        double a = Math.sin(deltaPhi / 2.0) * Math.sin(deltaPhi / 2.0) +
+                   Math.cos(phi1) * Math.cos(phi2) *
+                   Math.sin(deltaLambda / 2.0) * Math.sin(deltaLambda / 2.0);
+        double c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+        return R * c;
+    }
 
     private static class BgRadarApproach {
         String radarId;
@@ -101,10 +119,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         float lastDistance;
         long startedAt;
 
-        BgRadarApproach(RosarioRadars.StaticRadar radar, float initialDist, long startedAt) {
+        BgRadarApproach(RosarioRadars.StaticRadar radar, float initialDist, int initialStage, long startedAt) {
             this.radarId = radar.id;
             this.radar = radar;
-            this.stage = 300;
+            this.stage = initialStage;
             this.minDistance = initialDist;
             this.lastDistance = initialDist;
             this.startedAt = startedAt;
@@ -166,6 +184,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private float lastSpeed = 0;
     private float lastBearing = 0;
     private long lastGPSTimestamp = 0;
+    private Location lastKnownLocation = null;
 
     // Estabilizador del velocímetro
     private float smoothedSpeedKmh = 0f;
@@ -510,6 +529,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void processNewLocation(Location location) {
+        lastKnownLocation = location;
         lastLat = location.getLatitude();
         lastLng = location.getLongitude();
 
@@ -766,17 +786,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             return;
         }
 
+        // VALIDACIÓN DE PRECISIÓN GPS:
+        // Si el GPS reporta una imprecisión mayor a 50 metros, descartar chequeo de proximidad
+        // para evitar falsos positivos con ubicaciones estimadas por antenas celulares o Wi-Fi
+        if (myLocation.hasAccuracy() && myLocation.getAccuracy() > 50.0f) {
+            Log.w(TAG, "📡 [RADAR NATIVO] Precisión GPS insuficiente (" + myLocation.getAccuracy() + "m > 50m). Proximidad descartada.");
+            return;
+        }
+
         try {
             long now = System.currentTimeMillis();
             Float reliableBearing = (lastBearing >= 0) ? lastBearing : getReliableBearing(myLocation);
 
+            // Umbral dinámico de proximidad según velocidad:
+            // Si velocidadKmH > 60: radioAlerta = 500m. Si velocidadKmH <= 60 (o reposo/no disponible): radioAlerta = 300m.
+            float speedKmh = myLocation.hasSpeed() ? (myLocation.getSpeed() * 3.6f) : (lastSpeed > 0 ? lastSpeed : 0f);
+            int radioAlerta = (speedKmh > 60.0f) ? 500 : 300;
+
             // 1. SEGUIMIENTO DE APROXIMACIÓN A RADAR ACTIVO EN SEGUNDO PLANO
             if (activeBgApproach != null) {
                 RosarioRadars.StaticRadar radar = activeBgApproach.radar;
-                float[] results = new float[1];
-                Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                       radar.lat, radar.lng, results);
-                float distance = results[0];
+                float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                                           radar.lat, radar.lng);
                 CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
 
                 // A) Cámara superada (<= 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras haber estado < 35m)
@@ -805,6 +836,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 activeBgApproach.lastDistance = distance;
 
                 // C) Etapas de aproximación
+                if (activeBgApproach.stage == 500 && distance <= 330.0f && distance >= 270.0f) {
+                    activeBgApproach.stage = 300;
+                    speakRadarConcise(radar, 300);
+                    return;
+                }
                 if (activeBgApproach.stage == 300 && distance <= 165.0f && distance >= 130.0f) {
                     activeBgApproach.stage = 150;
                     speakRadarConcise(radar, 150);
@@ -833,22 +869,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 return;
             }
 
-            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA ÚTIL (350m a 50m)
+            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA DINÁMICA (radioAlerta a 50m)
             RosarioRadars.StaticRadar bestRadar = null;
             float bestRadarDistance = Float.MAX_VALUE;
 
             for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
-                float[] results = new float[1];
-                Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                       radar.lat, radar.lng, results);
-                float distance = results[0];
+                float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                                           radar.lat, radar.lng);
 
-                if (distance <= 400.0f) {
+                if (distance <= (radioAlerta + 50.0f)) {
                     long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
                     if (now - lastTime > RADAR_COOLDOWN_MS) {
                         CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
-                        // d) Alertar únicamente cuando el auto se acerque dentro de la ventana útil (entre 350m y 50m antes del radar)
-                        if (cr.aligned && cr.alongTrack >= 50.0 && cr.alongTrack <= 350.0) {
+                        // Alertar únicamente dentro del corredor útil frontal (entre radioAlerta y 50m)
+                        if (cr.aligned && cr.alongTrack >= 50.0 && cr.alongTrack <= (double)radioAlerta) {
                             if (distance < bestRadarDistance) {
                                 bestRadarDistance = distance;
                                 bestRadar = radar;
@@ -859,8 +893,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
 
             if (bestRadar != null) {
-                activeBgApproach = new BgRadarApproach(bestRadar, bestRadarDistance, now);
-                speakRadarConcise(bestRadar, 300);
+                activeBgApproach = new BgRadarApproach(bestRadar, bestRadarDistance, radioAlerta, now);
+                speakRadarConcise(bestRadar, radioAlerta);
                 return;
             }
 
@@ -874,23 +908,21 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                             continue;
                         }
 
-                        float[] results = new float[1];
-                        Location.distanceBetween(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                               alert.lat, alert.lng, results);
-                        float distance = results[0];
+                        float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
+                                                                   alert.lat, alert.lng);
 
-                        if (distance <= PROXIMITY_RADIUS_M) {
+                        if (distance <= radioAlerta) {
                             // Si el chofer está detenido (< 7 km/h) y muy cerca (< 70m), evitar locución en bucle
-                            if (myLocation.getSpeed() * 3.6f < 7 && distance < 70) {
+                            if (speedKmh < 7.0f && distance < 70.0f) {
                                 continue;
                             }
 
                             long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
-                            if (now - lastTime > 30 * 60 * 1000L) {
+                            if (now - lastTime > COOLDOWN_MS) {
                                 lastAlertTimestamps.put(alert.id, now);
                                 speakProximityWarning(alert, distance);
                             }
-                        } else if (distance > 1000) {
+                        } else if (distance > 1000.0f) {
                             // Si se aleja a más de 1 km, resetear para permitir nueva advertencia si vuelve a aproximarse
                             lastAlertTimestamps.remove(alert.id);
                         }
@@ -920,11 +952,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         String first = getDriverFirstName();
         String prefix = !first.isEmpty() ? first + ", " : "";
 
+        int distRound = Math.round(distance / 50.0f) * 50;
+        if (distRound <= 50) distRound = 50;
+        String distPhrase = (distRound <= 70) ? "en el lugar" : "a " + distRound + " metros";
+
         String message;
         if (!loc.isEmpty() && !loc.toLowerCase().contains("desconocida")) {
-            message = String.format(Locale.getDefault(), "%sAtención, %s a quinientos metros en %s.", prefix, typeLabel, loc);
+            message = String.format(Locale.getDefault(), "%sAtención, %s %s en %s.", prefix, typeLabel, distPhrase, loc);
         } else {
-            message = String.format(Locale.getDefault(), "%sAtención, %s a quinientos metros.", prefix, typeLabel);
+            message = String.format(Locale.getDefault(), "%sAtención, %s %s.", prefix, typeLabel, distPhrase);
         }
         Log.i(TAG, "🚨 [PROXIMITY-ALERT] Advertencia dinámica: " + message);
         postUrgentAlertNotification("🚨 " + typeLabel.toUpperCase(), message);
@@ -1046,12 +1082,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     freshAlertsMap.put(id, alert);
                     loadedCount++;
 
-                    // Alerta reciente: solo alertar si se generó después de que el servicio inició o dentro de los últimos 3 minutos
+                    // Alerta reciente: solo alertar si el vehículo está REALMENTE cerca (Geofence estricto)
                     long diff = alert.timestamp > 0 ? Math.abs(now - alert.timestamp) : 0;
                     boolean isNewOrRecent = alert.timestamp > 0 && (alert.timestamp >= serviceStartTime - 10000) && (diff < 180000);
                     if (isNewOrRecent && !isAlertSpoken(id)) {
                         markAlertSpoken(id);
-                        speakImmediateAlert(alert);
+                        boolean isGpsFresh = (now - lastGPSTimestamp) < 20000;
+                        boolean isGpsAccurate = (lastKnownLocation == null || !lastKnownLocation.hasAccuracy() || lastKnownLocation.getAccuracy() <= 50.0f);
+                        if (isGpsFresh && isGpsAccurate && lastLat != 0.0 && lastLng != 0.0) {
+                            double dist = getDistanceInMeters(lastLat, lastLng, lat, lng);
+                            int radio = (lastSpeed > 60.0f) ? 500 : 300;
+                            if (dist <= radio) {
+                                long lastTime = lastAlertTimestamps.getOrDefault(id, 0L);
+                                if (now - lastTime > COOLDOWN_MS) {
+                                    lastAlertTimestamps.put(id, now);
+                                    speakProximityWarning(alert, (float)dist);
+                                }
+                            } else {
+                                Log.i(TAG, "📍 [GEOFENCE NATIVO] Alerta remota descartada (" + Math.round(dist) + "m > radio " + radio + "m): " + location);
+                            }
+                        } else {
+                            Log.i(TAG, "📍 [GEOFENCE NATIVO] Alerta encolada para evaluación por loop GPS: " + location);
+                        }
                     } else if (!isAlertSpoken(id)) {
                         // Alerta antigua o histórica: marcarla para que nunca se reproduzca en bucle
                         markAlertSpoken(id);

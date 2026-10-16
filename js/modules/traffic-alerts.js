@@ -318,6 +318,30 @@
     }
 
     /**
+     * Calcula la distancia geodésica en metros entre dos coordenadas (Fórmula de Haversine con R=6371e3 m).
+     * Prohíbe comparaciones directas de grados decimales para radios de proximidad.
+     */
+    function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+        if (typeof window !== 'undefined' && typeof window.getDistanceInMeters === 'function') {
+            return window.getDistanceInMeters(lat1, lon1, lat2, lon2);
+        }
+        if (lat1 === null || lon1 === null || lat2 === null || lon2 === null ||
+            isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+            return Infinity;
+        }
+        const R = 6371e3;
+        const toRad = Math.PI / 180;
+        const dLat = (lat2 - lat1) * toRad;
+        const dLon = (lon2 - lon1) * toRad;
+        const phi1 = lat1 * toRad;
+        const phi2 = lat2 * toRad;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(phi1) * Math.cos(phi2) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    /**
      * Inicia la escucha de alertas de tráfico para anuncios globales por voz.
      * Escucha el nodo GLOBAL — funciona para TODOS los celulares con la app,
      * independientemente de si el usuario está logueado o a qué flota pertenece.
@@ -358,55 +382,95 @@
             const alert = snap.val();
             if (!alert || alert.status !== 'active') return;
 
+            const alertId = alert.id || snap.key;
             const locDesc = alert.location || alert.description || alert.originalText || '';
 
-            // FILTRO 0: DESDUPLICACIÓN ESTRICTA (Máximo 2 reproducciones por mensaje/lugar)
-            if (alertId && _isAlertAlreadySpoken(alertId, locDesc)) {
-                console.log(`🔇 [VOZ-GLOBAL] Alerta ya reproducida (${alertId} / "${locDesc}"). Omitiendo repetición.`);
-                return;
-            }
+            // Notificar a los callbacks registrados de UI (mapas, listas de alerta)
+            _newAlertCallbacks.forEach(cb => {
+                try { cb(alert); } catch(e) { console.error('Error en callback de nueva alerta:', e); }
+            });
 
             // FILTRO DE AUTOR: Si el conductor actual es quien envió la alerta, no auto-repetírsela
             try {
                 const currentUser = (typeof Auth !== 'undefined') ? Auth.getUser() : null;
                 if (currentUser && alert.authorName && currentUser.name) {
                     if (alert.authorName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) {
-                        console.log(`🔇 [VOZ-GLOBAL] Alerta propia creada por el usuario (${alert.authorName}). Marcando y omitiendo.`);
+                        console.log(`🔇 [VOZ-GLOBAL] Alerta propia creada por el usuario (${alert.authorName}). Omitiendo.`);
                         if (alertId) _markAlertAsSpoken(alertId, locDesc);
                         return;
                     }
                 }
             } catch (e) {}
 
-            // FILTRO 1: Evitar recitar el historial acumulado. Solo cantar cosas NUEVAS
-            // que hayan aparecido DESPUÉS de que el conductor abrió esta pestaña/app.
+            // FILTRO 1: Evitar recitar el historial acumulado. Solo evaluar alertas muy recientes
             const timeDiff = alert.timestamp ? Math.abs(Date.now() - alert.timestamp) : 0;
             const isVeryRecent = alert.timestamp && (timeDiff < 180000 || alert.timestamp >= _appStartTime - 10000);
             if (alert.timestamp && alert.timestamp < _appStartTime && !isVeryRecent) {
-                console.log('📡 [VOZ-GLOBAL] Alerta histórica ignorada (antigua al arranque). ts:', alert.timestamp, 'start:', _appStartTime);
                 if (alertId) _markAlertAsSpoken(alertId, locDesc);
                 return; 
             }
 
             // FILTRO 2: Si por algún desfase horario la alerta ya expiró, silenciarla.
             if (alert.expiresAt && alert.expiresAt < Date.now()) {
-                console.log('📡 [VOZ-GLOBAL] Alerta expirada, silenciada.');
                 if (alertId) _markAlertAsSpoken(alertId, locDesc);
                 return;
             }
 
-            // Marcar inmediatamente para contar la reproducción
+            // FILTRO 3: FILTRO DE PROXIMIDAD ESTRICTO (GEOFENCE)
+            // Si el evento proviene del listener global de Firebase ('child_added'),
+            // NO disparar audio inmediatamente si el vehículo está lejos (> radioAlerta)
+            // o si no se cuenta con un fix GPS preciso (accuracy <= 50m).
+            const curPos = (typeof CopilotModule !== 'undefined' && typeof CopilotModule.getLastPosition === 'function')
+                ? CopilotModule.getLastPosition()
+                : (typeof window !== 'undefined' ? window._cachedGpsPosition : null);
+
+            const isGpsFresh = curPos && curPos.lat && curPos.lng && (Date.now() - (curPos.time || 0) < 20000);
+            const isGpsAccurate = curPos && (curPos.accuracy === null || curPos.accuracy === undefined || isNaN(curPos.accuracy) || curPos.accuracy <= 50);
+
+            if (!isGpsFresh || !isGpsAccurate) {
+                console.log(`📍 [VOZ-GLOBAL] Audio diferido: Sin fix GPS preciso/reciente para verificar distancia a "${locDesc}". Se evaluará en el loop GPS.`);
+                return;
+            }
+
+            const alertLat = parseFloat(alert.lat);
+            const alertLng = parseFloat(alert.lng);
+            if (isNaN(alertLat) || isNaN(alertLng)) {
+                console.log(`📍 [VOZ-GLOBAL] Alerta sin coordenadas GPS válidas ("${locDesc}"). Audio silenciado por seguridad.`);
+                return;
+            }
+
+            const dist = getDistanceInMeters(curPos.lat, curPos.lng, alertLat, alertLng);
+            const speedKmh = (curPos.speed && curPos.speed > 0) ? (curPos.speed * 3.6) : 0;
+            const radioAlerta = (speedKmh > 60) ? 500 : 300;
+
+            if (dist > radioAlerta) {
+                console.log(`📍 [VOZ-GLOBAL] Alerta remota bloqueada (${Math.round(dist)}m > radioAlerta ${radioAlerta}m). Lugar: ${locDesc}`);
+                return;
+            }
+
+            // Si está detenido o a paso de hombre (< 7 km/h) y muy cerca (< 70m), evitar repetición en bucle
+            if (speedKmh < 7 && dist < 70) {
+                console.log(`📍 [VOZ-GLOBAL] Vehículo detenido o a paso de hombre en el lugar (${Math.round(dist)}m). Silenciado.`);
+                return;
+            }
+
+            // FILTRO 4: COOLDOWN Y DESDUPLICACIÓN (15 minutos)
+            if (alertId && _isAlertAlreadySpoken(alertId, locDesc)) {
+                console.log(`🔇 [VOZ-GLOBAL] Alerta ya reproducida en cooldown (${alertId} / "${locDesc}"). Omitiendo.`);
+                return;
+            }
+
             if (alertId) {
                 _markAlertAsSpoken(alertId, locDesc);
             }
 
-            // FILTRO DE SILENCIO: Si el usuario silenció las alertas (radarVoice=off), no reproducir voz ni audio
+            // FILTRO DE SILENCIO: Si el usuario silenció las alertas (radarVoice=off)
             if (localStorage.getItem('radarVoice') === 'off') {
                 console.log('🔇 [VOZ-GLOBAL] Alerta recibida pero silenciada por el usuario (radarVoice=off).');
                 return;
             }
 
-            console.log('🔊 [GLOBAL VOICE] Nueva alerta en vivo:', alert.type, alert.location, alert.audioUrl ? '(audio original)' : '(voz sintetizada)');
+            console.log(`🔊 [GLOBAL VOICE] Alerta confirmada dentro de rango (${Math.round(dist)}m <= ${radioAlerta}m):`, alert.type, alert.location);
 
             // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {

@@ -870,6 +870,14 @@ const GPSPermissions = (() => {
     function _onCopilotPosition(pos) {
         if (!pos || !pos.coords) return;
         _lastCopilotFixTime = Date.now();
+        window._cachedGpsPosition = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            speed: pos.coords.speed,
+            heading: pos.coords.heading,
+            accuracy: pos.coords.accuracy,
+            time: _lastCopilotFixTime
+        };
         if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function') {
             CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading, pos.coords.accuracy);
         }

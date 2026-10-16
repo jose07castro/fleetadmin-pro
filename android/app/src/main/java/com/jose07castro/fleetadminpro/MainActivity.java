@@ -102,10 +102,31 @@ public class MainActivity extends BridgeActivity {
     private static final int MY_REQUEST_CODE = 9001;
     private AppUpdateManager appUpdateManager = null;
     private boolean isUpdateFlowActive = false;
+    private boolean updateCheckedOrDismissed = false;
+
+    private boolean isInstalledFromPlayStore() {
+        try {
+            String installer = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.content.pm.InstallSourceInfo info = getPackageManager().getInstallSourceInfo(getPackageName());
+                installer = info.getInstallingPackageName();
+            } else {
+                installer = getPackageManager().getInstallerPackageName(getPackageName());
+            }
+            return "com.android.vending".equals(installer);
+        } catch (Exception e) {
+            Log.w(TAG, "No se pudo verificar instalador de origen: " + e.getMessage());
+            return false;
+        }
+    }
 
     private void checkPlayStoreUpdate() {
-        if (isUpdateFlowActive) return;
+        if (isUpdateFlowActive || updateCheckedOrDismissed) return;
         try {
+            if (!isInstalledFromPlayStore()) {
+                Log.i(TAG, "📦 App instalada por fuera de Google Play (APK directo o sideload). Omitiendo In-App Update.");
+                return;
+            }
             if (appUpdateManager == null) {
                 appUpdateManager = AppUpdateManagerFactory.create(this);
             }
@@ -124,16 +145,43 @@ public class MainActivity extends BridgeActivity {
                         );
                     } catch (Exception e) {
                         isUpdateFlowActive = false;
+                        updateCheckedOrDismissed = true;
                         Log.e(TAG, "Error starting immediate update flow: " + e.getMessage());
                     }
                 }
             }).addOnFailureListener(e -> {
                 isUpdateFlowActive = false;
+                updateCheckedOrDismissed = true;
                 Log.w(TAG, "Error getting update info from Google Play: " + e.getMessage());
             });
         } catch (Exception e) {
             isUpdateFlowActive = false;
+            updateCheckedOrDismissed = true;
             Log.e(TAG, "Error checking play store update: " + e.getMessage());
+        }
+    }
+
+    private void resumeUpdateIfInProgress() {
+        if (appUpdateManager == null) return;
+        try {
+            appUpdateManager.getAppUpdateInfo().addOnSuccessListener(appUpdateInfo -> {
+                if (appUpdateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) {
+                    try {
+                        isUpdateFlowActive = true;
+                        appUpdateManager.startUpdateFlowForResult(
+                            appUpdateInfo,
+                            AppUpdateType.IMMEDIATE,
+                            this,
+                            MY_REQUEST_CODE
+                        );
+                    } catch (Exception e) {
+                        isUpdateFlowActive = false;
+                        Log.e(TAG, "Error resuming in-progress update: " + e.getMessage());
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Error comprobando actualización en progreso: " + e.getMessage());
         }
     }
 
@@ -183,9 +231,8 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "⚠️ Error en auto-recovery de servicio en onResume: " + e.getMessage());
         }
 
-        if (!isUpdateFlowActive) {
-            checkPlayStoreUpdate();
-        }
+        // Solo reanudar SI YA HABÍA una actualización en progreso (evita bucle infinito si se cancela o falla)
+        resumeUpdateIfInProgress();
     }
 
     @Override
@@ -242,8 +289,9 @@ public class MainActivity extends BridgeActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == MY_REQUEST_CODE) {
             isUpdateFlowActive = false;
+            updateCheckedOrDismissed = true;
             if (resultCode != RESULT_OK) {
-                Log.w(TAG, "In-app update failed or cancelled by user. Result code: " + resultCode + ". Permitiendo continuar a la app.");
+                Log.w(TAG, "In-app update falló o fue cancelado por el usuario/tienda (code: " + resultCode + "). Permitiendo continuar a la app.");
             } else {
                 Log.i(TAG, "In-app update flow completed successfully.");
             }

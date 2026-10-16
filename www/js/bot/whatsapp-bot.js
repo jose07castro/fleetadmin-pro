@@ -4615,19 +4615,24 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 // Sin dirección: usar ubicación neutra
                 console.log(`⚠️ [GEO] Sin dirección exacta. Usando centro de ${city}`);
             } else {
-                expandedAddress = _expandStreetNames(address);
+                // 1. Limpieza de coletillas descriptivas ("entrada a...", "cerca de...", "frente a...")
+                const rawAddress = address || expandedAddress || '';
+                const cleanAddr = (rosarioGeoAtlas && typeof rosarioGeoAtlas.cleanAddressForGeocoding === 'function')
+                    ? rosarioGeoAtlas.cleanAddressForGeocoding(rawAddress, city)
+                    : rawAddress;
+                expandedAddress = _expandStreetNames(cleanAddr);
                 let isResolved = false;
 
                 // --- NIVEL 0: ROSARIO GEO ATLAS ("entre A y B", Intersecciones y Anti-Centroide) ---
                 if (rosarioGeoAtlas && typeof rosarioGeoAtlas.geocodeRosarioLocation === 'function') {
                     try {
-                        const atlasRes = rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
-                        if (atlasRes && !atlasRes.isFallbackCentroid) {
+                        const atlasRes = await rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
+                        if (atlasRes && typeof atlasRes.lat === 'number' && !isNaN(atlasRes.lat) && typeof atlasRes.lng === 'number' && !isNaN(atlasRes.lng) && !atlasRes.isFallbackCentroid) {
                             lat = atlasRes.lat;
                             lng = atlasRes.lng;
                             approximate = Boolean(atlasRes.approximate);
                             isResolved = true;
-                            if (atlasRes.address) expandedAddress = atlasRes.address;
+                            if (atlasRes.formattedAddress || atlasRes.address) expandedAddress = atlasRes.formattedAddress || atlasRes.address;
                             console.log(`📍 [GEO-ATLAS] ✅ ${atlasRes.type || 'Resuelto'}: "${expandedAddress}" -> Lat=${lat}, Lng=${lng} (aprox=${approximate})`);
                         }
                     } catch (atlasErr) {
@@ -4718,8 +4723,8 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
                 // --- NIVEL 3: BLINDAJE ANTI-CENTROIDE DE ROSARIO ---
                 if (!isResolved && rosarioGeoAtlas && typeof rosarioGeoAtlas.geocodeRosarioLocation === 'function') {
                     try {
-                        const fallbackAtlas = rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
-                        if (fallbackAtlas && !fallbackAtlas.isFallbackCentroid) {
+                        const fallbackAtlas = await rosarioGeoAtlas.geocodeRosarioLocation(expandedAddress, city);
+                        if (fallbackAtlas && typeof fallbackAtlas.lat === 'number' && !isNaN(fallbackAtlas.lat) && typeof fallbackAtlas.lng === 'number' && !isNaN(fallbackAtlas.lng) && !fallbackAtlas.isFallbackCentroid) {
                             lat = fallbackAtlas.lat;
                             lng = fallbackAtlas.lng;
                             approximate = true;
@@ -4731,6 +4736,18 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             }
         } catch (err) {
             console.error(`⚠️ [GEO] Error (${err.message}), guardando con ubicación aproximada`);
+        }
+
+        // FALLBACK ESTRICTO DE CENTROIDE ANTES DE CONSTRUIR EL OBJETO PARA FIREBASE:
+        // Si GEO-ATLAS falló o devolvió undefined, aplicar inmediatamente el centroide de la localidad solicitada
+        if (typeof lat !== 'number' || isNaN(lat) || typeof lng !== 'number' || isNaN(lng)) {
+            const fallbackCentroid = (rosarioGeoAtlas && typeof rosarioGeoAtlas.getCityCentroid === 'function')
+                ? rosarioGeoAtlas.getCityCentroid(city)
+                : (CITY_COORDINATES[city] || CITY_COORDINATES['Rosario'] || { lat: -32.9468, lng: -60.6393 });
+            lat = fallbackCentroid.lat;
+            lng = fallbackCentroid.lng;
+            approximate = true;
+            console.warn(`⚠️ [GEO-FALLBACK] Aplicando centroide de seguridad de ${city} (${lat}, ${lng})`);
         }
 
         // Guardar dirección exitosa en el contexto del grupo
@@ -4751,7 +4768,7 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
             timestamp: Date.now(),
             expiresAt: Date.now() + ((Number(vigenciaMinutos) || 60) * 60 * 1000),
             authorName: sourceGroup,
-            originalText: originalText,
+            originalText: originalText || '',
             description: description || (originalText ? originalText.substring(0, 60) : ''),
             confirmations: 1,
             status: 'active',
@@ -4761,6 +4778,18 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         };
         if (audioUrl) {
             alertData.audioUrl = audioUrl;
+        }
+
+        // SANITIZACIÓN ESTRICTA PREVIA A FIREBASE:
+        // 1. Eliminar cualquier propiedad undefined
+        Object.keys(alertData).forEach(k => {
+            if (alertData[k] === undefined) delete alertData[k];
+        });
+
+        // 2. Validar obligatoriedad numérica de lat y lng
+        if (typeof alertData.lat !== 'number' || isNaN(alertData.lat) || typeof alertData.lng !== 'number' || isNaN(alertData.lng)) {
+            console.error(`🚨 [DB-SECURITY] ABORTANDO guardado en Firebase de alerta ${alertId}: Coordenadas inválidas (lat=${alertData.lat}, lng=${alertData.lng})`);
+            return;
         }
 
         console.log(`💾 [DB] Guardando alerta en nodo GLOBAL y en todas las flotas...`);
