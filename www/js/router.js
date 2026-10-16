@@ -97,6 +97,11 @@ const Router = (() => {
                 CommunityModule.cleanup();
             }
         }
+        if (currentRoute === 'gps' && route !== 'gps') {
+            if (typeof GPSModule !== 'undefined' && typeof GPSModule.cleanup === 'function') {
+                GPSModule.cleanup();
+            }
+        }
 
         currentRoute = route;
 

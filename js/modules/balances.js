@@ -10,6 +10,21 @@ const BalancesModule = (() => {
     let _currentTypeFilter = 'all';   // 'all', 'ingreso', 'egreso'
 
     async function render() {
+        if (typeof Auth !== 'undefined' && !Auth.isOwner()) {
+            return `
+                <div class="empty-state" style="padding: 40px 20px; text-align: center; max-width: 480px; margin: 40px auto; background: var(--bg-secondary); border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow-md);">
+                    <div style="font-size: 3rem; margin-bottom: 12px;">🔒</div>
+                    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; color: var(--text-primary);">Acceso Exclusivo Titular</h3>
+                    <p style="color: var(--text-secondary); margin: 0 auto 20px; font-size: 0.95rem; line-height: 1.5;">
+                        El módulo de Balances y Finanzas es información reservada para el titular de la flota.
+                    </p>
+                    <button class="btn btn-primary" onclick="Router.navigate('shifts')" style="padding: 10px 24px; font-weight: 700;">
+                        Ir a mis Turnos
+                    </button>
+                </div>
+            `;
+        }
+
         try {
             const movements = await _getMovements();
             const pendingPayments = await _getPendingPayments();

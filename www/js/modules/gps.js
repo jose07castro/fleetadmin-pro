@@ -148,6 +148,10 @@ const GPSModule = (() => {
     let userMarker = null;
     let _ownPositionRef = null;
     let _hasReceivedFirebasePosition = false;
+    let _fleetDriversRef = null;
+    let _fleetUsersRef = null;
+    let _fleetDriverMarkers = {};
+    let _fleetDriverInfo = {};
 
     // JSON STYLES PARA GOOGLE MAPS API
     const GOOGLE_MAP_DARK_STYLE = [
@@ -295,6 +299,15 @@ const GPSModule = (() => {
         _cleanMap();
         setInterval(_cleanMap, 500);
 
+        // Limpiar escuchadores previos si existen
+        if (_ownPositionRef) { _ownPositionRef.off(); _ownPositionRef = null; }
+        if (_fleetDriversRef) { _fleetDriversRef.off(); _fleetDriversRef = null; }
+        if (_fleetUsersRef) { _fleetUsersRef.off(); _fleetUsersRef = null; }
+        for (const k in _fleetDriverMarkers) {
+            try { _fleetDriverMarkers[k].setMap(null); } catch (e) {}
+        }
+        _fleetDriverMarkers = {};
+
         // 1. Localizar al usuario
         _trackUserLocation();
 
@@ -303,7 +316,10 @@ const GPSModule = (() => {
             _listenToOwnPosition();
         }
 
-        // 2. Escuchar alertas de Firebase
+        // 2. Escuchar a los compañeros choferes de la misma flota en vivo
+        _listenToFleetDrivers();
+
+        // 3. Escuchar alertas de Firebase
         _listenToFirebaseAlerts();
     }
 
@@ -494,6 +510,209 @@ const GPSModule = (() => {
                 }
             }
         });
+    }
+
+    function _listenToFleetDrivers() {
+        if (typeof firebase === 'undefined') return;
+        const fleetId = typeof Auth !== 'undefined' ? Auth.getFleetId() : null;
+        if (!fleetId) {
+            console.warn('[GPS] fleetId no disponible para choferes de flota, reintentando en 1s...');
+            setTimeout(_listenToFleetDrivers, 1000);
+            return;
+        }
+
+        console.log(`[GPS] Cargando choferes de la flota: ${fleetId}`);
+        if (_fleetUsersRef) _fleetUsersRef.off();
+        _fleetUsersRef = firebase.database().ref(`fleets/${fleetId}/users`);
+        _fleetUsersRef.on('value', (snap) => {
+            const users = snap.val() || {};
+            _fleetDriverInfo = {};
+            for (const uid in users) {
+                const u = users[uid];
+                if (u && (u.role === 'driver' || u.role === 'conductor')) {
+                    _fleetDriverInfo[uid] = u;
+                    const normName = (u.name || '').trim().toLowerCase();
+                    if (normName) _fleetDriverInfo[normName] = u;
+                    if (u.globalId) _fleetDriverInfo[u.globalId] = u;
+                    if (u.id) _fleetDriverInfo[u.id] = u;
+                }
+            }
+        });
+
+        if (_fleetDriversRef) _fleetDriversRef.off();
+        _fleetDriversRef = firebase.database().ref('driver_positions');
+        _fleetDriversRef.on('value', (snap) => {
+            const positions = snap.val() || {};
+            _updateFleetDriverMarkers(positions, fleetId);
+        }, (err) => {
+            console.error('[GPS] Error escuchando driver_positions:', err);
+        });
+    }
+
+    function _updateFleetDriverMarkers(positions, fleetId) {
+        if (!map) return;
+        const MarkerClass = _getHTMLMapMarkerClass();
+        const myUserId = typeof Auth !== 'undefined' ? (Auth.getUserId() || '') : '';
+        const myName = typeof Auth !== 'undefined' ? (Auth.getUserName() || '').trim().toLowerCase() : '';
+        const now = Date.now();
+        const maxAgeMs = 6 * 60 * 60 * 1000; // 6 horas
+        const activeKeys = new Set();
+
+        for (const driverKey in positions) {
+            const data = positions[driverKey];
+            if (!data) continue;
+
+            const lat = parseFloat(data.lat);
+            const lng = parseFloat(data.lng);
+            if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
+
+            const driverName = (data.driverName || '').trim();
+            const normName = driverName.toLowerCase();
+
+            // 1. Omitir mi propio usuario (ya se muestra con userMarker en azul)
+            if (driverKey === myUserId || (myName && normName === myName)) {
+                continue;
+            }
+
+            // 2. Comprobar pertenencia a la misma flota
+            const matchesFleet = 
+                (data.fleetId && data.fleetId === fleetId) ||
+                _fleetDriverInfo[driverKey] ||
+                (normName && _fleetDriverInfo[normName]) ||
+                (data.userId && _fleetDriverInfo[data.userId]) ||
+                (data.globalId && _fleetDriverInfo[data.globalId]) ||
+                (data.driverId && _fleetDriverInfo[data.driverId]);
+
+            if (!matchesFleet) continue;
+
+            // 3. Filtrar logout voluntario o desconexión mayor a 6 horas
+            if (data.status === 'logout_voluntario') {
+                if (_fleetDriverMarkers[driverKey]) {
+                    _fleetDriverMarkers[driverKey].setMap(null);
+                    delete _fleetDriverMarkers[driverKey];
+                }
+                continue;
+            }
+
+            let updateTime = 0;
+            if (data.updated_at) updateTime = new Date(data.updated_at).getTime();
+            else if (data.last_heartbeat) updateTime = Number(data.last_heartbeat);
+            if (updateTime && (now - updateTime > maxAgeMs)) {
+                if (_fleetDriverMarkers[driverKey]) {
+                    _fleetDriverMarkers[driverKey].setMap(null);
+                    delete _fleetDriverMarkers[driverKey];
+                }
+                continue;
+            }
+
+            activeKeys.add(driverKey);
+
+            const latlng = new google.maps.LatLng(lat, lng);
+            const heading = data.heading || 0;
+            const speed = parseFloat(data.speed) || 0;
+            const speedText = speed > 3 ? `${Math.round(speed)} km/h` : 'Detenido';
+            const firstName = driverName ? driverName.split(' ')[0] : 'Chofer';
+            const hours = new Date().getHours();
+            const isNight = hours >= 19 || hours < 7;
+            const safeKey = driverKey.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16);
+
+            const html = `
+                <div style="position: relative; cursor: pointer;">
+                    <!-- Etiqueta Flotante con Nombre y Velocidad -->
+                    <div style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.92); border: 1.5px solid rgba(16, 185, 129, 0.8); border-radius: 12px; padding: 2px 7px; color: #ffffff; font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: none; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 20;">
+                        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981; box-shadow: 0 0 6px #10b981;"></span>
+                        <span>${firstName}</span>
+                        <span style="color:#6ee7b7; font-size:9px; font-weight:600;">${speedText}</span>
+                    </div>
+                    <!-- Vehículo Verde Esmeralda Rotativo -->
+                    <div style="transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s ease-out;">
+                        <svg viewBox="0 0 60 110" width="22" height="40" style="display:block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
+                            <defs>
+                                <linearGradient id="bodyGrad_fleet_${safeKey}" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#047857" />
+                                    <stop offset="25%" stop-color="#10b981" />
+                                    <stop offset="75%" stop-color="#10b981" />
+                                    <stop offset="100%" stop-color="#047857" />
+                                </linearGradient>
+                                <radialGradient id="headlightBeam_fleet_${safeKey}" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="rgba(255,255,255,0.4)" />
+                                    <stop offset="100%" stop-color="rgba(255,255,255,0)" />
+                                </radialGradient>
+                            </defs>
+                            
+                            ${isNight ? `
+                                <path d="M 15 15 L -10 -40 L 30 -40 Z" fill="url(#headlightBeam_fleet_${safeKey})" filter="blur(5px)" />
+                                <path d="M 45 15 L 70 -40 L 30 -40 Z" fill="url(#headlightBeam_fleet_${safeKey})" filter="blur(5px)" />
+                            ` : ''}
+
+                            <path d="M 12 10 Q 30 -5 48 10 L 52 90 Q 30 115 8 90 Z" fill="rgba(0,0,0,0.3)" filter="blur(2px)" />
+                            <path d="M 14 12 Q 30 -2 46 12 L 50 92 Q 30 110 10 92 Z" fill="url(#bodyGrad_fleet_${safeKey})" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+                            <path d="M 18 30 Q 30 20 42 30 L 44 70 Q 30 80 16 70 Z" fill="#020617" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                            
+                            <!-- Luces Delanteras y Traseras -->
+                            <path d="M 15 15 L 23 11 L 21 16 Z" fill="#fff" filter="drop-shadow(0 0 ${isNight ? '8px' : '3px'} #fff)" />
+                            <path d="M 45 15 L 37 11 L 39 16 Z" fill="#fff" filter="drop-shadow(0 0 ${isNight ? '8px' : '3px'} #fff)" />
+                            <path d="M 12 91 Q 30 96 48 91 L 46 89 Q 30 93 14 89 Z" fill="#ef4444" filter="drop-shadow(0 0 ${isNight ? '10px' : '4px'} #ef4444)" />
+                        </svg>
+                    </div>
+                </div>
+            `;
+
+            let timeAgo = 'Reciente';
+            if (updateTime) {
+                const diffSec = Math.floor((now - updateTime) / 1000);
+                if (diffSec < 60) timeAgo = `Hace ${diffSec}s`;
+                else if (diffSec < 3600) timeAgo = `Hace ${Math.floor(diffSec / 60)} min`;
+                else timeAgo = `Hace ${Math.floor(diffSec / 3600)} h`;
+            }
+
+            const popupHtml = `
+                <div style="padding: 10px 14px; font-family: system-ui, -apple-system, sans-serif; min-width: 190px; color: #1e293b;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <span style="font-size: 1.4rem;">🚗</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 14px; color: #0f172a;">${driverName || 'Compañero'}</div>
+                            <div style="font-size: 11px; color: #059669; font-weight: 700;">🤝 Chofer de tu flota</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; padding-top: 6px; border-top: 1px solid #e2e8f0;">
+                        <span style="color: #64748b;">Velocidad:</span>
+                        <span style="font-weight: 700; color: #0f172a;">${speed > 3 ? `${Math.round(speed)} km/h` : 'Detenido'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+                        <span style="color: #64748b;">Estado:</span>
+                        <span style="font-weight: 700; color: ${speed > 3 ? '#10b981' : '#f59e0b'};">${speed > 3 ? 'En viaje' : 'Detenido'}</span>
+                    </div>
+                    ${data.battery ? `
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+                        <span style="color: #64748b;">Batería:</span>
+                        <span style="font-weight: 700; color: #0f172a;">🔋 ${data.battery}%</span>
+                    </div>
+                    ` : ''}
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; color: #94a3b8; border-top: 1px dashed #f1f5f9; padding-top: 4px;">
+                        <span>Últ. señal:</span>
+                        <span>${timeAgo}</span>
+                    </div>
+                </div>
+            `;
+
+            if (!_fleetDriverMarkers[driverKey]) {
+                _fleetDriverMarkers[driverKey] = new MarkerClass(latlng, html, popupHtml, 11, 20);
+                _fleetDriverMarkers[driverKey].setMap(map);
+            } else {
+                _fleetDriverMarkers[driverKey].setPosition(latlng);
+                _fleetDriverMarkers[driverKey].setHtml(html);
+                _fleetDriverMarkers[driverKey].setPopupContent(popupHtml);
+            }
+        }
+
+        // 4. Remover marcadores de choferes que ya no están activos
+        for (const existingKey in _fleetDriverMarkers) {
+            if (!activeKeys.has(existingKey)) {
+                _fleetDriverMarkers[existingKey].setMap(null);
+                delete _fleetDriverMarkers[existingKey];
+            }
+        }
     }
 
     function _listenToFirebaseAlerts() {
@@ -867,6 +1086,16 @@ const GPSModule = (() => {
         });
     }
 
-    return { render, saveToken, simulateGPS, toggleMapStyle, playAudio };
+    function cleanup() {
+        if (_ownPositionRef) { _ownPositionRef.off(); _ownPositionRef = null; }
+        if (_fleetDriversRef) { _fleetDriversRef.off(); _fleetDriversRef = null; }
+        if (_fleetUsersRef) { _fleetUsersRef.off(); _fleetUsersRef = null; }
+        for (const k in _fleetDriverMarkers) {
+            try { _fleetDriverMarkers[k].setMap(null); } catch (e) {}
+        }
+        _fleetDriverMarkers = {};
+    }
+
+    return { render, saveToken, simulateGPS, toggleMapStyle, playAudio, cleanup };
 })();
 
