@@ -134,8 +134,8 @@ const RadarModule = (() => {
     function renderDashboardButton() {
         return `
             <button class="radar-deploy-btn" id="radarDeployBtn" onclick="RadarModule.open()">
-                <span class="radar-deploy-icon">📡</span>
-                <span class="radar-deploy-label">Desplegar Radar GPS</span>
+                <span class="radar-deploy-icon">🗺️</span>
+                <span class="radar-deploy-label">Desplegar Mapa GPS</span>
                 <span class="radar-deploy-pulse"></span>
             </button>
         `;
@@ -176,8 +176,8 @@ const RadarModule = (() => {
             </style>
             <div class="radar-header">
                 <div class="radar-header-left">
-                    <span class="radar-header-icon">📡</span>
-                    <span class="radar-header-title">Radar GPS — Flota en Tiempo Real</span>
+                    <span class="radar-header-icon">🗺️</span>
+                    <span class="radar-header-title">Mapa GPS — Flota en Tiempo Real</span>
                 </div>
                 <div class="radar-header-right">
                     <span class="radar-status" id="radarStatus">
@@ -1233,6 +1233,10 @@ const RadarModule = (() => {
                 if (_alertMarkers[id]) {
                     _alertMarkers[id].openPopup();
                 }
+                if (data.audioUrl && (Date.now() - (data.timestamp || 0) < 180000)) {
+                    console.log('🎵 [RADAR-MAPA] Auto-reproduciendo audio de nueva alerta:', data.audioUrl);
+                    RadarModule.playAudio(data.audioUrl, 'play-btn-' + id);
+                }
             }, 500);
         }
     }
@@ -1293,26 +1297,39 @@ const RadarModule = (() => {
     let currentAudioId = null;
 
     function playAudio(audioUrl, btnId) {
-        const btn = document.getElementById(btnId);
-        if (!btn) return;
+        if (!audioUrl) return;
+        const btn = btnId ? document.getElementById(btnId) : null;
 
-        const serverUrl = (window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' ||
-                           window.location.protocol === 'file:') 
-                           ? 'https://fleetadmin-web-nueva.onrender.com' 
-                           : window.location.origin;
+        const serverUrl = 'https://fleetadmin-web-nueva.onrender.com';
+        const fullUrl = (audioUrl.startsWith('http') || audioUrl.startsWith('data:'))
+            ? audioUrl 
+            : `${serverUrl}${audioUrl.startsWith('/') ? '' : '/'}${audioUrl}`;
 
-        const fullUrl = audioUrl.startsWith('http') ? audioUrl : `${serverUrl}${audioUrl}`;
+        // Soporte nativo Android si está disponible
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.playAudio === 'function') {
+            try {
+                AndroidServices.playAudio(fullUrl, 'Alerta de tránsito');
+                if (btn) {
+                    btn.innerHTML = '🔊 Reproduciendo...';
+                    setTimeout(() => { btn.innerHTML = '▶️ Escuchar Audio'; }, 4000);
+                }
+                return;
+            } catch(e) {}
+        }
 
         if (currentAudio && currentAudioId === audioUrl) {
             if (!currentAudio.paused) {
                 currentAudio.pause();
-                btn.innerHTML = '▶️ Escuchar Audio';
-                btn.classList.remove('playing');
+                if (btn) {
+                    btn.innerHTML = '▶️ Escuchar Audio';
+                    btn.classList.remove('playing');
+                }
             } else {
                 currentAudio.play().catch(e => console.error('Audio play error:', e));
-                btn.innerHTML = '⏸️ Pausar Audio';
-                btn.classList.add('playing');
+                if (btn) {
+                    btn.innerHTML = '⏸️ Pausar Audio';
+                    btn.classList.add('playing');
+                }
             }
             return;
         }
@@ -1332,12 +1349,12 @@ const RadarModule = (() => {
         const volPercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
         currentAudio.volume = Math.max(0.05, Math.min(1.0, volPercent / 100.0));
 
-        btn.innerHTML = '⏳ Cargando...';
+        if (btn) btn.innerHTML = '⏳ Cargando...';
 
-        // Intentar reproducir directamente (más rápido en la mayoría de navegadores modernos)
+        // Intentar reproducir directamente (más rápido en navegadores modernos)
         currentAudio.play()
             .then(() => {
-                if (currentAudioId === audioUrl) {
+                if (currentAudioId === audioUrl && btn) {
                     btn.innerHTML = '⏸️ Pausar Audio';
                     btn.classList.add('playing');
                 }
@@ -1349,13 +1366,14 @@ const RadarModule = (() => {
                 }
             });
 
-        // Evento alternativo más seguro para móviles que canplaythrough
         currentAudio.addEventListener('canplay', () => {
             if (currentAudioId === audioUrl && currentAudio.paused) {
                 currentAudio.play()
                     .then(() => {
-                        btn.innerHTML = '⏸️ Pausar Audio';
-                        btn.classList.add('playing');
+                        if (btn) {
+                            btn.innerHTML = '⏸️ Pausar Audio';
+                            btn.classList.add('playing');
+                        }
                     })
                     .catch(err => {
                         console.error('Audio play error in canplay:', err);
@@ -1364,21 +1382,25 @@ const RadarModule = (() => {
         });
 
         currentAudio.addEventListener('ended', () => {
-            btn.innerHTML = '▶️ Escuchar Audio';
-            btn.classList.remove('playing');
+            if (btn) {
+                btn.innerHTML = '▶️ Escuchar Audio';
+                btn.classList.remove('playing');
+            }
             currentAudio = null;
             currentAudioId = null;
         });
 
         currentAudio.addEventListener('error', (e) => {
             console.error('Audio load error:', e);
-            btn.innerHTML = '❌ Error';
-            btn.classList.remove('playing');
+            if (btn) {
+                btn.innerHTML = '❌ Error';
+                btn.classList.remove('playing');
+                setTimeout(() => {
+                    btn.innerHTML = '▶️ Escuchar Audio';
+                }, 2000);
+            }
             currentAudio = null;
             currentAudioId = null;
-            setTimeout(() => {
-                btn.innerHTML = '▶️ Escuchar Audio';
-            }, 2000);
         });
     }
 

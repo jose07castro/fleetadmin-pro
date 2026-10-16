@@ -1087,9 +1087,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     boolean isNewOrRecent = alert.timestamp > 0 && (alert.timestamp >= serviceStartTime - 10000) && (diff < 180000);
                     if (isNewOrRecent && !isAlertSpoken(id)) {
                         markAlertSpoken(id);
+                        boolean hasAudio = (alert.audioUrl != null && !alert.audioUrl.trim().isEmpty());
                         boolean isGpsFresh = (now - lastGPSTimestamp) < 20000;
                         boolean isGpsAccurate = (lastKnownLocation == null || !lastKnownLocation.hasAccuracy() || lastKnownLocation.getAccuracy() <= 50.0f);
-                        if (isGpsFresh && isGpsAccurate && lastLat != 0.0 && lastLng != 0.0) {
+
+                        if (hasAudio) {
+                            // Las notas de voz de WhatsApp son boletines de tránsito urgentes para toda la ciudad
+                            double dist = (lastLat != 0.0 && lastLng != 0.0) ? getDistanceInMeters(lastLat, lastLng, lat, lng) : 0.0;
+                            if (dist == 0.0 || dist <= 15000.0) {
+                                Log.i(TAG, "🎵 [VOICE-NOTE] Reproduciendo nota de audio urgente (" + Math.round(dist) + "m): " + location);
+                                speakImmediateAlert(alert);
+                            } else {
+                                Log.i(TAG, "📍 [VOICE-NOTE] Nota de audio fuera del área metropolitana (" + Math.round(dist) + "m > 15km): " + location);
+                            }
+                        } else if (isGpsFresh && isGpsAccurate && lastLat != 0.0 && lastLng != 0.0) {
                             double dist = getDistanceInMeters(lastLat, lastLng, lat, lng);
                             int radio = (lastSpeed > 60.0f) ? 500 : 300;
                             if (dist <= radio) {
