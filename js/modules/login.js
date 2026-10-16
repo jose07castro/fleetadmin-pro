@@ -1062,8 +1062,8 @@ const LoginModule = (() => {
                         <span id="liveAlertsStatusText">Conectando...</span>
                     </span>
                 </div>
-                <button id="liveAlertsAudioBtn" class="audio-unlock-btn \${_audioUnlocked ? 'unlocked' : ''}" onclick="LoginModule.unlockAudio()">
-                    \${_audioUnlocked ? '✅ Sonido Habilitado' : '🔊 Habilitar Sonido y Pantalla'}
+                <button id="liveAlertsAudioBtn" class="audio-unlock-btn ${_audioUnlocked ? 'unlocked' : ''}" onclick="LoginModule.unlockAudio()">
+                    ${_audioUnlocked ? '✅ Sonido Habilitado' : '🔊 Habilitar Sonido y Pantalla'}
                 </button>
                 <div id="liveAlertsList" class="live-alerts-list">
                     <div class="live-alerts-empty">Cargando alertas en vivo...</div>
@@ -1172,10 +1172,10 @@ const LoginModule = (() => {
         
         div.innerHTML = `
             <div class="live-alert-info">
-                <div class="live-alert-loc">\${alert.location || 'Ubicación desconocida'}</div>
-                <div class="live-alert-time">\${timeStr}</div>
+                <div class="live-alert-loc">${alert.location || 'Ubicación desconocida'}</div>
+                <div class="live-alert-time">${timeStr}</div>
             </div>
-            <span class="live-alert-badge badge-\${alert.type || 'warning'}">\${label}</span>
+            <span class="live-alert-badge badge-${alert.type || 'warning'}">${label}</span>
         `;
         return div;
     }
