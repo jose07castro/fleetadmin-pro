@@ -416,50 +416,28 @@
                 return;
             }
 
-            // FILTRO 3: FILTRO DE PROXIMIDAD INTELIGENTE (GEOFENCE DINÁMICO)
+            // FILTRO 3: COBERTURA TOTAL DEPARTAMENTO ROSARIO Y LOCALIDADES VECINAS (50 KM)
+            // Permite a los choferes conocer TODOS los operativos de la región en tiempo real
+            // para decidir estratégicamente si aceptar o rechazar ofertas de viajes en Uber/DiDi.
             const isOwner = (typeof Auth !== 'undefined' && typeof Auth.isOwner === 'function' && Auth.isOwner());
             const isWebDesktop = (typeof window !== 'undefined' && (window.innerWidth > 768 || !window.Capacitor?.isNativePlatform?.()));
-            const hasAudioNote = !!alert.audioUrl;
 
-            // Si es chofer en movimiento y es alerta de texto normal, aplicar radio estricto (300m / 500m)
-            if (!hasAudioNote && !isOwner && !isWebDesktop) {
-                if (!isGpsFresh || !isGpsAccurate) {
-                    console.log(`📍 [VOZ-GLOBAL] Audio diferido: Sin fix GPS preciso/reciente para verificar distancia a "${locDesc}". Se evaluará en el loop GPS.`);
-                    return;
-                }
-
-                const alertLat = parseFloat(alert.lat);
-                const alertLng = parseFloat(alert.lng);
-                if (isNaN(alertLat) || isNaN(alertLng)) {
-                    console.log(`📍 [VOZ-GLOBAL] Alerta sin coordenadas GPS válidas ("${locDesc}"). Audio silenciado por seguridad.`);
-                    return;
-                }
-
-                const dist = getDistanceInMeters(curPos.lat, curPos.lng, alertLat, alertLng);
-                const speedKmh = (curPos.speed && curPos.speed > 0) ? (curPos.speed * 3.6) : 0;
-                const radioAlerta = (speedKmh > 60) ? 500 : 300;
-
-                if (dist > radioAlerta) {
-                    console.log(`📍 [VOZ-GLOBAL] Alerta remota bloqueada (${Math.round(dist)}m > radioAlerta ${radioAlerta}m). Lugar: ${locDesc}`);
-                    return;
-                }
-
-                // Si está detenido o a paso de hombre (< 7 km/h) y muy cerca (< 70m), evitar repetición en bucle
-                if (speedKmh < 7 && dist < 70) {
-                    console.log(`📍 [VOZ-GLOBAL] Vehículo detenido o a paso de hombre en el lugar (${Math.round(dist)}m). Silenciado.`);
-                    return;
-                }
-            } else if (hasAudioNote && curPos && curPos.lat && curPos.lng) {
-                // Si tiene GPS y es nota de audio de WhatsApp, verificar rango metropolitano (15 km)
+            // Si el chofer cuenta con posición GPS, validar que el evento esté dentro del área del Departamento Rosario (50 km)
+            if (curPos && curPos.lat && curPos.lng) {
                 const alertLat = parseFloat(alert.lat);
                 const alertLng = parseFloat(alert.lng);
                 if (!isNaN(alertLat) && !isNaN(alertLng)) {
-                    const distMetro = getDistanceInMeters(curPos.lat, curPos.lng, alertLat, alertLng);
-                    if (distMetro > 15000 && !isOwner && !isWebDesktop) {
-                        console.log(`📍 [VOZ-GLOBAL] Audio fuera del área metropolitana (${Math.round(distMetro)}m > 15km). Lugar: ${locDesc}`);
+                    const distDept = getDistanceInMeters(curPos.lat, curPos.lng, alertLat, alertLng);
+                    // 50.000 metros (50 km) cubre todo el departamento Rosario y ciudades vecinas:
+                    // Rosario, Funes, Roldán, San Lorenzo, Capitán Bermúdez, Granadero Baigorria, Pérez, VGG, Alvear, Pueblo Esther, Arroyo Seco.
+                    if (distDept > 50000 && !isOwner && !isWebDesktop) {
+                        console.log(`📍 [VOZ-GLOBAL] Alerta fuera del Departamento Rosario (${Math.round(distDept)}m > 50km). Lugar: ${locDesc}`);
                         return;
                     }
+                    console.log(`📢 [VOZ-GLOBAL] Alerta en radio Departamento Rosario (${Math.round(distDept)}m <= 50km): ${locDesc}`);
                 }
+            } else {
+                console.log(`📢 [VOZ-GLOBAL] Alerta recibida (sin GPS preciso o modo base/escritorio): ${locDesc}`);
             }
 
             // FILTRO 4: COOLDOWN Y DESDUPLICACIÓN (15 minutos)

@@ -1087,33 +1087,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     boolean isNewOrRecent = alert.timestamp > 0 && (alert.timestamp >= serviceStartTime - 10000) && (diff < 180000);
                     if (isNewOrRecent && !isAlertSpoken(id)) {
                         markAlertSpoken(id);
-                        boolean hasAudio = (alert.audioUrl != null && !alert.audioUrl.trim().isEmpty());
-                        boolean isGpsFresh = (now - lastGPSTimestamp) < 20000;
-                        boolean isGpsAccurate = (lastKnownLocation == null || !lastKnownLocation.hasAccuracy() || lastKnownLocation.getAccuracy() <= 50.0f);
-
-                        if (hasAudio) {
-                            // Las notas de voz de WhatsApp son boletines de tránsito urgentes para toda la ciudad
-                            double dist = (lastLat != 0.0 && lastLng != 0.0) ? getDistanceInMeters(lastLat, lastLng, lat, lng) : 0.0;
-                            if (dist == 0.0 || dist <= 15000.0) {
-                                Log.i(TAG, "🎵 [VOICE-NOTE] Reproduciendo nota de audio urgente (" + Math.round(dist) + "m): " + location);
-                                speakImmediateAlert(alert);
-                            } else {
-                                Log.i(TAG, "📍 [VOICE-NOTE] Nota de audio fuera del área metropolitana (" + Math.round(dist) + "m > 15km): " + location);
-                            }
-                        } else if (isGpsFresh && isGpsAccurate && lastLat != 0.0 && lastLng != 0.0) {
-                            double dist = getDistanceInMeters(lastLat, lastLng, lat, lng);
-                            int radio = (lastSpeed > 60.0f) ? 500 : 300;
-                            if (dist <= radio) {
-                                long lastTime = lastAlertTimestamps.getOrDefault(id, 0L);
-                                if (now - lastTime > COOLDOWN_MS) {
-                                    lastAlertTimestamps.put(id, now);
-                                    speakProximityWarning(alert, (float)dist);
-                                }
-                            } else {
-                                Log.i(TAG, "📍 [GEOFENCE NATIVO] Alerta remota descartada (" + Math.round(dist) + "m > radio " + radio + "m): " + location);
-                            }
+                        double dist = (lastLat != 0.0 && lastLng != 0.0) ? getDistanceInMeters(lastLat, lastLng, lat, lng) : 0.0;
+                        // Cobertura completa de 50 km para todo el Departamento Rosario y localidades vecinas:
+                        // Rosario, Funes, Roldán, Granadero Baigorria, Capitán Bermúdez, San Lorenzo, Pérez, VGG, Alvear, Pueblo Esther, Arroyo Seco.
+                        if (dist == 0.0 || dist <= 50000.0) {
+                            Log.i(TAG, "📢 [ALERTA DEPARTAMENTO ROSARIO] Nueva alerta en cobertura (" + Math.round(dist) + "m): " + location);
+                            speakImmediateAlert(alert);
                         } else {
-                            Log.i(TAG, "📍 [GEOFENCE NATIVO] Alerta encolada para evaluación por loop GPS: " + location);
+                            Log.i(TAG, "📍 [ALERTA FUERA DE DPTO] Descartada por distancia (" + Math.round(dist) + "m > 50km): " + location);
                         }
                     } else if (!isAlertSpoken(id)) {
                         // Alerta antigua o histórica: marcarla para que nunca se reproduzca en bucle
