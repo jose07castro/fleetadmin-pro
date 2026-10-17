@@ -1233,9 +1233,9 @@ const RadarModule = (() => {
                 if (_alertMarkers[id]) {
                     _alertMarkers[id].openPopup();
                 }
-                if (data.audioUrl && (Date.now() - (data.timestamp || 0) < 180000)) {
-                    console.log('🎵 [RADAR-MAPA] Auto-reproduciendo audio de nueva alerta:', data.audioUrl);
-                    RadarModule.playAudio(data.audioUrl, 'play-btn-' + id);
+                if (effectiveAudioUrl && (Date.now() - (data.timestamp || 0) < 180000)) {
+                    console.log('🎵 [RADAR-MAPA] Auto-reproduciendo audio de nueva alerta:', effectiveAudioUrl);
+                    RadarModule.playAudio(effectiveAudioUrl, 'play-btn-' + id);
                 }
             }, 500);
         }

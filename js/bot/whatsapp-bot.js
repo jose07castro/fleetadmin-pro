@@ -4782,6 +4782,38 @@ Si NO es una alerta de tránsito u operativo: {"isAlert":false}`;
         };
         if (audioUrl) {
             alertData.audioUrl = audioUrl;
+        } else {
+            // Conversión automática de alerta de texto a audio MP3
+            try {
+                let ttsService = null;
+                try { ttsService = require('../../services/ttsService'); } catch(e1) {
+                    try { ttsService = require('../services/ttsService'); } catch(e2) {}
+                }
+                if (ttsService) {
+                    const typeLabels = {
+                        police: 'Control policial',
+                        checkpoint: 'Operativo de control',
+                        radar: 'Radar de velocidad',
+                        helicopter: 'Helicóptero',
+                        ambulance: 'Ambulancia en la vía',
+                        firetruck: 'Bomberos',
+                        municipal: 'Control de tránsito municipal',
+                        accident: 'Accidente de tránsito',
+                        traffic: 'Congestión de tráfico',
+                        warning: 'Alerta de tránsito'
+                    };
+                    const typeLabel = typeLabels[type] || 'Alerta de tránsito';
+                    const alertText = description || expandedAddress || originalText || '';
+                    const speechText = `Atención: ${typeLabel}. ${alertText}`;
+                    const generatedUrl = await ttsService.generateAlertAudio(speechText, alertId);
+                    if (generatedUrl) {
+                        alertData.audioUrl = generatedUrl;
+                        console.log(`🎙️ [BOT-AUDIO] Audio generado y asignado para alerta de texto: ${generatedUrl}`);
+                    }
+                }
+            } catch(botTtsErr) {
+                console.warn(`⚠️ [BOT-AUDIO] Error generando audio para alerta de texto:`, botTtsErr.message);
+            }
         }
 
         // SANITIZACIÓN ESTRICTA PREVIA A FIREBASE:

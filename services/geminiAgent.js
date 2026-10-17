@@ -437,6 +437,30 @@ async function dispatchAlert(classification, options = {}, db) {
 
     if (options.audioUrl) {
         alertData.audioUrl = options.audioUrl;
+    } else {
+        // Conversión automática de alerta de texto a audio MP3
+        try {
+            const ttsService = require('./ttsService');
+            const alertTypeNames = {
+                police: 'Control de Policía',
+                checkpoint: 'Operativo de control',
+                radar: 'Radar de velocidad',
+                municipal: 'Fiscalización Municipal',
+                traffic: 'Alerta de Tráfico',
+                accident: 'Accidente en la vía',
+                warning: 'Alerta de Tránsito'
+            };
+            const label = alertTypeNames[alertData.type] || 'Alerta de Tránsito';
+            const alertText = classification.descripcion || cleanUbicacion || options.originalText || 'Alerta de tránsito';
+            const speechText = `Atención: ${label}. ${alertText}`;
+            const generatedUrl = await ttsService.generateAlertAudio(speechText, alertId);
+            if (generatedUrl) {
+                alertData.audioUrl = generatedUrl;
+                console.log(`🎙️ [CENTINELA-AUDIO] Audio generado y asignado para alerta de texto: ${generatedUrl}`);
+            }
+        } catch(ttsErr) {
+            console.warn(`⚠️ [CENTINELA-AUDIO] Error generando audio para alerta de texto:`, ttsErr.message);
+        }
     }
 
     // SANITIZACIÓN ESTRICTA PREVIA A FIREBASE:

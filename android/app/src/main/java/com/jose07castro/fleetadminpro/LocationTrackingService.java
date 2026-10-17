@@ -1646,7 +1646,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (alert.audioUrl != null && !alert.audioUrl.trim().isEmpty()) {
             playAudioAlert(alert.audioUrl, fullText);
         } else {
-            speak(fullText);
+            // Conversión de texto a stream de audio de alta calidad si no vino pregrabado
+            try {
+                String encoded = java.net.URLEncoder.encode(fullText, "UTF-8");
+                String streamUrl = "https://translate.google.com/translate_tts?ie=UTF-8&q=" + encoded + "&tl=es-ES&client=tw-ob";
+                playAudioAlert(streamUrl, fullText);
+            } catch (Exception e) {
+                speak(fullText);
+            }
         }
     }
 

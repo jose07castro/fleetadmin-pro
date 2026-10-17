@@ -35,8 +35,11 @@ if (!fs.existsSync(audioDir)) {
 }
 app.use('/audio', express.static(audioDir, {
     setHeaders: (res, filePath) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
         if (filePath.endsWith('.ogg')) {
             res.setHeader('Content-Type', 'audio/ogg; codecs=opus');
+        } else if (filePath.endsWith('.mp3')) {
+            res.setHeader('Content-Type', 'audio/mpeg');
         }
     }
 }));
