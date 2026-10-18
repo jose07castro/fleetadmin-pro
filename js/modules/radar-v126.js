@@ -1175,8 +1175,9 @@ const RadarModule = (() => {
             `;
         }
 
+        const effectiveAudioUrl = data.audioUrl || '';
         let audioButtonHtml = '';
-        if (data.audioUrl) {
+        if (effectiveAudioUrl) {
             audioButtonHtml = `
                 <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
                     <button id="play-btn-${id}" class="audio-play-btn btn btn-primary btn-sm" 
@@ -1233,7 +1234,10 @@ const RadarModule = (() => {
                 if (_alertMarkers[id]) {
                     _alertMarkers[id].openPopup();
                 }
-                if (effectiveAudioUrl && (Date.now() - (data.timestamp || 0) < 180000)) {
+                if (window._lastPlayedAudioAlertId === id) {
+                    const btn = document.getElementById('play-btn-' + id);
+                    if (btn) btn.innerHTML = '🔊 Reproduciendo...';
+                } else if (effectiveAudioUrl && (Date.now() - (data.timestamp || 0) < 180000)) {
                     console.log('🎵 [RADAR-MAPA] Auto-reproduciendo audio de nueva alerta:', effectiveAudioUrl);
                     RadarModule.playAudio(effectiveAudioUrl, 'play-btn-' + id);
                 }
@@ -1309,6 +1313,16 @@ const RadarModule = (() => {
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.playAudio === 'function') {
             try {
                 AndroidServices.playAudio(fullUrl, 'Alerta de tránsito');
+                if (btn) {
+                    btn.innerHTML = '🔊 Reproduciendo...';
+                    setTimeout(() => { btn.innerHTML = '▶️ Escuchar Audio'; }, 4000);
+                }
+                return;
+            } catch(e) {}
+        }
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.playAudio === 'function') {
+            try {
+                window.NativeServiceBridge.playAudio(fullUrl, 'Alerta de tránsito');
                 if (btn) {
                     btn.innerHTML = '🔊 Reproduciendo...';
                     setTimeout(() => { btn.innerHTML = '▶️ Escuchar Audio'; }, 4000);

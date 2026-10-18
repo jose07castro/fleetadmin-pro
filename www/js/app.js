@@ -164,13 +164,17 @@ window.playAudioWithBoost = function(audioElement, multiplier = 3.0) {
     const audioSrc = audioElement.src || '';
     const isCrossOrigin = audioSrc.startsWith('http') && !audioSrc.includes(window.location.host);
 
-    if (isNative && isCrossOrigin) {
-        console.log('🎵 [AUDIO-BOOST] Detectado audio cross-origin en nativo. Evitando boost para prevenir silencio de CORS.');
+    // Evitar boost en audios cross-origin (ej. Firebase Storage) tanto en web como nativo para prevenir errores o silenciamiento por falta de CORS en GET
+    if (isCrossOrigin) {
+        console.log('🎵 [AUDIO-BOOST] Detectado audio cross-origin (' + audioSrc.substring(0, 45) + '...). Reproduciendo directo sin boost.');
+        audioElement.volume = 1.0;
         const p = audioElement.play();
         if (p !== undefined) {
             p.catch(err => {
                 if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
-                    window.showAudioUnlockBanner();
+                    if (typeof window.showAudioUnlockBanner === 'function') {
+                        window.showAudioUnlockBanner();
+                    }
                 }
             });
         }

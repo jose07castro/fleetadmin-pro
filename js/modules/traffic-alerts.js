@@ -422,6 +422,11 @@
             const isOwner = (typeof Auth !== 'undefined' && typeof Auth.isOwner === 'function' && Auth.isOwner());
             const isWebDesktop = (typeof window !== 'undefined' && (window.innerWidth > 768 || !window.Capacitor?.isNativePlatform?.()));
 
+            const curPos = (typeof CopilotModule !== 'undefined' && typeof CopilotModule.getLastPosition === 'function')
+                ? CopilotModule.getLastPosition()
+                : (typeof window !== 'undefined' && window._cachedGpsPosition ? window._cachedGpsPosition : null);
+
+            let distDept = null;
             // Si el chofer cuenta con posición GPS, validar que el evento esté dentro del área del Departamento Rosario (50 km)
             if (curPos && curPos.lat && curPos.lng) {
                 const alertLat = parseFloat(alert.lat);
@@ -456,7 +461,7 @@
                 return;
             }
 
-            console.log(`🔊 [GLOBAL VOICE] Alerta confirmada dentro de rango (${Math.round(dist)}m <= ${radioAlerta}m):`, alert.type, alert.location);
+            console.log(`🔊 [GLOBAL VOICE] Alerta confirmada:`, alert.type, alert.location, distDept !== null ? `(${Math.round(distDept)}m)` : '(modo base/flota)');
 
             // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
@@ -514,13 +519,16 @@
                 }, 4000);
 
                 try {
-                    audio.crossOrigin = 'anonymous'; // Necesario para boost
+                    // Evitar crossOrigin='anonymous' en Firebase Storage para prevenir bloqueos CORS en GET
                     audio.src = fullAudioUrl;
                     audio.preload = 'auto';
 
                     audio.onplay = () => {
                         audioPlayed = true;
                         clearTimeout(fallbackTimeout);
+                        window._lastPlayedAudioAlertId = alertId;
+                        const btn = alertId ? document.getElementById('play-btn-' + alertId) : null;
+                        if (btn) btn.innerHTML = '🔊 Reproduciendo...';
                     };
 
                     audio.onerror = (err) => {
@@ -531,6 +539,8 @@
 
                     audio.onended = () => {
                         console.log('🎵 [AUDIO-ORIGINAL] Reproducción finalizada exitosamente.');
+                        const btn = alertId ? document.getElementById('play-btn-' + alertId) : null;
+                        if (btn) btn.innerHTML = '▶️ Escuchar Audio';
                     };
 
                     const playPromise = (typeof window.playAudioWithBoost === 'function')
@@ -546,6 +556,9 @@
                         })
                         .catch(audioErr => {
                             console.warn('⚠️ [AUDIO-ORIGINAL] Play directo falló, esperando evento canplay...', audioErr.message);
+                                if (audioErr && (audioErr.name === 'NotAllowedError' || audioErr.name === 'NotSupportedError')) {
+                                    if (typeof window.showAudioUnlockBanner === 'function') window.showAudioUnlockBanner();
+                                }
                         });
 
                     // Evento canplay para móviles
