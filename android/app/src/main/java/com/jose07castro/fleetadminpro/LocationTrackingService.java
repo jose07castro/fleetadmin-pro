@@ -152,6 +152,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     public static volatile float alertVolume = 0.85f;
     public static volatile int alertVolumePercent = 85;
 
+    // Override de volumen estilo Uber: aunque el celular esté en silencio/vibración,
+    // las alertas suenan por el canal ALARMA con volumen elevado temporalmente.
+    private static final int ALERT_STREAM = AudioManager.STREAM_ALARM;
+    private static final int ALERT_USAGE = AudioAttributes.USAGE_ALARM;
+    private final Object volumeBoostLock = new Object();
+    private int savedAlarmVolume = -1;
+    private final Handler volumeRestoreHandler = new Handler(Looper.getMainLooper());
+    private final Runnable volumeRestoreRunnable = this::restoreAlertVolumeNow;
+
     // Background Thread
     private HandlerThread serviceThread;
     private Handler serviceHandler;
@@ -443,6 +452,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             tts = null;
             isTtsInitialized = false;
         }
+        // Si el servicio muere en medio de una alerta, devolver el volumen original del usuario
+        try {
+            volumeRestoreHandler.removeCallbacks(volumeRestoreRunnable);
+            restoreAlertVolumeNow();
+        } catch (Exception ignored) {}
         
         // Desregistrar receptor GPS de forma segura
         try {
@@ -741,8 +755,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void playBgProximityTone(int distanceStage) {
         // Alerta obligatoria de fotomulta (sin muteo)
         try {
+            boostAlertVolume();
+            scheduleAlertVolumeRestore();
             if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+                bgToneGen = new ToneGenerator(ALERT_STREAM, 100);
             }
             if (distanceStage <= 35) {
                 bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 130);
@@ -761,8 +777,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void playBgPassedTone() {
         // Alerta obligatoria de confirmación (sin muteo)
         try {
+            boostAlertVolume();
+            scheduleAlertVolumeRestore();
             if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+                bgToneGen = new ToneGenerator(ALERT_STREAM, 100);
             }
             bgToneGen.startTone(ToneGenerator.TONE_PROP_PROMPT, 150);
         } catch (Exception e) {}
@@ -1196,13 +1214,62 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // AUDIO FOCUS MANAGEMENT (Ducking de Uber, DiDi, Spotify y radio)
     // ================================================================
 
+    /**
+     * Sube temporalmente el volumen del canal ALARMA al nivel configurado de alertas
+     * (como hace Uber al entrar un viaje). Guarda el volumen original para restaurarlo.
+     */
+    private void boostAlertVolume() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            synchronized (volumeBoostLock) {
+                volumeRestoreHandler.removeCallbacks(volumeRestoreRunnable);
+                int current = am.getStreamVolume(ALERT_STREAM);
+                if (savedAlarmVolume < 0) {
+                    savedAlarmVolume = current;
+                }
+                int max = am.getStreamMaxVolume(ALERT_STREAM);
+                int target = Math.max(1, Math.round(max * (alertVolumePercent / 100.0f)));
+                if (current < target) {
+                    am.setStreamVolume(ALERT_STREAM, target, 0);
+                    Log.i(TAG, "📢 [VOLUME-BOOST] Volumen ALARMA elevado " + current + " → " + target + "/" + max + " (modo silencio: " + am.getRingerMode() + ")");
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ [VOLUME-BOOST] No se pudo elevar el volumen:", e);
+        }
+    }
+
+    /** Programa la restauración del volumen original (con margen por si llegan alertas encadenadas). */
+    private void scheduleAlertVolumeRestore() {
+        volumeRestoreHandler.removeCallbacks(volumeRestoreRunnable);
+        volumeRestoreHandler.postDelayed(volumeRestoreRunnable, 2500);
+    }
+
+    private void restoreAlertVolumeNow() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            synchronized (volumeBoostLock) {
+                if (savedAlarmVolume >= 0) {
+                    am.setStreamVolume(ALERT_STREAM, savedAlarmVolume, 0);
+                    Log.i(TAG, "🔉 [VOLUME-BOOST] Volumen ALARMA restaurado a " + savedAlarmVolume);
+                    savedAlarmVolume = -1;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ [VOLUME-BOOST] No se pudo restaurar el volumen:", e);
+        }
+    }
+
     private boolean requestNavigationAudioFocus() {
+        boostAlertVolume();
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return false;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setUsage(ALERT_USAGE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
                 navAudioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -1214,7 +1281,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 Log.i(TAG, "🔊 [AUDIO-FOCUS] Solicitud de audio focus otorgada: " + (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED));
                 return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             } else {
-                int res = am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+                int res = am.requestAudioFocus(null, ALERT_STREAM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
                 return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             }
         } catch (Exception e) {
@@ -1224,6 +1291,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void releaseNavigationAudioFocus() {
+        scheduleAlertVolumeRestore();
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
@@ -1285,19 +1353,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (context != null) {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             prefs.edit().putInt("alert_volume_percent", alertVolumePercent).apply();
-            try {
-                AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-                if (am != null) {
-                    int maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                    int targetVol = Math.round((alertVolumePercent / 100.0f) * maxVol);
-                    am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0);
-                }
-            } catch (Exception ignored) {}
-        }
-        if (instance != null && instance.mediaPlayer != null) {
-            try {
-                instance.mediaPlayer.setVolume(alertVolume, alertVolume);
-            } catch (Exception ignored) {}
+            // Ya no se modifica el volumen multimedia (música): las alertas usan el canal ALARMA,
+            // que se eleva temporalmente sólo mientras suena cada alerta.
         }
     }
 
@@ -1332,6 +1389,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
                             staticFallbackTts.setLanguage(new Locale("es"));
                         }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            staticFallbackTts.setAudioAttributes(new AudioAttributes.Builder()
+                                .setUsage(ALERT_USAGE)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build());
+                        }
                         isStaticFallbackTtsReady = true;
                         Log.i(TAG, "🔊 [STATIC-TTS] Fallback TextToSpeech inicializado con éxito");
                     } else {
@@ -1360,13 +1423,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     try {
                         if (staticFallbackTts != null && isStaticFallbackTtsReady) {
                             Bundle params = new Bundle();
-                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
                             staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_" + System.currentTimeMillis());
                         } else if (staticFallbackTts != null) {
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 if (staticFallbackTts != null && isStaticFallbackTtsReady) {
                                     Bundle params = new Bundle();
-                                    params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                                    params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
                                     staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_d_" + System.currentTimeMillis());
                                 }
                             }, 500);
@@ -1400,11 +1463,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             // Configurar AudioAttributes para segundo plano y navegación vehicular
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setUsage(ALERT_USAGE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
                 tts.setAudioAttributes(audioAttributes);
-                Log.i(TAG, "🔊 [TTS] AudioAttributes USAGE_ASSISTANCE_NAVIGATION_GUIDANCE configurados con éxito");
+                Log.i(TAG, "🔊 [TTS] AudioAttributes USAGE_ALARM configurados (suena aunque el celular esté en silencio)");
             }
 
             // Utterance listener para liberar audio focus al finalizar de hablar
@@ -1437,7 +1500,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado: \"" + pending + "\"");
                         requestNavigationAudioFocus();
                         Bundle params = new Bundle();
-                        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+                        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
                         tts.speak(pending, TextToSpeech.QUEUE_FLUSH, params, "pending_" + System.currentTimeMillis());
                     }
                 }
@@ -1467,7 +1530,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (isTtsInitialized && tts != null) {
             requestNavigationAudioFocus();
             Bundle params = new Bundle();
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, alertVolume);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
             int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "alert_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
@@ -1547,7 +1610,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 mediaPlayer = new MediaPlayer();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setUsage(ALERT_USAGE)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build();
                     mediaPlayer.setAudioAttributes(audioAttributes);
@@ -1555,10 +1618,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 mediaPlayer.setDataSource(fullUrl);
                 mediaPlayer.setOnPreparedListener(mp -> {
-                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo y reproduciendo con volumen: " + alertVolume);
+                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo, reproduciendo por canal ALARMA al " + alertVolumePercent + "%");
                     try {
                         requestNavigationAudioFocus();
-                        mp.setVolume(alertVolume, alertVolume);
+                        // El nivel lo controla el volumen del canal ALARMA (boostAlertVolume)
+                        mp.setVolume(1.0f, 1.0f);
                         mp.start();
                     } catch (Exception e) {
                         Log.e(TAG, "❌ Error al iniciar MediaPlayer:", e);
