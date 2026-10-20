@@ -30,6 +30,27 @@ const VehiclesModule = (() => {
         "VW Amarok (4p)", "VW Bora (4p)", "VW Fox (5p)", "VW Gol Trend (5p)", "VW Nivus (5p)", "VW Polo (5p)", "VW Suran (5p)", "VW T-Cross (5p)", "VW Taos (5p)", "VW Tiguan (5p)", "VW Vento (4p)", "VW Virtus (4p)", "VW Voyage (4p)"
     ];
 
+    const MOTO_CATALOG_ARG = [
+        "Bajaj Boxer 150", "Bajaj Dominar 250", "Bajaj Dominar 400", "Bajaj Rouser NS 125", "Bajaj Rouser NS 160", "Bajaj Rouser NS 200", "Bajaj Rouser 220",
+        "Benelli 180S", "Benelli TNT 15", "Benelli TRK 251", "Benelli TRK 502",
+        "Beta Motard 200", "Beta Tempo 150",
+        "Corven Energy 110", "Corven Hunter 150", "Corven Mirage 110", "Corven Touring 250", "Corven Triax 150", "Corven Triax 250",
+        "Gilera Sahel 150", "Gilera Smash 110", "Gilera VC 150",
+        "Honda CB 125F Twister", "Honda CB 190R", "Honda CB 250 Twister", "Honda CB 300F Twister", "Honda CG 150 Titan", "Honda DIO 110", "Honda GLH 150 Gaucha", "Honda Navi 110", "Honda PCX 150", "Honda Wave 110S", "Honda XR 150L", "Honda XR 190L", "Honda XR 250 Tornado", "Honda XRE 300",
+        "Keeway K-Light 202", "Keeway RK 150",
+        "Keller Crono Classic 110", "Keller Miracle 150", "Keller Stratus 150",
+        "KTM Duke 200", "KTM Duke 250", "KTM Duke 390", "KTM RC 200",
+        "Kymco Agility 125", "Kymco Agility RS 125", "Kymco Like 125",
+        "Mondial LD 110", "Mondial MD 150", "Mondial RD 150",
+        "Motomel B110", "Motomel Blitz 110", "Motomel CG 150 S2", "Motomel Sirius 150", "Motomel Skua 150", "Motomel Skua 250", "Motomel Strato Euro 150",
+        "RVM CZ 250", "RVM Tekken 250",
+        "Suzuki AX 100", "Suzuki EN 125", "Suzuki GN 125", "Suzuki Gixxer 150",
+        "Sym Citycom 300", "Sym Orbit II 125",
+        "Vespa Primavera 150", "Vespa VXL 150",
+        "Yamaha Crypton 110", "Yamaha FZ 16", "Yamaha FZ 25", "Yamaha FZ-FI 150", "Yamaha MT-03", "Yamaha Ray ZR 125", "Yamaha XTZ 125", "Yamaha XTZ 150", "Yamaha XTZ 250 Lander", "Yamaha YBR 125",
+        "Zanella Ceccato 150", "Zanella Exclusive 150", "Zanella Hot 90", "Zanella Patagonian Eagle 150", "Zanella RX 150", "Zanella Sapucai 150", "Zanella Styler 150", "Zanella ZB 110", "Zanella ZR 150", "Zanella ZR 250"
+    ];
+
 
     async function render() {
         const vehicles = await DB.getAll('vehicles');
@@ -145,13 +166,21 @@ const VehiclesModule = (() => {
                          style="display:flex; align-items:center; justify-content:space-between; padding:var(--space-4); cursor:pointer; user-select:none; position:relative;">
                         
                         <div style="display:flex; align-items:center; gap:var(--space-3); flex:1;">
-                            <div style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;">🚗</div>
+                            <div style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;">
+                                ${v.vehicleType === 'moto' ? '🏍️' : '🚗'}
+                            </div>
                             <div style="min-width:0; overflow:hidden;">
                                 <div style="font-weight:700; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#fff;">${v.name}</div>
-                                <div style="display:flex; align-items:center; gap:var(--space-2); font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">
+                                <div style="display:flex; align-items:center; gap:var(--space-2); font-size:0.75rem; color:var(--text-secondary); margin-top:2px; flex-wrap:wrap;">
                                     <span style="background:var(--bg-tertiary); padding:1px 6px; border-radius:4px; font-weight:700; color:var(--text-primary); border:1px solid rgba(255,255,255,0.05);">${v.plate || '-'}</span>
                                     <span>•</span>
                                     <span>${v.year || '-'}</span>
+                                    ${v.vehicleType === 'moto' ? `
+                                        <span>•</span>
+                                        <span class="badge" style="font-size:0.68rem; padding:1px 6px; font-weight:700; background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid rgba(245,158,11,0.4);">
+                                            🏍️ ${v.motoSubType === 'cadete' ? '📦 Cadete' : '🙋‍♂️ Remis'}
+                                        </span>
+                                    ` : ''}
                                     <span>•</span>
                                     <span class="badge" style="font-size:0.68rem; padding:1px 6px; font-weight:700; ${v.motorType === 'electric' ? 'background:#10b981; color:#fff;' : (v.motorType === 'hybrid' ? 'background:#06b6d4; color:#fff;' : (v.motorType === 'nafta' ? 'background:#64748b; color:#fff;' : 'background:#3b82f6; color:#fff;'))}">
                                         ${v.motorType === 'electric' ? '⚡ Eléctrico' : (v.motorType === 'hybrid' ? '🔋 Híbrido' : (v.motorType === 'nafta' ? '🛢️ Nafta' : '⛽ GNC'))}
@@ -176,6 +205,11 @@ const VehiclesModule = (() => {
                             <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); Router.navigate('vehicle-costs'); setTimeout(() => VehicleCostsModule.selectVehicle('${v.id}'), 150);" style="font-size:0.75rem; font-weight:700; background:rgba(56, 189, 248, 0.15); border:1px solid rgba(56, 189, 248, 0.4); color:#38bdf8;">
                                 📊 Ver Costos x Km
                             </button>
+                            ${v.vehicleType === 'moto' ? `
+                                <span class="badge" style="font-size:0.72rem; background:rgba(245,158,11,0.18); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); font-weight:700;">
+                                    🏍️ Motocicleta — ${v.motoSubType === 'cadete' ? '📦 Cadetería / Envíos' : '🙋‍♂️ Remis / Pasajeros'}
+                                </span>
+                            ` : ''}
                             ${v.companiaSeguro ? `<span class="badge" style="font-size:0.7rem; background:var(--bg-tertiary); color:var(--text-secondary); border:1px solid rgba(255,255,255,0.1);">🛡️ ${v.companiaSeguro}</span>` : ''}
                             ${financialBadge}
                             ${alertsBadge}
@@ -248,15 +282,59 @@ const VehiclesModule = (() => {
             vehicle = await DB.get('vehicles', vehicleId);
         }
 
+        const isMoto = vehicle?.vehicleType === 'moto';
+        const motoSub = vehicle?.motoSubType || 'remis';
+        const catalog = isMoto ? MOTO_CATALOG_ARG : CAR_CATALOG_ARG;
+
         Components.showModal(
             vehicle ? I18n.t('veh_edit') : I18n.t('veh_add'),
             `
+                <!-- Selector Tipo de Vehículo: Auto vs Moto -->
+                <div class="form-group" style="margin-bottom:var(--space-3);">
+                    <label class="form-label" style="font-weight:700;">${I18n.t('veh_type')} *</label>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <button type="button" id="btnTypeAuto" onclick="VehiclesModule.onVehicleTypeChange('auto')"
+                            style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:10px; border:2px solid ${!isMoto ? 'var(--color-primary, #6366f1)' : 'var(--border-color, #334155)'}; background:${!isMoto ? 'rgba(99,102,241,0.18)' : 'var(--bg-secondary, #1e293b)'}; cursor:pointer; color:var(--text-primary); font-weight:700; font-size:0.95rem; transition:all 0.2s;">
+                            <span style="font-size:1.3rem;">🚗</span>
+                            <span>${I18n.t('veh_type_auto')}</span>
+                        </button>
+                        <button type="button" id="btnTypeMoto" onclick="VehiclesModule.onVehicleTypeChange('moto')"
+                            style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:10px; border:2px solid ${isMoto ? '#f59e0b' : 'var(--border-color, #334155)'}; background:${isMoto ? 'rgba(245,158,11,0.18)' : 'var(--bg-secondary, #1e293b)'}; cursor:pointer; color:var(--text-primary); font-weight:700; font-size:0.95rem; transition:all 0.2s;">
+                            <span style="font-size:1.3rem;">🏍️</span>
+                            <span>${I18n.t('veh_type_moto')}</span>
+                        </button>
+                    </div>
+                    <input type="hidden" id="vehType" value="${isMoto ? 'moto' : 'auto'}">
+                </div>
+
+                <!-- Subtipo de Motocicleta (Remis vs Cadete) -->
+                <div id="motoSubtypeSection" style="display:${isMoto ? 'block' : 'none'}; background:linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.05)); border:1.5px solid rgba(245, 158, 11, 0.4); border-radius:12px; padding:14px; margin-bottom:var(--space-4);">
+                    <label class="form-label" style="color:#f59e0b; font-weight:800; font-size:0.85rem; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                        <span>🏍️</span> ${I18n.t('veh_moto_subtype')} *
+                    </label>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <button type="button" id="btnSubRemis" onclick="VehiclesModule.onMotoSubtypeChange('remis')"
+                            style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:10px 8px; border-radius:10px; border:2px solid ${motoSub === 'remis' ? '#f59e0b' : 'var(--border-color, #334155)'}; background:${motoSub === 'remis' ? 'rgba(245,158,11,0.22)' : 'var(--bg-secondary, #1e293b)'}; cursor:pointer; color:var(--text-primary); font-weight:700; transition:all 0.2s;">
+                            <span style="font-size:1.25rem;">🙋‍♂️</span>
+                            <span style="font-size:0.9rem;">Remis</span>
+                            <span style="font-size:0.7rem; color:var(--text-secondary); font-weight:normal;">Pasajeros / Viajes</span>
+                        </button>
+                        <button type="button" id="btnSubCadete" onclick="VehiclesModule.onMotoSubtypeChange('cadete')"
+                            style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:10px 8px; border-radius:10px; border:2px solid ${motoSub === 'cadete' ? '#f59e0b' : 'var(--border-color, #334155)'}; background:${motoSub === 'cadete' ? 'rgba(245,158,11,0.22)' : 'var(--bg-secondary, #1e293b)'}; cursor:pointer; color:var(--text-primary); font-weight:700; transition:all 0.2s;">
+                            <span style="font-size:1.25rem;">📦</span>
+                            <span style="font-size:0.9rem;">Cadete</span>
+                            <span style="font-size:0.7rem; color:var(--text-secondary); font-weight:normal;">Cadetería / Envíos</span>
+                        </button>
+                    </div>
+                    <input type="hidden" id="vehMotoSubType" value="${motoSub}">
+                </div>
+
                 <div class="form-group">
-                    <label class="form-label">${I18n.t('veh_name')} *</label>
+                    <label class="form-label" id="vehNameLabel">${isMoto ? 'Marca / Modelo de la Moto' : I18n.t('veh_name')} *</label>
                     <input type="text" class="form-input" id="vehName" list="vehCatalogList"
-                        value="${vehicle?.name || ''}" placeholder="Ej: Toyota Corolla 2020 (Busca marca o modelo)">
+                        value="${vehicle?.name || ''}" placeholder="${isMoto ? 'Ej: Honda Wave 110S o Rouser 200' : 'Ej: Toyota Corolla 2020 (Busca marca o modelo)'}">
                     <datalist id="vehCatalogList">
-                        ${CAR_CATALOG_ARG.map(c => `<option value="${c}">`).join('')}
+                        ${catalog.map(c => `<option value="${c}">`).join('')}
                     </datalist>
                 </div>
                 <div class="repair-form-grid">
@@ -279,7 +357,7 @@ const VehiclesModule = (() => {
                             inputmode="numeric">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">${I18n.t('veh_color')} *</label>
+                        <label class="form-label" id="vehColorLabel">${isMoto ? I18n.t('veh_color_moto') : I18n.t('veh_color')} *</label>
                         <select class="form-select" id="vehColor">
                             <option value="">-- ${I18n.t('search')} --</option>
                             <option value="white" ${vehicle?.color === 'white' ? 'selected' : ''}>${I18n.t('color_white')}</option>
@@ -550,11 +628,16 @@ const VehiclesModule = (() => {
 
         const odometerKm = Units.toKm(odometer);
 
+        const vehicleType = document.getElementById('vehType')?.value || 'auto';
+        const motoSubType = (vehicleType === 'moto') ? (document.getElementById('vehMotoSubType')?.value || 'remis') : null;
+
         const data = {
             name, plate, year,
             currentOdometer: odometerKm,
             status,
             color,
+            vehicleType,
+            motoSubType,
             metodoPago,
             esPrendario,
             cuotasTotales,
@@ -783,9 +866,93 @@ const VehiclesModule = (() => {
         }
     }
 
+    function onVehicleTypeChange(type) {
+        const hiddenInput = document.getElementById('vehType');
+        if (hiddenInput) hiddenInput.value = type;
+
+        const btnAuto = document.getElementById('btnTypeAuto');
+        const btnMoto = document.getElementById('btnTypeMoto');
+        const subSection = document.getElementById('motoSubtypeSection');
+        const nameLabel = document.getElementById('vehNameLabel');
+        const nameInput = document.getElementById('vehName');
+        const colorLabel = document.getElementById('vehColorLabel');
+        const datalist = document.getElementById('vehCatalogList');
+        const motorType = document.getElementById('vehMotorType');
+
+        if (type === 'moto') {
+            if (btnAuto) {
+                btnAuto.style.borderColor = 'var(--border-color, #334155)';
+                btnAuto.style.background = 'var(--bg-secondary, #1e293b)';
+            }
+            if (btnMoto) {
+                btnMoto.style.borderColor = '#f59e0b';
+                btnMoto.style.background = 'rgba(245,158,11,0.18)';
+            }
+            if (subSection) subSection.style.display = 'block';
+            if (nameLabel) nameLabel.innerText = 'Marca / Modelo de la Moto *';
+            if (colorLabel) colorLabel.innerText = `${I18n.t('veh_color_moto') || 'Color de la Moto'} *`;
+            if (nameInput && (!nameInput.value || nameInput.value.trim() === '')) {
+                nameInput.placeholder = 'Ej: Honda Wave 110S o Rouser 200';
+            }
+            if (datalist) {
+                datalist.innerHTML = MOTO_CATALOG_ARG.map(c => `<option value="${c}">`).join('');
+            }
+            if (motorType && motorType.value === 'gnc') {
+                motorType.value = 'nafta';
+                onMotorTypeChanged();
+            }
+        } else {
+            if (btnAuto) {
+                btnAuto.style.borderColor = 'var(--color-primary, #6366f1)';
+                btnAuto.style.background = 'rgba(99,102,241,0.18)';
+            }
+            if (btnMoto) {
+                btnMoto.style.borderColor = 'var(--border-color, #334155)';
+                btnMoto.style.background = 'var(--bg-secondary, #1e293b)';
+            }
+            if (subSection) subSection.style.display = 'none';
+            if (nameLabel) nameLabel.innerText = `${I18n.t('veh_name')} *`;
+            if (colorLabel) colorLabel.innerText = `${I18n.t('veh_color')} *`;
+            if (nameInput) {
+                nameInput.placeholder = 'Ej: Toyota Corolla 2020 (Busca marca o modelo)';
+            }
+            if (datalist) {
+                datalist.innerHTML = CAR_CATALOG_ARG.map(c => `<option value="${c}">`).join('');
+            }
+        }
+    }
+
+    function onMotoSubtypeChange(sub) {
+        const hiddenInput = document.getElementById('vehMotoSubType');
+        if (hiddenInput) hiddenInput.value = sub;
+
+        const btnRemis = document.getElementById('btnSubRemis');
+        const btnCadete = document.getElementById('btnSubCadete');
+
+        if (sub === 'remis') {
+            if (btnRemis) {
+                btnRemis.style.borderColor = '#f59e0b';
+                btnRemis.style.background = 'rgba(245,158,11,0.22)';
+            }
+            if (btnCadete) {
+                btnCadete.style.borderColor = 'var(--border-color, #334155)';
+                btnCadete.style.background = 'var(--bg-secondary, #1e293b)';
+            }
+        } else {
+            if (btnRemis) {
+                btnRemis.style.borderColor = 'var(--border-color, #334155)';
+                btnRemis.style.background = 'var(--bg-secondary, #1e293b)';
+            }
+            if (btnCadete) {
+                btnCadete.style.borderColor = '#f59e0b';
+                btnCadete.style.background = 'rgba(245,158,11,0.22)';
+            }
+        }
+    }
+
     return { 
         render, showForm, saveVehicle, deleteVehicle, showVtvEditor, saveVtv,
         calcRemaining, toggleFinanceFields, togglePrendario, toggleExpand,
-        onMotorTypeChanged
+        onMotorTypeChanged, onVehicleTypeChange, onMotoSubtypeChange
     };
 })();

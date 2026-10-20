@@ -401,7 +401,7 @@ const MaintenanceModule = (() => {
                         <select class="form-select" id="repairVehicle">
                             ${vehicles.map(v =>
                     `<option value="${v.id}" ${repair?.vehicleId === v.id ? 'selected' : ''}>
-                                    ${v.name} — ${v.plate}
+                                    ${v.vehicleType === 'moto' ? '🏍️' : '🚗'} ${v.name} — ${v.plate}${v.vehicleType === 'moto' && v.motoSubType ? ` (${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'})` : ''}
                                 </option>`
                 ).join('')}
                         </select>
@@ -690,7 +690,7 @@ const OilModule = (() => {
                     <div class="form-group">
                         <label class="form-label">${I18n.t('mech_vehicle')}</label>
                         <select class="form-select" id="oilVehicle" onchange="OilModule.prefillOdometer()">
-                            ${vehicles.map(v => `<option value="${v.id}">${v.name} — ${v.plate}</option>`).join('')}
+                            ${vehicles.map(v => `<option value="${v.id}">${v.vehicleType === 'moto' ? '🏍️' : '🚗'} ${v.name} — ${v.plate}${v.vehicleType === 'moto' && v.motoSubType ? ` (${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'})` : ''}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">

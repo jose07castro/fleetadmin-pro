@@ -480,7 +480,7 @@ window.DashboardModule = (() => {
             html += `
                 <div class="vehicle-card" onclick="Router.navigate('vehicles')">
                     <div class="vehicle-card-header">
-                        <span class="vehicle-name">${v.name}</span>
+                        <span class="vehicle-name">${v.vehicleType === 'moto' ? '🏍️ ' : '🚗 '}${v.name}${v.vehicleType === 'moto' ? ` <span class="badge" style="font-size:0.65rem; background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); margin-left:4px;">${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}</span>` : ''}</span>
                         <span class="vehicle-plate">${v.plate || ''}</span>
                     </div>
                     ${beltBadge}

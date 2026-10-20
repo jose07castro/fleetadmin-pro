@@ -950,8 +950,10 @@ const VehicleCostsModule = (() => {
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px;">
                         <div>
-                            <h4 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--text-primary);">
-                                ${v.name || 'Vehículo'}
+                            <h4 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--text-primary); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <span>${v.vehicleType === 'moto' ? '🏍️' : '🚗'}</span>
+                                <span>${v.name || 'Vehículo'}</span>
+                                ${v.vehicleType === 'moto' ? `<span class="badge" style="font-size:0.65rem; background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); padding:1px 6px;">${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}</span>` : ''}
                             </h4>
                             <div style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px; display:flex; align-items:center; gap:6px;">
                                 <span style="font-family:monospace; font-weight:700; background:var(--bg-tertiary); padding:1px 6px; border-radius:4px; border:1px solid var(--border-color);">

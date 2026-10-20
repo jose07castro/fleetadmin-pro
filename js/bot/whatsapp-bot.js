@@ -1593,12 +1593,16 @@ const WhatsappBot = (() => {
             const motorIcon = v.motorType === 'electric' ? '⚡' : (v.motorType === 'hybrid' ? '🔋' : (v.motorType === 'nafta' ? '🛢️' : '⛽'));
             if (filterOnlyToday) {
                 totalKm += v.todayKm;
-                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                const vIcon = v.vehicleType === 'moto' ? '🏍️' : '🚘';
+                const vSub = (v.vehicleType === 'moto' && v.motoSubType) ? ` [${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}]` : '';
+                body += `${vIcon} *${v.name}* [${v.plate || '-'}]${vSub} ${motorIcon}\n`;
                 body += `   • Hoy: *${v.todayKm > 0 ? `${v.todayKm} km` : 'Sin turnos hoy'}* (${v.todayShiftsCount} turno${v.todayShiftsCount === 1 ? '' : 's'})\n`;
                 body += `   • Acumulado mes: *${_formatNumber(v.monthKm)} km*\n\n`;
             } else {
                 totalKm += v.monthKm;
-                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                const vIcon = v.vehicleType === 'moto' ? '🏍️' : '🚘';
+                const vSub = (v.vehicleType === 'moto' && v.motoSubType) ? ` [${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}]` : '';
+                body += `${vIcon} *${v.name}* [${v.plate || '-'}]${vSub} ${motorIcon}\n`;
                 body += `   • Hoy: *${v.todayKm} km* | Mes: *${_formatNumber(v.monthKm)} km* (${v.monthShiftsCount} turnos)\n`;
                 body += `   • Promedio: *~${v.avgDailyKm} km/día* (Proy: ${_formatNumber(v.projectedMonthKm)} km)\n`;
                 body += `   • Costo: *$${v.costoTotalKm.toFixed(2)}/km* | Gasto mes: *$${_formatNumber(v.gastoRealMes)}*\n\n`;

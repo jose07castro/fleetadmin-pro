@@ -237,10 +237,12 @@ const ShiftsModule = (() => {
                         ${vehicles.map(v => {
                 const isOccupied = occupiedVehicleIds.has(String(v.id));
                 const usedBy = vehicleDriverMap[String(v.id)] || '';
+                const vIcon = v.vehicleType === 'moto' ? '🏍️' : '🚗';
+                const vSub = (v.vehicleType === 'moto' && v.motoSubType) ? ` [${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}]` : '';
                 if (isOccupied) {
-                    return `<option value="${v.id}" disabled style="color:#ef4444; font-weight:600;">🔒 ${v.name} — ${v.plate} (En uso por ${usedBy})</option>`;
+                    return `<option value="${v.id}" disabled style="color:#ef4444; font-weight:600;">🔒 ${vIcon} ${v.name} — ${v.plate}${vSub} (En uso por ${usedBy})</option>`;
                 }
-                return `<option value="${v.id}">✅ ${v.name} — ${v.plate}</option>`;
+                return `<option value="${v.id}">✅ ${vIcon} ${v.name} — ${v.plate}${vSub}</option>`;
             }).join('')}
                     </select>
                 </div>
@@ -297,8 +299,10 @@ const ShiftsModule = (() => {
                 <div class="stat-icon success" style="width:48px;height:48px;">🟢</div>
                 <div style="flex:1;">
                     <div style="font-weight:600; font-size:var(--font-size-lg);">${I18n.t('shift_active')}</div>
-                    <div style="color:var(--text-secondary); font-size:var(--font-size-sm);">
-                        ${vehicle?.name || ''} — ${vehicle?.plate || ''}
+                    <div style="color:var(--text-secondary); font-size:var(--font-size-sm); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span>${vehicle?.vehicleType === 'moto' ? '🏍️' : '🚗'}</span>
+                        <span>${vehicle?.name || ''} — ${vehicle?.plate || ''}</span>
+                        ${vehicle?.vehicleType === 'moto' ? `<span class="badge" style="font-size:0.65rem; background:#f59e0b; color:#fff; padding:1px 6px; border-radius:4px;">${vehicle.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}</span>` : ''}
                     </div>
                     ${(vehicle && vehicle.companiaSeguro) ? `
                     <div style="margin-top:var(--space-2); padding-top:var(--space-2); border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2);">
