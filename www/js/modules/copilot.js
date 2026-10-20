@@ -773,13 +773,30 @@ const CopilotModule = (() => {
         "address": "OROÑO NICASIO Y BATLLE Y ORDOÑEZ JOSE"
     },
     {
+        "id": "radar_rosario_segui_francia",
+        "name": "Bv. Seguí entre Vera Mujica y Av. Francia",
+        "lat": -32.97412,
+        "lng": -60.67444,
+        "limit": 60,
+        "desc": "Control de velocidad / Cruce semafórico",
+        "address": "BOULEVARD SEGUÍ ENTRE VERA MUJICA Y AV. FRANCIA",
+        "validHeadings": [
+            45,
+            225
+        ]
+    },
+    {
         "id": "radar_circ_1",
         "name": "Av. Circunvalación y Av. Pellegrini",
         "lat": -32.9696,
         "lng": -60.7105,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Av. Pellegrini"
+        "address": "Av. Circunvalación (A008) y Av. Pellegrini",
+        "validHeadings": [
+            65,
+            245
+        ]
     },
     {
         "id": "radar_circ_2",
@@ -788,7 +805,24 @@ const CopilotModule = (() => {
         "lng": -60.7228,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Av. Eva Perón"
+        "address": "Av. Circunvalación (A008) y Av. Eva Perón",
+        "validHeadings": [
+            340,
+            160
+        ]
+    },
+    {
+        "id": "radar_circ_ovidio_lagos",
+        "name": "Av. Circunvalación y Av. Ovidio Lagos",
+        "lat": -32.9975,
+        "lng": -60.6936,
+        "limit": 100,
+        "desc": "Radar de velocidad fija Circunvalación",
+        "address": "AV. CIRCUNVALACIÓN Y AV. OVIDIO LAGOS",
+        "validHeadings": [
+            135,
+            315
+        ]
     },
     {
         "id": "radar_circ_3",
@@ -797,7 +831,11 @@ const CopilotModule = (() => {
         "lng": -60.6729,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Av. Uriburu"
+        "address": "Av. Circunvalación (A008) y Av. Uriburu",
+        "validHeadings": [
+            130,
+            310
+        ]
     },
     {
         "id": "radar_circ_4",
@@ -806,7 +844,11 @@ const CopilotModule = (() => {
         "lng": -60.6385,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Ayacucho"
+        "address": "Av. Circunvalación (A008) y Ayacucho",
+        "validHeadings": [
+            165,
+            345
+        ]
     },
     {
         "id": "radar_circ_5",
@@ -815,7 +857,11 @@ const CopilotModule = (() => {
         "lng": -60.7077,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Baigorria"
+        "address": "Av. Circunvalación (A008) y Baigorria",
+        "validHeadings": [
+            175,
+            355
+        ]
     },
     {
         "id": "radar_circ_6",
@@ -824,7 +870,11 @@ const CopilotModule = (() => {
         "lng": -60.6482,
         "limit": 70,
         "desc": "Radar ingreso a Rosario",
-        "address": "Autopista Bs As altura Arroyo Seco / Ingreso Rosario"
+        "address": "Autopista Bs As altura Arroyo Seco / Ingreso Rosario",
+        "validHeadings": [
+            140,
+            320
+        ]
     },
     {
         "id": "radar_rn9_campana_75",
@@ -2803,7 +2853,50 @@ const CopilotModule = (() => {
      * @param {number} distance
      * @returns {{aligned: boolean, angleDiff: number, crossTrack: number, alongTrack: number}}
      */
-    function _evaluateCorridor(carLat, carLng, carHeading, camLat, camLng, distance) {
+
+    function _getCircunvalacionHeadings(lat, lng) {
+        // Sector Sur-Este (Ovidio Lagos, Uriburu, Ayacucho): orientación NW-SE (~135° / 315°)
+        if (lat < -32.990) {
+            return [135, 315];
+        }
+        // Sector Sur-Oeste (Pellegrini, 27 de Febrero): orientación WSW-ENE (~65° / 245°)
+        if (lat >= -32.990 && lat < -32.960 && lng < -60.700) {
+            return [65, 245];
+        }
+        // Sector Oeste (Eva Perón / Córdoba): orientación NNW-SSE (~340° / 160°)
+        if (lat >= -32.960 && lat < -32.920 && lng < -60.710) {
+            return [340, 160];
+        }
+        // Sector Norte (Baigorria): orientación N-S (~175° / 355°)
+        return [175, 355];
+    }
+
+    function _isVehicleOnRadarStreet(carHeading, radar) {
+        if (!radar || carHeading === null || isNaN(carHeading)) return true;
+
+        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí)
+        if (Array.isArray(radar.validHeadings) && radar.validHeadings.length > 0) {
+            return radar.validHeadings.some(h => {
+                let diff = Math.abs(carHeading - h) % 360;
+                if (diff > 180) diff = 360 - diff;
+                return diff <= 35;
+            });
+        }
+
+        // B) Si el nombre o descripción menciona Circunvalación pero no tenía validHeadings explícito:
+        if (radar.name.includes('Circunvalación') || (radar.desc && radar.desc.includes('Circunvalación'))) {
+            const circHeadings = _getCircunvalacionHeadings(radar.lat, radar.lng);
+            return circHeadings.some(h => {
+                let diff = Math.abs(carHeading - h) % 360;
+                if (diff > 180) diff = 360 - diff;
+                return diff <= 35;
+            });
+        }
+
+        return true;
+    }
+
+    function _evaluateCorridor(carLat, carLng, carHeading, camLat, camLng, distance, radar = null) {
         if (carHeading === null || isNaN(carHeading)) {
             return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
         }
@@ -2890,12 +2983,28 @@ const CopilotModule = (() => {
      * Locución concisa y personalizada para fotomultas (a 300m y a 150m).
      * Obligatoria y prioritaria al volumen del SO (sin opción de silencio total).
      */
+
+    function _formatRadarSpeechName(name) {
+        if (!name) return 'cruce con cámara';
+        return name
+            .replace(/\bBv\.\s*/gi, 'Bulevar ')
+            .replace(/\bAv\.\s*/gi, 'Avenida ')
+            .replace(/\bRN\s*/gi, 'Ruta ')
+            .replace(/\bRP\s*/gi, 'Ruta ')
+            .replace(/\bAU\s*/gi, 'Autopista ')
+            .replace(/\bkm\s*/gi, 'kilómetro ')
+            .replace(/\s*-\s*(Sur-Norte|Norte-Sur|Este-Oeste|Oeste-Este)/gi, '')
+            .replace(/\s*\([^)]*\)/g, '')
+            .trim();
+    }
+
     function _speakRadarConcise(target, distanceStage) {
         const firstName = _getDriverFirstName();
         const prefix = firstName ? `${firstName}, ` : '';
         const limit = target.limit || 60;
         const distText = (distanceStage === 150) ? '150' : (distanceStage === 500 ? '500' : '300');
-        const text = `${prefix}foto multa a ${distText} metros, máxima ${limit}.`;
+        const locationName = _formatRadarSpeechName(target.name);
+        const text = `${prefix}foto multa en ${locationName} a ${distText} metros, máxima ${limit}.`;
 
         console.log(`🔊 [COPILOTO-MANDATORY] Locución concisa (${distText}m): "${text}"`);
         _speakTextDirect(text, true);
@@ -3381,7 +3490,7 @@ const CopilotModule = (() => {
         if (_activeApproach) {
             const radar = _activeApproach.target;
             const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
-            const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
+            const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
 
             // A) Superó la cámara (pasó a menos de 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras estar < 35m)
             const passedByAlongTrack = cr.alongTrack !== undefined && cr.alongTrack <= 0 && dist <= 40;
@@ -3472,7 +3581,7 @@ const CopilotModule = (() => {
             if (dist <= (radioAlerta + 50)) {
                 const lastAlert = _lastAlertTime[radar.id] || 0;
                 if (now - lastAlert > COOLDOWN_MS) {
-                    const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist);
+                    const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
                     // Alertar únicamente dentro del cono frontal y dentro del rango dinámico
                     if (cr.aligned && cr.alongTrack >= 50 && cr.alongTrack <= radioAlerta) {
                         if (dist < bestRadarDist) {

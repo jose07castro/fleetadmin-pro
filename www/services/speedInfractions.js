@@ -300,6 +300,14 @@ async function checkPosition({ driverId, driverName, lat, lng, speed, heading, s
         if (dist <= PROXIMITY_METERS) {
             // Validar corredor vectorial si hay rumbo (heading) reportado
             if (typeof heading === 'number' && !isNaN(heading) && heading >= 0) {
+                if (Array.isArray(radar.validHeadings) && radar.validHeadings.length > 0) {
+                    const matchesRoad = radar.validHeadings.some(h => {
+                        let diff = Math.abs(heading - h) % 360;
+                        if (diff > 180) diff = 360 - diff;
+                        return diff <= 35;
+                    });
+                    if (!matchesRoad) continue;
+                }
                 const targetBearing = calculateBearing(lat, lng, radar.lat, radar.lng);
                 let angleDiff = Math.abs(heading - targetBearing) % 360;
                 if (angleDiff > 180) angleDiff = 360 - angleDiff;

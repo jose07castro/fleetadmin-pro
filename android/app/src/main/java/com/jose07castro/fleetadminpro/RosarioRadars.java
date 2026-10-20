@@ -6,9 +6,9 @@ import java.util.List;
 
 /**
  * Base de datos oficial de cámaras de fotomultas y radares fijos:
- * - Rosario y Av. Circunvalación (80 puntos GPS oficiales WGS84)
+ * - Rosario y Av. Circunvalación (82 puntos GPS oficiales WGS84)
  * - Rutas Nacionales y Conectores Troncales (RN 9, 34, 33, 11, 19, 8, A012, 7, 12, 14, 168 y AP 01)
- * Total: 234 puntos GPS homologados WGS84.
+ * Total: 236 puntos GPS homologados WGS84.
  * Sincronizado exactamente con CopilotModule (copilot.js).
  */
 public class RosarioRadars {
@@ -20,21 +20,27 @@ public class RosarioRadars {
         public final double lng;
         public final int limit;
         public final String desc;
+        public final int[] validHeadings;
 
         public StaticRadar(String id, String name, double lat, double lng, int limit, String desc) {
+            this(id, name, lat, lng, limit, desc, null);
+        }
+
+        public StaticRadar(String id, String name, double lat, double lng, int limit, String desc, int[] validHeadings) {
             this.id = id;
             this.name = name;
             this.lat = lat;
             this.lng = lng;
             this.limit = limit;
             this.desc = desc;
+            this.validHeadings = validHeadings;
         }
     }
 
     public static final List<StaticRadar> ALL_RADARS;
 
     static {
-        List<StaticRadar> list = new ArrayList<>(234);
+        List<StaticRadar> list = new ArrayList<>(236);
         list.add(new StaticRadar("radar_rosario_1", "España y San Lorenzo", -32.942635, -60.645948, 40, "Cruce en rojo / Senda peatonal"));
         list.add(new StaticRadar("radar_rosario_2", "Mendoza y Av. Provincias Unidas", -32.940218, -60.712617, 40, "Cruce en rojo / Senda peatonal"));
         list.add(new StaticRadar("radar_rosario_3", "Laprida 850", -32.947905, -60.634233, 40, "Cruce en rojo / Senda peatonal"));
@@ -109,12 +115,14 @@ public class RosarioRadars {
         list.add(new StaticRadar("radar_rosario_72", "Bv. Bv. Avellaneda y Bv. Seguí", -32.971724, -60.68736, 60, "Cruce en rojo"));
         list.add(new StaticRadar("radar_rosario_73", "Av. Pellegrini y Bv. Avellaneda", -32.949941, -60.68186, 60, "Cruce en rojo"));
         list.add(new StaticRadar("radar_rosario_74", "Bv. Oroño y Batlle y Ordóñez", -33.009436, -60.664703, 70, "Cruce en rojo"));
-        list.add(new StaticRadar("radar_circ_1", "Av. Circunvalación y Av. Pellegrini", -32.9696, -60.7105, 100, "Radar de velocidad fija Circunvalación"));
-        list.add(new StaticRadar("radar_circ_2", "Av. Circunvalación y Av. Eva Perón (Córdoba)", -32.9367, -60.7228, 100, "Radar de velocidad fija Circunvalación"));
-        list.add(new StaticRadar("radar_circ_3", "Av. Circunvalación y Av. Uriburu", -33.0031, -60.6729, 100, "Radar de velocidad fija Circunvalación"));
-        list.add(new StaticRadar("radar_circ_4", "Av. Circunvalación y Ayacucho (Acceso Sur)", -33.0118, -60.6385, 100, "Radar de velocidad fija Circunvalación"));
-        list.add(new StaticRadar("radar_circ_5", "Av. Circunvalación y Baigorria", -32.8943, -60.7077, 100, "Radar de velocidad fija Circunvalación"));
-        list.add(new StaticRadar("radar_circ_6", "Autopista Rosario - Bs As (Ingreso Av. Circunvalación)", -33.0315, -60.6482, 70, "Radar ingreso a Rosario"));
+        list.add(new StaticRadar("radar_rosario_segui_francia", "Bv. Seguí entre Vera Mujica y Av. Francia", -32.97412, -60.67444, 60, "Control de velocidad / Cruce semafórico", new int[]{45, 225}));
+        list.add(new StaticRadar("radar_circ_1", "Av. Circunvalación y Av. Pellegrini", -32.9696, -60.7105, 100, "Radar de velocidad fija Circunvalación", new int[]{65, 245}));
+        list.add(new StaticRadar("radar_circ_2", "Av. Circunvalación y Av. Eva Perón (Córdoba)", -32.9367, -60.7228, 100, "Radar de velocidad fija Circunvalación", new int[]{340, 160}));
+        list.add(new StaticRadar("radar_circ_ovidio_lagos", "Av. Circunvalación y Av. Ovidio Lagos", -32.9975, -60.6936, 100, "Radar de velocidad fija Circunvalación", new int[]{135, 315}));
+        list.add(new StaticRadar("radar_circ_3", "Av. Circunvalación y Av. Uriburu", -33.0031, -60.6729, 100, "Radar de velocidad fija Circunvalación", new int[]{130, 310}));
+        list.add(new StaticRadar("radar_circ_4", "Av. Circunvalación y Ayacucho (Acceso Sur)", -33.0118, -60.6385, 100, "Radar de velocidad fija Circunvalación", new int[]{165, 345}));
+        list.add(new StaticRadar("radar_circ_5", "Av. Circunvalación y Baigorria", -32.8943, -60.7077, 100, "Radar de velocidad fija Circunvalación", new int[]{175, 355}));
+        list.add(new StaticRadar("radar_circ_6", "Autopista Rosario - Bs As (Ingreso Av. Circunvalación)", -33.0315, -60.6482, 70, "Radar ingreso a Rosario", new int[]{140, 320}));
         list.add(new StaticRadar("radar_rn9_campana_75", "RN 9 km 75 (Campana)", -34.195, -58.932, 100, "Fotomulta fija autopista RN 9"));
         list.add(new StaticRadar("radar_rn9_zarate_84", "RN 9 km 83.8 (Zárate)", -34.135, -59.043, 100, "Fotomulta fija autopista RN 9"));
         list.add(new StaticRadar("radar_rn9_zarate_95", "RN 9 km 95 (Zárate Oeste)", -34.092, -59.135, 100, "Fotomulta fija autopista RN 9"));

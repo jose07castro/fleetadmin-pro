@@ -666,13 +666,30 @@
     "address": "OROÑO NICASIO Y BATLLE Y ORDOÑEZ JOSE"
   },
   {
+    "id": "radar_rosario_segui_francia",
+    "name": "Bv. Seguí entre Vera Mujica y Av. Francia",
+    "lat": -32.97412,
+    "lng": -60.67444,
+    "limit": 60,
+    "desc": "Control de velocidad / Cruce semafórico",
+    "address": "BOULEVARD SEGUÍ ENTRE VERA MUJICA Y AV. FRANCIA",
+    "validHeadings": [
+      45,
+      225
+    ]
+  },
+  {
     "id": "radar_circ_1",
     "name": "Av. Circunvalación y Av. Pellegrini",
     "lat": -32.9696,
     "lng": -60.7105,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
-    "address": "Av. Circunvalación (A008) y Av. Pellegrini"
+    "address": "Av. Circunvalación (A008) y Av. Pellegrini",
+    "validHeadings": [
+      65,
+      245
+    ]
   },
   {
     "id": "radar_circ_2",
@@ -681,7 +698,24 @@
     "lng": -60.7228,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
-    "address": "Av. Circunvalación (A008) y Av. Eva Perón"
+    "address": "Av. Circunvalación (A008) y Av. Eva Perón",
+    "validHeadings": [
+      340,
+      160
+    ]
+  },
+  {
+    "id": "radar_circ_ovidio_lagos",
+    "name": "Av. Circunvalación y Av. Ovidio Lagos",
+    "lat": -32.9975,
+    "lng": -60.6936,
+    "limit": 100,
+    "desc": "Radar de velocidad fija Circunvalación",
+    "address": "AV. CIRCUNVALACIÓN Y AV. OVIDIO LAGOS",
+    "validHeadings": [
+      135,
+      315
+    ]
   },
   {
     "id": "radar_circ_3",
@@ -690,7 +724,11 @@
     "lng": -60.6729,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
-    "address": "Av. Circunvalación (A008) y Av. Uriburu"
+    "address": "Av. Circunvalación (A008) y Av. Uriburu",
+    "validHeadings": [
+      130,
+      310
+    ]
   },
   {
     "id": "radar_circ_4",
@@ -699,7 +737,11 @@
     "lng": -60.6385,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
-    "address": "Av. Circunvalación (A008) y Ayacucho"
+    "address": "Av. Circunvalación (A008) y Ayacucho",
+    "validHeadings": [
+      165,
+      345
+    ]
   },
   {
     "id": "radar_circ_5",
@@ -708,7 +750,11 @@
     "lng": -60.7077,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
-    "address": "Av. Circunvalación (A008) y Baigorria"
+    "address": "Av. Circunvalación (A008) y Baigorria",
+    "validHeadings": [
+      175,
+      355
+    ]
   },
   {
     "id": "radar_circ_6",
@@ -717,7 +763,11 @@
     "lng": -60.6482,
     "limit": 70,
     "desc": "Radar ingreso a Rosario",
-    "address": "Autopista Bs As altura Arroyo Seco / Ingreso Rosario"
+    "address": "Autopista Bs As altura Arroyo Seco / Ingreso Rosario",
+    "validHeadings": [
+      140,
+      320
+    ]
   },
   {
     "id": "radar_rn9_campana_75",

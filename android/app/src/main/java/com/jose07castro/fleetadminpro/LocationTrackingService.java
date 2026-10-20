@@ -725,8 +725,79 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
      * d) Distancia frontal (Along-Track Distance): proyección en línea de marcha
      * e) Sentido de circulación: rechazo de mano contraria o perpendiculares
      */
+
+    private boolean isVehicleOnRadarStreet(Location carLoc, Float carBearing, RosarioRadars.StaticRadar radar) {
+        if (radar == null || carBearing == null) return true;
+
+        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí)
+        if (radar.validHeadings != null && radar.validHeadings.length > 0) {
+            for (int h : radar.validHeadings) {
+                float diff = Math.abs(carBearing - h) % 360.0f;
+                if (diff > 180.0f) diff = 360.0f - diff;
+                if (diff <= 35.0f) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // B) Si el nombre o descripción menciona Circunvalación pero no tenía validHeadings explícito:
+        if (radar.name.contains("Circunvalación") || (radar.desc != null && radar.desc.contains("Circunvalación"))) {
+            int[] circHeadings = getCircunvalacionHeadings(radar.lat, radar.lng);
+            for (int h : circHeadings) {
+                float diff = Math.abs(carBearing - h) % 360.0f;
+                if (diff > 180.0f) diff = 360.0f - diff;
+                if (diff <= 35.0f) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    private int[] getCircunvalacionHeadings(double lat, double lng) {
+        // Sector Sur-Este (Ovidio Lagos, Uriburu, Ayacucho): orientación NW-SE (~135° / 315°)
+        if (lat < -32.990) {
+            return new int[]{135, 315};
+        }
+        // Sector Sur-Oeste (Pellegrini, 27 de Febrero): orientación WSW-ENE (~65° / 245°)
+        if (lat >= -32.990 && lat < -32.960 && lng < -60.700) {
+            return new int[]{65, 245};
+        }
+        // Sector Oeste (Eva Perón / Córdoba): orientación NNW-SSE (~340° / 160°)
+        if (lat >= -32.960 && lat < -32.920 && lng < -60.710) {
+            return new int[]{340, 160};
+        }
+        // Sector Norte (Baigorria): orientación N-S (~175° / 355°)
+        return new int[]{175, 355};
+    }
+
+    private String formatRadarSpeechName(String name) {
+        if (name == null || name.trim().isEmpty()) return "cruce con cámara";
+        return name
+            .replaceAll("(?i)\\bBv\\.\\s*", "Bulevar ")
+            .replaceAll("(?i)\\bAv\\.\\s*", "Avenida ")
+            .replaceAll("(?i)\\bRN\\s*", "Ruta ")
+            .replaceAll("(?i)\\bRP\\s*", "Ruta ")
+            .replaceAll("(?i)\\bAU\\s*", "Autopista ")
+            .replaceAll("(?i)\\bkm\\s*", "kilómetro ")
+            .replaceAll("(?i)\\s*-\\s*(Sur-Norte|Norte-Sur|Este-Oeste|Oeste-Este)", "")
+            .replaceAll("\\s*\\([^)]*\\)", "")
+            .trim();
+    }
+
     private CorridorResult evaluateCorridor(Location carLoc, Float reliableBearing, RosarioRadars.StaticRadar radar, float distance) {
         if (reliableBearing == null) {
+            return new CorridorResult(false, 180f, 999.0, -999.0);
+        }
+
+        // 1. REGLA ESTRICTA DE CORREDOR / CALZADA DEL RADAR:
+        // Si el radar está en Circunvalación o tiene calzada específica (ej. Bv. Seguí),
+        // SOLO alertar si el vehículo circula en el rumbo de esa arteria.
+        // Descarta totalmente a vehículos en calles transversales como Ovidio Lagos o Uriburu.
+        if (radar != null && !isVehicleOnRadarStreet(carLoc, reliableBearing, radar)) {
             return new CorridorResult(false, 180f, 999.0, -999.0);
         }
 
@@ -815,9 +886,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private void speakRadarConcise(RosarioRadars.StaticRadar radar, int distanceStage) {
         String firstName = getDriverFirstName();
         String prefix = !firstName.isEmpty() ? firstName + ", " : "";
+        String locationName = formatRadarSpeechName(radar.name);
         String message = String.format(Locale.getDefault(), 
-            "%sfoto multa a %d metros, máxima %d.", 
-            prefix, distanceStage, radar.limit);
+            "%sfoto multa en %s a %d metros, máxima %d.", 
+            prefix, locationName, distanceStage, radar.limit);
         Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Locución obligatoria (" + distanceStage + "m): \"" + message + "\"");
         speakMandatory(message);
     }
