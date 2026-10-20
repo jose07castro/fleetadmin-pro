@@ -1103,6 +1103,7 @@ const App = (() => {
                     try {
                         const vehicleData = await DB.getVehicle(activeShift.vehicleId);
                         AndroidServices.enableForegroundService(activeShift.id, vehicleData?.plate || 'Vehículo en uso');
+                        if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(true);
                     } catch (e) {
                         console.warn('Error enabling foreground service:', e);
                     }
@@ -1116,6 +1117,7 @@ const App = (() => {
                 if (typeof AndroidServices !== 'undefined') {
                     try {
                         AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                        if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                     } catch (e) {
                         console.warn('Error updating foreground service:', e);
                     }

@@ -152,6 +152,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     public static volatile float alertVolume = 0.85f;
     public static volatile int alertVolumePercent = 85;
 
+    // Estado del turno: el override estilo Uber (subir volumen en modo silencio)
+    // SÓLO se activa cuando el chofer tiene un TURNO INICIADO. Fuera de turno se respeta el silencio.
+    public static volatile boolean isShiftActive = false;
+    private int bgToneGenStream = -1;
+
     // Override de volumen estilo Uber: aunque el celular esté en silencio/vibración,
     // las alertas suenan por el canal ALARMA con volumen elevado temporalmente.
     private static final int ALERT_STREAM = AudioManager.STREAM_ALARM;
@@ -241,6 +246,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         alertVolumePercent = prefs.getInt("alert_volume_percent", 85);
         alertVolume = alertVolumePercent / 100.0f;
         isVoiceMuted = "off".equals(prefs.getString("radarVoice", "on"));
+        isShiftActive = prefs.getBoolean("is_shift_active", false);
         try {
             Set<String> savedSpoken = prefs.getStringSet("spoken_alerts_set", null);
             if (savedSpoken != null) {
@@ -249,7 +255,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
             }
         } catch (Exception ignored) {}
-        Log.i(TAG, "🔊 [PREFS] Volumen independiente cargado: " + alertVolumePercent + "% | Mute: " + isVoiceMuted);
+        Log.i(TAG, "🔊 [PREFS] Volumen: " + alertVolumePercent + "% | Mute: " + isVoiceMuted + " | Turno activo: " + isShiftActive);
 
         // 1. Thread de fondo prioritario
         serviceThread = new HandlerThread("GPSServiceThread", Process.THREAD_PRIORITY_URGENT_DISPLAY);
@@ -352,6 +358,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             fleetId = prefs.getString("fleetId", null);
             serverUrl = prefs.getString("serverUrl", null);
             Log.i(TAG, "🔁 START_STICKY — userId restaurado: " + userId);
+        }
+
+        if (intent != null && intent.hasExtra("isShiftActive")) {
+            isShiftActive = intent.getBooleanExtra("isShiftActive", false);
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean("is_shift_active", isShiftActive).apply();
+            Log.i(TAG, "🚗 [TURNO] isShiftActive recibido en Intent: " + isShiftActive);
         }
 
         // Notificación de alta prioridad para evitar cierre por sistema
@@ -753,12 +765,19 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void playBgProximityTone(int distanceStage) {
-        // Alerta obligatoria de fotomulta (sin muteo)
+        // Alerta obligatoria de fotomulta (override Uber solo si está en turno)
         try {
-            boostAlertVolume();
-            scheduleAlertVolumeRestore();
-            if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(ALERT_STREAM, 100);
+            int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_NOTIFICATION;
+            if (isShiftActive) {
+                boostAlertVolume();
+                scheduleAlertVolumeRestore();
+            }
+            if (bgToneGen == null || bgToneGenStream != streamType) {
+                if (bgToneGen != null) {
+                    try { bgToneGen.release(); } catch (Exception ignored) {}
+                }
+                bgToneGen = new ToneGenerator(streamType, 100);
+                bgToneGenStream = streamType;
             }
             if (distanceStage <= 35) {
                 bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 130);
@@ -775,12 +794,19 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void playBgPassedTone() {
-        // Alerta obligatoria de confirmación (sin muteo)
+        // Alerta obligatoria de confirmación (override Uber solo si está en turno)
         try {
-            boostAlertVolume();
-            scheduleAlertVolumeRestore();
-            if (bgToneGen == null) {
-                bgToneGen = new ToneGenerator(ALERT_STREAM, 100);
+            int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_NOTIFICATION;
+            if (isShiftActive) {
+                boostAlertVolume();
+                scheduleAlertVolumeRestore();
+            }
+            if (bgToneGen == null || bgToneGenStream != streamType) {
+                if (bgToneGen != null) {
+                    try { bgToneGen.release(); } catch (Exception ignored) {}
+                }
+                bgToneGen = new ToneGenerator(streamType, 100);
+                bgToneGenStream = streamType;
             }
             bgToneGen.startTone(ToneGenerator.TONE_PROP_PROMPT, 150);
         } catch (Exception e) {}
@@ -1217,8 +1243,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     /**
      * Sube temporalmente el volumen del canal ALARMA al nivel configurado de alertas
      * (como hace Uber al entrar un viaje). Guarda el volumen original para restaurarlo.
+     * SÓLO se aplica cuando el chofer tiene TURNO INICIADO (isShiftActive == true).
      */
     private void boostAlertVolume() {
+        if (!isShiftActive) {
+            Log.i(TAG, "ℹ️ [VOLUME-BOOST] Turno no activo. Omitiendo override de volumen (respetando silencio del chofer).");
+            return;
+        }
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
@@ -1232,7 +1263,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 int target = Math.max(1, Math.round(max * (alertVolumePercent / 100.0f)));
                 if (current < target) {
                     am.setStreamVolume(ALERT_STREAM, target, 0);
-                    Log.i(TAG, "📢 [VOLUME-BOOST] Volumen ALARMA elevado " + current + " → " + target + "/" + max + " (modo silencio: " + am.getRingerMode() + ")");
+                    Log.i(TAG, "📢 [VOLUME-BOOST] Turno activo: Volumen ALARMA elevado " + current + " → " + target + "/" + max + " (modo silencio: " + am.getRingerMode() + ")");
                 }
             }
         } catch (Exception e) {
@@ -1242,6 +1273,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     /** Programa la restauración del volumen original (con margen por si llegan alertas encadenadas). */
     private void scheduleAlertVolumeRestore() {
+        if (!isShiftActive) return;
         volumeRestoreHandler.removeCallbacks(volumeRestoreRunnable);
         volumeRestoreHandler.postDelayed(volumeRestoreRunnable, 2500);
     }
@@ -1263,13 +1295,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private boolean requestNavigationAudioFocus() {
-        boostAlertVolume();
+        if (isShiftActive) {
+            boostAlertVolume();
+        }
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return false;
+            int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_MUSIC;
+            int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(ALERT_USAGE)
+                    .setUsage(usageType)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
                 navAudioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -1278,10 +1315,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     .setOnAudioFocusChangeListener(focusChange -> {})
                     .build();
                 int res = am.requestAudioFocus(navAudioFocusRequest);
-                Log.i(TAG, "🔊 [AUDIO-FOCUS] Solicitud de audio focus otorgada: " + (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED));
+                Log.i(TAG, "🔊 [AUDIO-FOCUS] Solicitud otorgada (" + (isShiftActive ? "STREAM_ALARM" : "STREAM_MUSIC") + "): " + (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED));
                 return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             } else {
-                int res = am.requestAudioFocus(null, ALERT_STREAM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+                int res = am.requestAudioFocus(null, streamType, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
                 return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             }
         } catch (Exception e) {
@@ -1291,7 +1328,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void releaseNavigationAudioFocus() {
-        scheduleAlertVolumeRestore();
+        if (isShiftActive) {
+            scheduleAlertVolumeRestore();
+        }
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
@@ -1372,6 +1411,39 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
+    public static void setShiftActive(boolean active, Context context) {
+        isShiftActive = active;
+        Log.i(TAG, "🚗 [TURNO-ALERTA] setShiftActive: " + active + " | Override Uber: " + (active ? "ACTIVADO (sube volumen en silencio)" : "DESACTIVADO (respeta silencio del chofer)"));
+        Context ctx = (instance != null) ? instance : context;
+        if (ctx != null) {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit().putBoolean("is_shift_active", active).apply();
+        }
+        if (instance != null) {
+            if (!active) {
+                instance.restoreAlertVolumeNow();
+            }
+            if (instance.tts != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    int usageType = active ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                    instance.tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(usageType)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build());
+                } catch (Exception ignored) {}
+            }
+        }
+        if (staticFallbackTts != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                int usageType = active ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                staticFallbackTts.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(usageType)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build());
+            } catch (Exception ignored) {}
+        }
+    }
+
     private static TextToSpeech staticFallbackTts = null;
     private static volatile boolean isStaticFallbackTtsReady = false;
 
@@ -1390,8 +1462,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                             staticFallbackTts.setLanguage(new Locale("es"));
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
                             staticFallbackTts.setAudioAttributes(new AudioAttributes.Builder()
-                                .setUsage(ALERT_USAGE)
+                                .setUsage(usageType)
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                                 .build());
                         }
@@ -1422,14 +1495,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 new Handler(Looper.getMainLooper()).post(() -> {
                     try {
                         if (staticFallbackTts != null && isStaticFallbackTtsReady) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                                staticFallbackTts.setAudioAttributes(new AudioAttributes.Builder()
+                                    .setUsage(usageType)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build());
+                            }
                             Bundle params = new Bundle();
-                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
                             staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_" + System.currentTimeMillis());
                         } else if (staticFallbackTts != null) {
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 if (staticFallbackTts != null && isStaticFallbackTtsReady) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                        int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                                        staticFallbackTts.setAudioAttributes(new AudioAttributes.Builder()
+                                            .setUsage(usageType)
+                                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                            .build());
+                                    }
                                     Bundle params = new Bundle();
-                                    params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+                                    params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
                                     staticFallbackTts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "fallback_d_" + System.currentTimeMillis());
                                 }
                             }, 500);
@@ -1462,12 +1549,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
             // Configurar AudioAttributes para segundo plano y navegación vehicular
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
                 AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(ALERT_USAGE)
+                    .setUsage(usageType)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
                 tts.setAudioAttributes(audioAttributes);
-                Log.i(TAG, "🔊 [TTS] AudioAttributes USAGE_ALARM configurados (suena aunque el celular esté en silencio)");
+                Log.i(TAG, "🔊 [TTS] AudioAttributes " + (isShiftActive ? "USAGE_ALARM (override Uber activo)" : "USAGE_ASSISTANCE_NAVIGATION_GUIDANCE (respeta silencio)") + " configurados");
             }
 
             // Utterance listener para liberar audio focus al finalizar de hablar
@@ -1500,7 +1588,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         Log.i(TAG, "🔊 [TTS] Despachando anuncio encolado: \"" + pending + "\"");
                         requestNavigationAudioFocus();
                         Bundle params = new Bundle();
-                        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+                        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
                         tts.speak(pending, TextToSpeech.QUEUE_FLUSH, params, "pending_" + System.currentTimeMillis());
                     }
                 }
@@ -1526,11 +1614,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         lastSpokenTime = now;
         lastSpokenText = text;
 
-        Log.i(TAG, "🔊 [TTS] speak (vol " + alertVolumePercent + "%): \"" + text + "\"");
+        Log.i(TAG, "🔊 [TTS] speak (vol " + alertVolumePercent + "% | turno: " + isShiftActive + "): \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                    tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(usageType)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build());
+                } catch (Exception ignored) {}
+            }
             requestNavigationAudioFocus();
             Bundle params = new Bundle();
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
             int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "alert_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS] tts.speak() returned ERROR");
@@ -1559,11 +1656,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         lastSpokenTime = now;
         lastSpokenText = text;
 
-        Log.i(TAG, "🔊 [TTS-MANDATORY] speak obligatorio al volumen del SO: \"" + text + "\"");
+        Log.i(TAG, "🔊 [TTS-MANDATORY] speak obligatorio al volumen del SO (turno: " + isShiftActive + "): \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
+                    tts.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(usageType)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build());
+                } catch (Exception ignored) {}
+            }
             requestNavigationAudioFocus();
             Bundle params = new Bundle();
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
             int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "mandatory_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS-MANDATORY] tts.speak() returned ERROR");
@@ -1597,7 +1703,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     ? audioUrl 
                     : baseUrl + (audioUrl.startsWith("/") ? "" : "/") + audioUrl;
 
-                Log.i(TAG, "🎵 [NATIVE-AUDIO] Reproduciendo nota de voz nativa: " + fullUrl + " (vol " + alertVolumePercent + "%)");
+                Log.i(TAG, "🎵 [NATIVE-AUDIO] Reproduciendo nota de voz nativa: " + fullUrl + " (vol " + alertVolumePercent + "% | turno: " + isShiftActive + ")");
 
                 if (mediaPlayer != null) {
                     try {
@@ -1609,20 +1715,24 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 mediaPlayer = new MediaPlayer();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    int usageType = isShiftActive ? ALERT_USAGE : AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE;
                     AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                        .setUsage(ALERT_USAGE)
+                        .setUsage(usageType)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build();
                     mediaPlayer.setAudioAttributes(audioAttributes);
+                } else {
+                    int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_MUSIC;
+                    mediaPlayer.setAudioStreamType(streamType);
                 }
 
                 mediaPlayer.setDataSource(fullUrl);
                 mediaPlayer.setOnPreparedListener(mp -> {
-                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo, reproduciendo por canal ALARMA al " + alertVolumePercent + "%");
+                    Log.i(TAG, "▶️ [NATIVE-AUDIO] Audio listo, reproduciendo por canal " + (isShiftActive ? "ALARMA" : "MULTIMEDIA") + " al " + alertVolumePercent + "%");
                     try {
                         requestNavigationAudioFocus();
-                        // El nivel lo controla el volumen del canal ALARMA (boostAlertVolume)
-                        mp.setVolume(1.0f, 1.0f);
+                        float vol = isShiftActive ? 1.0f : alertVolume;
+                        mp.setVolume(vol, vol);
                         mp.start();
                     } catch (Exception e) {
                         Log.e(TAG, "❌ Error al iniciar MediaPlayer:", e);

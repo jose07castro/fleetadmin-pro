@@ -618,6 +618,21 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void setShiftActive(boolean active) {
+            Log.i(TAG, "📱 JS → setShiftActive: " + active);
+            try {
+                LocationTrackingService.setShiftActive(active, MainActivity.this);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating setShiftActive to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public boolean isShiftActive() {
+            return LocationTrackingService.isShiftActive;
+        }
+
+        @JavascriptInterface
         public int getAppVersionCode() {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

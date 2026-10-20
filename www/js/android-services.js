@@ -68,6 +68,7 @@ const AndroidServices = (() => {
     async function enableForegroundService(shiftId, vehiclePlate) {
         console.log('📱 AndroidServices: enableForegroundService() llamado');
         console.log(`📱 AndroidServices: shiftId=${shiftId} | plate=${vehiclePlate}`);
+        setShiftActive(Boolean(shiftId));
 
         // Registrar receptor de GPS nativo SIEMPRE primero
         _registerNativeGPSReceiver();
@@ -95,6 +96,9 @@ const AndroidServices = (() => {
                         console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId} | serverUrl=${serverUrl}`);
                         
                         window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl);
+                        if (typeof window.NativeServiceBridge.setShiftActive === 'function') {
+                            window.NativeServiceBridge.setShiftActive(Boolean(shiftId));
+                        }
                         _nativeGPSActive = true;
                         console.log('📱 AndroidServices: ✅ LocationTrackingService ARRANCADO — GPS nativo + Firebase Direct');
                     } else if (attempts < 15) {
@@ -140,6 +144,7 @@ const AndroidServices = (() => {
         console.log('📱 AndroidServices: disableForegroundService() llamado');
 
         _nativeGPSActive = false;
+        setShiftActive(false);
 
         if (isNativeAndroid()) {
             // ── CAPA 1: Detener el Service Java ──
@@ -772,6 +777,31 @@ const AndroidServices = (() => {
         }
     }
 
+    
+    function setShiftActive(active) {
+        const isActive = !!active;
+        console.log(`📱 AndroidServices: setShiftActive(${isActive}) — Override Uber: ${isActive ? 'ACTIVADO (sube volumen en silencio)' : 'DESACTIVADO (respeta silencio)'}`);
+        try {
+            localStorage.setItem('is_shift_active', isActive ? 'true' : 'false');
+        } catch (e) {}
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.setShiftActive === 'function') {
+            try {
+                window.NativeServiceBridge.setShiftActive(isActive);
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.setShiftActive:', e);
+            }
+        }
+    }
+
+    function isShiftActive() {
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.isShiftActive === 'function') {
+            try {
+                return window.NativeServiceBridge.isShiftActive();
+            } catch (e) {}
+        }
+        return localStorage.getItem('is_shift_active') === 'true';
+    }
+
     // =============================================
     // API PÚBLICA
     // =============================================
@@ -785,6 +815,8 @@ const AndroidServices = (() => {
         enableForegroundService,
         disableForegroundService,
         isTrackingActive,
+        setShiftActive,
+        isShiftActive,
         
         // GPS nativo
         isNativeGPSAlive,

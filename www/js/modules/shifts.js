@@ -141,6 +141,8 @@ const ShiftsModule = (() => {
                 // Sincronización silenciosa (mantener localStorage actualizado si venía de otro lado)
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
+                // Sincronizar estado turno activo en AndroidServices
+                if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setShiftActive === 'function') { AndroidServices.setShiftActive(true); }
 
                 container.innerHTML = batteryBannerHTML + renderActiveShift(activeShift, vehicles);
                 return;
@@ -153,6 +155,7 @@ const ShiftsModule = (() => {
                 localStorage.removeItem('active_shift_state');
                 if (typeof AndroidServices !== 'undefined') {
                     AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                 }
                 if (typeof Components !== 'undefined') {
                     Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
@@ -726,6 +729,7 @@ const ShiftsModule = (() => {
             // Activar servicio en segundo plano (Foreground Service nativo)
             if (typeof AndroidServices !== 'undefined') {
                 AndroidServices.enableForegroundService(shiftIdRef, vehicleData ? vehicleData.plate : null);
+                if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(true);
             }
 
             Router.navigate('shifts');
