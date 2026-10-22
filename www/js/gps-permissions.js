@@ -834,7 +834,8 @@ const GPSPermissions = (() => {
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed, pos.heading, pos.accuracy);
+                // pos.speed ya fue convertido a km/h en handleSuccess
+                CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed, pos.heading, pos.accuracy, 'kmh');
             }
 
             await window.sendLocationToServer(

@@ -645,5 +645,48 @@ public class MainActivity extends BridgeActivity {
                 return 53;
             }
         }
+
+        @JavascriptInterface
+        public boolean canDrawOverlays() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                return Settings.canDrawOverlays(MainActivity.this);
+            }
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestOverlayPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error opening overlay settings:", e);
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void showOverlayAlert(String type, String title, String subtitle, int limit, int speed, int dist, String audioMessage) {
+            try {
+                if (LocationTrackingService.instance != null) {
+                    LocationTrackingService.instance.showFloatingOverlay(type, title, subtitle, limit, speed, dist, audioMessage);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error in showOverlayAlert bridge:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void hideOverlayAlert() {
+            try {
+                LocationTrackingService.hideFloatingOverlay();
+            } catch (Exception e) {
+                Log.e(TAG, "Error in hideOverlayAlert bridge:", e);
+            }
+        }
+
     }
 }

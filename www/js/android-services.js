@@ -198,7 +198,8 @@ const AndroidServices = (() => {
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo) ---
             if (typeof CopilotModule !== 'undefined') {
-                CopilotModule.checkProximity(lat, lng, speed, validBearing);
+                // LocationTrackingService.java ya envía la velocidad en km/h (getSpeed() * 3.6)
+                CopilotModule.checkProximity(lat, lng, speed, validBearing, null, 'kmh');
             }
 
             // Validar que estemos en turno activo para enviar a Firebase
@@ -305,6 +306,27 @@ const AndroidServices = (() => {
      * Pide permiso de UBICACIÓN EN SEGUNDO PLANO (Background Location)
      * Requerido para Android 10+ para que el GPS no se corte.
      */
+        /**
+     * Verifica si la app tiene permiso para mostrar alertas flotantes sobre Uber/DiDi/Waze.
+     */
+    function canDrawOverlays() {
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.canDrawOverlays === 'function') {
+            return window.NativeServiceBridge.canDrawOverlays();
+        }
+        return false;
+    }
+
+    /**
+     * Abre los ajustes del sistema para permitir mostrar sobre otras aplicaciones.
+     */
+    function requestOverlayPermission() {
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.requestOverlayPermission === 'function') {
+            window.NativeServiceBridge.requestOverlayPermission();
+            return true;
+        }
+        return false;
+    }
+
     async function requestBackgroundLocationPermission() {
         if (!isNativeAndroid()) return true;
 
@@ -831,6 +853,8 @@ const AndroidServices = (() => {
         setDriverName,
 
         // Batería
+        canDrawOverlays,
+        requestOverlayPermission,
         requestBackgroundLocationPermission,
         showBackgroundLocationDialog,
         requestBatteryExemption,

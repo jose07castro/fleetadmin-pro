@@ -35,6 +35,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
+import android.provider.Settings;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -892,6 +903,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             prefix, locationName, distanceStage, radar.limit);
         Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Locución obligatoria (" + distanceStage + "m): \"" + message + "\"");
         speakMandatory(message);
+
+        // Cartel flotante sobre otras apps (Uber/DiDi/Waze) hasta que el usuario lo cierre
+        float currentSpeed = (lastSpeed > 0) ? lastSpeed : 0f;
+        showFloatingOverlay("radar", radar.name, radar.desc != null ? radar.desc : "Videocontrol municipal",
+                radar.limit, Math.round(currentSpeed), distanceStage, message);
     }
 
     private void checkProximityToAlerts(Location myLocation) {
@@ -1082,6 +1098,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         postUrgentAlertNotification("🚨 " + typeLabel.toUpperCase(), message);
         wakeScreenForAlert();
         speak(message);
+
+        // Cartel flotante sobre otras apps (Uber/DiDi/Waze)
+        float currentSpeed = (lastSpeed > 0) ? lastSpeed : 0f;
+        showFloatingOverlay(alert.type != null ? alert.type : "traffic", 
+                alert.location != null ? alert.location : "Alerta de Tránsito",
+                alert.originalText != null ? alert.originalText : typeLabel,
+                0, Math.round(currentSpeed), Math.round(distance), message);
     }
 
     // ================================================================
@@ -2440,4 +2463,296 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         });
     }
+
+    // ================================================================
+    // FLOATING OVERLAY WINDOW (ON TOP OF UBER / DIDI / WAZE)
+    // ================================================================
+    private static View activeOverlayView = null;
+    private static WindowManager windowManager = null;
+    private static String lastFloatingAudioMessage = null;
+
+    public void showFloatingOverlay(String type, String title, String subtitle, int limit, int currentSpeed, int distance, String audioMessage) {
+        lastFloatingAudioMessage = audioMessage;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                    Log.w(TAG, "⚠️ [OVERLAY] Permiso SYSTEM_ALERT_WINDOW no concedido por el usuario.");
+                    return;
+                }
+
+                if (windowManager == null) {
+                    windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+                }
+                if (windowManager == null) return;
+
+                if (activeOverlayView != null) {
+                    try { windowManager.removeView(activeOverlayView); } catch (Exception ignored) {}
+                    activeOverlayView = null;
+                }
+
+                float density = getResources().getDisplayMetrics().density;
+                int dp8 = (int) (8 * density);
+                int dp10 = (int) (10 * density);
+                int dp12 = (int) (12 * density);
+                int dp14 = (int) (14 * density);
+                int dp16 = (int) (16 * density);
+                int dp50 = (int) (50 * density);
+                int dp90 = (int) (90 * density);
+
+                boolean isRadar = "radar".equalsIgnoreCase(type) || limit > 0;
+                int borderColor = isRadar ? Color.parseColor("#EF4444") : Color.parseColor("#3B82F6");
+
+                // Tarjeta principal
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.HORIZONTAL);
+                card.setGravity(Gravity.CENTER_VERTICAL);
+                card.setPadding(dp16, dp14, dp14, dp14);
+
+                GradientDrawable cardBg = new GradientDrawable();
+                cardBg.setColor(Color.parseColor("#F50F172A")); // Fondo oscuro translúcido
+                cardBg.setCornerRadius(20 * density);
+                cardBg.setStroke((int) (3.5f * density), borderColor);
+                card.setBackground(cardBg);
+
+                // 1. INDICADOR DE MÁXIMA / ALERTA (90dp x 90dp)
+                FrameLayout signFrame = new FrameLayout(this);
+                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp90, dp90);
+                signParams.setMargins(0, 0, dp12, 0);
+                signFrame.setLayoutParams(signParams);
+
+                if (isRadar && limit > 0) {
+                    GradientDrawable signBg = new GradientDrawable();
+                    signBg.setShape(GradientDrawable.OVAL);
+                    signBg.setColor(Color.WHITE);
+                    signBg.setStroke((int) (7 * density), Color.parseColor("#DC2626"));
+                    signFrame.setBackground(signBg);
+
+                    LinearLayout signInner = new LinearLayout(this);
+                    signInner.setOrientation(LinearLayout.VERTICAL);
+                    signInner.setGravity(Gravity.CENTER);
+                    signInner.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                    TextView numText = new TextView(this);
+                    numText.setText(String.valueOf(limit));
+                    numText.setTextColor(Color.parseColor("#0F172A"));
+                    numText.setTextSize(38);
+                    numText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    numText.setGravity(Gravity.CENTER);
+                    numText.setIncludeFontPadding(false);
+                    signInner.addView(numText);
+
+                    TextView unitText = new TextView(this);
+                    unitText.setText("MÁX");
+                    unitText.setTextColor(Color.parseColor("#DC2626"));
+                    unitText.setTextSize(10);
+                    unitText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    unitText.setGravity(Gravity.CENTER);
+                    unitText.setIncludeFontPadding(false);
+                    signInner.addView(unitText);
+
+                    signFrame.addView(signInner);
+                } else {
+                    GradientDrawable signBg = new GradientDrawable();
+                    signBg.setShape(GradientDrawable.OVAL);
+                    signBg.setColor(Color.parseColor("#1E293B"));
+                    signBg.setStroke((int) (6 * density), borderColor);
+                    signFrame.setBackground(signBg);
+
+                    TextView iconText = new TextView(this);
+                    String icon = "police".equalsIgnoreCase(type) ? "🚔" :
+                                 "checkpoint".equalsIgnoreCase(type) ? "🚧" :
+                                 "municipal".equalsIgnoreCase(type) ? "🦊" : "⚠️";
+                    iconText.setText(icon);
+                    iconText.setTextSize(38);
+                    iconText.setGravity(Gravity.CENTER);
+                    signFrame.addView(iconText);
+                }
+                card.addView(signFrame);
+
+                // 2. DETALLE CENTRAL (Badge, Distancia, Calle, Velocímetro)
+                LinearLayout centerCol = new LinearLayout(this);
+                centerCol.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams centerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                centerCol.setLayoutParams(centerParams);
+
+                // Fila Superior
+                LinearLayout topRow = new LinearLayout(this);
+                topRow.setOrientation(LinearLayout.HORIZONTAL);
+                topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                TextView badgeView = new TextView(this);
+                badgeView.setText(isRadar ? "📷 FOTOMULTA" : "🚨 CONTROL / OPERATIVO");
+                badgeView.setTextColor(Color.WHITE);
+                badgeView.setTextSize(11);
+                badgeView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                badgeView.setPadding((int)(8*density), (int)(3*density), (int)(8*density), (int)(3*density));
+                GradientDrawable badgeBg = new GradientDrawable();
+                badgeBg.setColor(borderColor);
+                badgeBg.setCornerRadius(8 * density);
+                badgeView.setBackground(badgeBg);
+                topRow.addView(badgeView);
+
+                TextView distView = new TextView(this);
+                distView.setText("  📍 A " + distance + "m");
+                distView.setTextColor(Color.parseColor("#38BDF8"));
+                distView.setTextSize(14);
+                distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                topRow.addView(distView);
+
+                centerCol.addView(topRow);
+
+                // Nombre / Ubicación
+                TextView titleView = new TextView(this);
+                titleView.setText(title != null ? title : "Zona de videocontrol");
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(16);
+                titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                titleView.setSingleLine(true);
+                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                titleView.setPadding(0, (int)(4*density), 0, (int)(2*density));
+                centerCol.addView(titleView);
+
+                // Velocidad / Exceso
+                TextView speedGauge = new TextView(this);
+                if (isRadar && limit > 0) {
+                    if (currentSpeed > limit) {
+                        speedGauge.setText("⚠️ EXCESO: " + currentSpeed + " km/h (MÁX " + limit + ")");
+                        speedGauge.setTextColor(Color.parseColor("#FCA5A5"));
+                    } else if (currentSpeed > 0) {
+                        speedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
+                        speedGauge.setTextColor(Color.parseColor("#6EE7B7"));
+                    } else {
+                        speedGauge.setText("⏱️ Respete máxima de " + limit + " km/h");
+                        speedGauge.setTextColor(Color.parseColor("#CBD5E1"));
+                    }
+                } else {
+                    speedGauge.setText("⚠️ Conduzca con precaución");
+                    speedGauge.setTextColor(Color.parseColor("#FCD34D"));
+                }
+                speedGauge.setTextSize(13);
+                speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                centerCol.addView(speedGauge);
+
+                card.addView(centerCol);
+
+                // 3. BOTONES DE ACCIÓN: REPETIR y CERRAR (50dp x 50dp)
+                LinearLayout actionsCol = new LinearLayout(this);
+                actionsCol.setOrientation(LinearLayout.VERTICAL);
+                actionsCol.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                actionsParams.setMargins(dp10, 0, 0, 0);
+                actionsCol.setLayoutParams(actionsParams);
+
+                // Botón Repetir Audio
+                LinearLayout repeatBtn = new LinearLayout(this);
+                repeatBtn.setOrientation(LinearLayout.VERTICAL);
+                repeatBtn.setGravity(Gravity.CENTER);
+                repeatBtn.setLayoutParams(new LinearLayout.LayoutParams(dp50, dp50));
+                GradientDrawable repBg = new GradientDrawable();
+                repBg.setColor(Color.parseColor("#333B82F6"));
+                repBg.setStroke((int)(2*density), Color.parseColor("#3B82F6"));
+                repBg.setCornerRadius(14 * density);
+                repeatBtn.setBackground(repBg);
+
+                TextView repIcon = new TextView(this);
+                repIcon.setText("🔊");
+                repIcon.setTextSize(18);
+                repIcon.setGravity(Gravity.CENTER);
+                repeatBtn.addView(repIcon);
+
+                TextView repLbl = new TextView(this);
+                repLbl.setText("REPETIR");
+                repLbl.setTextColor(Color.parseColor("#60A5FA"));
+                repLbl.setTextSize(7);
+                repLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                repLbl.setGravity(Gravity.CENTER);
+                repeatBtn.addView(repLbl);
+
+                repeatBtn.setOnClickListener(v -> {
+                    if (lastFloatingAudioMessage != null && !lastFloatingAudioMessage.isEmpty()) {
+                        speakMandatory(lastFloatingAudioMessage);
+                    }
+                });
+                actionsCol.addView(repeatBtn);
+
+                // Separador
+                View space = new View(this);
+                space.setLayoutParams(new LinearLayout.LayoutParams(dp50, (int)(6*density)));
+                actionsCol.addView(space);
+
+                // Botón Cerrar
+                LinearLayout closeBtn = new LinearLayout(this);
+                closeBtn.setOrientation(LinearLayout.VERTICAL);
+                closeBtn.setGravity(Gravity.CENTER);
+                closeBtn.setLayoutParams(new LinearLayout.LayoutParams(dp50, dp50));
+                GradientDrawable closeBg = new GradientDrawable();
+                closeBg.setColor(Color.parseColor("#33EF4444"));
+                closeBg.setStroke((int)(2*density), Color.parseColor("#EF4444"));
+                closeBg.setCornerRadius(14 * density);
+                closeBtn.setBackground(closeBg);
+
+                TextView closeIcon = new TextView(this);
+                closeIcon.setText("✕");
+                closeIcon.setTextColor(Color.parseColor("#F87171"));
+                closeIcon.setTextSize(18);
+                closeIcon.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                closeIcon.setGravity(Gravity.CENTER);
+                closeBtn.addView(closeIcon);
+
+                TextView closeLbl = new TextView(this);
+                closeLbl.setText("CERRAR");
+                closeLbl.setTextColor(Color.parseColor("#F87171"));
+                closeLbl.setTextSize(7);
+                closeLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                closeLbl.setGravity(Gravity.CENTER);
+                closeBtn.addView(closeLbl);
+
+                closeBtn.setOnClickListener(v -> {
+                    hideFloatingOverlay();
+                });
+                actionsCol.addView(closeBtn);
+
+                card.addView(actionsCol);
+
+                int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ?
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY :
+                        WindowManager.LayoutParams.TYPE_PHONE;
+
+                WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        layoutType,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        PixelFormat.TRANSLUCENT
+                );
+                params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                params.y = (int) (35 * density);
+                params.x = 0;
+
+                FrameLayout overlayContainer = new FrameLayout(this);
+                overlayContainer.setPadding(dp10, 0, dp10, 0);
+                overlayContainer.addView(card);
+
+                activeOverlayView = overlayContainer;
+                windowManager.addView(activeOverlayView, params);
+                Log.i(TAG, "✅ [OVERLAY] Cartel flotante visible sobre otras apps: " + title);
+
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [OVERLAY] Error mostrando cartel flotante:", e);
+            }
+        });
+    }
+
+    public static void hideFloatingOverlay() {
+        if (activeOverlayView != null && windowManager != null) {
+            try {
+                windowManager.removeView(activeOverlayView);
+                Log.i(TAG, "🛑 [OVERLAY] Cartel flotante cerrado");
+            } catch (Exception ignored) {}
+            activeOverlayView = null;
+        }
+    }
+
 }

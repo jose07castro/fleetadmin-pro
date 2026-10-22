@@ -2998,40 +2998,70 @@ const CopilotModule = (() => {
             .trim();
     }
 
-    function _speakRadarConcise(target, distanceStage) {
+        let _lastAlertAudioTarget = null;
+    let _lastAlertAudioDistance = 300;
+    let _lastAlertAudioSpeed = 0;
+    let _userDismissedTargetId = null;
+    let _userDismissedAt = 0;
+
+    function _getRadarSpeechText(target, distanceStage) {
         const firstName = _getDriverFirstName();
         const prefix = firstName ? `${firstName}, ` : '';
         const limit = target.limit || 60;
         const distText = (distanceStage === 150) ? '150' : (distanceStage === 500 ? '500' : '300');
         const locationName = _formatRadarSpeechName(target.name);
-        const text = `${prefix}foto multa en ${locationName} a ${distText} metros, máxima ${limit}.`;
+        return `${prefix}foto multa en ${locationName} a ${distText} metros, máxima ${limit}.`;
+    }
 
-        console.log(`🔊 [COPILOTO-MANDATORY] Locución concisa (${distText}m): "${text}"`);
+    function _getTrafficSpeechText(target, dist) {
+        const distRound = Math.round(dist / 10) * 10;
+        const nameClean = (target.name || '').replace(/\s+y\s+/gi, ' esquina ');
+        const firstName = _getDriverFirstName();
+        const prefix = firstName ? `${firstName}, ` : '';
+        if (target.isTrafficAlert) {
+            const distPhrase = (distRound <= 30) ? 'en el lugar.' : `a ${distRound} metros.`;
+            let text = `${prefix}atención, ${nameClean} ${distPhrase}`;
+            if (target.desc && target.desc !== target.name && target.desc.length < 80) {
+                text += ` ${target.desc}`;
+            }
+            return text;
+        } else {
+            return `${prefix}foto multa a ${distRound} metros, máxima ${target.limit || 60}.`;
+        }
+    }
+
+    function repeatAlertAudio() {
+        if (!_lastAlertAudioTarget) return;
+        console.log('🔊 [COPILOTO] Repitiendo audio de alerta para:', _lastAlertAudioTarget.name);
+        const isTraffic = !!_lastAlertAudioTarget.isTrafficAlert;
+        if (isTraffic) {
+            _playWarningChime(false);
+            const text = _getTrafficSpeechText(_lastAlertAudioTarget, _lastAlertAudioDistance);
+            _speakTextDirect(text, true);
+        } else {
+            _speakRadarConcise(_lastAlertAudioTarget, _lastAlertAudioDistance || 300);
+        }
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.speak === 'function') {
+            const msg = isTraffic
+                ? _getTrafficSpeechText(_lastAlertAudioTarget, _lastAlertAudioDistance)
+                : _getRadarSpeechText(_lastAlertAudioTarget, _lastAlertAudioDistance || 300);
+            try { window.NativeServiceBridge.speak(msg); } catch(_) {}
+        }
+    }
+
+    function _speakRadarConcise(target, distanceStage) {
+        const text = _getRadarSpeechText(target, distanceStage);
+        console.log(`🔊 [COPILOTO-MANDATORY] Locución concisa: "${text}"`);
         _speakTextDirect(text, true);
     }
+
 
     /**
      * Locución para alertas de tránsito en tiempo real (policía, operativos, accidentes).
      */
     function _speakWarning(target, dist, currentSpeed) {
         if (!_isVoiceEnabled) return;
-
-        const distRound = Math.round(dist / 10) * 10;
-        const nameClean = (target.name || '').replace(/\s+y\s+/gi, ' esquina ');
-        const firstName = _getDriverFirstName();
-        const prefix = firstName ? `${firstName}, ` : '';
-
-        let text = '';
-        if (target.isTrafficAlert) {
-            const distPhrase = (distRound <= 30) ? 'en el lugar.' : `a ${distRound} metros.`;
-            text = `${prefix}atención, ${nameClean} ${distPhrase}`;
-            if (target.desc && target.desc !== target.name && target.desc.length < 80) {
-                text += ` ${target.desc}`;
-            }
-        } else {
-            text = `${prefix}foto multa a ${distRound} metros, máxima ${target.limit || 60}.`;
-        }
-
+        const text = _getTrafficSpeechText(target, dist);
         _speakTextDirect(text);
     }
 
@@ -3048,14 +3078,14 @@ const CopilotModule = (() => {
         style.textContent = `
             #radarCopilotHUD {
                 position: fixed;
-                top: 10px;
+                top: 12px;
                 left: 50%;
-                transform: translateX(-50%) translateY(-120%);
-                width: calc(100% - 24px);
-                max-width: 440px;
-                z-index: 9999999;
+                transform: translateX(-50%) translateY(-140%);
+                width: calc(100% - 16px);
+                max-width: 580px;
+                z-index: 99999999;
                 box-sizing: border-box;
-                transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+                transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.25), opacity 0.25s ease;
                 opacity: 0;
                 pointer-events: auto;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -3066,51 +3096,73 @@ const CopilotModule = (() => {
             }
             .copilot-hud-card {
                 position: relative;
-                background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(26, 17, 24, 0.98) 100%);
-                border: 2px solid #ef4444;
-                border-radius: 16px;
-                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75), 0 0 20px rgba(239, 68, 68, 0.35);
-                backdrop-filter: blur(16px);
-                -webkit-backdrop-filter: blur(16px);
-                padding: 10px 12px;
+                background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(28, 16, 26, 0.98) 100%);
+                border: 3.5px solid #ef4444;
+                border-radius: 20px;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 35px rgba(239, 68, 68, 0.45);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                padding: 16px 18px;
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 14px;
                 color: #ffffff;
+                box-sizing: border-box;
             }
             .copilot-hud-card.hud-speeding {
                 border-color: #ef4444;
-                animation: copilotBorderPulse 1.2s infinite alternate;
+                animation: copilotBorderPulse 1.1s infinite alternate;
             }
             @keyframes copilotBorderPulse {
-                0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-                100% { box-shadow: 0 0 35px rgba(239, 68, 68, 0.9), 0 0 0 4px rgba(239, 68, 68, 0.3); }
+                0% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+                100% { box-shadow: 0 0 45px rgba(239, 68, 68, 0.95), 0 0 0 6px rgba(239, 68, 68, 0.35); }
             }
             .copilot-traffic-sign {
                 flex-shrink: 0;
-                width: 50px;
-                height: 50px;
+                width: 90px;
+                height: 90px;
                 border-radius: 50%;
                 background: #ffffff;
-                border: 4px solid #dc2626;
+                border: 7px solid #dc2626;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), inset 0 2px 4px rgba(0, 0, 0, 0.15);
+                box-sizing: border-box;
             }
             .copilot-traffic-sign .speed-num {
-                font-size: 21px;
+                font-size: 44px;
                 font-weight: 900;
-                line-height: 1;
+                line-height: 0.95;
                 color: #0f172a;
-                letter-spacing: -0.5px;
+                letter-spacing: -1.5px;
+                margin-top: -3px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             .copilot-traffic-sign .speed-unit {
-                font-size: 7px;
+                font-size: 11px;
                 font-weight: 900;
                 color: #dc2626;
-                margin-top: 1px;
+                margin-top: 3px;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                line-height: 1;
+            }
+            .copilot-traffic-sign.is-traffic {
+                background: radial-gradient(circle, #1e293b 0%, #0f172a 100%);
+                border-width: 6px;
+            }
+            .copilot-traffic-sign.is-traffic .traffic-icon {
+                font-size: 42px;
+                line-height: 1;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+            }
+            .copilot-traffic-sign.is-traffic .speed-unit {
+                font-size: 11px;
+                font-weight: 900;
+                margin-top: 4px;
+                letter-spacing: 1px;
             }
             .copilot-hud-main {
                 flex: 1;
@@ -3119,46 +3171,48 @@ const CopilotModule = (() => {
             .copilot-hud-pill-row {
                 display: flex;
                 align-items: center;
-                gap: 6px;
-                margin-bottom: 3px;
+                gap: 8px;
+                margin-bottom: 4px;
                 flex-wrap: wrap;
             }
             .copilot-hud-pill-badge {
                 background: #dc2626;
                 color: #ffffff;
-                font-size: 10px;
+                font-size: 13px;
                 font-weight: 900;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
-                padding: 2px 7px;
-                border-radius: 12px;
+                padding: 4px 10px;
+                border-radius: 10px;
                 display: inline-flex;
                 align-items: center;
-                gap: 4px;
+                gap: 6px;
             }
             .copilot-hud-pill-dist {
-                background: rgba(56, 189, 248, 0.15);
+                background: rgba(56, 189, 248, 0.22);
                 color: #38bdf8;
-                font-size: 11px;
-                font-weight: 800;
-                padding: 2px 8px;
-                border-radius: 12px;
-                border: 1px solid rgba(56, 189, 248, 0.4);
+                font-size: 15px;
+                font-weight: 900;
+                padding: 4px 12px;
+                border-radius: 10px;
+                border: 1.5px solid rgba(56, 189, 248, 0.5);
             }
             .copilot-hud-name {
-                font-size: 15px;
-                font-weight: 800;
+                font-size: 20px;
+                font-weight: 900;
                 color: #f8fafc;
                 line-height: 1.25;
-                margin: 2px 0 3px;
+                margin: 4px 0 3px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.6);
             }
             .copilot-hud-desc {
-                font-size: 11px;
-                color: #94a3b8;
-                margin-bottom: 4px;
+                font-size: 14px;
+                font-weight: 600;
+                color: #cbd5e1;
+                margin-bottom: 6px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -3166,60 +3220,90 @@ const CopilotModule = (() => {
             .copilot-hud-speed-gauge {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
-                font-size: 11px;
+                gap: 8px;
+                font-size: 15px;
                 font-weight: 800;
-                padding: 3px 8px;
-                border-radius: 8px;
+                padding: 6px 14px;
+                border-radius: 10px;
             }
             .copilot-speed-over {
-                background: rgba(239, 68, 68, 0.25);
+                background: rgba(239, 68, 68, 0.32);
                 color: #fca5a5;
-                border: 1px solid rgba(239, 68, 68, 0.5);
+                border: 1.5px solid rgba(239, 68, 68, 0.6);
+                font-weight: 900;
             }
             .copilot-speed-ok {
-                background: rgba(16, 185, 129, 0.2);
+                background: rgba(16, 185, 129, 0.22);
                 color: #6ee7b7;
-                border: 1px solid rgba(16, 185, 129, 0.4);
+                border: 1.5px solid rgba(16, 185, 129, 0.5);
             }
             .copilot-speed-neutral {
-                background: rgba(148, 163, 184, 0.15);
-                color: #cbd5e1;
+                background: rgba(148, 163, 184, 0.2);
+                color: #e2e8f0;
             }
             .copilot-hud-actions {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
                 align-self: center;
+                flex-shrink: 0;
             }
-            .copilot-hud-btn {
-                background: rgba(255, 255, 255, 0.12);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                color: #ffffff;
-                width: 32px;
-                height: 32px;
-                border-radius: 50%;
+            .copilot-hud-action-btn {
+                width: 50px;
+                height: 50px;
+                border-radius: 14px;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                font-size: 14px;
-                transition: background 0.15s, transform 0.1s;
+                transition: transform 0.12s ease, background 0.15s ease;
+                box-sizing: border-box;
+                user-select: none;
+                -webkit-user-select: none;
+                border-width: 2px;
+                border-style: solid;
             }
-            .copilot-hud-btn:active {
+            .copilot-hud-action-btn:active {
                 transform: scale(0.92);
             }
-            .copilot-hud-btn.is-muted {
-                background: rgba(239, 68, 68, 0.45) !important;
-                border-color: #ef4444 !important;
-                box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+            .copilot-repeat-btn {
+                background: rgba(59, 130, 246, 0.25);
+                border-color: #3b82f6;
+                color: #60a5fa;
+            }
+            .copilot-repeat-btn span.btn-icon {
+                font-size: 20px;
+                line-height: 1;
+            }
+            .copilot-repeat-btn span.btn-lbl {
+                font-size: 8px;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                margin-top: 1px;
+            }
+            .copilot-close-btn {
+                background: rgba(239, 68, 68, 0.25);
+                border-color: #ef4444;
+                color: #f87171;
+            }
+            .copilot-close-btn span.btn-icon {
+                font-size: 20px;
+                line-height: 1;
+                font-weight: 900;
+            }
+            .copilot-close-btn span.btn-lbl {
+                font-size: 8px;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                margin-top: 1px;
             }
             .copilot-hud-bottom-row {
                 display: flex;
                 align-items: center;
                 justify-content: flex-start;
                 gap: 8px;
-                margin-top: 4px;
+                margin-top: 2px;
                 width: 100%;
             }
         `;
@@ -3251,6 +3335,11 @@ const CopilotModule = (() => {
         if (distMeters <= PASSING_DISTANCE_METERS) {
             distLabel = isTraffic ? '📍 ¡EN EL LUGAR!' : '📍 ¡PASANDO CÁMARA!';
         }
+
+        // Registrar datos para botón de repetición de audio
+        _lastAlertAudioTarget = target;
+        _lastAlertAudioDistance = distMeters;
+        _lastAlertAudioSpeed = currentSpeed || 0;
 
         // Determinar velocidad redondeada estabilizada
         if (now - _lastUIThrottleTime >= 800 || _lastDisplayedSpeed === 0) {
@@ -3294,17 +3383,17 @@ const CopilotModule = (() => {
             const meta = alertIcons[target.type] || alertIcons.warning;
             cardBorderColor = meta.color;
             signHtml = `
-                <div class="copilot-traffic-sign" style="border-color:${meta.color}; background:#0f172a; color:#fff;">
-                    <span style="font-size:24px;">${meta.icon}</span>
-                    <span class="speed-unit" style="color:${meta.color}; font-size:7px;">ALERTA</span>
+                <div class="copilot-traffic-sign is-traffic" style="border-color:${meta.color};">
+                    <span class="traffic-icon">${meta.icon}</span>
+                    <span class="speed-unit" style="color:${meta.color};">${meta.badge}</span>
                 </div>
             `;
             badgeHtml = `<span class="copilot-hud-pill-badge" style="background:${meta.color};">${meta.icon} ${meta.badge}</span>`;
         } else {
             signHtml = `
                 <div class="copilot-traffic-sign">
-                    <span class="speed-num">${target.limit}</span>
-                    <span class="speed-unit">MÁX KM/H</span>
+                    <span class="speed-num">${target.limit || 60}</span>
+                    <span class="speed-unit">MÁX</span>
                 </div>
             `;
             badgeHtml = `<span class="copilot-hud-pill-badge">📷 FOTOMULTA</span>`;
@@ -3319,10 +3408,10 @@ const CopilotModule = (() => {
             hud.setAttribute('aria-live', 'assertive');
             hud.innerHTML = `
                 <div class="${cardClass}" id="copilotHudCard" style="border-color:${cardBorderColor};">
-                    ${signHtml}
+                    <div id="copilotHudSignWrap">${signHtml}</div>
                     <div class="copilot-hud-main">
                         <div class="copilot-hud-pill-row">
-                            ${badgeHtml}
+                            <span id="copilotHudBadgeWrap">${badgeHtml}</span>
                             <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
                         </div>
                         <div class="copilot-hud-name" id="copilotHudName" title="${target.name}">${target.name}</div>
@@ -3332,24 +3421,61 @@ const CopilotModule = (() => {
                         </div>
                     </div>
                     <div class="copilot-hud-actions">
-                        <button class="copilot-hud-btn" id="copilotCloseBtn" title="Cerrar aviso">✕</button>
+                        <button class="copilot-hud-action-btn copilot-repeat-btn" id="copilotRepeatBtn" title="Repetir audio">
+                            <span class="btn-icon">🔊</span>
+                            <span class="btn-lbl">REPETIR</span>
+                        </button>
+                        <button class="copilot-hud-action-btn copilot-close-btn" id="copilotCloseBtn" title="Cerrar aviso">
+                            <span class="btn-icon">✕</span>
+                            <span class="btn-lbl">CERRAR</span>
+                        </button>
                     </div>
                 </div>
             `;
             document.body.appendChild(hud);
+
+            const repeatBtn = document.getElementById('copilotRepeatBtn');
+            if (repeatBtn) {
+                repeatBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    repeatAlertAudio();
+                };
+            }
 
             const closeBtn = document.getElementById('copilotCloseBtn');
             if (closeBtn) {
                 closeBtn.onclick = (e) => {
                     e.stopPropagation();
                     _stopAllAudio();
+                    _userDismissedTargetId = target.id;
+                    _userDismissedAt = Date.now();
                     _hideRadarHUD();
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
+                        try { window.NativeServiceBridge.hideOverlayAlert(); } catch(_) {}
+                    }
                 };
             }
         } else {
-            // Actualización suave sin reconstrucción de DOM (evita parpadeos y saltos)
+            // Actualización suave sin reconstrucción de DOM
             const distEl = document.getElementById('copilotHudDist');
             if (distEl) distEl.textContent = distLabel;
+
+            const nameEl = document.getElementById('copilotHudName');
+            if (nameEl && nameEl.textContent !== target.name) {
+                nameEl.textContent = target.name;
+                nameEl.title = target.name;
+            }
+
+            const descEl = document.getElementById('copilotHudDesc');
+            if (descEl) {
+                descEl.textContent = target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito');
+            }
+
+            const signWrap = document.getElementById('copilotHudSignWrap');
+            if (signWrap) signWrap.innerHTML = signHtml;
+
+            const badgeWrap = document.getElementById('copilotHudBadgeWrap');
+            if (badgeWrap) badgeWrap.innerHTML = badgeHtml;
 
             const card = document.getElementById('copilotHudCard');
             if (card) {
@@ -3369,11 +3495,28 @@ const CopilotModule = (() => {
             if (hud && hud.classList) hud.classList.add('hud-active');
         }, 16);
 
-        // Reset timer de cierre automático por seguridad (25 segundos)
-        if (_hudTimer) clearTimeout(_hudTimer);
-        _hudTimer = setTimeout(() => {
-            _hideRadarHUD();
-        }, 25000);
+        // Despachar a cartel flotante nativo de Android (para verse sobre Uber/DiDi/Waze)
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.showOverlayAlert === 'function') {
+            try {
+                const audioMsg = !isTraffic ? _getRadarSpeechText(target, distMeters) : _getTrafficSpeechText(target, distMeters);
+                window.NativeServiceBridge.showOverlayAlert(
+                    isTraffic ? (target.type || 'traffic') : 'radar',
+                    target.name,
+                    target.desc || (isTraffic ? 'Reporte en vía' : 'Fotomulta municipal'),
+                    target.limit || 0,
+                    _lastDisplayedSpeed,
+                    distMeters,
+                    audioMsg
+                );
+            } catch (_) {}
+        }
+
+        // NOTA: Se eliminó el auto-cierre tras 25 segundos por requerimiento del chofer:
+        // El cartel permanece visible hasta que el usuario lo cierre manualmente con el botón ✕.
+        if (_hudTimer) {
+            clearTimeout(_hudTimer);
+            _hudTimer = null;
+        }
     }
 
     /**
@@ -3499,7 +3642,8 @@ const CopilotModule = (() => {
                 console.log(`📡 [COPILOTO] 🏁 Cámara superada: ${radar.name}`);
                 _playPassedChime();
                 _lastAlertTime[radar.id] = now;
-                _hideRadarHUD();
+                const distEl = document.getElementById('copilotHudDist');
+                if (distEl) distEl.textContent = '🏁 CÁMARA SUPERADA';
 
                 // Comprobar si hubo exceso de velocidad al pasar la fotomulta
                 const maxApproachSpeed = Math.max(_activeApproach.maxSpeed || 0, currentSpeed || 0);
@@ -3516,8 +3660,11 @@ const CopilotModule = (() => {
             // B) Vehículo dobló, se desvió lateralmente (> 35m) o se aleja (cancelar inmediatamente)
             const isMovingAway = dist > _activeApproach.lastDistance + 9;
             if (isMovingAway || (!cr.aligned && dist > 35)) {
-                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o se desvió de corredor, cancelando aproximación a: ${radar.name}`);
-                _hideRadarHUD();
+                console.log(`📡 [COPILOTO] ↪️ Vehículo dobló o se desvió de corredor, finalizando aproximación a: ${radar.name}`);
+                const distEl = document.getElementById('copilotHudDist');
+                if (distEl && !distEl.textContent.includes('SUPERADA')) {
+                    distEl.textContent = '↪️ VÍA DESVIADA';
+                }
                 _activeApproach = null;
                 return;
             }
@@ -3593,7 +3740,7 @@ const CopilotModule = (() => {
             }
         }
 
-        if (bestRadar) {
+        if (bestRadar && !(_userDismissedTargetId === bestRadar.id && (now - _userDismissedAt < 60000))) {
             _activeApproach = {
                 radarId: bestRadar.id,
                 target: bestRadar,
