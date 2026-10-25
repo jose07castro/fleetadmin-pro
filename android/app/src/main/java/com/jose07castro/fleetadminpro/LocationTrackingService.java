@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -146,6 +148,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // State
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
+    private LocationManager nativeLocationManager;
+    private LocationListener nativeGpsListener;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private LocationDbHelper dbHelper;
@@ -535,6 +539,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void startLocationUpdates() {
+        // 1. Google Play Services Fused Location Client
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
             .setMinUpdateIntervalMillis(1000)
             .setMaxUpdateDelayMillis(0)  // Sin batching — entrega inmediata de cada punto GPS
@@ -553,19 +558,95 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         try {
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, serviceHandler.getLooper());
-            Log.i(TAG, "✅ Motor GPS Activo (Fondo)");
+            Log.i(TAG, "✅ Motor Fused GPS Activo (Fondo)");
         } catch (SecurityException e) {
-            Log.e(TAG, "❌ Permisos GPS denegados");
+            Log.e(TAG, "❌ Permisos GPS denegados en FusedLocation");
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error iniciando FusedLocation updates:", e);
+        }
+
+        // 2. Hardware GPS nativo directo (LocationManager.GPS_PROVIDER + NETWORK_PROVIDER)
+        // Redundancia crítica: si Google Play Services se congela bajo uso intensivo de Uber/DiDi,
+        // el chip de hardware continúa enviando fixes directos.
+        try {
+            if (nativeLocationManager == null) {
+                nativeLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            }
+            if (nativeLocationManager != null && nativeGpsListener == null) {
+                nativeGpsListener = new LocationListener() {
+                    @Override
+                    public void onLocationChanged(@NonNull Location location) {
+                        processNewLocation(location);
+                    }
+                    @Override
+                    public void onProviderEnabled(@NonNull String provider) {
+                        Log.i(TAG, "🛰️ [NATIVO] Proveedor habilitado: " + provider);
+                    }
+                    @Override
+                    public void onProviderDisabled(@NonNull String provider) {
+                        Log.w(TAG, "⚠️ [NATIVO] Proveedor deshabilitado: " + provider);
+                    }
+                };
+
+                if (nativeLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    nativeLocationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        1000L,
+                        0f,
+                        nativeGpsListener,
+                        serviceHandler.getLooper()
+                    );
+                    Log.i(TAG, "✅ [NATIVO] GPS_PROVIDER registrado directamente al chip");
+                }
+
+                if (nativeLocationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    nativeLocationManager.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        2000L,
+                        0f,
+                        nativeGpsListener,
+                        serviceHandler.getLooper()
+                    );
+                    Log.i(TAG, "✅ [NATIVO] NETWORK_PROVIDER registrado como respaldo");
+                }
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "❌ Permisos denegados para LocationManager nativo");
+        } catch (Exception e) {
+            Log.e(TAG, "⚠️ Error registrando LocationManager nativo:", e);
         }
     }
 
     private void stopLocationUpdates() {
         if (fusedLocationClient != null && locationCallback != null) {
-            fusedLocationClient.removeLocationUpdates(locationCallback);
+            try {
+                fusedLocationClient.removeLocationUpdates(locationCallback);
+            } catch (Exception ignored) {}
+        }
+        if (nativeLocationManager != null && nativeGpsListener != null) {
+            try {
+                nativeLocationManager.removeUpdates(nativeGpsListener);
+            } catch (Exception ignored) {}
+            nativeGpsListener = null;
         }
     }
 
     private void processNewLocation(Location location) {
+        if (location == null) return;
+
+        // Descartar fixes con precisión excesivamente pobre (> 45m) si ya se cuenta con una posición válida
+        if (location.hasAccuracy() && location.getAccuracy() > 45.0f && lastKnownLocation != null) {
+            return;
+        }
+
+        // Descartar fixes más viejos que el último conocido
+        if (lastKnownLocation != null) {
+            long timeDiff = location.getTime() - lastKnownLocation.getTime();
+            if (timeDiff < -1000) {
+                return;
+            }
+        }
+
         lastKnownLocation = location;
         lastLat = location.getLatitude();
         lastLng = location.getLongitude();
@@ -573,20 +654,34 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         // Estabilización del velocímetro:
         // a) Priorizar valor de hardware nativo 'coords.speed' provisto por chip GPS
         float rawSpeedKmh = -1f;
-        if (location.hasSpeed() && location.getSpeed() >= 0f) {
-            rawSpeedKmh = location.getSpeed() * 3.6f;
-        } else if (lastCalcLocation != null) {
-            // b) Fallback Haversine con delta de tiempo >= 1.5s y descarte si accuracy > 15m
+        boolean hardwareSpeedReported = location.hasSpeed();
+
+        if (hardwareSpeedReported) {
+            float hwSpeed = location.getSpeed();
+            if (hwSpeed >= 0f) {
+                rawSpeedKmh = hwSpeed * 3.6f;
+            }
+        }
+
+        // b) Detección de reposo o cálculo Haversine de desplazamiento
+        if (lastCalcLocation != null) {
             long timeDeltaMs = location.getTime() - lastCalcLocation.getTime();
             float timeDeltaSec = timeDeltaMs / 1000f;
-            boolean accuracyOk = !location.hasAccuracy() || location.getAccuracy() <= 15.0f;
-            boolean prevAccuracyOk = !lastCalcLocation.hasAccuracy() || lastCalcLocation.getAccuracy() <= 15.0f;
+            float distMeters = lastCalcLocation.distanceTo(location);
 
-            if (timeDeltaSec >= 1.5f && timeDeltaSec <= 15.0f && accuracyOk && prevAccuracyOk) {
-                float distMeters = lastCalcLocation.distanceTo(location);
-                float calculatedKmh = (distMeters / timeDeltaSec) * 3.6f;
-                if (calculatedKmh <= 180f) {
-                    rawSpeedKmh = calculatedKmh;
+            // Si el vehículo se desplazó menos de 3.5m entre evaluaciones:
+            // Es ruido de jitter / deriva estacionaria con el auto detenido.
+            if (timeDeltaSec >= 1.0f && distMeters < 3.5f) {
+                rawSpeedKmh = 0f;
+            } else if (!hardwareSpeedReported && timeDeltaSec >= 1.5f && timeDeltaSec <= 15.0f) {
+                boolean accuracyOk = !location.hasAccuracy() || location.getAccuracy() <= 30.0f;
+                boolean prevAccuracyOk = !lastCalcLocation.hasAccuracy() || lastCalcLocation.getAccuracy() <= 30.0f;
+
+                if (accuracyOk && prevAccuracyOk) {
+                    float calculatedKmh = (distMeters / timeDeltaSec) * 3.6f;
+                    if (calculatedKmh <= 180f) {
+                        rawSpeedKmh = calculatedKmh;
+                    }
                 }
             }
         }
@@ -595,18 +690,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             lastCalcLocation = new Location(location);
         }
 
-        // c) Filtro de suavizado (Media Móvil Exponencial - EMA con factor alfa ~0.3)
+        // c) Suavizado y decaimiento exponencial (EMA)
         if (rawSpeedKmh >= 0f) {
             if (!isSmoothedSpeedInit) {
                 smoothedSpeedKmh = rawSpeedKmh;
                 isSmoothedSpeedInit = true;
             } else {
-                smoothedSpeedKmh = (0.30f * rawSpeedKmh) + (0.70f * smoothedSpeedKmh);
+                smoothedSpeedKmh = (0.35f * rawSpeedKmh) + (0.65f * smoothedSpeedKmh);
             }
+        } else {
+            // FIX CRÍTICO: Si no hay velocidad calculable (sensor sin señal de velocidad),
+            // decaer la velocidad hacia 0 para que NUNCA quede congelada en movimiento
+            smoothedSpeedKmh = smoothedSpeedKmh * 0.5f;
         }
 
-        // d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario
-        if (smoothedSpeedKmh < 4.0f) {
+        // d) Umbral de reposo: Si < 3.5 km/h, fijar en 0 km/h para eliminar ruido estacionario
+        if (smoothedSpeedKmh < 3.5f) {
             smoothedSpeedKmh = 0f;
         }
 
@@ -2117,9 +2216,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
                 
-                // Si el GPS no se ha movido o no ha reportado en 60s, reforzamos el binding
-                if (lastGPSTimestamp > 0 && silenceMs > 60000) {
-                    Log.w(TAG, "⚠️ Vigilante: GPS inactivo por 60s. Reforzando motor...");
+                // Si el GPS no se ha movido o no ha reportado en 30s, forzar velocidad a 0
+                if (lastGPSTimestamp > 0 && silenceMs > 30000) {
+                    if (lastSpeed > 0f || smoothedSpeedKmh > 0f) {
+                        Log.i(TAG, "🛑 Vigilante: Sin movimiento por " + (silenceMs / 1000) + "s. Fijando velocidad en 0.");
+                        lastSpeed = 0f;
+                        smoothedSpeedKmh = 0f;
+                        if (dbRef != null && userId != null && !userId.isEmpty()) {
+                            Map<String, Object> zeroSpeed = new HashMap<>();
+                            zeroSpeed.put("speed", 0.0);
+                            dbRef.child(userId).updateChildren(zeroSpeed);
+                        }
+                    }
+                }
+
+                // Si el GPS no ha reportado en 45s, reforzamos el binding de ambos motores
+                if (lastGPSTimestamp > 0 && silenceMs > 45000) {
+                    Log.w(TAG, "⚠️ Vigilante: GPS inactivo por " + (silenceMs / 1000) + "s. Reforzando motor...");
                     stopLocationUpdates();
                     startLocationUpdates();
                 }
@@ -2390,17 +2503,37 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void sendSilentHeartbeat() {
-        if (userId == null || userId.isEmpty()) return;
+        if (userId == null || userId.isEmpty() || dbRef == null) return;
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-        String timestamp = sdf.format(new Date());
+        long now = System.currentTimeMillis();
+        long silenceMs = (lastGPSTimestamp > 0) ? (now - lastGPSTimestamp) : 0;
 
-        pushSingleToFirebaseAsync(lastLat, lastLng, lastSpeed, lastBearing, getBatteryLevel(), timestamp, "native_heartbeat_ping", (error, ref) -> {
-            if (error == null) {
-                Log.i(TAG, "🏓 Ping de latido silencioso guardado via servidor");
-            } else {
-                Log.w(TAG, "❌ Falló el envío del latido silencioso: " + error.getMessage());
+        serviceHandler.post(() -> {
+            try {
+                Map<String, Object> hbUpdates = new HashMap<>();
+                hbUpdates.put("last_heartbeat", now);
+                hbUpdates.put("battery", getBatteryLevel());
+
+                // Si no se han recibido fixes GPS en más de 30 segundos:
+                // Forzar velocidad a 0 para eliminar velocidad fantasma residual
+                if (silenceMs > 30000) {
+                    lastSpeed = 0f;
+                    smoothedSpeedKmh = 0f;
+                    hbUpdates.put("speed", 0.0);
+                }
+
+                // Si el GPS lleva más de 90 segundos sin entregar coordenadas:
+                // Marcar que el GPS está sin señal / detenido
+                if (silenceMs > 90000) {
+                    hbUpdates.put("gps_status", "stalled");
+                    hbUpdates.put("status", "sin_senal");
+                }
+
+                dbRef.child(userId).updateChildren(hbUpdates);
+                lastHeartbeatTime = now;
+                Log.i(TAG, "🏓 Latido silencioso registrado (silencio GPS: " + (silenceMs / 1000) + "s)");
+            } catch (Exception e) {
+                Log.w(TAG, "❌ Error actualizando latido silencioso en Firebase: " + e.getMessage());
             }
         });
     }

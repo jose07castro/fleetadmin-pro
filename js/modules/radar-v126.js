@@ -390,12 +390,12 @@ const RadarModule = (() => {
         let speedText = `${currentSpeed.toFixed(0)} km/h`;
         if (status === 'logout_voluntario') {
             speedText = 'OFFLINE';
-        } else if (status === 'suspicious_disconnect') {
+        } else if (status === 'suspicious_disconnect' || status === 'sin_senal' || status === 'offline') {
             speedText = 'SIN SEÑAL';
         } else if (status === 'gps_desactivado') {
             speedText = 'GPS APAGADO';
-        } else if (status === 'offline') {
-            speedText = 'SIN SEÑAL';
+        } else if (currentSpeed <= 0 || (statusClass && (statusClass.includes('status-stopped') || statusClass.includes('status-offline')))) {
+            speedText = '0 km/h';
         }
         
         // Mapeo de colores técnicos para SVG (Versión HD 3D)
@@ -543,10 +543,15 @@ const RadarModule = (() => {
         if (isNaN(lat) || isNaN(lng)) return null;
 
         const heading = data.heading || 0;
-        const speed = data.speed || 0;
+        let speed = Number(data.speed) || 0;
         const updatedAt = data.updated_at ? new Date(data.updated_at) : null;
         const timeAgoSecs = updatedAt ? Math.floor((Date.now() - updatedAt.getTime()) / 1000) : 99999;
         const timeAgo = updatedAt ? _timeAgo(updatedAt) : 'desconocido';
+
+        // Si la posición GPS tiene más de 60s o proviene de heartbeat, la velocidad debe forzarse a 0 km/h
+        if (timeAgoSecs > 60 || data._source === 'native_heartbeat_ping') {
+            speed = 0;
+        }
 
         let rawName = data.driverName || data.name || '';
         if (!rawName || rawName === driverId) {
@@ -590,11 +595,15 @@ const RadarModule = (() => {
 
         // Si el chofer está enviando GPS fresco (últimos 90s), reflejar su estado real de movimiento
         const isFresh = timeAgoSecs <= 90;
-        let carMode = (speed > 5) ? 'moving' : 'stopped';
         let effectiveStatus = data.status || 'active';
+        if (timeAgoSecs > 90 && effectiveStatus === 'active') {
+            effectiveStatus = 'offline';
+        }
+
+        let carMode = (speed > 5 && isFresh) ? 'moving' : 'stopped';
 
         // Auto-sanar choferes que volvieron a reportar ubicación pero tenían el status bloqueado en sospechoso
-        if (isFresh && (effectiveStatus === 'suspicious_disconnect' || effectiveStatus === 'gps_desactivado')) {
+        if (isFresh && (effectiveStatus === 'suspicious_disconnect' || effectiveStatus === 'gps_desactivado' || effectiveStatus === 'sin_senal')) {
             effectiveStatus = 'active';
             if (typeof DB !== 'undefined' && DB.getRef) {
                 try {
@@ -609,6 +618,8 @@ const RadarModule = (() => {
             if (effectiveStatus === 'active') {
                 effectiveStatus = 'offline';
             }
+        } else if (effectiveStatus === 'sin_senal') {
+            carMode = 'offline';
         } else if (effectiveStatus === 'logout_voluntario') {
             carMode = 'logout';
         } else if (effectiveStatus === 'app_killed') {
@@ -626,7 +637,7 @@ const RadarModule = (() => {
         let shiftStatusText = shift ? (carMode === 'offline' ? `En turno (Sin señal ${timeAgo})` : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
         let statusLabelText = shiftStatusText;
         let statusColor = '#f59e0b';
-        if (carMode === 'offline') {
+        if (carMode === 'offline' || effectiveStatus === 'sin_senal') {
             statusLabelText = `En turno (Sin señal ${timeAgo})`;
             statusColor = '#94a3b8'; // Gris o tenue
         } else if (effectiveStatus === 'logout_voluntario') {
@@ -899,7 +910,7 @@ const RadarModule = (() => {
                     const res = await _updateMarker(driverId, data, shift, vehicle);
                     if (res && res.isAlive) {
                         activeCount++;
-                        if (res.isFresh) {
+                        if (res.isFresh && data.status !== 'logout_voluntario' && data.status !== 'sin_senal' && data.status !== 'suspicious_disconnect') {
                             onlineCount++;
                         }
                     }
