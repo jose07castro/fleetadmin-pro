@@ -1049,6 +1049,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     playBgPassedTone();
                     lastRadarAlertTimestamps.put(radar.id, now);
                     activeBgApproach = null;
+                    if (activeOverlayView != null) {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (activeOverlayDistView != null) activeOverlayDistView.setText("  🏁 CÁMARA SUPERADA");
+                            if (activeOverlaySpeedGauge != null) {
+                                activeOverlaySpeedGauge.setText("✅ Zona superada");
+                                activeOverlaySpeedGauge.setTextColor(Color.parseColor("#6EE7B7"));
+                            }
+                            overlayDismissHandler.removeCallbacksAndMessages(null);
+                            overlayDismissHandler.postDelayed(() -> hideFloatingOverlay(), 6000);
+                        });
+                    }
                     return;
                 }
 
@@ -1057,6 +1068,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 if (isMovingAway || (!cr.aligned && distance > 35.0f)) {
                     Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se desvió de corredor, cancelando: " + radar.name);
                     activeBgApproach = null;
+                    hideFloatingOverlay();
                     return;
                 }
 
@@ -1065,6 +1077,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     activeBgApproach.minDistance = distance;
                 }
                 activeBgApproach.lastDistance = distance;
+
+                // Actualizar overlay flotante en vivo
+                if (activeOverlayView != null) {
+                    final int spd = Math.round(lastSpeed);
+                    final int dst = Math.round(distance);
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        updateOverlayLiveViews(radar.limit, spd, dst, null);
+                    });
+                }
 
                 // C) Etapas de aproximación
                 if (activeBgApproach.stage == 500 && distance <= 330.0f && distance >= 270.0f) {
@@ -2603,6 +2624,41 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static View activeOverlayView = null;
     private static WindowManager windowManager = null;
     private static String lastFloatingAudioMessage = null;
+    private static TextView activeOverlaySpeedGauge = null;
+    private static TextView activeOverlayDistView = null;
+    private static String activeOverlayTargetKey = null;
+    private static final Handler overlayDismissHandler = new Handler(Looper.getMainLooper());
+
+    public static void updateOverlayLiveViews(int limit, int currentSpeed, int distance, String audioMessage) {
+        if (audioMessage != null && !audioMessage.isEmpty()) {
+            lastFloatingAudioMessage = audioMessage;
+        }
+        if (activeOverlayDistView != null) {
+            if (distance <= 18) {
+                activeOverlayDistView.setText("  🏁 ¡EN EL LUGAR!");
+            } else {
+                activeOverlayDistView.setText("  📍 A " + distance + "m");
+            }
+        }
+        if (activeOverlaySpeedGauge != null) {
+            boolean isRadar = limit > 0;
+            if (isRadar) {
+                if (currentSpeed > limit) {
+                    activeOverlaySpeedGauge.setText("⚠️ EXCESO: " + currentSpeed + " km/h (MÁX " + limit + ")");
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FCA5A5"));
+                } else if (currentSpeed > 0) {
+                    activeOverlaySpeedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#6EE7B7"));
+                } else {
+                    activeOverlaySpeedGauge.setText("⏱️ Detenido (MÁX " + limit + " km/h)");
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#CBD5E1"));
+                }
+            } else {
+                activeOverlaySpeedGauge.setText(currentSpeed > 0 ? "✅ " + currentSpeed + " km/h" : "⚠️ Conduzca con precaución");
+                activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FCD34D"));
+            }
+        }
+    }
 
     public void showFloatingOverlay(String type, String title, String subtitle, int limit, int currentSpeed, int distance, String audioMessage) {
         lastFloatingAudioMessage = audioMessage;
@@ -2618,10 +2674,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
                 if (windowManager == null) return;
 
+                String targetKey = (title != null ? title : "") + "_" + limit;
+
+                // Si ya existe el cartel activo para esta misma cámara/alerta, actualizar los valores en vivo sin parpadeo
+                if (activeOverlayView != null && targetKey.equals(activeOverlayTargetKey)) {
+                    updateOverlayLiveViews(limit, currentSpeed, distance, audioMessage);
+                    return;
+                }
+
                 if (activeOverlayView != null) {
                     try { windowManager.removeView(activeOverlayView); } catch (Exception ignored) {}
                     activeOverlayView = null;
                 }
+                activeOverlayTargetKey = targetKey;
+                overlayDismissHandler.removeCallbacksAndMessages(null);
 
                 float density = getResources().getDisplayMetrics().density;
                 int dp8 = (int) (8 * density);
@@ -2731,6 +2797,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 distView.setTextSize(14);
                 distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 topRow.addView(distView);
+                activeOverlayDistView = distView;
 
                 centerCol.addView(topRow);
 
@@ -2755,7 +2822,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         speedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
                         speedGauge.setTextColor(Color.parseColor("#6EE7B7"));
                     } else {
-                        speedGauge.setText("⏱️ Respete máxima de " + limit + " km/h");
+                        speedGauge.setText("⏱️ Detenido (MÁX " + limit + " km/h)");
                         speedGauge.setTextColor(Color.parseColor("#CBD5E1"));
                     }
                 } else {
@@ -2765,6 +2832,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 speedGauge.setTextSize(13);
                 speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 centerCol.addView(speedGauge);
+                activeOverlaySpeedGauge = speedGauge;
 
                 card.addView(centerCol);
 
@@ -2879,13 +2947,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     public static void hideFloatingOverlay() {
-        if (activeOverlayView != null && windowManager != null) {
+        overlayDismissHandler.removeCallbacksAndMessages(null);
+        new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                windowManager.removeView(activeOverlayView);
-                Log.i(TAG, "🛑 [OVERLAY] Cartel flotante cerrado");
+                if (activeOverlayView != null && windowManager != null) {
+                    windowManager.removeView(activeOverlayView);
+                    Log.i(TAG, "🛑 [OVERLAY] Cartel flotante cerrado");
+                }
             } catch (Exception ignored) {}
             activeOverlayView = null;
-        }
+            activeOverlaySpeedGauge = null;
+            activeOverlayDistView = null;
+            activeOverlayTargetKey = null;
+            lastFloatingAudioMessage = null;
+        });
     }
 
 }

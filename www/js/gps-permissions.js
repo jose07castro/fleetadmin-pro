@@ -604,7 +604,7 @@ const GPSPermissions = (() => {
 
                     // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo, sin importar turno) ---
                     if (typeof CopilotModule !== 'undefined') {
-                        CopilotModule.checkProximity(location.latitude, location.longitude, location.speed, location.bearing || location.heading, location.accuracy);
+                        CopilotModule.checkProximity(location.latitude, location.longitude, location.speed, location.bearing || location.heading, location.accuracy, 'ms');
                     }
 
                     if (!inShift) return;
@@ -880,7 +880,7 @@ const GPSPermissions = (() => {
             time: _lastCopilotFixTime
         };
         if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function') {
-            CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading, pos.coords.accuracy);
+            CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading, pos.coords.accuracy, 'ms');
         }
     }
 

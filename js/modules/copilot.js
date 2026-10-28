@@ -3356,7 +3356,7 @@ const CopilotModule = (() => {
                     speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok" id="copilotHudSpeedGauge">✅ Velocidad OK: ${_lastDisplayedSpeed} km/h</div>`;
                 }
             } else {
-                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⏱️ Respete el límite indicado (${target.limit} km/h)</div>`;
+                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⏱️ Detenido (MÁX ${target.limit} km/h)</div>`;
             }
         } else {
             speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⚠️ Conduzca con precaución en la zona</div>`;
@@ -3545,29 +3545,47 @@ const CopilotModule = (() => {
      * c) Filtro de suavizado EMA (Media Móvil Exponencial con factor alfa ~0.3).
      * d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario.
      */
-    function _calculateSpeed(lat, lng, rawSpeed = null, accuracy = null, speedUnit = 'ms') {
+    function _calculateSpeed(lat, lng, rawSpeed = null, accuracy = null, speedUnit = 'kmh') {
         let speedKmh = null;
 
-        // a) Priorizar valor de hardware nativo provisto por chip GPS.
-        // FIX v1.2.226: la unidad se declara EXPLÍCITAMENTE por cada fuente.
-        // Antes se "adivinaba" (<=45 => m/s) y el servicio nativo (que ya manda km/h)
-        // terminaba multiplicado 2 veces: 35 km/h reales => 126 km/h falsos.
+        // a) Priorizar valor provisto por sensor GPS
         if (typeof rawSpeed === 'number' && !isNaN(rawSpeed) && rawSpeed >= 0) {
-            const converted = (speedUnit === 'kmh') ? rawSpeed : (rawSpeed * 3.6);
-            // Descartar lecturas físicamente imposibles para un auto urbano
-            if (converted <= 200) speedKmh = converted;
+            let converted = rawSpeed;
+            if (speedUnit === 'ms') {
+                // Si la fuente declara explícitamente metros por segundo (m/s)
+                // solo multiplicamos por 3.6 si < 50 m/s (50 m/s = 180 km/h)
+                converted = (rawSpeed < 50) ? (rawSpeed * 3.6) : rawSpeed;
+            } else {
+                // Unidad 'kmh' o por defecto: ya viene en km/h desde LocationTrackingService / Native
+                converted = rawSpeed;
+            }
+
+            if (rawSpeed === 0 || converted < 3.0) {
+                // DETENCIÓN INMEDIATA (Auto detenido en semáforo / reposo):
+                // Forzar 0 instantáneamente para evitar cualquier velocidad fantasma residual
+                _smoothedSpeed = 0;
+                speedKmh = 0;
+            } else if (converted <= 200) {
+                speedKmh = converted;
+            }
         } else {
-            // b) Fallback Haversine con delta de 1.5s a 15s y descarte si accuracy > 15m
+            // b) Fallback Haversine con delta de 1.0s a 15s y descarte si accuracy > 20m
             const now = Date.now();
-            const isAccuracyValid = (accuracy === null || isNaN(accuracy) || accuracy <= 15);
+            const isAccuracyValid = (accuracy === null || isNaN(accuracy) || accuracy <= 20);
 
             if (_lastSpeedSamplePos && _lastSpeedSamplePos.time && isAccuracyValid) {
                 const timeDeltaSec = (now - _lastSpeedSamplePos.time) / 1000;
-                if (timeDeltaSec >= 1.5 && timeDeltaSec <= 15) {
+                if (timeDeltaSec >= 1.0 && timeDeltaSec <= 15) {
                     const distMeters = _getDistance(_lastSpeedSamplePos.lat, _lastSpeedSamplePos.lng, lat, lng);
-                    const calcKmh = (distMeters / timeDeltaSec) * 3.6;
-                    if (calcKmh <= 180) {
-                        speedKmh = calcKmh;
+                    // Si el auto se desplazó menos de 3.5 metros, está quieto
+                    if (distMeters < 3.5) {
+                        _smoothedSpeed = 0;
+                        speedKmh = 0;
+                    } else {
+                        const calcKmh = (distMeters / timeDeltaSec) * 3.6;
+                        if (calcKmh <= 180) {
+                            speedKmh = calcKmh;
+                        }
                     }
                 }
             }
@@ -3578,18 +3596,20 @@ const CopilotModule = (() => {
             _lastSpeedSamplePos = { lat, lng, time: now };
         }
 
-        // c) Filtro de suavizado (Media Móvil Exponencial - EMA con factor alfa ~0.3)
+        // c) Suavizado EMA
         if (speedKmh !== null && !isNaN(speedKmh) && speedKmh >= 0) {
-            if (_smoothedSpeed === null) {
+            if (speedKmh === 0) {
+                _smoothedSpeed = 0;
+            } else if (_smoothedSpeed === null) {
                 _smoothedSpeed = speedKmh;
             } else {
-                const ALPHA = 0.30;
+                const ALPHA = 0.35;
                 _smoothedSpeed = (ALPHA * speedKmh) + ((1 - ALPHA) * _smoothedSpeed);
             }
         }
 
-        // d) Umbral de reposo: Si < 4 km/h, fijar en 0 km/h para eliminar ruido estacionario
-        if (_smoothedSpeed !== null && _smoothedSpeed < 4.0) {
+        // d) Umbral de reposo estricto
+        if (_smoothedSpeed !== null && _smoothedSpeed < 3.5) {
             _smoothedSpeed = 0;
         }
 
@@ -3605,7 +3625,7 @@ const CopilotModule = (() => {
      * @param {number} [rawBearing] - Rumbo/dirección actual en grados (0-360)
      * @param {number} [accuracy] - Precisión GPS en metros
      */
-    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null, accuracy = null, speedUnit = 'ms') {
+    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null, accuracy = null, speedUnit = 'kmh') {
         if (!_isEnabled) return;
         if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) return;
 
@@ -3659,6 +3679,12 @@ const CopilotModule = (() => {
                 }
 
                 _activeApproach = null;
+                setTimeout(() => {
+                    _hideRadarHUD();
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
+                        try { window.NativeServiceBridge.hideOverlayAlert(); } catch(_) {}
+                    }
+                }, 5000);
                 return;
             }
 
@@ -3671,6 +3697,12 @@ const CopilotModule = (() => {
                     distEl.textContent = '↪️ VÍA DESVIADA';
                 }
                 _activeApproach = null;
+                setTimeout(() => {
+                    _hideRadarHUD();
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
+                        try { window.NativeServiceBridge.hideOverlayAlert(); } catch(_) {}
+                    }
+                }, 2000);
                 return;
             }
 
