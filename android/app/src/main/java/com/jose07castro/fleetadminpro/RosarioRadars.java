@@ -118,8 +118,8 @@ public class RosarioRadars {
         list.add(new StaticRadar("radar_rosario_segui_francia", "Bv. Seguí entre Vera Mujica y Av. Francia", -32.97412, -60.67444, 60, "Control de velocidad / Cruce semafórico", new int[]{45, 225}));
         list.add(new StaticRadar("radar_circ_1", "Av. Circunvalación y Av. Pellegrini", -32.9696, -60.7105, 100, "Radar de velocidad fija Circunvalación", new int[]{65, 245}));
         list.add(new StaticRadar("radar_circ_2", "Av. Circunvalación y Av. Eva Perón (Córdoba)", -32.9367, -60.7228, 100, "Radar de velocidad fija Circunvalación", new int[]{340, 160}));
-        list.add(new StaticRadar("radar_circ_ovidio_lagos", "Av. Circunvalación y Av. Ovidio Lagos", -32.9975, -60.6936, 100, "Radar de velocidad fija Circunvalación", new int[]{135, 315}));
-        list.add(new StaticRadar("radar_circ_3", "Av. Circunvalación y Av. Uriburu", -33.0031, -60.6729, 100, "Radar de velocidad fija Circunvalación", new int[]{130, 310}));
+        list.add(new StaticRadar("radar_circ_ovidio_lagos", "Av. Circunvalación y Av. Ovidio Lagos", -33.00795, -60.67726, 100, "Radar de velocidad fija Circunvalación", new int[]{125, 305}));
+        list.add(new StaticRadar("radar_circ_3", "Av. Circunvalación y Av. Uriburu", -32.99212, -60.70208, 100, "Radar de velocidad fija Circunvalación", new int[]{138, 318}));
         list.add(new StaticRadar("radar_circ_4", "Av. Circunvalación y Ayacucho (Acceso Sur)", -33.0118, -60.6385, 100, "Radar de velocidad fija Circunvalación", new int[]{165, 345}));
         list.add(new StaticRadar("radar_circ_5", "Av. Circunvalación y Baigorria", -32.8943, -60.7077, 100, "Radar de velocidad fija Circunvalación", new int[]{175, 355}));
         list.add(new StaticRadar("radar_circ_6", "Autopista Rosario - Bs As (Ingreso Av. Circunvalación)", -33.0315, -60.6482, 70, "Radar ingreso a Rosario", new int[]{140, 320}));

@@ -814,27 +814,27 @@ const CopilotModule = (() => {
     {
         "id": "radar_circ_ovidio_lagos",
         "name": "Av. Circunvalación y Av. Ovidio Lagos",
-        "lat": -32.9975,
-        "lng": -60.6936,
+        "lat": -33.00795,
+        "lng": -60.67726,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
         "address": "AV. CIRCUNVALACIÓN Y AV. OVIDIO LAGOS",
         "validHeadings": [
-            135,
-            315
+            125,
+            305
         ]
     },
     {
         "id": "radar_circ_3",
         "name": "Av. Circunvalación y Av. Uriburu",
-        "lat": -33.0031,
-        "lng": -60.6729,
+        "lat": -32.99212,
+        "lng": -60.70208,
         "limit": 100,
         "desc": "Radar de velocidad fija Circunvalación",
         "address": "Av. Circunvalación (A008) y Av. Uriburu",
         "validHeadings": [
-            130,
-            310
+            138,
+            318
         ]
     },
     {
@@ -2898,6 +2898,14 @@ const CopilotModule = (() => {
 
     function _evaluateCorridor(carLat, carLng, carHeading, camLat, camLng, distance, radar = null) {
         if (carHeading === null || isNaN(carHeading)) {
+            return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
+        }
+
+        // 1. REGLA ESTRICTA DE CORREDOR / CALZADA DEL RADAR:
+        // Si el radar está en Circunvalación o tiene calzada específica (validHeadings),
+        // SOLO alertar si el vehículo circula en el rumbo de esa arteria.
+        // Descarta totalmente a vehículos en calles transversales como Ovidio Lagos o Uriburu.
+        if (radar && !_isVehicleOnRadarStreet(carHeading, radar)) {
             return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
         }
 
