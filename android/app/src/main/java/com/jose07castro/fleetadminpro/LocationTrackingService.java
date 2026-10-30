@@ -1001,6 +1001,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             "%sfoto multa en %s a %d metros, máxima %d.", 
             prefix, locationName, distanceStage, radar.limit);
         Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Locución obligatoria (" + distanceStage + "m): \"" + message + "\"");
+        wakeScreenForAlert();
+        postUrgentAlertNotification("📷 FOTOMULTA (MÁX " + radar.limit + " km/h)", message);
         speakMandatory(message);
 
         // Cartel flotante sobre otras apps (Uber/DiDi/Waze) hasta que el usuario lo cierre
@@ -2674,6 +2676,16 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
                 if (windowManager == null) return;
 
+                // Despertar pantalla para máxima visibilidad en el soporte del vehículo
+                wakeScreenForAlert();
+
+                // Intentar poner la app en primer plano / reordenar al frente si corresponde
+                try {
+                    Intent bringApp = new Intent(this, MainActivity.class);
+                    bringApp.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    startActivity(bringApp);
+                } catch (Exception ignored) {}
+
                 String targetKey = (title != null ? title : "") + "_" + limit;
 
                 // Si ya existe el cartel activo para esta misma cámara/alerta, actualizar los valores en vivo sin parpadeo
@@ -2695,35 +2707,49 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 int dp12 = (int) (12 * density);
                 int dp14 = (int) (14 * density);
                 int dp16 = (int) (16 * density);
-                int dp50 = (int) (50 * density);
-                int dp90 = (int) (90 * density);
+                int dp18 = (int) (18 * density);
+                int dp58 = (int) (58 * density);
+                int dp115 = (int) (115 * density);
 
                 boolean isRadar = "radar".equalsIgnoreCase(type) || limit > 0;
-                int borderColor = isRadar ? Color.parseColor("#EF4444") : Color.parseColor("#3B82F6");
+                int borderColor = isRadar ? Color.parseColor("#DC2626") : Color.parseColor("#F59E0B");
 
-                // Tarjeta principal
+                // Tarjeta principal (Agrandada para máxima visibilidad de conducción)
                 LinearLayout card = new LinearLayout(this);
                 card.setOrientation(LinearLayout.HORIZONTAL);
                 card.setGravity(Gravity.CENTER_VERTICAL);
-                card.setPadding(dp16, dp14, dp14, dp14);
+                card.setPadding(dp18, dp16, dp16, dp16);
 
                 GradientDrawable cardBg = new GradientDrawable();
-                cardBg.setColor(Color.parseColor("#F50F172A")); // Fondo oscuro translúcido
-                cardBg.setCornerRadius(20 * density);
-                cardBg.setStroke((int) (3.5f * density), borderColor);
+                cardBg.setColor(Color.parseColor("#FA0F172A")); // Fondo oscuro translúcido sólido
+                cardBg.setCornerRadius(24 * density);
+                cardBg.setStroke((int) (4.5f * density), borderColor);
                 card.setBackground(cardBg);
 
-                // 1. INDICADOR DE MÁXIMA / ALERTA (90dp x 90dp)
+                // Click sobre el cartel trae la app completa a primer plano
+                card.setClickable(true);
+                card.setFocusable(true);
+                card.setOnClickListener(v -> {
+                    try {
+                        Intent openApp = new Intent(this, MainActivity.class);
+                        openApp.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(openApp);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error abriendo app desde cartel:", e);
+                    }
+                });
+
+                // 1. INDICADOR DE MÁXIMA / ALERTA (Agrandado a 115dp x 115dp)
                 FrameLayout signFrame = new FrameLayout(this);
-                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp90, dp90);
-                signParams.setMargins(0, 0, dp12, 0);
+                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp115, dp115);
+                signParams.setMargins(0, 0, dp16, 0);
                 signFrame.setLayoutParams(signParams);
 
                 if (isRadar && limit > 0) {
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
                     signBg.setColor(Color.WHITE);
-                    signBg.setStroke((int) (7 * density), Color.parseColor("#DC2626"));
+                    signBg.setStroke((int) (9 * density), Color.parseColor("#DC2626"));
                     signFrame.setBackground(signBg);
 
                     LinearLayout signInner = new LinearLayout(this);
@@ -2734,7 +2760,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     TextView numText = new TextView(this);
                     numText.setText(String.valueOf(limit));
                     numText.setTextColor(Color.parseColor("#0F172A"));
-                    numText.setTextSize(38);
+                    numText.setTextSize(52);
                     numText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     numText.setGravity(Gravity.CENTER);
                     numText.setIncludeFontPadding(false);
@@ -2743,7 +2769,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     TextView unitText = new TextView(this);
                     unitText.setText("MÁX");
                     unitText.setTextColor(Color.parseColor("#DC2626"));
-                    unitText.setTextSize(10);
+                    unitText.setTextSize(13);
                     unitText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     unitText.setGravity(Gravity.CENTER);
                     unitText.setIncludeFontPadding(false);
@@ -2754,21 +2780,36 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
                     signBg.setColor(Color.parseColor("#1E293B"));
-                    signBg.setStroke((int) (6 * density), borderColor);
+                    signBg.setStroke((int) (8 * density), borderColor);
                     signFrame.setBackground(signBg);
+
+                    LinearLayout signInner = new LinearLayout(this);
+                    signInner.setOrientation(LinearLayout.VERTICAL);
+                    signInner.setGravity(Gravity.CENTER);
+                    signInner.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
                     TextView iconText = new TextView(this);
                     String icon = "police".equalsIgnoreCase(type) ? "🚔" :
                                  "checkpoint".equalsIgnoreCase(type) ? "🚧" :
                                  "municipal".equalsIgnoreCase(type) ? "🦊" : "⚠️";
                     iconText.setText(icon);
-                    iconText.setTextSize(38);
+                    iconText.setTextSize(50);
                     iconText.setGravity(Gravity.CENTER);
-                    signFrame.addView(iconText);
+                    signInner.addView(iconText);
+
+                    TextView opLbl = new TextView(this);
+                    opLbl.setText("CONTROL");
+                    opLbl.setTextColor(borderColor);
+                    opLbl.setTextSize(11);
+                    opLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    opLbl.setGravity(Gravity.CENTER);
+                    signInner.addView(opLbl);
+
+                    signFrame.addView(signInner);
                 }
                 card.addView(signFrame);
 
-                // 2. DETALLE CENTRAL (Badge, Distancia, Calle, Velocímetro)
+                // 2. DETALLE CENTRAL (Badge, Distancia, Calle en 2 líneas, Velocímetro)
                 LinearLayout centerCol = new LinearLayout(this);
                 centerCol.setOrientation(LinearLayout.VERTICAL);
                 LinearLayout.LayoutParams centerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
@@ -2780,36 +2821,37 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 topRow.setGravity(Gravity.CENTER_VERTICAL);
 
                 TextView badgeView = new TextView(this);
-                badgeView.setText(isRadar ? "📷 FOTOMULTA" : "🚨 CONTROL / OPERATIVO");
+                badgeView.setText(isRadar ? "📷 FOTOMULTA" : "🚨 OPERATIVO POLICIAL / CONTROL");
                 badgeView.setTextColor(Color.WHITE);
-                badgeView.setTextSize(11);
+                badgeView.setTextSize(13);
                 badgeView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                badgeView.setPadding((int)(8*density), (int)(3*density), (int)(8*density), (int)(3*density));
+                badgeView.setPadding((int)(10*density), (int)(4*density), (int)(10*density), (int)(4*density));
                 GradientDrawable badgeBg = new GradientDrawable();
                 badgeBg.setColor(borderColor);
-                badgeBg.setCornerRadius(8 * density);
+                badgeBg.setCornerRadius(9 * density);
                 badgeView.setBackground(badgeBg);
                 topRow.addView(badgeView);
 
                 TextView distView = new TextView(this);
-                distView.setText("  📍 A " + distance + "m");
+                distView.setText(distance <= 18 ? "  🏁 ¡EN EL LUGAR!" : "  📍 A " + distance + "m");
                 distView.setTextColor(Color.parseColor("#38BDF8"));
-                distView.setTextSize(14);
+                distView.setTextSize(18);
                 distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 topRow.addView(distView);
                 activeOverlayDistView = distView;
 
                 centerCol.addView(topRow);
 
-                // Nombre / Ubicación
+                // Nombre / Ubicación (2 líneas para que NUNCA se corte)
                 TextView titleView = new TextView(this);
                 titleView.setText(title != null ? title : "Zona de videocontrol");
                 titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(16);
+                titleView.setTextSize(19);
                 titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                titleView.setSingleLine(true);
+                titleView.setSingleLine(false);
+                titleView.setMaxLines(2);
                 titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                titleView.setPadding(0, (int)(4*density), 0, (int)(2*density));
+                titleView.setPadding(0, (int)(6*density), 0, (int)(4*density));
                 centerCol.addView(titleView);
 
                 // Velocidad / Exceso
@@ -2826,45 +2868,45 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         speedGauge.setTextColor(Color.parseColor("#CBD5E1"));
                     }
                 } else {
-                    speedGauge.setText("⚠️ Conduzca con precaución");
+                    speedGauge.setText("⚠️ Conduzca con precaución / Reduzca velocidad");
                     speedGauge.setTextColor(Color.parseColor("#FCD34D"));
                 }
-                speedGauge.setTextSize(13);
+                speedGauge.setTextSize(15);
                 speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 centerCol.addView(speedGauge);
                 activeOverlaySpeedGauge = speedGauge;
 
                 card.addView(centerCol);
 
-                // 3. BOTONES DE ACCIÓN: REPETIR y CERRAR (50dp x 50dp)
+                // 3. BOTONES DE ACCIÓN: REPETIR y CERRAR (58dp x 58dp)
                 LinearLayout actionsCol = new LinearLayout(this);
                 actionsCol.setOrientation(LinearLayout.VERTICAL);
                 actionsCol.setGravity(Gravity.CENTER);
                 LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                actionsParams.setMargins(dp10, 0, 0, 0);
+                actionsParams.setMargins(dp14, 0, 0, 0);
                 actionsCol.setLayoutParams(actionsParams);
 
                 // Botón Repetir Audio
                 LinearLayout repeatBtn = new LinearLayout(this);
                 repeatBtn.setOrientation(LinearLayout.VERTICAL);
                 repeatBtn.setGravity(Gravity.CENTER);
-                repeatBtn.setLayoutParams(new LinearLayout.LayoutParams(dp50, dp50));
+                repeatBtn.setLayoutParams(new LinearLayout.LayoutParams(dp58, dp58));
                 GradientDrawable repBg = new GradientDrawable();
-                repBg.setColor(Color.parseColor("#333B82F6"));
-                repBg.setStroke((int)(2*density), Color.parseColor("#3B82F6"));
-                repBg.setCornerRadius(14 * density);
+                repBg.setColor(Color.parseColor("#403B82F6"));
+                repBg.setStroke((int)(2.5f*density), Color.parseColor("#3B82F6"));
+                repBg.setCornerRadius(16 * density);
                 repeatBtn.setBackground(repBg);
 
                 TextView repIcon = new TextView(this);
                 repIcon.setText("🔊");
-                repIcon.setTextSize(18);
+                repIcon.setTextSize(22);
                 repIcon.setGravity(Gravity.CENTER);
                 repeatBtn.addView(repIcon);
 
                 TextView repLbl = new TextView(this);
                 repLbl.setText("REPETIR");
-                repLbl.setTextColor(Color.parseColor("#60A5FA"));
-                repLbl.setTextSize(7);
+                repLbl.setTextColor(Color.parseColor("#93C5FD"));
+                repLbl.setTextSize(9);
                 repLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 repLbl.setGravity(Gravity.CENTER);
                 repeatBtn.addView(repLbl);
@@ -2878,32 +2920,32 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 // Separador
                 View space = new View(this);
-                space.setLayoutParams(new LinearLayout.LayoutParams(dp50, (int)(6*density)));
+                space.setLayoutParams(new LinearLayout.LayoutParams(dp58, (int)(8*density)));
                 actionsCol.addView(space);
 
                 // Botón Cerrar
                 LinearLayout closeBtn = new LinearLayout(this);
                 closeBtn.setOrientation(LinearLayout.VERTICAL);
                 closeBtn.setGravity(Gravity.CENTER);
-                closeBtn.setLayoutParams(new LinearLayout.LayoutParams(dp50, dp50));
+                closeBtn.setLayoutParams(new LinearLayout.LayoutParams(dp58, dp58));
                 GradientDrawable closeBg = new GradientDrawable();
-                closeBg.setColor(Color.parseColor("#33EF4444"));
-                closeBg.setStroke((int)(2*density), Color.parseColor("#EF4444"));
-                closeBg.setCornerRadius(14 * density);
+                closeBg.setColor(Color.parseColor("#40EF4444"));
+                closeBg.setStroke((int)(2.5f*density), Color.parseColor("#EF4444"));
+                closeBg.setCornerRadius(16 * density);
                 closeBtn.setBackground(closeBg);
 
                 TextView closeIcon = new TextView(this);
                 closeIcon.setText("✕");
-                closeIcon.setTextColor(Color.parseColor("#F87171"));
-                closeIcon.setTextSize(18);
+                closeIcon.setTextColor(Color.parseColor("#FCA5A5"));
+                closeIcon.setTextSize(22);
                 closeIcon.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 closeIcon.setGravity(Gravity.CENTER);
                 closeBtn.addView(closeIcon);
 
                 TextView closeLbl = new TextView(this);
                 closeLbl.setText("CERRAR");
-                closeLbl.setTextColor(Color.parseColor("#F87171"));
-                closeLbl.setTextSize(7);
+                closeLbl.setTextColor(Color.parseColor("#FCA5A5"));
+                closeLbl.setTextSize(9);
                 closeLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 closeLbl.setGravity(Gravity.CENTER);
                 closeBtn.addView(closeLbl);
@@ -2919,17 +2961,25 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY :
                         WindowManager.LayoutParams.TYPE_PHONE;
 
+                int windowFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                                  WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                                  WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+
+                // Primer plano sobre pantalla bloqueada o apagada
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    windowFlags |= WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                                   WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+                }
+
                 WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                         WindowManager.LayoutParams.MATCH_PARENT,
                         WindowManager.LayoutParams.WRAP_CONTENT,
                         layoutType,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        windowFlags,
                         PixelFormat.TRANSLUCENT
                 );
                 params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-                params.y = (int) (35 * density);
+                params.y = (int) (20 * density);
                 params.x = 0;
 
                 FrameLayout overlayContainer = new FrameLayout(this);
@@ -2938,7 +2988,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 activeOverlayView = overlayContainer;
                 windowManager.addView(activeOverlayView, params);
-                Log.i(TAG, "✅ [OVERLAY] Cartel flotante visible sobre otras apps: " + title);
+                Log.i(TAG, "✅ [OVERLAY] Cartel flotante en primer plano sobre otras apps: " + title);
 
             } catch (Exception e) {
                 Log.e(TAG, "❌ [OVERLAY] Error mostrando cartel flotante:", e);

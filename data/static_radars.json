@@ -733,8 +733,8 @@
   {
     "id": "radar_circ_4",
     "name": "Av. Circunvalación y Ayacucho (Acceso Sur)",
-    "lat": -33.0118,
-    "lng": -60.6385,
+    "lat": -33.01502,
+    "lng": -60.63501,
     "limit": 100,
     "desc": "Radar de velocidad fija Circunvalación",
     "address": "Av. Circunvalación (A008) y Ayacucho",
