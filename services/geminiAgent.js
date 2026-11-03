@@ -359,6 +359,17 @@ async function geocodeLocation(ubicacion, city = 'Rosario') {
     return await rosarioGeoAtlas.geocodeRosarioLocation(ubicacion, city);
 }
 
+// Cache de deduplicación y cooldown en memoria para prevenir doble despacho
+const _recentDispatchedAlerts = new Map();
+const DISPATCH_COOLDOWN_MS = 2.5 * 60 * 1000; // 2.5 minutos de cooldown estricto
+
+function _getAlertDedupKey(type, location, text) {
+    const normType = String(type || 'checkpoint').trim().toLowerCase();
+    const normLoc = String(location || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normText = String(text || '').trim().toLowerCase().slice(0, 40).replace(/[^a-z0-9]/g, '');
+    return normLoc ? `${normType}_${normLoc}` : `${normType}_${normText}`;
+}
+
 /**
  * 4. Despacha y publica la alerta en tiempo real en Firebase (global y flotas)
  * @param {object} classification { esAlerta, tipo, ubicacion, vigenciaMinutos, descripcion, esLevantado }
@@ -386,6 +397,46 @@ async function dispatchAlert(classification, options = {}, db) {
     const cleanUbicacion = (rosarioGeoAtlas && typeof rosarioGeoAtlas.cleanAddressForGeocoding === 'function')
         ? rosarioGeoAtlas.cleanAddressForGeocoding(rawLoc, city)
         : rawLoc;
+
+    const now = Date.now();
+    // Limpieza de entradas antiguas del cache (> 10 minutos)
+    for (const [k, v] of _recentDispatchedAlerts.entries()) {
+        if (now - v.timestamp > 10 * 60 * 1000) {
+            _recentDispatchedAlerts.delete(k);
+        }
+    }
+
+    const dedupKey = _getAlertDedupKey(classification.tipo, cleanUbicacion, options.originalText || classification.descripcion);
+
+    // 1. Cooldown y de-bouncing por ubicación y tipo: evitar doble despacho accidental
+    if (_recentDispatchedAlerts.has(dedupKey)) {
+        const prev = _recentDispatchedAlerts.get(dedupKey);
+        const isStateChange = Boolean(classification.esLevantado) !== Boolean(prev.alertData?.isLifting);
+        if (!isStateChange && (now - prev.timestamp < DISPATCH_COOLDOWN_MS)) {
+            console.log(`⏱️ [CENTINELA-DESPACHO] Alerta duplicada en cooldown (${Math.round((now - prev.timestamp) / 1000)}s): "${cleanUbicacion}" [${classification.tipo}]. Omitiendo segundo despacho.`);
+            return {
+                dispatched: false,
+                alertId: prev.alertId,
+                alertData: prev.alertData,
+                reason: 'cooldown_duplicate'
+            };
+        }
+    }
+
+    // 2. Control de messageId duplicado (evita que reintentos de red o WhatsApp procesen 2 veces)
+    if (options.messageId) {
+        const msgKey = `msg_${options.messageId}`;
+        if (_recentDispatchedAlerts.has(msgKey)) {
+            console.log(`⏱️ [CENTINELA-DESPACHO] Mensaje ID ya procesado: ${options.messageId}. Omitiendo.`);
+            const prevMsg = _recentDispatchedAlerts.get(msgKey);
+            return {
+                dispatched: false,
+                alertId: prevMsg.alertId,
+                alertData: prevMsg.alertData,
+                reason: 'duplicate_message_id'
+            };
+        }
+    }
 
     let geo = null;
     try {
@@ -528,6 +579,12 @@ async function dispatchAlert(classification, options = {}, db) {
                 });
             }
         } catch (pushErr) {}
+
+        // Registrar en cache para cooldown y desduplicación
+        _recentDispatchedAlerts.set(dedupKey, { timestamp: now, alertId, alertData });
+        if (options.messageId) {
+            _recentDispatchedAlerts.set(`msg_${options.messageId}`, { timestamp: now, alertId, alertData });
+        }
 
         return { dispatched: true, alertId, alertData };
     } catch (dbErr) {

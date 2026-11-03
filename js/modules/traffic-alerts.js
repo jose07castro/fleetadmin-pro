@@ -150,6 +150,11 @@
     // Registra el milisegundo en que inició la aplicación
     // para ignorar alertas viejas y cantar únicamente lo que sea de este segundo en adelante.
     const _appStartTime = Date.now() - 3000;
+    let _lastSpeechTime = 0;
+    let _lastSpeechKey = '';
+    let _lastPlayedAudioTime = 0;
+    let _lastPlayedAudioKey = '';
+    let _postsRef = null;
 
     /**
      * Anuncia la alerta por voz usando el motor nativo del dispositivo (Android TTS o Web Speech).
@@ -158,6 +163,16 @@
     function speakAlert(type, location, originalText = '') {
         const isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
         if (!isVoiceEnabled) return;
+
+        // De-bouncing: prevenir que la misma locución se dispare dos veces en simultáneo (< 5s)
+        const speechKey = `${type || ''}_${location || ''}_${(originalText || '').slice(0, 50)}`;
+        const nowMs = Date.now();
+        if (speechKey === _lastSpeechKey && (nowMs - _lastSpeechTime < 5000)) {
+            console.log(`🔇 [VOZ-GLOBAL] Locución en cooldown (${speechKey}). Omitiendo reproducción simultánea.`);
+            return;
+        }
+        _lastSpeechTime = nowMs;
+        _lastSpeechKey = speechKey;
 
         let fullText = '';
         const isPlaceholder = !originalText || originalText.startsWith('[') || originalText.trim().length === 0;
@@ -364,10 +379,10 @@
         }
 
         // Si estábamos escuchando, apagar el listener anterior
-        if (_activeVoiceRef && _activeVoiceCallback) {
+        if (_activeVoiceRef) {
             console.log(`📡 [VOZ-GLOBAL] Restableciendo listener. Apagando anterior...`);
             try {
-                _activeVoiceRef.off('child_added', _activeVoiceCallback);
+                _activeVoiceRef.off('child_added');
             } catch(e) {
                 console.warn('Error apagando listener anterior:', e);
             }
@@ -462,6 +477,26 @@
             }
 
             console.log(`🔊 [GLOBAL VOICE] Alerta confirmada:`, alert.type, alert.location, distDept !== null ? `(${Math.round(distDept)}m)` : '(modo base/flota)');
+
+            // Si la app está ejecutándose en Android nativo, LocationTrackingService ya gestiona
+            // el audio con AudioFocus. Omitir reproducción duplicada desde WebView.
+            const isNativeAndroid = Boolean(window.NativeServiceBridge || (typeof AndroidServices !== 'undefined' && AndroidServices.isNative));
+            if (isNativeAndroid) {
+                console.log('ℹ️ [VOZ-GLOBAL] Android nativo activo: audio gestionado por LocationTrackingService. Omitiendo duplicado en WebView.');
+                return;
+            }
+
+            // Cooldown de audio en Web (< 5s)
+            if (alert.audioUrl) {
+                const audioKey = String(alert.audioUrl);
+                const nowAudio = Date.now();
+                if (audioKey === _lastPlayedAudioKey && (nowAudio - _lastPlayedAudioTime < 5000)) {
+                    console.log(`🔇 [VOZ-GLOBAL] Audio en cooldown (${audioKey}). Omitiendo duplicado.`);
+                    return;
+                }
+                _lastPlayedAudioTime = nowAudio;
+                _lastPlayedAudioKey = audioKey;
+            }
 
             // Si la alerta tiene un audio original de WhatsApp o audio generado, reproducirlo tal cual (sin TTS)
             if (alert.audioUrl) {
@@ -622,7 +657,11 @@
         } catch(e) {}
 
         // 1. Escuchar nuevos posts de comunidad (existente)
-        const postsRef = firebaseDB.ref('community_posts').limitToLast(5);
+        if (_postsRef) {
+            try { _postsRef.off('child_added'); } catch(e) {}
+        }
+        _postsRef = firebaseDB.ref('community_posts').limitToLast(5);
+        const postsRef = _postsRef;
         postsRef.on('child_added', (snapshot) => {
             const post = snapshot.val();
             if (!post) return;

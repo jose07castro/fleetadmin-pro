@@ -2950,7 +2950,17 @@ const CopilotModule = (() => {
      * @param {string} text
      * @param {boolean} [isMandatory=false] - Si es true, ignora muteo y usa volumen total del SO
      */
+    let _lastDirectSpeechTime = 0;
+    let _lastDirectSpeechText = '';
+
     function _speakTextDirect(text, isMandatory = false) {
+        if (!text) return;
+        const now = Date.now();
+        if (text.trim().toLowerCase() === _lastDirectSpeechText.trim().toLowerCase() && (now - _lastDirectSpeechTime < 4000)) {
+            return;
+        }
+        _lastDirectSpeechTime = now;
+        _lastDirectSpeechText = text;
         let spoken = false;
         const targetVol = isMandatory ? 1.0 : Math.max(0.1, Math.min(1.0, _alertVolumePercent / 100.0));
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.speak === 'function') {
@@ -3506,8 +3516,9 @@ const CopilotModule = (() => {
             if (hud && hud.classList) hud.classList.add('hud-active');
         }, 16);
 
-        // Despachar a cartel flotante nativo de Android (para verse sobre Uber/DiDi/Waze)
-        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.showOverlayAlert === 'function') {
+        // Despachar a cartel flotante nativo de Android únicamente si la app está en segundo plano (document.hidden)
+        // En primer plano, el HUD HTML ya se muestra directamente en pantalla, evitando superponer dos carteles.
+        if (document.hidden && window.NativeServiceBridge && typeof window.NativeServiceBridge.showOverlayAlert === 'function') {
             try {
                 const audioMsg = !isTraffic ? _getRadarSpeechText(target, distMeters) : _getTrafficSpeechText(target, distMeters);
                 window.NativeServiceBridge.showOverlayAlert(

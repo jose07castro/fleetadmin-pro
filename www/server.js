@@ -2709,6 +2709,9 @@ function sanitizeForbiddenWords(text) {
     };
 }
 
+// Cache de de-bouncing para alertas dinámicas manuales
+const _recentDynamicSubmissions = new Map();
+
 // Endpoint de Alertas Dinámicas en Tiempo Real (Impulsado por Agente Centinela IA)
 app.post('/api/alerts/dynamic', async (req, res) => {
     try {
@@ -2716,6 +2719,31 @@ app.post('/api/alerts/dynamic', async (req, res) => {
 
         if (!lat || !lng || !authorName) {
             return res.status(400).json({ error: 'Faltan parámetros requeridos: lat, lng, authorName' });
+        }
+
+        // De-bouncing: evitar doble click o múltiples envíos accidentales del mismo reporte en 45 segundos
+        const nowMs = Date.now();
+        const roundLat = Number(lat).toFixed(3);
+        const roundLng = Number(lng).toFixed(3);
+        const submissionKey = `${authorName}_${type || 'checkpoint'}_${roundLat}_${roundLng}`;
+
+        for (const [k, v] of _recentDynamicSubmissions.entries()) {
+            if (nowMs - v.timestamp > 5 * 60 * 1000) _recentDynamicSubmissions.delete(k);
+        }
+
+        if (_recentDynamicSubmissions.has(submissionKey)) {
+            const prevSub = _recentDynamicSubmissions.get(submissionKey);
+            if (nowMs - prevSub.timestamp < 45 * 1000) {
+                console.log(`⏱️ [DYNAMIC-ALERT] Reporte duplicado en de-bounce de ${authorName} (${Math.round((nowMs - prevSub.timestamp)/1000)}s). Retornando alerta previa sin duplicar.`);
+                return res.json({
+                    ok: true,
+                    alertId: prevSub.alertId,
+                    fleetId: prevSub.fleetId,
+                    location: prevSub.location,
+                    type: prevSub.type,
+                    cached: true
+                });
+            }
         }
 
         const db = WhatsappBot.getDb();
@@ -2890,6 +2918,16 @@ app.post('/api/alerts/dynamic', async (req, res) => {
         await db.ref(`global_traffic_alerts/${alertId}`).set(alertData);
 
         console.log(`✅ [DYNAMIC-ALERT] Alerta publicada correctamente: ${alertId} (tipo: ${assignedType}, vigencia: ${vigenciaMinutos}m, lat: ${finalLat}, lng: ${finalLng})`);
+        
+        // Registrar en cache para evitar duplicados
+        _recentDynamicSubmissions.set(submissionKey, {
+            timestamp: nowMs,
+            alertId,
+            fleetId: finalFleetId,
+            location: alertData.location,
+            type: assignedType
+        });
+
         res.json({
             ok: true,
             alertId,

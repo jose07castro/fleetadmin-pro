@@ -506,6 +506,19 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         } catch (Exception ignored) {}
 
+        // Limpiar overlay y listeners de Firebase
+        try {
+            hideFloatingOverlay();
+        } catch (Exception ignored) {}
+        try {
+            if (globalAlertsRef != null && alertsListener != null) {
+                globalAlertsRef.removeEventListener(alertsListener);
+            }
+            if (alertsRef != null && fleetAlertsListener != null) {
+                alertsRef.removeEventListener(fleetAlertsListener);
+            }
+        } catch (Exception ignored) {}
+
         // Detener hilo de servicio
         try {
             if (serviceThread != null) {
@@ -1297,8 +1310,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private final Map<String, TrafficAlert> activeAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, TrafficAlert> globalAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, TrafficAlert> fleetAlertsMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Long> spokenLocationCooldown = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long LOCATION_COOLDOWN_MS = 3 * 60 * 1000L; // 3 minutos de cooldown para misma ubicación
+    private static long lastAudioPlayTimestamp = 0;
+    private static String lastAudioPlayUrl = "";
 
-    private void updateAlertsFromSnapshot(DataSnapshot snapshot) {
+    private void updateAlertsFromSnapshot(DataSnapshot snapshot, String source) {
         if (snapshot == null) return;
         long now = System.currentTimeMillis();
         int loadedCount = 0;
@@ -1346,8 +1365,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     // Alerta reciente: solo alertar si el vehículo está REALMENTE cerca (Geofence estricto)
                     long diff = alert.timestamp > 0 ? Math.abs(now - alert.timestamp) : 0;
                     boolean isNewOrRecent = alert.timestamp > 0 && (alert.timestamp >= serviceStartTime - 10000) && (diff < 180000);
-                    if (isNewOrRecent && !isAlertSpoken(id)) {
+                    
+                    // Cooldown por ubicación/tipo para evitar que 2 alertas con distinto id disparen doble aviso
+                    String locKey = (location != null ? location : "") + "_" + (type != null ? type : "");
+                    String normKey = locKey.toLowerCase().replaceAll("[^a-z0-9]", "");
+                    Long lastSpokenLoc = !normKey.isEmpty() ? spokenLocationCooldown.get(normKey) : null;
+                    boolean isLocInCooldown = (lastSpokenLoc != null && (now - lastSpokenLoc) < LOCATION_COOLDOWN_MS);
+
+                    if (isNewOrRecent && !isAlertSpoken(id) && !isLocInCooldown) {
                         markAlertSpoken(id);
+                        if (!normKey.isEmpty()) {
+                            spokenLocationCooldown.put(normKey, now);
+                        }
                         double dist = (lastLat != 0.0 && lastLng != 0.0) ? getDistanceInMeters(lastLat, lastLng, lat, lng) : 0.0;
                         // Cobertura completa de 50 km para todo el Departamento Rosario y localidades vecinas:
                         // Rosario, Funes, Roldán, Granadero Baigorria, Capitán Bermúdez, San Lorenzo, Pérez, VGG, Alvear, Pueblo Esther, Arroyo Seco.
@@ -1358,7 +1387,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                             Log.i(TAG, "📍 [ALERTA FUERA DE DPTO] Descartada por distancia (" + Math.round(dist) + "m > 50km): " + location);
                         }
                     } else if (!isAlertSpoken(id)) {
-                        // Alerta antigua o histórica: marcarla para que nunca se reproduzca en bucle
+                        // Alerta antigua, histórica o en cooldown: marcarla para que nunca se reproduzca en bucle
                         markAlertSpoken(id);
                     }
                 }
@@ -1367,24 +1396,47 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         }
 
+        if ("global".equals(source)) {
+            globalAlertsMap.clear();
+            globalAlertsMap.putAll(freshAlertsMap);
+        } else if ("fleet".equals(source)) {
+            fleetAlertsMap.clear();
+            fleetAlertsMap.putAll(freshAlertsMap);
+        } else {
+            globalAlertsMap.putAll(freshAlertsMap);
+        }
+
         synchronized (activeAlerts) {
             activeAlertsMap.clear();
-            activeAlertsMap.putAll(freshAlertsMap);
+            activeAlertsMap.putAll(globalAlertsMap);
+            activeAlertsMap.putAll(fleetAlertsMap);
             activeAlerts.clear();
             activeAlerts.addAll(activeAlertsMap.values());
         }
-        Log.i(TAG, "🔔 [ALERTS] Snapshot parsed (" + loadedCount + " items). Total in memory: " + activeAlerts.size());
+        Log.i(TAG, "🔔 [ALERTS] Snapshot parsed (" + source + ": " + loadedCount + " items). Total in memory: " + activeAlerts.size());
     }
 
     private final ValueEventListener alertsListener = new ValueEventListener() {
         @Override
         public void onDataChange(@NonNull DataSnapshot snapshot) {
-            updateAlertsFromSnapshot(snapshot);
+            updateAlertsFromSnapshot(snapshot, "global");
         }
 
         @Override
         public void onCancelled(@NonNull DatabaseError error) {
-            Log.w(TAG, "📡 [ALERTS] Listener cancelled: " + error.getMessage());
+            Log.w(TAG, "📡 [ALERTS] Global listener cancelled: " + error.getMessage());
+        }
+    };
+
+    private final ValueEventListener fleetAlertsListener = new ValueEventListener() {
+        @Override
+        public void onDataChange(@NonNull DataSnapshot snapshot) {
+            updateAlertsFromSnapshot(snapshot, "fleet");
+        }
+
+        @Override
+        public void onCancelled(@NonNull DatabaseError error) {
+            Log.w(TAG, "📡 [ALERTS] Fleet listener cancelled: " + error.getMessage());
         }
     };
 
@@ -1425,7 +1477,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         if (alertsRef != null) {
             Log.i(TAG, "📡 [ALERTS] Removing previous fleet database listener");
-            alertsRef.removeEventListener(alertsListener);
+            alertsRef.removeEventListener(fleetAlertsListener);
         }
         if (globalAlertsRef != null) {
             Log.i(TAG, "📡 [ALERTS] Removing previous global database listener");
@@ -1445,7 +1497,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             try {
                 alertsRef = FirebaseDatabase.getInstance().getReference("fleets").child(fleetId).child("traffic_alerts");
                 alertsRef.keepSynced(true);
-                alertsRef.addValueEventListener(alertsListener);
+                alertsRef.addValueEventListener(fleetAlertsListener);
                 Log.i(TAG, "📡 [ALERTS] Listening on fleets/" + fleetId + "/traffic_alerts");
             } catch (Exception e) {
                 Log.e(TAG, "❌ Error escuchando fleet traffic_alerts:", e);
@@ -1910,6 +1962,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             speak(fallbackTtsText);
             return;
         }
+
+        // De-bouncing: prevenir que una misma alerta dispare dos audios en simultáneo o se reinicie
+        long nowAudio = System.currentTimeMillis();
+        if (audioUrl.equals(lastAudioPlayUrl) && (nowAudio - lastAudioPlayTimestamp < 6000)) {
+            Log.i(TAG, "🔇 [NATIVE-AUDIO] Cooldown activo para el mismo audio: omitiendo reproducción redundante.");
+            return;
+        }
+        lastAudioPlayTimestamp = nowAudio;
+        lastAudioPlayUrl = audioUrl;
 
         serviceHandler.post(() -> {
             try {
@@ -2666,6 +2727,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         lastFloatingAudioMessage = audioMessage;
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
+                // Si la app está en primer plano, el HUD Web ya se muestra directamente en pantalla.
+                // No dibujar un cartel flotante de WindowManager encima de la interfaz de la propia app.
+                if (isAppInForeground) {
+                    Log.i(TAG, "ℹ️ [OVERLAY] App en primer plano. Omitiendo cartel flotante WindowManager (HUD web activo).");
+                    return;
+                }
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
                     Log.w(TAG, "⚠️ [OVERLAY] Permiso SYSTEM_ALERT_WINDOW no concedido por el usuario.");
                     return;
@@ -2676,15 +2744,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
                 if (windowManager == null) return;
 
-                // Despertar pantalla para máxima visibilidad en el soporte del vehículo
+                // Despertar pantalla únicamente si estaba apagada en el soporte
                 wakeScreenForAlert();
 
-                // Intentar poner la app en primer plano / reordenar al frente si corresponde
-                try {
-                    Intent bringApp = new Intent(this, MainActivity.class);
-                    bringApp.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    startActivity(bringApp);
-                } catch (Exception ignored) {}
+                // NOTA: Se eliminó startActivity(bringApp) para NO robar foco ni pasar la app a primer plano sobre Uber/DiDi.
+                // El cartel se dibuja de forma no invasiva con FLAG_NOT_FOCUSABLE.
 
                 String targetKey = (title != null ? title : "") + "_" + limit;
 
@@ -2695,7 +2759,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
 
                 if (activeOverlayView != null) {
-                    try { windowManager.removeView(activeOverlayView); } catch (Exception ignored) {}
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && activeOverlayView.isAttachedToWindow()) {
+                            windowManager.removeViewImmediate(activeOverlayView);
+                        } else {
+                            windowManager.removeView(activeOverlayView);
+                        }
+                    } catch (Exception ignored) {}
                     activeOverlayView = null;
                 }
                 activeOverlayTargetKey = targetKey;
@@ -3001,7 +3071,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
                 if (activeOverlayView != null && windowManager != null) {
-                    windowManager.removeView(activeOverlayView);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && activeOverlayView.isAttachedToWindow()) {
+                        windowManager.removeViewImmediate(activeOverlayView);
+                    } else {
+                        windowManager.removeView(activeOverlayView);
+                    }
                     Log.i(TAG, "🛑 [OVERLAY] Cartel flotante cerrado");
                 }
             } catch (Exception ignored) {}
