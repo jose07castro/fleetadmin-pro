@@ -593,6 +593,66 @@ async function dispatchAlert(classification, options = {}, db) {
     }
 }
 
+/**
+ * 5. Evaluación de velocidad y política de avisos no intrusivos en zonas de radar (Punto Alertas)
+ * - Primer aviso de aproximación al ingresar a la zona (500m / 300m)
+ * - Supresión de avisos repetitivos mientras currentSpeed <= maxSpeed (silencio total)
+ * - Alerta exclusiva por exceso de velocidad: "Reduce la velocidad, vas muy rápido" (cooldown de 12s)
+ *
+ * @param {object} params { currentSpeed, maxSpeed, alertadaInicialmente, lastSpeedAlertTime }
+ * @returns {{ shouldAlert: boolean, alertType: string, alertadaInicialmente: boolean, message: string|null, silent: boolean, inCooldown?: boolean, lastSpeedAlertTime?: number }}
+ */
+function evaluateRadarSpeedPolicy({ currentSpeed = 0, maxSpeed = 60, alertadaInicialmente = false, lastSpeedAlertTime = 0 } = {}) {
+    const SPEED_ALERT_TEXT = "Reduce la velocidad, vas muy rápido";
+    const SPEED_COOLDOWN_MS = 12000;
+    const now = Date.now();
+
+    // 1. Primer aviso de aproximación
+    if (!alertadaInicialmente) {
+        return {
+            shouldAlert: true,
+            alertType: 'approach',
+            alertadaInicialmente: true,
+            message: null,
+            silent: false
+        };
+    }
+
+    // 2. Si ya tuvo aviso inicial y la velocidad es menor o igual a la máxima: silencio total
+    if (currentSpeed <= maxSpeed) {
+        return {
+            shouldAlert: false,
+            alertType: 'ok',
+            alertadaInicialmente: true,
+            message: null,
+            silent: true
+        };
+    }
+
+    // 3. Exceso de velocidad (currentSpeed > maxSpeed)
+    if (now - lastSpeedAlertTime < SPEED_COOLDOWN_MS) {
+        return {
+            shouldAlert: false,
+            alertType: 'speed_cooldown',
+            alertadaInicialmente: true,
+            message: SPEED_ALERT_TEXT,
+            silent: true,
+            inCooldown: true,
+            lastSpeedAlertTime: lastSpeedAlertTime
+        };
+    }
+
+    return {
+        shouldAlert: true,
+        alertType: 'speed_excess',
+        alertadaInicialmente: true,
+        message: SPEED_ALERT_TEXT,
+        silent: false,
+        inCooldown: false,
+        lastSpeedAlertTime: now
+    };
+}
+
 module.exports = {
     getGeminiKey,
     setGeminiKey,
@@ -602,5 +662,6 @@ module.exports = {
     geocodeLocation,
     dispatchAlert,
     updateAgentConfig,
-    getAgentConfig
+    getAgentConfig,
+    evaluateRadarSpeedPolicy
 };

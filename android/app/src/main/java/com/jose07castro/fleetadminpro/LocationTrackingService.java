@@ -131,6 +131,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         float minDistance;
         float lastDistance;
         long startedAt;
+        boolean alertadaInicialmente = true;
+        long lastSpeedAlertTime = 0L;
 
         BgRadarApproach(RosarioRadars.StaticRadar radar, float initialDist, int initialStage, long startedAt) {
             this.radarId = radar.id;
@@ -139,6 +141,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             this.minDistance = initialDist;
             this.lastDistance = initialDist;
             this.startedAt = startedAt;
+            this.alertadaInicialmente = true;
+            this.lastSpeedAlertTime = 0L;
         }
     }
     private BgRadarApproach activeBgApproach = null;
@@ -1102,37 +1106,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     });
                 }
 
-                // C) Etapas de aproximación
-                if (activeBgApproach.stage == 500 && distance <= 330.0f && distance >= 270.0f) {
-                    activeBgApproach.stage = 300;
-                    speakRadarConcise(radar, 300);
-                    return;
+                // C) POLÍTICA DE AVISOS EN ZONA DE RADAR (Punto Alertas):
+                // 1. Supresión de avisos repetitivos: Mientras permanezca en la zona del radar,
+                //    si la velocidad actual es menor o igual a la máxima (curSpeed <= maxSpeed), silencio total.
+                // 2. Alerta exclusiva por exceso de velocidad: Si curSpeed > maxSpeed,
+                //    disparar aviso con mensaje exacto "Reduce la velocidad, vas muy rápido" con cooldown de 12 segundos.
+                int maxSpeed = radar.limit;
+                float curSpeed = lastSpeed > 0 ? lastSpeed : 0f;
+                if (curSpeed > maxSpeed) {
+                    long SPEED_COOLDOWN_MS = 12000L;
+                    if (now - activeBgApproach.lastSpeedAlertTime >= SPEED_COOLDOWN_MS) {
+                        activeBgApproach.lastSpeedAlertTime = now;
+                        String speedWarningMsg = "Reduce la velocidad, vas muy rápido";
+                        Log.w(TAG, "🚨 [RADAR NATIVO-EXCESO] " + Math.round(curSpeed) + " km/h > " + maxSpeed + " km/h: " + speedWarningMsg);
+                        speakMandatory(speedWarningMsg);
+                    }
                 }
-                if (activeBgApproach.stage == 300 && distance <= 165.0f && distance >= 130.0f) {
-                    activeBgApproach.stage = 150;
-                    speakRadarConcise(radar, 150);
-                    return;
-                }
-                if (activeBgApproach.stage <= 150 && distance <= 125.0f && distance > 98.0f && activeBgApproach.stage != 120) {
-                    activeBgApproach.stage = 120;
-                    playBgProximityTone(120);
-                    return;
-                }
-                if (activeBgApproach.stage <= 120 && distance <= 98.0f && distance > 68.0f && activeBgApproach.stage != 90) {
-                    activeBgApproach.stage = 90;
-                    playBgProximityTone(90);
-                    return;
-                }
-                if (activeBgApproach.stage <= 90 && distance <= 68.0f && distance > 38.0f && activeBgApproach.stage != 60) {
-                    activeBgApproach.stage = 60;
-                    playBgProximityTone(60);
-                    return;
-                }
-                if (activeBgApproach.stage <= 60 && distance <= 38.0f && distance > 18.0f && activeBgApproach.stage != 30) {
-                    activeBgApproach.stage = 30;
-                    playBgProximityTone(30);
-                    return;
-                }
+                // Si curSpeed <= maxSpeed: Silencio total. No emitir avisos ni pitidos.
                 return;
             }
 
@@ -2707,7 +2697,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             boolean isRadar = limit > 0;
             if (isRadar) {
                 if (currentSpeed > limit) {
-                    activeOverlaySpeedGauge.setText("⚠️ EXCESO: " + currentSpeed + " km/h (MÁX " + limit + ")");
+                    activeOverlaySpeedGauge.setText("⚠️ Reduce la velocidad, vas muy rápido (" + currentSpeed + " km/h / MÁX " + limit + ")");
                     activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FCA5A5"));
                 } else if (currentSpeed > 0) {
                     activeOverlaySpeedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
@@ -2928,7 +2918,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 TextView speedGauge = new TextView(this);
                 if (isRadar && limit > 0) {
                     if (currentSpeed > limit) {
-                        speedGauge.setText("⚠️ EXCESO: " + currentSpeed + " km/h (MÁX " + limit + ")");
+                        speedGauge.setText("⚠️ Reduce la velocidad, vas muy rápido (" + currentSpeed + " km/h / MÁX " + limit + ")");
                         speedGauge.setTextColor(Color.parseColor("#FCA5A5"));
                     } else if (currentSpeed > 0) {
                         speedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");

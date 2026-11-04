@@ -3372,7 +3372,7 @@ const CopilotModule = (() => {
         if (!isTraffic) {
             if (_lastDisplayedSpeed > 0) {
                 if (_lastDisplayedSpeed > target.limit) {
-                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over" id="copilotHudSpeedGauge">⚠️ EXCESO: ${_lastDisplayedSpeed} km/h (MÁX ${target.limit})</div>`;
+                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over" id="copilotHudSpeedGauge">⚠️ Reduce la velocidad, vas muy rápido (${_lastDisplayedSpeed} km/h / MÁX ${target.limit})</div>`;
                 } else {
                     speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok" id="copilotHudSpeedGauge">✅ Velocidad OK: ${_lastDisplayedSpeed} km/h</div>`;
                 }
@@ -3738,43 +3738,23 @@ const CopilotModule = (() => {
             // Actualizar HUD con distancia viva y velocímetro estabilizado
             _showRadarHUD(radar, dist, currentSpeed);
 
-            // C) ETAPAS DE APROXIMACIÓN:
-            // Transición de 500m a 300m si venía a alta velocidad
-            if (_activeApproach.stage === 500 && dist <= 330 && dist >= 270) {
-                _activeApproach.stage = 300;
-                _speakRadarConcise(radar, 300);
-                return;
+            // C) POLÍTICA DE AVISOS NO INTRUSIVOS Y CONTROL DE VELOCIDAD (Punto Alertas):
+            // 1. Supresión de avisos repetitivos: Mientras el vehículo permanezca en la zona del radar,
+            //    si la velocidad es menor o igual a la máxima (currentSpeed <= maxSpeed), silencio total.
+            // 2. Alerta exclusiva por exceso de velocidad: Si currentSpeed > maxSpeed,
+            //    disparar aviso con mensaje exacto "Reduce la velocidad, vas muy rápido" con cooldown de 12s.
+            const maxSpeed = radar.limit || 60;
+            if (currentSpeed > maxSpeed) {
+                const SPEED_COOLDOWN_MS = 12000;
+                if (now - (_activeApproach.lastSpeedAlertTime || 0) >= SPEED_COOLDOWN_MS) {
+                    _activeApproach.lastSpeedAlertTime = now;
+                    const speedWarningMsg = "Reduce la velocidad, vas muy rápido";
+                    console.warn(`🚨 [COPILOTO-EXCESO] ${Math.round(currentSpeed)} km/h > límite ${maxSpeed} km/h: ${speedWarningMsg}`);
+                    _speakTextDirect(speedWarningMsg, true);
+                    _triggerVibration(true);
+                }
             }
-
-            // Etapa 150 metros (Repetición concisa de voz)
-            if (_activeApproach.stage === 300 && dist <= 165 && dist >= 130) {
-                _activeApproach.stage = 150;
-                _speakRadarConcise(radar, 150);
-                return;
-            }
-
-            // Pitidos cada 30 metros (120m, 90m, 60m, 30m) con frecuencia y volumen ascendente
-            if (_activeApproach.stage <= 150 && dist <= 125 && dist > 98 && _activeApproach.stage !== 120) {
-                _activeApproach.stage = 120;
-                _playProximityBeep(120);
-                return;
-            }
-            if (_activeApproach.stage <= 120 && dist <= 98 && dist > 68 && _activeApproach.stage !== 90) {
-                _activeApproach.stage = 90;
-                _playProximityBeep(90);
-                return;
-            }
-            if (_activeApproach.stage <= 90 && dist <= 68 && dist > 38 && _activeApproach.stage !== 60) {
-                _activeApproach.stage = 60;
-                _playProximityBeep(60);
-                return;
-            }
-            if (_activeApproach.stage <= 60 && dist <= 38 && dist > 18 && _activeApproach.stage !== 30) {
-                _activeApproach.stage = 30;
-                _playProximityBeep(30);
-                return;
-            }
-
+            // Si currentSpeed <= maxSpeed: Silencio total. No emitir avisos ni pitidos.
             return;
         }
 
@@ -3807,6 +3787,8 @@ const CopilotModule = (() => {
                 minDistance: bestRadarDist,
                 lastDistance: bestRadarDist,
                 maxSpeed: currentSpeed || 0,
+                alertadaInicialmente: true,
+                lastSpeedAlertTime: 0,
                 startedAt: now
             };
 
