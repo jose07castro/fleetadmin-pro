@@ -1,6 +1,5 @@
 package com.jose07castro.fleetadminpro;
 
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -22,7 +21,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
-import android.os.SystemClock;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -439,7 +437,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.i(TAG, "📱 onTaskRemoved() — Tarea barrida de recientes. Persistiendo servicio GPS START_STICKY y notificación ONGOING.");
+        Log.i(TAG, "📱 onTaskRemoved() — Tarea cerrada desde recientes. El servicio continúa activo en segundo plano (stopWithTask=false / START_STICKY).");
 
         try {
             acquireWakeLock();
@@ -447,61 +445,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 FirebaseDatabase.getInstance().goOnline();
             } catch (Exception ignored) {}
 
-            // Re-asegurar que el rastreo GPS continúe intacto sin interrupciones
-            if (!isTracking) {
-                startLocationUpdates();
-                isTracking = true;
-            }
-
-            // Re-afirmar la notificación fija e indestructible ONGOING en la barra de estado
-            String notifTitle = isShiftActive ? "🔒 Punto Alertas: Turno activo en curso" : "Punto Alertas: Modo Copiloto";
-            String notifBody = isShiftActive
-                ? String.format(Locale.US, "📍 Turno en curso | %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
-                : "🛡️ Alertas de tránsito y fotomultas activas";
-            Notification notification = buildNotification(notifTitle, notifBody);
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-                } else {
-                    startForeground(NOTIFICATION_ID, notification);
-                }
-            } catch (Exception eFg) {
-                updateNotification(notifTitle, notifBody);
-            }
-
-            // Respaldo AlarmManager (2s) contra capas OEM agresivas al barrer de tareas recientes
-            try {
-                Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
-                restartIntent.setPackage(getPackageName());
-                if (userId != null) restartIntent.putExtra("userId", userId);
-                if (driverName != null) restartIntent.putExtra("driverName", driverName);
-                if (fleetId != null) restartIntent.putExtra("fleetId", fleetId);
-                if (serverUrl != null) restartIntent.putExtra("serverUrl", serverUrl);
-                restartIntent.putExtra("isShiftActive", isShiftActive);
-
-                PendingIntent restartPi;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    restartPi = PendingIntent.getForegroundService(
-                        getApplicationContext(),
-                        9911,
-                        restartIntent,
-                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
-                    );
-                } else {
-                    restartPi = PendingIntent.getService(
-                        getApplicationContext(),
-                        9911,
-                        restartIntent,
-                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
-                    );
-                }
-                AlarmManager am = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
-                if (am != null && restartPi != null) {
-                    am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 2000L, restartPi);
-                }
-            } catch (Exception alarmErr) {
-                Log.w(TAG, "⚠️ No se pudo programar alarma de respaldo en onTaskRemoved: " + alarmErr.getMessage());
-            }
+            // Con stopWithTask="false" y START_STICKY, este ForegroundService permanece vivo automáticamente
+            // en segundo plano con su notificación ONGOING activa mientras el chofer trabaja con Uber/DiDi.
+            updateStatusNotification();
 
             // Preservar estado IN_PROGRESS y latido inmediato en Firebase si el turno está activo
             if (isShiftActive && serviceHandler != null && dbRef != null && userId != null && !userId.isEmpty()) {
@@ -2557,7 +2503,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
@@ -2571,8 +2517,6 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();
-        notification.flags |= Notification.FLAG_ONGOING_EVENT | Notification.FLAG_NO_CLEAR | Notification.FLAG_FOREGROUND_SERVICE;
-        return notification;
     }
 
     private void updateNotification(String title, String text) {
