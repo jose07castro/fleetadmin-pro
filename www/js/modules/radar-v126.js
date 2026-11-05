@@ -184,17 +184,6 @@ const RadarModule = (() => {
                         <span class="radar-status-dot"></span>
                         Conectando...
                     </span>
-                    <button class="radar-test-btn" id="radarTestBtn"
-                        onclick="RadarModule.testAlerts()"
-                        title="Probar advertencia HUD, Chime y Voz">
-                        🔔 Probar
-                    </button>
-                    <button class="radar-cameras-btn" id="radarCamerasBtn"
-                        onclick="RadarModule.toggleCameras()"
-                        title="Mostrar u ocultar fotomultas en el mapa"
-                        style="background:${_showCameras ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.1)'};border-color:${_showCameras ? '#ef4444' : 'rgba(255,255,255,0.2)'};">
-                        📷 Cámaras (80)
-                    </button>
                 </div>
                 <button class="radar-close-btn" id="radarCloseBtn" onclick="RadarModule.close()" title="Cerrar mapa">
                     ✕ Salir
@@ -1678,6 +1667,10 @@ const RadarModule = (() => {
         if (!_showCameras || !_map || typeof CopilotModule === 'undefined') return;
 
         const radars = CopilotModule.getAllRadars ? CopilotModule.getAllRadars() : [];
+        const countEl = document.getElementById('radarCameraCount');
+        if (countEl && radars) {
+            countEl.textContent = `${radars.length} oficiales`;
+        }
         if (!radars || !radars.length) return;
 
         const MarkerClass = _getHTMLMapMarkerClass();

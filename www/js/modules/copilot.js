@@ -323,15 +323,6 @@ const CopilotModule = (() => {
         "address": "CASAS CASIANO Y SORRENTO"
     },
     {
-        "id": "radar_rosario_25",
-        "name": "Av. Eva Perón y Circunvalación (Colectora)",
-        "lat": -32.931398,
-        "lng": -60.721774,
-        "limit": 60,
-        "desc": "Cruce en rojo",
-        "address": "PERON EVA Y JUAN PABLO II"
-    },
-    {
         "id": "radar_rosario_26",
         "name": "Av. Estanislao López y Av. Francia",
         "lat": -32.925269,
@@ -799,19 +790,6 @@ const CopilotModule = (() => {
         ]
     },
     {
-        "id": "radar_circ_2",
-        "name": "Av. Circunvalación y Av. Eva Perón (Córdoba)",
-        "lat": -32.9367,
-        "lng": -60.7228,
-        "limit": 100,
-        "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Av. Eva Perón",
-        "validHeadings": [
-            340,
-            160
-        ]
-    },
-    {
         "id": "radar_circ_ovidio_lagos",
         "name": "Av. Circunvalación y Av. Ovidio Lagos",
         "lat": -33.00795,
@@ -835,19 +813,6 @@ const CopilotModule = (() => {
         "validHeadings": [
             138,
             318
-        ]
-    },
-    {
-        "id": "radar_circ_4",
-        "name": "Av. Circunvalación y Ayacucho (Acceso Sur)",
-        "lat": -33.01502,
-        "lng": -60.63501,
-        "limit": 100,
-        "desc": "Radar de velocidad fija Circunvalación",
-        "address": "Av. Circunvalación (A008) y Ayacucho",
-        "validHeadings": [
-            165,
-            345
         ]
     },
     {
