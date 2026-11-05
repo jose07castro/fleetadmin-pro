@@ -260,6 +260,175 @@ const App = (() => {
 
     // Listener refs para limpieza
     let realtimeListenersActive = false;
+    let _shiftHeartbeatInterval = null;
+    let _lastShiftLockModalTs = 0;
+    let _popstateGuardRegistered = false;
+
+    // ============================================================
+    // BLOQUEO DE SALIDA Y HEARTBEAT DE TURNO ACTIVO ('IN_PROGRESS')
+    // ============================================================
+    function isDriverShiftLocked() {
+        try {
+            if (typeof Auth === 'undefined' || !Auth.isLoggedIn() || !Auth.isDriver()) return false;
+            return localStorage.getItem('active_shift_state') === 'true' || Boolean(localStorage.getItem('active_shift_id'));
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function showShiftExitBlockedModal() {
+        const now = Date.now();
+        if (now - _lastShiftLockModalTs < 600) return;
+        _lastShiftLockModalTs = now;
+
+        if (typeof Components === 'undefined' || typeof Components.showModal !== 'function') {
+            alert('Turno activo en curso: Debes finalizar el turno formalmente para salir');
+            return;
+        }
+
+        const bodyHTML = `
+            <div data-shift-lock="true" style="text-align:center; padding:12px 6px;">
+                <div style="font-size:3.2rem; margin-bottom:12px;">🔒</div>
+                <div style="font-size:1.08rem; font-weight:800; color:#f87171; line-height:1.45; margin-bottom:12px;">
+                    Turno activo en curso: Debes finalizar el turno formalmente para salir
+                </div>
+                <p style="font-size:0.88rem; color:var(--text-secondary); line-height:1.5; margin:0;">
+                    Mientras tengas un turno iniciado, el cierre de sesión y el retroceso de salida están deshabilitados. Podés minimizar con Inicio (Home) o cambiar normalmente a Uber, DiDi o Maps.
+                </p>
+            </div>
+        `;
+        const footerHTML = `
+            <div style="display:flex; gap:10px; width:100%;">
+                <button class="btn btn-secondary" style="flex:1;" onclick="Components.closeModal()">Entendido</button>
+                <button class="btn btn-danger" style="flex:1; font-weight:700;" onclick="Components.closeModal(); if (typeof Router !== 'undefined' && Router.getCurrentRoute() !== 'shifts') { Router.navigate('shifts'); }">
+                    ⏹️ Ir a Turnos
+                </button>
+            </div>
+        `;
+        Components.showModal('🔒 Turno Activo en Curso', bodyHTML, footerHTML);
+    }
+
+    function armShiftBackLock() {
+        _registerShiftNavigationGuards();
+        if (!isDriverShiftLocked()) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        try {
+            if (!window.history.state || !window.history.state.fleetShiftLock) {
+                window.history.pushState({ fleetShiftLock: true }, '', window.location.href);
+            }
+        } catch (e) {
+            console.warn('⚠️ No se pudo armar history state de turno activo:', e);
+        }
+    }
+
+    function _registerShiftNavigationGuards() {
+        if (_popstateGuardRegistered || typeof window === 'undefined') return;
+        _popstateGuardRegistered = true;
+
+        window.showActiveShiftExitLockModal = showShiftExitBlockedModal;
+        window.isDriverShiftLocked = isDriverShiftLocked;
+
+        // Interceptar popstate ÚNICAMENTE mientras FleetAdmin esté en primer plano
+        window.addEventListener('popstate', () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (!isDriverShiftLocked()) return;
+
+            try {
+                window.history.pushState({ fleetShiftLock: true }, '', window.location.href);
+            } catch (_) {}
+            showShiftExitBlockedModal();
+        });
+
+        // Protección adicional en navegador Web contra cierre accidental de pestaña durante turno activo
+        window.addEventListener('beforeunload', (e) => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid()) return;
+            if (!isDriverShiftLocked()) return;
+            e.preventDefault();
+            e.returnValue = 'Turno activo en curso: Debes finalizar el turno formalmente para salir';
+            return e.returnValue;
+        });
+    }
+
+    async function sendShiftHeartbeat() {
+        if (!isDriverShiftLocked()) {
+            stopShiftHeartbeat();
+            return;
+        }
+        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+
+        const userId = Auth.getUserId();
+        if (!userId) return;
+
+        const now = Date.now();
+        let batteryLevel = null;
+        if (typeof navigator !== 'undefined' && navigator.getBattery) {
+            try {
+                const b = await navigator.getBattery();
+                batteryLevel = Math.round(b.level * 100);
+            } catch (_) {}
+        }
+
+        let appVersion = 'v1.2.44';
+        try {
+            if (typeof window.NativeServiceBridge !== 'undefined' && window.NativeServiceBridge.getAppVersionName) {
+                appVersion = 'v' + window.NativeServiceBridge.getAppVersionName();
+            }
+        } catch (_) {}
+
+        const hbPayload = {
+            last_heartbeat: now,
+            updated_at: new Date(now).toISOString(),
+            status: 'active',
+            shift_status: 'IN_PROGRESS',
+            last_heartbeat_gap: null,
+            driverName: Auth.getUserName() || 'Chofer',
+            appVersion: appVersion
+        };
+
+        const fleetId = Auth.getFleetId();
+        const shiftId = localStorage.getItem('active_shift_id');
+        if (fleetId) hbPayload.fleetId = fleetId;
+        if (shiftId) hbPayload.shiftId = shiftId;
+        if (batteryLevel !== null) hbPayload.battery = batteryLevel;
+
+        // En Web/PWA (no nativo Android), adjuntar coordenadas frescas si están disponibles en caché
+        const isNative = typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid();
+        if (!isNative && window._cachedGpsPosition && window._cachedGpsPosition.lat && window._cachedGpsPosition.lng) {
+            const fixAge = now - (window._cachedGpsPosition.time || 0);
+            if (fixAge < 120000) {
+                hbPayload.lat = window._cachedGpsPosition.lat;
+                hbPayload.lng = window._cachedGpsPosition.lng;
+                hbPayload.speed = (window._cachedGpsPosition.speed || 0) * 3.6;
+                hbPayload.heading = window._cachedGpsPosition.heading || 0;
+                hbPayload.gps_status = 'active';
+            }
+        }
+
+        try {
+            await firebaseDB.ref(`driver_positions/${userId}`).update(hbPayload);
+            console.log('💓 [HEARTBEAT-60S] Latido de turno IN_PROGRESS enviado a Firebase');
+        } catch (e) {
+            console.warn('⚠️ [HEARTBEAT-60S] Error enviando latido a Firebase:', e.message);
+        }
+    }
+
+    function startShiftHeartbeat() {
+        _registerShiftNavigationGuards();
+        if (_shiftHeartbeatInterval) {
+            clearInterval(_shiftHeartbeatInterval);
+            _shiftHeartbeatInterval = null;
+        }
+        sendShiftHeartbeat();
+        _shiftHeartbeatInterval = setInterval(sendShiftHeartbeat, 60000);
+    }
+
+    function stopShiftHeartbeat() {
+        if (_shiftHeartbeatInterval) {
+            clearInterval(_shiftHeartbeatInterval);
+            _shiftHeartbeatInterval = null;
+        }
+    }
 
     // Auto-despertar servidor (Keep-Alive) para evitar que Render duerma el servicio
     
@@ -285,6 +454,8 @@ const App = (() => {
     // Inicializar la aplicación
     async function init() {
         try {
+            _registerShiftNavigationGuards();
+
             // 0. Verificar versión de la app (In-App forced update check)
             const versionOk = await checkAppVersion();
             if (!versionOk) return; // Detener inicio de la app
@@ -346,6 +517,9 @@ const App = (() => {
                     const loggedIn = await Auth.isLoggedInAsync();
                     if (loggedIn) {
                         console.log('🔐 Sesión activa confirmada (incluyendo recovery IndexedDB)');
+                        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+                            AndroidServices.setUserRole(Auth.getRole());
+                        }
                         
                         // 4.5 Cargar tema del usuario
                         const currentUserId = Auth.getUserId();
@@ -531,9 +705,17 @@ const App = (() => {
 
     // Cerrar sesión (completo: limpia listeners, Firebase Auth, storage)
     async function logout() {
+        // BLOQUEO ESTRICTO: Un chofer con turno activo ('IN_PROGRESS') no puede cerrar sesión ni salir
+        if (isDriverShiftLocked()) {
+            showShiftExitBlockedModal();
+            return;
+        }
+
         // Confirmación para evitar toques accidentales
         const confirmed = confirm('¿Cerrar sesión?\nSe desconectará de esta cuenta.');
         if (!confirmed) return;
+
+        stopShiftHeartbeat();
 
         // Si es chofer, registramos la desconexión voluntaria en el servidor ANTES de limpiar nada
         if (typeof Auth !== 'undefined' && Auth.isDriver()) {
@@ -611,6 +793,9 @@ const App = (() => {
 
             // 6. Limpiar estado de Auth (localStorage, sessionStorage, currentUser)
             Auth.logout();
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+                AndroidServices.setUserRole('guest');
+            }
 
             // 6.5 Restablecer listener global de voz al default (jose07) — v167: forzar re-suscripción
             if (typeof TrafficAlerts !== 'undefined') {
@@ -1091,13 +1276,22 @@ const App = (() => {
             const userId = Auth.getUserId();
             if (!userId) return;
 
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+                AndroidServices.setUserRole('driver');
+            }
+
+            const wasLocked = localStorage.getItem('active_shift_state') === 'true';
             const activeShifts = await DB.getActiveShifts();
             const activeShift = activeShifts.find(s => String(s.driverId) === String(userId));
 
             if (activeShift) {
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
-                console.log('✅ [GPS] Sincronización: Turno activo detectado → GPS activado:', activeShift.id);
+                localStorage.setItem('active_shift_status', 'IN_PROGRESS');
+                console.log('✅ [GPS] Sincronización: Turno activo detectado (IN_PROGRESS) → GPS + Heartbeat 60s activados:', activeShift.id);
+
+                armShiftBackLock();
+                startShiftHeartbeat();
 
                 if (typeof AndroidServices !== 'undefined') {
                     try {
@@ -1111,7 +1305,9 @@ const App = (() => {
             } else {
                 localStorage.removeItem('active_shift_id');
                 localStorage.setItem('active_shift_state', 'false');
-                console.log('⏹️ [GPS] Sincronización: No hay turno activo → GPS desactivado (pero background alerts continúan)');
+                localStorage.setItem('active_shift_status', 'FINALIZADO_TURNO');
+                stopShiftHeartbeat();
+                console.log('⏹️ [GPS] Sincronización: No hay turno activo → Heartbeat de turno detenido (background alerts continúan)');
                 
                 // MANTENEMOS EL FOREGROUND SERVICE VIVO para las alertas en segundo plano
                 if (typeof AndroidServices !== 'undefined') {
@@ -1120,6 +1316,14 @@ const App = (() => {
                         if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                     } catch (e) {
                         console.warn('Error updating foreground service:', e);
+                    }
+                }
+
+                // Si antes estaba bloqueado y ahora se liberó (ej. cierre remoto por admin), refrescar barra de navegación
+                if (wasLocked && typeof Router !== 'undefined') {
+                    const cur = Router.getCurrentRoute();
+                    if (cur && cur !== 'login') {
+                        Router.navigate(cur);
                     }
                 }
             }
@@ -1194,7 +1398,25 @@ const App = (() => {
         }
     }
 
-    return { init, logout, setLanguage, setDistanceUnit, setVolumeUnit, toggleSidebar, startRealtimeSync, applyUserTheme, reportAppVersionToServer, syncActiveShiftGPS, trackAppInstallation };
+    return {
+        init,
+        logout,
+        setLanguage,
+        setDistanceUnit,
+        setVolumeUnit,
+        toggleSidebar,
+        startRealtimeSync,
+        applyUserTheme,
+        reportAppVersionToServer,
+        syncActiveShiftGPS,
+        trackAppInstallation,
+        isDriverShiftLocked,
+        showShiftExitBlockedModal,
+        armShiftBackLock,
+        startShiftHeartbeat,
+        stopShiftHeartbeat,
+        sendShiftHeartbeat
+    };
 })();
 
 // --- Iniciar la aplicación cuando cargue la página ---

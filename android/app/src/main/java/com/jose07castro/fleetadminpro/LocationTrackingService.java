@@ -1,5 +1,6 @@
 package com.jose07castro.fleetadminpro;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -21,6 +22,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
+import android.os.SystemClock;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -314,11 +316,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     
                     String eventType = isGpsEnabled ? "gps_activado" : "gps_desactivado";
                     
-                    // Update Firebase immediately
-                    updateFirebaseGpsStatus(eventType, isGpsEnabled);
-                    
-                    // Send alert to server
-                    sendEventToServer(eventType);
+                    if (isShiftActive) {
+                        // Update Firebase immediately only while shift is active
+                        updateFirebaseGpsStatus(eventType, isGpsEnabled);
+                        // Send alert to server
+                        sendEventToServer(eventType);
+                    }
                 }
             }
         };
@@ -383,13 +386,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             isShiftActive = intent.getBooleanExtra("isShiftActive", false);
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean("is_shift_active", isShiftActive).apply();
             Log.i(TAG, "🚗 [TURNO] isShiftActive recibido en Intent: " + isShiftActive);
+        } else {
+            isShiftActive = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("is_shift_active", isShiftActive);
+            Log.i(TAG, "🔁 [TURNO] isShiftActive restaurado desde prefs: " + isShiftActive);
         }
 
-        // Notificación de alta prioridad para evitar cierre por sistema
-        Notification notification = buildNotification(
-            "Punto Alertas: Turno activo",
-            "📍 Monitoreando ruta con protección de batería..."
-        );
+        // Notificación ONGOING fija e indestructible mientras el turno siga activo
+        String notifTitle = isShiftActive ? "🔒 Punto Alertas: Turno activo en curso" : "Punto Alertas: Modo Copiloto";
+        String notifBody = isShiftActive
+            ? "📍 Monitoreando ruta GPS en tiempo real (Servicio permanente)"
+            : "🛡️ Alertas de tránsito y fotomultas activas";
+        Notification notification = buildNotification(notifTitle, notifBody);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -432,7 +439,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.i(TAG, "📱 onTaskRemoved() — Tarea cerrada desde recientes. El servicio continúa activo en segundo plano.");
+        Log.i(TAG, "📱 onTaskRemoved() — Tarea barrida de recientes. Persistiendo servicio GPS START_STICKY y notificación ONGOING.");
 
         try {
             acquireWakeLock();
@@ -440,20 +447,78 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 FirebaseDatabase.getInstance().goOnline();
             } catch (Exception ignored) {}
 
-            // CRÍTICO ANTI-APAGADO: Con stopWithTask="false", este ForegroundService PERMANECE VIVO automáticamente
-            // en segundo plano con su notificación activa. El chofer está trabajando con Uber/DiDi.
-            // NUNCA reportar 'app_killed' al servidor ni a Firebase cuando el chofer simplemente minimiza o limpia recientes.
-            if (serviceHandler != null && dbRef != null && userId != null && !userId.isEmpty()) {
+            // Re-asegurar que el rastreo GPS continúe intacto sin interrupciones
+            if (!isTracking) {
+                startLocationUpdates();
+                isTracking = true;
+            }
+
+            // Re-afirmar la notificación fija e indestructible ONGOING en la barra de estado
+            String notifTitle = isShiftActive ? "🔒 Punto Alertas: Turno activo en curso" : "Punto Alertas: Modo Copiloto";
+            String notifBody = isShiftActive
+                ? String.format(Locale.US, "📍 Turno en curso | %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
+                : "🛡️ Alertas de tránsito y fotomultas activas";
+            Notification notification = buildNotification(notifTitle, notifBody);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+                } else {
+                    startForeground(NOTIFICATION_ID, notification);
+                }
+            } catch (Exception eFg) {
+                updateNotification(notifTitle, notifBody);
+            }
+
+            // Respaldo AlarmManager (2s) contra capas OEM agresivas al barrer de tareas recientes
+            try {
+                Intent restartIntent = new Intent(getApplicationContext(), LocationTrackingService.class);
+                restartIntent.setPackage(getPackageName());
+                if (userId != null) restartIntent.putExtra("userId", userId);
+                if (driverName != null) restartIntent.putExtra("driverName", driverName);
+                if (fleetId != null) restartIntent.putExtra("fleetId", fleetId);
+                if (serverUrl != null) restartIntent.putExtra("serverUrl", serverUrl);
+                restartIntent.putExtra("isShiftActive", isShiftActive);
+
+                PendingIntent restartPi;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    restartPi = PendingIntent.getForegroundService(
+                        getApplicationContext(),
+                        9911,
+                        restartIntent,
+                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+                    );
+                } else {
+                    restartPi = PendingIntent.getService(
+                        getApplicationContext(),
+                        9911,
+                        restartIntent,
+                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+                    );
+                }
+                AlarmManager am = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+                if (am != null && restartPi != null) {
+                    am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 2000L, restartPi);
+                }
+            } catch (Exception alarmErr) {
+                Log.w(TAG, "⚠️ No se pudo programar alarma de respaldo en onTaskRemoved: " + alarmErr.getMessage());
+            }
+
+            // Preservar estado IN_PROGRESS y latido inmediato en Firebase si el turno está activo
+            if (isShiftActive && serviceHandler != null && dbRef != null && userId != null && !userId.isEmpty()) {
                 serviceHandler.post(() -> {
                     try {
+                        long nowMs = System.currentTimeMillis();
                         Map<String, Object> aliveData = new HashMap<>();
                         aliveData.put("status", "active");
-                        aliveData.put("last_heartbeat", System.currentTimeMillis());
+                        aliveData.put("shift_status", "IN_PROGRESS");
+                        aliveData.put("last_heartbeat", nowMs);
+                        aliveData.put("last_heartbeat_gap", null);
                         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
                         sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-                        aliveData.put("updated_at", sdf.format(new Date()));
+                        aliveData.put("updated_at", sdf.format(new Date(nowMs)));
                         dbRef.child(userId).updateChildren(aliveData);
-                        Log.i(TAG, "🛡️ Estado 'active' preservado en Firebase tras onTaskRemoved");
+                        lastHeartbeatTime = nowMs;
+                        Log.i(TAG, "🛡️ Estado 'active' / 'IN_PROGRESS' preservado en Firebase tras onTaskRemoved");
                     } catch (Exception e) {
                         Log.e(TAG, "❌ Error actualizando Firebase en onTaskRemoved:", e);
                     }
@@ -738,8 +803,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             Log.w(TAG, "⚠️ Error no fatal en checkProximityToAlerts:", t);
         }
 
-        // 2. Firebase Direct / SQLite Queue (Asíncrono en serviceHandler)
-        if (serviceHandler != null) {
+        // 2. Firebase Direct / SQLite Queue (Asíncrono en serviceHandler) — SÓLO mientras haya turno activo ('IN_PROGRESS')
+        if (isShiftActive && serviceHandler != null) {
             serviceHandler.post(() -> {
                 try {
                     int battery = getBatteryLevel();
@@ -1671,16 +1736,43 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     public static void setShiftActive(boolean active, Context context) {
+        boolean changed = (isShiftActive != active);
         isShiftActive = active;
         Log.i(TAG, "🚗 [TURNO-ALERTA] setShiftActive: " + active + " | Override Uber: " + (active ? "ACTIVADO (sube volumen en silencio)" : "DESACTIVADO (respeta silencio del chofer)"));
         Context ctx = (instance != null) ? instance : context;
+        String savedRole = "driver";
         if (ctx != null) {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             prefs.edit().putBoolean("is_shift_active", active).apply();
+            savedRole = prefs.getString("userRole", "driver");
         }
         if (instance != null) {
-            if (!active) {
+            instance.updateStatusNotification();
+            if (active) {
+                instance.sendSilentHeartbeat();
+            } else {
                 instance.restoreAlertVolumeNow();
+                if (changed && !"owner".equalsIgnoreCase(savedRole) && !"titular".equalsIgnoreCase(savedRole) &&
+                    instance.serviceHandler != null && instance.dbRef != null && instance.userId != null && !instance.userId.isEmpty()) {
+                    instance.serviceHandler.post(() -> {
+                        try {
+                            long nowMs = System.currentTimeMillis();
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                            Map<String, Object> endMap = new HashMap<>();
+                            endMap.put("status", "FINALIZADO_TURNO");
+                            endMap.put("shift_status", "FINALIZADO_TURNO");
+                            endMap.put("gps_status", "inactive");
+                            endMap.put("last_heartbeat", nowMs);
+                            endMap.put("last_heartbeat_gap", null);
+                            endMap.put("updated_at", sdf.format(new Date(nowMs)));
+                            instance.dbRef.child(instance.userId).updateChildren(endMap);
+                            Log.i(TAG, "✅ [TURNO] Estado FINALIZADO_TURNO sincronizado desde servicio nativo");
+                        } catch (Exception e) {
+                            Log.w(TAG, "⚠️ Error sincronizando FINALIZADO_TURNO en servicio nativo: " + e.getMessage());
+                        }
+                    });
+                }
             }
             if (instance.tts != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 try {
@@ -2160,6 +2252,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 } else {
                     data.put("status", "permissions_disabled");
                 }
+                data.put("shift_status", isShiftActive ? "IN_PROGRESS" : "FINALIZADO_TURNO");
+                data.put("last_heartbeat_gap", null);
                 data.put("gps_status", "active");
                 data.put("appVersion", appVersion);
 
@@ -2288,6 +2382,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     FirebaseDatabase.getInstance().goOnline();
                 } catch (Exception ignored) {}
 
+                // 2.5 Re-afirmar la notificación ONGOING si el turno sigue activo (protege contra descarte en Android 14+)
+                if (isShiftActive) {
+                    updateStatusNotification();
+                }
+
                 long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
                 
                 // Si el GPS no se ha movido o no ha reportado en 30s, forzar velocidad a 0
@@ -2296,7 +2395,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         Log.i(TAG, "🛑 Vigilante: Sin movimiento por " + (silenceMs / 1000) + "s. Fijando velocidad en 0.");
                         lastSpeed = 0f;
                         smoothedSpeedKmh = 0f;
-                        if (dbRef != null && userId != null && !userId.isEmpty()) {
+                        if (isShiftActive && dbRef != null && userId != null && !userId.isEmpty()) {
                             Map<String, Object> zeroSpeed = new HashMap<>();
                             zeroSpeed.put("speed", 0.0);
                             dbRef.child(userId).updateChildren(zeroSpeed);
@@ -2458,18 +2557,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setAutoCancel(false)
             .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             // IMPORTANCE_DEFAULT / PRIORITY_DEFAULT protege el proceso del LowMemoryKiller de Android y Samsung
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();
+        notification.flags |= Notification.FLAG_ONGOING_EVENT | Notification.FLAG_NO_CLEAR | Notification.FLAG_FOREGROUND_SERVICE;
+        return notification;
     }
 
     private void updateNotification(String title, String text) {
@@ -2480,16 +2583,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void updateStatusNotification() {
+        if (!isShiftActive) {
+            updateNotification(
+                "Punto Alertas: Modo Copiloto",
+                "🛡️ Alertas de tránsito y fotomultas activas"
+            );
+            return;
+        }
         int queueSize = dbHelper.getQueueSize();
         if (queueSize > 0) {
             updateNotification(
-                "Punto Alertas: Fuera de línea",
-                String.format(Locale.US, "📍 Cola: %d puntos retenidos", queueSize)
+                "🔒 Punto Alertas: Turno activo (Sin red)",
+                String.format(Locale.US, "📍 Cola GPS retenida: %d puntos", queueSize)
+            );
+        } else if (lastLat != 0.0 || lastLng != 0.0) {
+            updateNotification(
+                "🔒 Punto Alertas: Turno activo en curso",
+                String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
             );
         } else {
             updateNotification(
-                "Punto Alertas: Turno activo",
-                String.format(Locale.US, "📍 %.4f, %.4f | %.0f km/h", lastLat, lastLng, lastSpeed)
+                "🔒 Punto Alertas: Turno activo en curso",
+                "📍 Monitoreando ruta GPS en tiempo real"
             );
         }
     }
@@ -2499,28 +2614,33 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     // ================================================================
 
     private void startHeartbeatTimer() {
+        if (heartbeatHandler != null && heartbeatRunnable != null) {
+            heartbeatHandler.removeCallbacks(heartbeatRunnable);
+        }
         heartbeatHandler = (serviceHandler != null) ? new Handler(serviceHandler.getLooper()) : new Handler(Looper.getMainLooper());
         heartbeatRunnable = new Runnable() {
             @Override
             public void run() {
                 if (!isTracking) return;
                 
-                // Realizar verificación periódica de permisos
-                checkAndReportPermissions();
+                if (isShiftActive) {
+                    // Realizar verificación periódica de permisos
+                    checkAndReportPermissions();
 
-                long now = System.currentTimeMillis();
-                if (now - lastHeartbeatTime >= 60000) { // Ping cada 60s para evitar sospecha de desconexión
-                    Log.i(TAG, "🏓 Enviando ping de latido silencioso...");
-                    sendSilentHeartbeat();
-                }
+                    long now = System.currentTimeMillis();
+                    if (now - lastHeartbeatTime >= 55000) { // Latido puntual cada 60s mientras el turno esté en IN_PROGRESS
+                        Log.i(TAG, "🏓 Enviando latido (heartbeat) de turno IN_PROGRESS...");
+                        sendSilentHeartbeat();
+                    }
 
-                // Intentar vaciar la cola por si quedó bloqueada o el conductor está quieto
-                if (isNetworkAvailable() && dbHelper.getQueueSize() > 0) {
-                    Log.i(TAG, "🔄 Cola activa detectada en latido (" + dbHelper.getQueueSize() + " puntos). Intentando vaciar...");
-                    sendQueuedLocations();
+                    // Intentar vaciar la cola por si quedó bloqueada o el conductor está quieto
+                    if (isNetworkAvailable() && dbHelper.getQueueSize() > 0) {
+                        Log.i(TAG, "🔄 Cola activa detectada en latido (" + dbHelper.getQueueSize() + " puntos). Intentando vaciar...");
+                        sendQueuedLocations();
+                    }
                 }
                 
-                heartbeatHandler.postDelayed(this, 60000); // Revisar cada minuto
+                heartbeatHandler.postDelayed(this, 60000); // Revisar cada 60 segundos
             }
         };
         heartbeatHandler.postDelayed(heartbeatRunnable, 60000);
@@ -2577,16 +2697,28 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
 
     private void sendSilentHeartbeat() {
-        if (userId == null || userId.isEmpty() || dbRef == null) return;
+        if (!isShiftActive || userId == null || userId.isEmpty() || dbRef == null) return;
 
         long now = System.currentTimeMillis();
         long silenceMs = (lastGPSTimestamp > 0) ? (now - lastGPSTimestamp) : 0;
 
         serviceHandler.post(() -> {
             try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+                sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+
                 Map<String, Object> hbUpdates = new HashMap<>();
                 hbUpdates.put("last_heartbeat", now);
+                hbUpdates.put("last_heartbeat_gap", null);
+                hbUpdates.put("updated_at", sdf.format(new Date(now)));
+                hbUpdates.put("shift_status", "IN_PROGRESS");
                 hbUpdates.put("battery", getBatteryLevel());
+                if (driverName != null && !driverName.isEmpty()) {
+                    hbUpdates.put("driverName", driverName);
+                }
+                if (fleetId != null && !fleetId.isEmpty()) {
+                    hbUpdates.put("fleetId", fleetId);
+                }
 
                 // Si no se han recibido fixes GPS en más de 30 segundos:
                 // Forzar velocidad a 0 para eliminar velocidad fantasma residual
@@ -2596,16 +2728,17 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     hbUpdates.put("speed", 0.0);
                 }
 
-                // Si el GPS lleva más de 90 segundos sin entregar coordenadas:
-                // Marcar que el GPS está sin señal / detenido
+                // Si el GPS lleva más de 90 segundos sin entregar coordenadas pero el servicio sigue vivo
                 if (silenceMs > 90000) {
                     hbUpdates.put("gps_status", "stalled");
                     hbUpdates.put("status", "sin_senal");
+                } else if (lastPermissionsOk) {
+                    hbUpdates.put("status", "active");
                 }
 
                 dbRef.child(userId).updateChildren(hbUpdates);
                 lastHeartbeatTime = now;
-                Log.i(TAG, "🏓 Latido silencioso registrado (silencio GPS: " + (silenceMs / 1000) + "s)");
+                Log.i(TAG, "🏓 Latido IN_PROGRESS registrado en Firebase (silencio GPS: " + (silenceMs / 1000) + "s)");
             } catch (Exception e) {
                 Log.w(TAG, "❌ Error actualizando latido silencioso en Firebase: " + e.getMessage());
             }

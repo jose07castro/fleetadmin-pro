@@ -2435,6 +2435,10 @@ app.post('/api/driver/gps-event', async (req, res) => {
 
         if (event === 'gps_activado' || event === 'gps_desactivado') {
             updateData.gps_status = isEnabled ? 'active' : 'disabled';
+        } else if (event === 'FINALIZADO_TURNO') {
+            updateData.shift_status = 'FINALIZADO_TURNO';
+            updateData.gps_status = 'inactive';
+            updateData.last_heartbeat_gap = null;
         }
 
         if (event === 'permissions_disabled' || event === 'permissions_enabled') {
@@ -2543,6 +2547,7 @@ app.post('/api/driver/location', async (req, res) => {
 
         // Si el chofer reporta nueva ubicación GPS válida, su estado se reactiva inmediatamente
         updateData.status = 'active';
+        updateData.shift_status = req.body.shift_status || 'IN_PROGRESS';
         updateData.last_heartbeat_gap = null;
 
         // Escribir appVersion si viene en el payload (PWA o APK vía sendLocationToServer)
@@ -3215,7 +3220,7 @@ async function checkActiveDriverHeartbeats() {
 
         for (const [fleetId, fleetData] of Object.entries(fleets)) {
             const shifts = fleetData.shifts || {};
-            const activeShifts = Object.values(shifts).filter(s => s.status === 'active');
+            const activeShifts = Object.values(shifts).filter(s => s.status === 'active' || s.shiftState === 'IN_PROGRESS');
 
             for (const shift of activeShifts) {
                 const driverId = shift.driverId;
@@ -3230,43 +3235,52 @@ async function checkActiveDriverHeartbeats() {
 
                 const timeDiffMs = now - lastHeartbeat;
 
-                // Si el chofer estaba marcado como sospechoso o sin señal pero ahora volvió a transmitir (hace menos de 2 min)
-                if ((posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') && timeDiffMs < 2 * 60 * 1000) {
-                    console.log(`✅ [HEARTBEAT] Chofer ${driverId} (${posData.driverName || 'Chofer'}) reconectado. Restaurando estado a 'active'.`);
+                // Si hubo cierre formal de turno o logout voluntario, ignorar
+                if (posData.status === 'FINALIZADO_TURNO' || posData.shift_status === 'FINALIZADO_TURNO' || posData.status === 'logout_voluntario') {
+                    continue;
+                }
+
+                // Si el chofer estaba marcado en desconexión irregular/sospechosa pero volvió a enviar latidos (< 2 min)
+                if ((posData.status === 'DESCONEXION_IRREGULAR' || posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') && timeDiffMs < 2 * 60 * 1000) {
+                    console.log(`✅ [HEARTBEAT] Chofer ${driverId} (${posData.driverName || 'Chofer'}) reconectado. Restaurando estado a 'active' / 'IN_PROGRESS'.`);
                     await db.ref(`driver_positions/${driverId}`).update({
                         status: 'active',
+                        shift_status: 'IN_PROGRESS',
                         last_heartbeat_gap: null
                     });
                     continue;
                 }
 
-                // Skip if voluntarily logged out or already marked as suspicious/gps_desactivado
-                if (posData.status === 'logout_voluntario' || posData.status === 'suspicious_disconnect' || posData.status === 'gps_desactivado') {
+                // Evitar re-notificar si ya está marcado como DESCONEXION_IRREGULAR o gps_desactivado
+                if (posData.status === 'DESCONEXION_IRREGULAR' || posData.status === 'gps_desactivado') {
                     continue;
                 }
 
-                if (timeDiffMs > 5 * 60 * 1000) { // 5 minutes
-                    const driverName = posData.driverName || 'Chofer';
-                    console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${driverName}) inactive for ${Math.round(timeDiffMs/1000)}s. Marking as suspicious disconnect.`);
+                // Más de 3 minutos (180,000 ms) sin latidos y sin evento FINALIZADO_TURNO → DESCONEXION_IRREGULAR
+                if (timeDiffMs > 3 * 60 * 1000) {
+                    const driverName = posData.driverName || shift.driverName || 'Chofer';
+                    console.log(`🚨 [HEARTBEAT] Driver ${driverId} (${driverName}) sin latidos por ${Math.round(timeDiffMs/1000)}s (>3 min) con turno IN_PROGRESS. Marcando DESCONEXION_IRREGULAR.`);
                     
                     // Mark in driver_positions
                     await db.ref(`driver_positions/${driverId}`).update({
-                        status: 'suspicious_disconnect',
+                        status: 'DESCONEXION_IRREGULAR',
+                        shift_status: 'DESCONEXION_IRREGULAR',
                         last_heartbeat_gap: timeDiffMs
                     });
 
                     // Log the event under fleet status logs
                     await db.ref(`fleets/${fleetId}/driver_status_logs`).push({
-                        event: 'suspicious_disconnect',
+                        event: 'DESCONEXION_IRREGULAR',
                         driverId: driverId,
                         driverName: driverName,
+                        shiftId: shift.id || null,
                         timestamp: now
                     });
 
                     // Send push notification to admins
                     WhatsappBot.sendPushToAdmins(
-                        `🚨 Desconexión Sospechosa`,
-                        `El chofer ${driverName} ha dejado de reportar ubicación (sin señal o app cerrada).`
+                        `🚨 Desconexión Irregular`,
+                        `El chofer ${driverName} lleva más de 3 minutos sin reportar latidos con turno activo en curso.`
                     );
                 }
             }

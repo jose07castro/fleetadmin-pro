@@ -32,9 +32,18 @@ const Components = (() => {
         `;
     }
 
+    function _isDriverShiftExitLocked(role) {
+        if (role !== 'driver') return false;
+        if (typeof App !== 'undefined' && typeof App.isDriverShiftLocked === 'function') {
+            return App.isDriverShiftLocked();
+        }
+        return localStorage.getItem('active_shift_state') === 'true' || Boolean(localStorage.getItem('active_shift_id'));
+    }
+
     // --- Sidebar de navegación ---
     function renderSidebar(activeRoute, user, role) {
         const navItems = getNavItems(role);
+        const shiftExitLocked = _isDriverShiftExitLocked(role);
 
         return `
             <aside class="app-sidebar" id="sidebar">
@@ -95,10 +104,17 @@ const Components = (() => {
                             <div class="sidebar-user-role">${I18n.t('role_' + role)}</div>
                         </div>
                     </div>
+                    ${shiftExitLocked ? `
+                    <div class="nav-item" onclick="if(typeof App!=='undefined'&&App.showShiftExitBlockedModal)App.showShiftExitBlockedModal();" title="Turno activo en curso: Debes finalizar el turno formalmente para salir" style="margin-top: var(--space-2); opacity: 0.5; cursor: not-allowed; background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-md);">
+                        <span class="nav-icon">🔒</span>
+                        <span>Turno activo (Salida bloqueada)</span>
+                    </div>
+                    ` : `
                     <div class="nav-item" onclick="App.logout()" style="margin-top: var(--space-2);">
                         <span class="nav-icon">🚪</span>
                         <span>${I18n.t('nav_logout')}</span>
                     </div>
+                    `}
                 </div>
             </aside>
         `;
@@ -174,7 +190,12 @@ const Components = (() => {
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
             ]
         };
-        const items = mobileItems[normalizedRole] || [];
+        const shiftExitLocked = _isDriverShiftExitLocked(normalizedRole);
+        const items = (mobileItems[normalizedRole] || []).filter(item => {
+            // Ocultar opción "Salir" en interfaz móvil mientras el chofer tenga un turno activo en curso
+            if (shiftExitLocked && item.route === '__logout__') return false;
+            return true;
+        });
 
         return `
             <nav class="mobile-bottom-nav">

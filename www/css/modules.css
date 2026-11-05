@@ -3044,6 +3044,21 @@ div[class*="gm-err"] {
     animation: pulseGlowRed 1.5s infinite ease-in-out;
 }
 
+/* 🚨 DESCONEXIÓN IRREGULAR (>3 min sin heartbeat en turno IN_PROGRESS) */
+.radar-car-label.status-irregular {
+    border: 2px solid #ef4444;
+    color: #fef2f2;
+    background: rgba(153, 27, 27, 0.96);
+    animation: flashBorderAppKilled 1s infinite;
+    font-weight: 800;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.65);
+}
+.radar-car-icon-wrapper.status-irregular {
+    background: radial-gradient(circle, rgba(239,68,68,0.45) 0%, transparent 72%);
+    animation: pulseGlowAppKilled 1s infinite ease-in-out;
+    border: 2px solid #ef4444;
+}
+
 .radar-car-label.status-gps-disabled,
 .radar-car-label.status-permissions-disabled {
     border-color: #f97316;

@@ -73,10 +73,12 @@ const AndroidServices = (() => {
         // Registrar receptor de GPS nativo SIEMPRE primero
         _registerNativeGPSReceiver();
 
-        // Obtener userId, driverName y fleetId para pasarle al Service Java
+        // Obtener userId, driverName, fleetId y role para pasarle al Service Java
         const userId = (typeof Auth !== 'undefined') ? (Auth.getUserId() || Auth.getUserName()) : null;
         const driverName = (typeof Auth !== 'undefined') ? (Auth.getUserName() || 'Chofer') : 'Chofer';
         const fleetId = (typeof Auth !== 'undefined') ? Auth.getFleetId() : null;
+        const userRole = (typeof Auth !== 'undefined' && typeof Auth.getRole === 'function') ? Auth.getRole() : null;
+        if (userRole) setUserRole(userRole);
 
         // === RUTA A: NATIVO ANDROID (Capacitor con bridge Java) ===
         if (isNativeAndroid()) {
@@ -96,6 +98,9 @@ const AndroidServices = (() => {
                         console.log(`📱 AndroidServices: userId=${userId} | driverName=${driverName} | fleetId=${fleetId} | serverUrl=${serverUrl}`);
                         
                         window.NativeServiceBridge.startTracking(userId, driverName, fleetId, serverUrl);
+                        if (userRole && typeof window.NativeServiceBridge.setUserRole === 'function') {
+                            window.NativeServiceBridge.setUserRole(userRole);
+                        }
                         if (typeof window.NativeServiceBridge.setShiftActive === 'function') {
                             window.NativeServiceBridge.setShiftActive(Boolean(shiftId));
                         }
@@ -824,6 +829,21 @@ const AndroidServices = (() => {
         return localStorage.getItem('is_shift_active') === 'true';
     }
 
+    function setUserRole(role) {
+        if (!role || typeof role !== 'string') return;
+        const cleanRole = role.trim().toLowerCase();
+        try {
+            localStorage.setItem('user_role_cached', cleanRole);
+        } catch (e) {}
+        if (_hasNativeBridge() && typeof window.NativeServiceBridge.setUserRole === 'function') {
+            try {
+                window.NativeServiceBridge.setUserRole(cleanRole);
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.setUserRole:', e);
+            }
+        }
+    }
+
     // =============================================
     // API PÚBLICA
     // =============================================
@@ -839,6 +859,7 @@ const AndroidServices = (() => {
         isTrackingActive,
         setShiftActive,
         isShiftActive,
+        setUserRole,
         
         // GPS nativo
         isNativeGPSAlive,

@@ -585,8 +585,8 @@ const GPSModule = (() => {
 
             if (!matchesFleet) continue;
 
-            // 3. Filtrar logout voluntario o desconexión mayor a 6 horas
-            if (data.status === 'logout_voluntario') {
+            // 3. Filtrar logout voluntario / turno finalizado formalmente o desconexión mayor a 6 horas
+            if (data.status === 'logout_voluntario' || data.status === 'FINALIZADO_TURNO' || data.shift_status === 'FINALIZADO_TURNO') {
                 if (_fleetDriverMarkers[driverKey]) {
                     _fleetDriverMarkers[driverKey].setMap(null);
                     delete _fleetDriverMarkers[driverKey];
@@ -595,8 +595,9 @@ const GPSModule = (() => {
             }
 
             let updateTime = 0;
-            if (data.updated_at) updateTime = new Date(data.updated_at).getTime();
-            else if (data.last_heartbeat) updateTime = Number(data.last_heartbeat);
+            const updMs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+            const hbMs = data.last_heartbeat ? Number(data.last_heartbeat) : 0;
+            updateTime = Math.max(updMs || 0, hbMs || 0);
             if (updateTime && (now - updateTime > maxAgeMs)) {
                 if (_fleetDriverMarkers[driverKey]) {
                     _fleetDriverMarkers[driverKey].setMap(null);
@@ -605,34 +606,51 @@ const GPSModule = (() => {
                 continue;
             }
 
+            const isOwnerView = typeof Auth !== 'undefined' && Auth.isOwner();
+            const isIrregular = data.status === 'DESCONEXION_IRREGULAR' ||
+                (data.shift_status === 'IN_PROGRESS' && updateTime > 0 && (now - updateTime > 3 * 60 * 1000));
+            if (isOwnerView && isIrregular && data.status !== 'DESCONEXION_IRREGULAR' && typeof firebase !== 'undefined' && firebase.database) {
+                firebase.database().ref(`driver_positions/${driverKey}`).update({
+                    status: 'DESCONEXION_IRREGULAR',
+                    shift_status: 'DESCONEXION_IRREGULAR',
+                    last_heartbeat_gap: now - updateTime
+                }).catch(() => {});
+            }
+
             activeKeys.add(driverKey);
 
             const latlng = new google.maps.LatLng(lat, lng);
             const heading = data.heading || 0;
-            const speed = parseFloat(data.speed) || 0;
-            const speedText = speed > 3 ? `${Math.round(speed)} km/h` : 'Detenido';
+            const speed = isIrregular ? 0 : (parseFloat(data.speed) || 0);
+            const speedText = isIrregular ? '🚨 DESC. IRREGULAR' : (speed > 3 ? `${Math.round(speed)} km/h` : 'Detenido');
             const firstName = driverName ? driverName.split(' ')[0] : 'Chofer';
             const hours = new Date().getHours();
             const isNight = hours >= 19 || hours < 7;
             const safeKey = driverKey.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16);
+            const borderCol = isIrregular ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.8)';
+            const bgCol = isIrregular ? 'rgba(153, 27, 27, 0.96)' : 'rgba(15, 23, 42, 0.92)';
+            const dotCol = isIrregular ? '#ef4444' : '#10b981';
+            const subCol = isIrregular ? '#fecaca' : '#6ee7b7';
+            const carStopA = isIrregular ? '#991b1b' : '#047857';
+            const carStopB = isIrregular ? '#ef4444' : '#10b981';
 
             const html = `
                 <div style="position: relative; cursor: pointer;">
                     <!-- Etiqueta Flotante con Nombre y Velocidad -->
-                    <div style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.92); border: 1.5px solid rgba(16, 185, 129, 0.8); border-radius: 12px; padding: 2px 7px; color: #ffffff; font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: none; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 20;">
-                        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981; box-shadow: 0 0 6px #10b981;"></span>
+                    <div style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: ${bgCol}; border: 1.5px solid ${borderCol}; border-radius: 12px; padding: 2px 7px; color: #ffffff; font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: none; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 20;">
+                        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotCol}; box-shadow: 0 0 6px ${dotCol};"></span>
                         <span>${firstName}</span>
-                        <span style="color:#6ee7b7; font-size:9px; font-weight:600;">${speedText}</span>
+                        <span style="color:${subCol}; font-size:9px; font-weight:700;">${speedText}</span>
                     </div>
-                    <!-- Vehículo Verde Esmeralda Rotativo -->
+                    <!-- Vehículo Rotativo -->
                     <div style="transform: rotate(${heading}deg); transform-origin: center center; transition: transform 0.6s ease-out;">
                         <svg viewBox="0 0 60 110" width="22" height="40" style="display:block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
                             <defs>
                                 <linearGradient id="bodyGrad_fleet_${safeKey}" x1="0%" y1="0%" x2="100%" y2="0%">
-                                    <stop offset="0%" stop-color="#047857" />
-                                    <stop offset="25%" stop-color="#10b981" />
-                                    <stop offset="75%" stop-color="#10b981" />
-                                    <stop offset="100%" stop-color="#047857" />
+                                    <stop offset="0%" stop-color="${carStopA}" />
+                                    <stop offset="25%" stop-color="${carStopB}" />
+                                    <stop offset="75%" stop-color="${carStopB}" />
+                                    <stop offset="100%" stop-color="${carStopA}" />
                                 </linearGradient>
                                 <radialGradient id="headlightBeam_fleet_${safeKey}" cx="50%" cy="50%" r="50%">
                                     <stop offset="0%" stop-color="rgba(255,255,255,0.4)" />
@@ -681,7 +699,7 @@ const GPSModule = (() => {
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
                         <span style="color: #64748b;">Estado:</span>
-                        <span style="font-weight: 700; color: ${speed > 3 ? '#10b981' : '#f59e0b'};">${speed > 3 ? 'En viaje' : 'Detenido'}</span>
+                        <span style="font-weight: 700; color: ${isIrregular ? '#dc2626' : (speed > 3 ? '#10b981' : '#f59e0b')};">${isIrregular ? '🚨 Desconexión Irregular (>3 min)' : (speed > 3 ? 'En viaje' : 'Detenido')}</span>
                     </div>
                     ${data.battery ? `
                     <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">

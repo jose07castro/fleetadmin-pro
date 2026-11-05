@@ -390,6 +390,10 @@ const RadarModule = (() => {
         let speedText = `${currentSpeed.toFixed(0)} km/h`;
         if (status === 'logout_voluntario') {
             speedText = 'OFFLINE';
+        } else if (status === 'FINALIZADO_TURNO') {
+            speedText = 'TURNO FIN';
+        } else if (status === 'DESCONEXION_IRREGULAR') {
+            speedText = '🚨 DESC. IRREGULAR';
         } else if (status === 'suspicious_disconnect' || status === 'sin_senal' || status === 'offline') {
             speedText = 'SIN SEÑAL';
         } else if (status === 'gps_desactivado') {
@@ -418,7 +422,7 @@ const RadarModule = (() => {
             'bordo metalizado': { body: '#991b1b', side: '#450a0a', roof: '#b91c1c', glass: '#fca5a5' }
         };
 
-        const carColorKey = (status === 'logout_voluntario' ? 'gray' : (carColor || 'gray')).toLowerCase();
+        const carColorKey = ((status === 'logout_voluntario' || status === 'FINALIZADO_TURNO') ? 'gray' : (status === 'DESCONEXION_IRREGULAR' ? 'red' : (carColor || 'gray'))).toLowerCase();
         const theme = colors[carColorKey] || colors['gray'];
         const isTaxi = carColorKey === 'taxi';
 
@@ -545,11 +549,14 @@ const RadarModule = (() => {
         const heading = data.heading || 0;
         let speed = Number(data.speed) || 0;
         const updatedAt = data.updated_at ? new Date(data.updated_at) : null;
-        const timeAgoSecs = updatedAt ? Math.floor((Date.now() - updatedAt.getTime()) / 1000) : 99999;
-        const timeAgo = updatedAt ? _timeAgo(updatedAt) : 'desconocido';
+        const updatedAtMs = (updatedAt && !isNaN(updatedAt.getTime())) ? updatedAt.getTime() : 0;
+        const lastHeartbeatMs = Math.max(updatedAtMs, Number(data.last_heartbeat) || 0);
+        const timeAgoSecs = lastHeartbeatMs > 0 ? Math.floor((Date.now() - lastHeartbeatMs) / 1000) : 99999;
+        const gpsAgoSecs = updatedAtMs > 0 ? Math.floor((Date.now() - updatedAtMs) / 1000) : timeAgoSecs;
+        const timeAgo = lastHeartbeatMs > 0 ? _timeAgo(new Date(lastHeartbeatMs)) : 'desconocido';
 
         // Si la posición GPS tiene más de 60s o proviene de heartbeat, la velocidad debe forzarse a 0 km/h
-        if (timeAgoSecs > 60 || data._source === 'native_heartbeat_ping') {
+        if (gpsAgoSecs > 60 || data._source === 'native_heartbeat_ping') {
             speed = 0;
         }
 
@@ -575,10 +582,10 @@ const RadarModule = (() => {
         if (!hasActiveShift) {
             // Choferes sin turno: limpieza de fantasmas antiguos
             let maxSilenceSecs = 60;
-            if (data.status === 'suspicious_disconnect') {
-                maxSilenceSecs = 600; // 10 minutos
-            } else if (data.status === 'logout_voluntario') {
-                maxSilenceSecs = 300; // 5 minutos
+            if (data.status === 'DESCONEXION_IRREGULAR' || data.status === 'suspicious_disconnect') {
+                maxSilenceSecs = 900; // 15 minutos
+            } else if (data.status === 'logout_voluntario' || data.status === 'FINALIZADO_TURNO') {
+                maxSilenceSecs = 180; // 3 minutos
             } else if (data.status === 'gps_desactivado') {
                 maxSilenceSecs = 600; // 10 minutos
             } else if (data.status === 'permissions_disabled') {
@@ -593,34 +600,42 @@ const RadarModule = (() => {
             }
         }
 
-        // Si el chofer está enviando GPS fresco (últimos 90s), reflejar su estado real de movimiento
-        const isFresh = timeAgoSecs <= 90;
+        // Si el chofer está enviando GPS o Heartbeat fresco (últimos 95s), está conectado
+        const isFresh = timeAgoSecs <= 95;
         let effectiveStatus = data.status || 'active';
-        if (timeAgoSecs > 90 && effectiveStatus === 'active') {
+        const isFormalShiftEnd = (effectiveStatus === 'FINALIZADO_TURNO' || data.shift_status === 'FINALIZADO_TURNO' || effectiveStatus === 'logout_voluntario');
+
+        // Auto-sanar choferes que volvieron a enviar latidos pero tenían estado de desconexión bloqueado
+        if (isFresh && (effectiveStatus === 'DESCONEXION_IRREGULAR' || effectiveStatus === 'suspicious_disconnect' || effectiveStatus === 'gps_desactivado' || effectiveStatus === 'sin_senal')) {
+            effectiveStatus = 'active';
+            if (typeof firebaseDB !== 'undefined') {
+                firebaseDB.ref(`driver_positions/${driverId}`).update({
+                    status: 'active',
+                    shift_status: hasActiveShift ? 'IN_PROGRESS' : 'IDLE',
+                    last_heartbeat_gap: null
+                }).catch(() => {});
+            }
+        }
+
+        // DETECCIÓN DE DESCONEXIÓN IRREGULAR (> 3 minutos = 180s sin latidos y sin evento FINALIZADO_TURNO)
+        if ((hasActiveShift || data.shift_status === 'IN_PROGRESS') && !isFormalShiftEnd && timeAgoSecs > 180) {
+            effectiveStatus = 'DESCONEXION_IRREGULAR';
+            if (isOwnerOrAdmin && data.status !== 'DESCONEXION_IRREGULAR' && typeof firebaseDB !== 'undefined') {
+                firebaseDB.ref(`driver_positions/${driverId}`).update({
+                    status: 'DESCONEXION_IRREGULAR',
+                    shift_status: 'DESCONEXION_IRREGULAR',
+                    last_heartbeat_gap: timeAgoSecs * 1000
+                }).catch(() => {});
+            }
+        } else if (timeAgoSecs > 95 && effectiveStatus === 'active') {
             effectiveStatus = 'offline';
         }
 
         let carMode = (speed > 5 && isFresh) ? 'moving' : 'stopped';
 
-        // Auto-sanar choferes que volvieron a reportar ubicación pero tenían el status bloqueado en sospechoso
-        if (isFresh && (effectiveStatus === 'suspicious_disconnect' || effectiveStatus === 'gps_desactivado' || effectiveStatus === 'sin_senal')) {
-            effectiveStatus = 'active';
-            if (typeof DB !== 'undefined' && DB.getRef) {
-                try {
-                    DB.getRef(`driver_positions/${driverId}`).update({ status: 'active', last_heartbeat_gap: null });
-                } catch (e) {}
-            }
-        }
-
-        if (!isFresh && hasActiveShift) {
-            // En turno pero sin señal en tiempo real (más de 90s)
-            carMode = 'offline';
-            if (effectiveStatus === 'active') {
-                effectiveStatus = 'offline';
-            }
-        } else if (effectiveStatus === 'sin_senal') {
-            carMode = 'offline';
-        } else if (effectiveStatus === 'logout_voluntario') {
+        if (effectiveStatus === 'DESCONEXION_IRREGULAR') {
+            carMode = 'irregular';
+        } else if (effectiveStatus === 'FINALIZADO_TURNO' || effectiveStatus === 'logout_voluntario') {
             carMode = 'logout';
         } else if (effectiveStatus === 'app_killed') {
             carMode = 'app-killed';
@@ -631,13 +646,27 @@ const RadarModule = (() => {
         } else if (timeAgoSecs > 60 && (effectiveStatus === 'permissions_disabled' || data.permissions_ok === false)) {
             // Solo marcar permissions-disabled si además dejó de enviar GPS fresco
             carMode = 'permissions-disabled';
+        } else if (!isFresh && hasActiveShift) {
+            // En turno pero sin señal temporal (entre 95s y 180s)
+            carMode = 'offline';
+            if (effectiveStatus === 'active') {
+                effectiveStatus = 'offline';
+            }
+        } else if (effectiveStatus === 'sin_senal') {
+            carMode = 'offline';
         }
         const statusClass = 'status-' + carMode;
         
         let shiftStatusText = shift ? (carMode === 'offline' ? `En turno (Sin señal ${timeAgo})` : (carMode === 'moving' ? 'En viaje' : 'Detenido')) : 'Sin turno activo';
         let statusLabelText = shiftStatusText;
         let statusColor = '#f59e0b';
-        if (carMode === 'offline' || effectiveStatus === 'sin_senal') {
+        if (effectiveStatus === 'DESCONEXION_IRREGULAR') {
+            statusLabelText = `🚨 DESCONEXIÓN IRREGULAR (Sin latido ${timeAgo})`;
+            statusColor = '#ef4444';
+        } else if (effectiveStatus === 'FINALIZADO_TURNO') {
+            statusLabelText = 'Turno Finalizado Formalmente';
+            statusColor = '#94a3b8';
+        } else if (carMode === 'offline' || effectiveStatus === 'sin_senal') {
             statusLabelText = `En turno (Sin señal ${timeAgo})`;
             statusColor = '#94a3b8'; // Gris o tenue
         } else if (effectiveStatus === 'logout_voluntario') {
@@ -763,6 +792,11 @@ const RadarModule = (() => {
                     <span><span class="radar-popup-icon">🚦</span> Estado:</span>
                     <strong style="color: ${statusColor}">${statusLabelText}</strong>
                 </div>
+                ${effectiveStatus === 'DESCONEXION_IRREGULAR' ? `
+                <div class="radar-popup-row" style="color: #fecaca; font-weight: 800; background: rgba(153,27,27,0.92); padding: 8px 10px; border-radius: 8px; margin-top: 6px; border: 1.5px solid #ef4444; font-size: 11px;">
+                    🚨 Sin recepción de latidos (heartbeat) por más de 3 minutos sin cierre formal de turno.
+                </div>
+                ` : ''}
                 ${(data.permissions_ok === false || data.bg_location_ok === false || data.battery_optimization_ok === false) ? `
                 <div class="radar-popup-row" style="color: #f97316; font-weight: bold; background: rgba(249,115,22,0.1); padding: 8px 10px; border-radius: 8px; margin-top: 6px; border: 1px solid rgba(249,115,22,0.25); font-size: 11px; flex-direction: column; align-items: flex-start; gap: 4px;">
                     <div style="display:flex; align-items:center; gap:6px;">
@@ -810,7 +844,7 @@ const RadarModule = (() => {
             _markers[driverId] = marker;
         }
 
-        return { isAlive: true, isFresh: isFresh, hasShift: hasActiveShift }; // Marcador vivo y renderizado
+        return { isAlive: true, isFresh: isFresh, hasShift: hasActiveShift, effectiveStatus: effectiveStatus }; // Marcador vivo y renderizado
     }
 
     function _removeMarker(driverId) {
@@ -863,6 +897,138 @@ const RadarModule = (() => {
         window.addEventListener('focus', _visibilityHandler);
     }
 
+    let _lastAllPositions = null;
+    let _heartbeatWatchdogTimer = null;
+
+    async function _processPositionsSnapshot(allPositions) {
+        if (!allPositions) {
+            _setStatus('idle', 'Sin choferes activos');
+            _updateActiveCount(0);
+            return;
+        }
+
+        // Fetch contextual fleet data
+        const activeShifts = typeof DB !== 'undefined' ? await DB.getActiveShifts() : [];
+        const allVehicles = typeof DB !== 'undefined' ? await DB.getAll('vehicles') : [];
+        
+        const vehiclesMap = {};
+        for (const v of allVehicles) vehiclesMap[v.id] = v;
+
+        const driverShiftMap = {};
+        for (const s of activeShifts) {
+            if (s.driverId) driverShiftMap[s.driverId] = s;
+            if (s.driver_id) driverShiftMap[s.driver_id] = s;
+            if (s.userId) driverShiftMap[s.userId] = s;
+        }
+
+        const driverIds = Object.keys(allPositions);
+        let activeCount = 0;
+        let onlineCount = 0;
+
+        // Update/create markers
+        for (const driverId of driverIds) {
+            const data = allPositions[driverId];
+            if (data && data.lat && data.lng) {
+                const shift = driverShiftMap[driverId];
+                const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
+                const res = await _updateMarker(driverId, data, shift, vehicle);
+                const resolvedStatus = (res && res.effectiveStatus) || data.status || 'active';
+
+                if (res && res.isAlive) {
+                    activeCount++;
+                    if (res.isFresh && resolvedStatus !== 'logout_voluntario' && resolvedStatus !== 'FINALIZADO_TURNO' && resolvedStatus !== 'sin_senal' && resolvedStatus !== 'suspicious_disconnect' && resolvedStatus !== 'DESCONEXION_IRREGULAR') {
+                        onlineCount++;
+                    }
+                }
+
+                // Verificar transiciones de estado para disparar alertas sonoras y visuales
+                if (!window._driverStatusCache) {
+                    try {
+                        const saved = sessionStorage.getItem('_driverStatusCache');
+                        window._driverStatusCache = saved ? JSON.parse(saved) : {};
+                    } catch(e) { window._driverStatusCache = {}; }
+                }
+                const prevStatus = window._driverStatusCache[driverId] || null;
+                const newStatus = resolvedStatus;
+
+                if (newStatus !== prevStatus) {
+                    let rawName = data.driverName || (shift ? shift.driverName : null) || 'Chofer';
+                    let firstName = rawName.split(' ')[0];
+                    if (firstName.length > 20) firstName = 'Chofer';
+                    const plateText = vehicle && vehicle.plate ? ` (${vehicle.plate})` : '';
+
+                    // Cooldown per driver and event type to prevent infinite warning popups
+                    if (!window._radarWarningCooldowns) window._radarWarningCooldowns = {};
+                    const warningCooldownKey = `${driverId}_${newStatus}`;
+                    const lastWarningTime = window._radarWarningCooldowns[warningCooldownKey] || 0;
+                    const nowMs = Date.now();
+
+                    // Para DESCONEXION_IRREGULAR mostrar siempre alerta visual al detectarse (con cooldown de 10 min)
+                    if (newStatus === 'DESCONEXION_IRREGULAR' && (nowMs - lastWarningTime > 10 * 60 * 1000)) {
+                        window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                        if (prevStatus !== null) {
+                            playWarningBeep();
+                            speakRadarAlert(`¡Alerta! Desconexión irregular detectada en el móvil de ${firstName}.`);
+                        }
+                        showRadarWarning(`🚨 DESCONEXIÓN IRREGULAR: ${firstName}${plateText} lleva más de 3 min sin reportar latidos con turno en curso`, 'danger');
+                    } else if (prevStatus !== null && (nowMs - lastWarningTime > 10 * 60 * 1000)) {
+                        if (newStatus === 'app_killed') {
+                            window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                            playWarningBeep();
+                            speakRadarAlert(`¡Atención! El conductor ${firstName} cerró la aplicación manualmente.`);
+                            showRadarWarning(`🚨 ${firstName}${plateText} cerró la app manualmente desde el panel de recientes`, 'danger');
+                        } else if (newStatus === 'gps_desactivado') {
+                            window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                            playWarningBeep();
+                            speakRadarAlert(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`);
+                            showRadarWarning(`El conductor ${firstName}${plateText} ha desactivado el GPS de su dispositivo`, 'warning');
+                        } else if (newStatus === 'suspicious_disconnect') {
+                            window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                            playWarningBeep();
+                            speakRadarAlert(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`);
+                            showRadarWarning(`Desconexión sospechosa detectada para ${firstName}${plateText} (Sin señal)`, 'danger');
+                        } else if (newStatus === 'permissions_disabled') {
+                            window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                            playWarningBeep();
+                            speakRadarAlert(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`);
+                            showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}${plateText}`, 'warning');
+                        } else if (newStatus === 'logout_voluntario') {
+                            window._radarWarningCooldowns[warningCooldownKey] = nowMs;
+                            playWarningBeep();
+                            speakRadarAlert(`El conductor ${firstName} ha cerrado sesión voluntariamente.`);
+                            showRadarWarning(`El conductor ${firstName}${plateText} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
+                        }
+                    }
+                    
+                    window._driverStatusCache[driverId] = newStatus;
+                    try { sessionStorage.setItem('_driverStatusCache', JSON.stringify(window._driverStatusCache)); } catch(e) {}
+                }
+            }
+        }
+
+        // Remove markers for drivers that left (solo si no tienen turno activo)
+        for (const existingId of Object.keys(_markers)) {
+            if (!allPositions[existingId] && !driverShiftMap[existingId]) {
+                _removeMarker(existingId);
+                if (window._driverStatusCache) delete window._driverStatusCache[existingId];
+            }
+        }
+
+        _updateActiveCount(activeCount);
+        if (onlineCount > 0) {
+            _setStatus('connected', `${onlineCount} en línea · ${activeCount} en turno`);
+        } else if (activeCount > 0) {
+            _setStatus('connected', `${activeCount} chofer${activeCount !== 1 ? 'es' : ''} en turno`);
+        } else {
+            _setStatus('idle', 'Sin choferes activos');
+        }
+
+        // Auto-fit bounds if markers exist
+        if (activeCount > 0 && !_hasUserPanned) {
+            _fitBounds();
+        }
+    }
+
     function _startFirebaseListener() {
         if (typeof firebaseDB === 'undefined') {
             _setStatus('error', 'Firebase no disponible');
@@ -876,127 +1042,18 @@ const RadarModule = (() => {
 
         // Listen for all driver positions
         _firebaseRef.on('value', async (snap) => {
-            const allPositions = snap.val();
-            if (!allPositions) {
-                _setStatus('idle', 'Sin choferes activos');
-                _updateActiveCount(0);
-                return;
-            }
-
-            // Fetch contextual fleet data
-            const activeShifts = typeof DB !== 'undefined' ? await DB.getActiveShifts() : [];
-            const allVehicles = typeof DB !== 'undefined' ? await DB.getAll('vehicles') : [];
-            
-            const vehiclesMap = {};
-            for (const v of allVehicles) vehiclesMap[v.id] = v;
-
-            const driverShiftMap = {};
-            for (const s of activeShifts) {
-                if (s.driverId) driverShiftMap[s.driverId] = s;
-                if (s.driver_id) driverShiftMap[s.driver_id] = s;
-                if (s.userId) driverShiftMap[s.userId] = s;
-            }
-
-            const driverIds = Object.keys(allPositions);
-            let activeCount = 0;
-            let onlineCount = 0;
-
-            // Update/create markers
-            for (const driverId of driverIds) {
-                const data = allPositions[driverId];
-                if (data && data.lat && data.lng) {
-                    const shift = driverShiftMap[driverId];
-                    const vehicle = shift ? vehiclesMap[shift.vehicleId] : null;
-                    const res = await _updateMarker(driverId, data, shift, vehicle);
-                    if (res && res.isAlive) {
-                        activeCount++;
-                        if (res.isFresh && data.status !== 'logout_voluntario' && data.status !== 'sin_senal' && data.status !== 'suspicious_disconnect') {
-                            onlineCount++;
-                        }
-                    }
-
-                    // Verificar transiciones de estado para disparar alertas sonoras y visuales
-                    // FIX: usar sessionStorage para persistir el cache entre aperturas del radar
-                    if (!window._driverStatusCache) {
-                        try {
-                            const saved = sessionStorage.getItem('_driverStatusCache');
-                            window._driverStatusCache = saved ? JSON.parse(saved) : {};
-                        } catch(e) { window._driverStatusCache = {}; }
-                    }
-                    const prevStatus = window._driverStatusCache[driverId] || null;
-                    const newStatus = data.status || 'active';
-
-                    if (newStatus !== prevStatus) {
-                        let rawName = data.driverName || (shift ? shift.driverName : null) || 'Chofer';
-                        let firstName = rawName.split(' ')[0];
-                        if (firstName.length > 20) firstName = 'Chofer';
-                        const plateText = vehicle && vehicle.plate ? ` (${vehicle.plate})` : '';
-
-                        // Cooldown per driver and event type to prevent infinite warning popups
-                        if (!window._radarWarningCooldowns) window._radarWarningCooldowns = {};
-                        const warningCooldownKey = `${driverId}_${newStatus}`;
-                        const lastWarningTime = window._radarWarningCooldowns[warningCooldownKey] || 0;
-                        const nowMs = Date.now();
-
-                        // Solo alertar si el estado CAMBIA hacia algo negativo (no al abrir radar por primera vez)
-                        // Y solo si transcurrieron más de 10 minutos (600,000ms) desde el último aviso igual para este chofer
-                        if (prevStatus !== null && (nowMs - lastWarningTime > 10 * 60 * 1000)) {
-                            if (newStatus === 'app_killed') {
-                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
-                                playWarningBeep();
-                                speakRadarAlert(`¡Atención! El conductor ${firstName} cerró la aplicación manualmente.`);
-                                showRadarWarning(`🚨 ${firstName}${plateText} cerró la app manualmente desde el panel de recientes`, 'danger');
-                            } else if (newStatus === 'gps_desactivado') {
-                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
-                                playWarningBeep();
-                                speakRadarAlert(`¡Alerta! El conductor ${firstName} apagó el GPS de su dispositivo.`);
-                                showRadarWarning(`El conductor ${firstName}${plateText} ha desactivado el GPS de su dispositivo`, 'warning');
-                            } else if (newStatus === 'suspicious_disconnect') {
-                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
-                                playWarningBeep();
-                                speakRadarAlert(`¡Alerta! Se detectó una desconexión sospechosa de ${firstName}.`);
-                                showRadarWarning(`Desconexión sospechosa detectada para ${firstName}${plateText} (Sin señal)`, 'danger');
-                            } else if (newStatus === 'permissions_disabled') {
-                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
-                                playWarningBeep();
-                                speakRadarAlert(`¡Alerta! El conductor ${firstName} desactivó los permisos de segundo plano o de batería.`);
-                                showRadarWarning(`Permisos de segundo plano / Batería desactivados en el celular de ${firstName}${plateText}`, 'warning');
-                            } else if (newStatus === 'logout_voluntario') {
-                                window._radarWarningCooldowns[warningCooldownKey] = nowMs;
-                                playWarningBeep();
-                                speakRadarAlert(`El conductor ${firstName} ha cerrado sesión voluntariamente.`);
-                                showRadarWarning(`El conductor ${firstName}${plateText} ha cerrado sesión voluntariamente (Desconectado)`, 'info');
-                            }
-                        }
-                        
-                        window._driverStatusCache[driverId] = newStatus;
-                        try { sessionStorage.setItem('_driverStatusCache', JSON.stringify(window._driverStatusCache)); } catch(e) {}
-                    }
-                }
-            }
-
-            // Remove markers for drivers that left (solo si no tienen turno activo)
-            for (const existingId of Object.keys(_markers)) {
-                if (!allPositions[existingId] && !driverShiftMap[existingId]) {
-                    _removeMarker(existingId);
-                    if (window._driverStatusCache) delete window._driverStatusCache[existingId];
-                }
-            }
-
-            _updateActiveCount(activeCount);
-            if (onlineCount > 0) {
-                _setStatus('connected', `${onlineCount} en línea · ${activeCount} en turno`);
-            } else if (activeCount > 0) {
-                _setStatus('connected', `${activeCount} chofer${activeCount !== 1 ? 'es' : ''} en turno`);
-            } else {
-                _setStatus('idle', 'Sin choferes activos');
-            }
-
-            // Auto-fit bounds if markers exist
-            if (activeCount > 0 && !_hasUserPanned) {
-                _fitBounds();
-            }
+            _lastAllPositions = snap.val();
+            await _processPositionsSnapshot(_lastAllPositions);
         });
+
+        // Evaluador periódico cada 30s para detectar choferes que superen > 3 min sin latidos
+        // aunque su dispositivo haya perdido red por completo y no emita nuevos eventos en Firebase
+        if (_heartbeatWatchdogTimer) clearInterval(_heartbeatWatchdogTimer);
+        _heartbeatWatchdogTimer = setInterval(() => {
+            if (_isOpen && _lastAllPositions) {
+                _processPositionsSnapshot(_lastAllPositions);
+            }
+        }, 30000);
 
         _setStatus('connected', 'Escuchando posiciones...');
     }
@@ -1021,6 +1078,10 @@ const RadarModule = (() => {
     }
 
     function _stopFirebaseListener() {
+        if (_heartbeatWatchdogTimer) {
+            clearInterval(_heartbeatWatchdogTimer);
+            _heartbeatWatchdogTimer = null;
+        }
         if (_firebaseRef) {
             _firebaseRef.off('value');
             _firebaseRef = null;

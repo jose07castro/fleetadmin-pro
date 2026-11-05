@@ -1041,6 +1041,7 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
         }
     } catch (e) {}
 
+    const inShift = localStorage.getItem('active_shift_state') === 'true';
     const body = {
         driver_id: userId,
         lat: lat,
@@ -1052,7 +1053,8 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
         timestamp: new Date().toISOString(),
         source: source,
         snap: snap,
-        appVersion: appVersion
+        appVersion: appVersion,
+        shift_status: inShift ? 'IN_PROGRESS' : 'IDLE'
     };
 
     try {
@@ -1066,7 +1068,31 @@ window.sendLocationToServer = async function(lat, lng, heading, speed, battery, 
         }
         return await response.json();
     } catch (e) {
-        console.error('❌ sendLocationToServer failed:', e);
+        console.error('❌ sendLocationToServer failed, using direct Firebase fallback:', e);
+        if (inShift && typeof firebaseDB !== 'undefined') {
+            try {
+                const nowMs = Date.now();
+                await firebaseDB.ref(`driver_positions/${userId}`).update({
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    heading: heading || 0,
+                    speed: speed || 0,
+                    battery: battery !== undefined ? battery : null,
+                    driverName: body.driverName,
+                    updated_at: new Date(nowMs).toISOString(),
+                    last_heartbeat: nowMs,
+                    last_heartbeat_gap: null,
+                    status: 'active',
+                    shift_status: 'IN_PROGRESS',
+                    gps_status: 'active',
+                    appVersion: appVersion,
+                    _source: (source || 'web') + '_fb_fallback'
+                });
+                return { ok: true, fallback: true };
+            } catch (fbErr) {
+                console.warn('⚠️ Fallback directo a Firebase también falló:', fbErr);
+            }
+        }
         throw e;
     }
 };

@@ -104,6 +104,10 @@ const Auth = (() => {
             localStorage.setItem('last_fleet_id', user.fleetId);
         }
 
+        if (user.role && typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+            AndroidServices.setUserRole(user.role);
+        }
+
         console.log('🔐 Sesión guardada en 3 capas (localStorage + sessionStorage + IndexedDB)');
 
         // 🔔 Registrar FCM token para push notifications (background SOS)
@@ -117,6 +121,12 @@ const Auth = (() => {
     // Logout — Limpieza completa de las 3 capas
     // =============================================
     function logout() {
+        // Guardia de turno activo: un chofer en turno IN_PROGRESS no puede desloguearse
+        if (typeof App !== 'undefined' && typeof App.isDriverShiftLocked === 'function' && App.isDriverShiftLocked()) {
+            if (typeof App.showShiftExitBlockedModal === 'function') App.showShiftExitBlockedModal();
+            return;
+        }
+
         // Detener el Foreground Service de rastreo GPS en Android antes de limpiar nada
         if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.disableForegroundService === 'function') {
             try { AndroidServices.disableForegroundService(); } catch (e) { console.warn('Error desactivando foreground service:', e); }

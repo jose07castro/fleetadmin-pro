@@ -12,6 +12,8 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import androidx.activity.OnBackPressedCallback;
+
 import com.getcapacitor.BridgeActivity;
 
 import com.google.android.play.core.appupdate.AppUpdateInfo;
@@ -95,8 +97,68 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "⚠️ Error pre-inicializando fallback TTS: " + e.getMessage());
         }
 
+        // Bloqueo local del botón Atrás y gestos de retroceso ÚNICAMENTE mientras FleetAdmin esté en primer plano
+        // y exista un turno activo ('IN_PROGRESS') para el rol de Chofer. No afecta Home, Recientes ni Uber/DiDi.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (LocationTrackingService.isAppInForeground && isDriverShiftExitLocked()) {
+                    Log.i(TAG, "🔒 [BACK-LOCK] Retroceso interceptado en FleetAdmin: Turno activo en curso.");
+                    showActiveShiftLockModalInWebView();
+                    return;
+                }
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                    return;
+                }
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                if (!isFinishing()) {
+                    setEnabled(true);
+                }
+            }
+        });
+
         // Verificar actualizaciones al iniciar
         checkPlayStoreUpdate();
+    }
+
+    private boolean isDriverShiftExitLocked() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            boolean shiftActive = LocationTrackingService.isShiftActive || prefs.getBoolean("is_shift_active", false);
+            if (!shiftActive) return false;
+            String role = prefs.getString("userRole", "driver");
+            if ("owner".equalsIgnoreCase(role) || "titular".equalsIgnoreCase(role) ||
+                "mechanic".equalsIgnoreCase(role) || "passenger".equalsIgnoreCase(role) ||
+                "guest".equalsIgnoreCase(role)) {
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return LocationTrackingService.isShiftActive;
+        }
+    }
+
+    private void showActiveShiftLockModalInWebView() {
+        try {
+            if (webView != null) {
+                webView.post(() -> {
+                    try {
+                        if (webView != null) {
+                            webView.evaluateJavascript(
+                                "javascript:(function(){ if(window.showActiveShiftExitLockModal){ window.showActiveShiftExitLockModal(); } })();",
+                                null
+                            );
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error invocando modal de turno activo en WebView:", e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error en showActiveShiftLockModalInWebView:", e);
+        }
     }
 
     private static final int MY_REQUEST_CODE = 9001;
@@ -225,6 +287,7 @@ public class MainActivity extends BridgeActivity {
                 serviceIntent.putExtra("driverName", savedDriverName);
                 serviceIntent.putExtra("fleetId", savedFleetId);
                 serviceIntent.putExtra("serverUrl", savedServerUrl);
+                serviceIntent.putExtra("isShiftActive", prefs.getBoolean("is_shift_active", false));
                 androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent);
             }
         } catch (Exception e) {
@@ -630,6 +693,29 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean isShiftActive() {
             return LocationTrackingService.isShiftActive;
+        }
+
+        @JavascriptInterface
+        public void setUserRole(String role) {
+            if (role == null || role.trim().isEmpty()) return;
+            String cleanRole = role.trim().toLowerCase();
+            Log.i(TAG, "📱 JS → setUserRole: " + cleanRole);
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                prefs.edit().putString("userRole", cleanRole).apply();
+            } catch (Exception e) {
+                Log.e(TAG, "Error saving userRole in SharedPreferences:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public String getUserRole() {
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                return prefs.getString("userRole", "");
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         @JavascriptInterface

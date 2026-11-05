@@ -141,8 +141,13 @@ const ShiftsModule = (() => {
                 // Sincronización silenciosa (mantener localStorage actualizado si venía de otro lado)
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
-                // Sincronizar estado turno activo en AndroidServices
+                localStorage.setItem('active_shift_status', 'IN_PROGRESS');
+                // Sincronizar estado turno activo en AndroidServices y bloqueo/heartbeat Web
                 if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setShiftActive === 'function') { AndroidServices.setShiftActive(true); }
+                if (typeof App !== 'undefined') {
+                    if (typeof App.armShiftBackLock === 'function') App.armShiftBackLock();
+                    if (typeof App.startShiftHeartbeat === 'function') App.startShiftHeartbeat();
+                }
 
                 container.innerHTML = batteryBannerHTML + renderActiveShift(activeShift, vehicles);
                 return;
@@ -153,9 +158,13 @@ const ShiftsModule = (() => {
                 console.log('🔄 Turno cerrado remotamente. Limpiando localStorage.');
                 localStorage.removeItem('active_shift_id');
                 localStorage.removeItem('active_shift_state');
+                localStorage.setItem('active_shift_status', 'FINALIZADO_TURNO');
+                if (typeof App !== 'undefined' && typeof App.stopShiftHeartbeat === 'function') {
+                    App.stopShiftHeartbeat();
+                }
                 if (typeof AndroidServices !== 'undefined') {
                     AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
-                if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
+                    if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                 }
                 if (typeof Components !== 'undefined') {
                     Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
@@ -303,6 +312,7 @@ const ShiftsModule = (() => {
                         <span>${vehicle?.vehicleType === 'moto' ? '🏍️' : '🚗'}</span>
                         <span>${vehicle?.name || ''} — ${vehicle?.plate || ''}</span>
                         ${vehicle?.vehicleType === 'moto' ? `<span class="badge" style="font-size:0.65rem; background:#f59e0b; color:#fff; padding:1px 6px; border-radius:4px;">${vehicle.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}</span>` : ''}
+                        <span style="font-size:10px; color:#f59e0b; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:1px 6px; border-radius:6px; font-weight:700;" title="No se permite cambiar de vehículo ni cerrar sesión hasta finalizar el turno">🔒 Vehículo bloqueado en turno</span>
                     </div>
                     ${(vehicle && vehicle.companiaSeguro) ? `
                     <div style="margin-top:var(--space-2); padding-top:var(--space-2); border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2);">
@@ -695,6 +705,7 @@ const ShiftsModule = (() => {
                 startOdometer: odometerKm,
                 startOdometerPhoto: photo ? 'migrated' : null,
                 status: 'active',
+                shiftState: 'IN_PROGRESS',
                 earnings: 0
             });
 
@@ -702,7 +713,32 @@ const ShiftsModule = (() => {
             try {
                 localStorage.setItem('active_shift_id', shiftIdRef);
                 localStorage.setItem('active_shift_state', 'true');
+                localStorage.setItem('active_shift_status', 'IN_PROGRESS');
             } catch (lsErr) { console.warn('No se pudo guardar persistencia local', lsErr); }
+
+            // Registrar estado inicial IN_PROGRESS + primer heartbeat en Firebase RTDB
+            try {
+                if (typeof firebase !== 'undefined' && firebase.database && driverId) {
+                    const nowMs = Date.now();
+                    const initPosPayload = {
+                        status: 'active',
+                        shift_status: 'IN_PROGRESS',
+                        last_heartbeat: nowMs,
+                        last_heartbeat_gap: null,
+                        updated_at: new Date(nowMs).toISOString(),
+                        driverName: Auth.getUserName() || 'Chofer',
+                        fleetId: Auth.getFleetId() || null,
+                        shiftId: shiftIdRef
+                    };
+                    if (window._cachedGpsPosition && window._cachedGpsPosition.lat && window._cachedGpsPosition.lng) {
+                        initPosPayload.lat = window._cachedGpsPosition.lat;
+                        initPosPayload.lng = window._cachedGpsPosition.lng;
+                    }
+                    await firebase.database().ref(`driver_positions/${driverId}`).update(initPosPayload);
+                }
+            } catch (hbInitErr) {
+                console.warn('No se pudo registrar heartbeat inicial en Firebase:', hbInitErr);
+            }
 
             // Guardar foto separada
             if (photo) {
@@ -730,10 +766,14 @@ const ShiftsModule = (() => {
                 }
             }
 
-            // Activar servicio en segundo plano (Foreground Service nativo)
+            // Activar servicio en segundo plano (Foreground Service nativo) y heartbeat Web 60s
             if (typeof AndroidServices !== 'undefined') {
                 AndroidServices.enableForegroundService(shiftIdRef, vehicleData ? vehicleData.plate : null);
                 if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(true);
+            }
+            if (typeof App !== 'undefined') {
+                if (typeof App.armShiftBackLock === 'function') App.armShiftBackLock();
+                if (typeof App.startShiftHeartbeat === 'function') App.startShiftHeartbeat();
             }
 
             Router.navigate('shifts');
@@ -879,16 +919,54 @@ const ShiftsModule = (() => {
                 shift.vehicleName = `${vehicle.name} — ${vehicle.plate}`;
             }
             shift.status = 'completed';
+            shift.shiftState = 'FINALIZADO_TURNO';
             await DB.put('shifts', shift);
 
-            // Eliminar de LocalStorage (Finalización) y Foreground Service
+            // Detener heartbeat de turno activo y liberar bloqueo de salida
+            if (typeof App !== 'undefined' && typeof App.stopShiftHeartbeat === 'function') {
+                App.stopShiftHeartbeat();
+            }
+
+            // Eliminar de LocalStorage (Finalización) y actualizar Foreground Service
             try {
                 localStorage.removeItem('active_shift_id');
-                localStorage.removeItem('active_shift_state');
+                localStorage.setItem('active_shift_state', 'false');
+                localStorage.setItem('active_shift_status', 'FINALIZADO_TURNO');
                 if (typeof AndroidServices !== 'undefined') {
+                    if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                     AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
                 }
             } catch (lsErr) { }
+
+            // Registrar evento formal FINALIZADO_TURNO en Firebase RTDB para que el panel de administración
+            // reconozca el cierre formal y nunca marque DESCONEXION_IRREGULAR tras cerrar turno
+            try {
+                const endedDriverId = shift.driverId || Auth.getUserId();
+                const fleetIdRef = (typeof Auth !== 'undefined' && Auth.getFleetId()) || DB.getFleet();
+                const endNowMs = Date.now();
+                if (typeof firebase !== 'undefined' && firebase.database && endedDriverId) {
+                    await firebase.database().ref(`driver_positions/${endedDriverId}`).update({
+                        status: 'FINALIZADO_TURNO',
+                        shift_status: 'FINALIZADO_TURNO',
+                        gps_status: 'inactive',
+                        last_heartbeat: endNowMs,
+                        last_heartbeat_gap: null,
+                        updated_at: new Date(endNowMs).toISOString()
+                    });
+                    if (fleetIdRef) {
+                        const cleanFleet = String(fleetIdRef).replace(/^fleets\//, '');
+                        await firebase.database().ref(`fleets/${cleanFleet}/driver_status_logs`).push({
+                            event: 'FINALIZADO_TURNO',
+                            driverId: endedDriverId,
+                            driverName: shift.driverName || Auth.getUserName() || 'Chofer',
+                            shiftId: shift.id,
+                            timestamp: endNowMs
+                        });
+                    }
+                }
+            } catch (endFbErr) {
+                console.warn('No se pudo registrar FINALIZADO_TURNO en driver_positions:', endFbErr);
+            }
 
             // Guardar fotos separadas para que no alenten el Login
             if (odoPhoto || earningsPhoto) {
@@ -1019,7 +1097,21 @@ const ShiftsModule = (() => {
         if (!Auth.isOwner()) return;
 
         if (confirm('¿Estás seguro de que deseas eliminar este turno permanentemente? Esta acción borrará el registro de horas, kilómetros y ganancias asociados a este turno.')) {
+            const targetShift = await DB.get('shifts', shiftId);
             await DB.remove('shifts', shiftId);
+            if (targetShift && targetShift.status === 'active' && targetShift.driverId && typeof firebase !== 'undefined' && firebase.database) {
+                try {
+                    const nowMs = Date.now();
+                    await firebase.database().ref(`driver_positions/${targetShift.driverId}`).update({
+                        status: 'FINALIZADO_TURNO',
+                        shift_status: 'FINALIZADO_TURNO',
+                        gps_status: 'inactive',
+                        last_heartbeat: nowMs,
+                        last_heartbeat_gap: null,
+                        updated_at: new Date(nowMs).toISOString()
+                    });
+                } catch (e) { console.warn('Error limpiando posición de turno eliminado:', e); }
+            }
             Components.showToast('Turno eliminado correctamente.', 'success');
             // Refrescar vista
             Router.navigate('shifts');

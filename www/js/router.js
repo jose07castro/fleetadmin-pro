@@ -56,6 +56,15 @@ const Router = (() => {
     };
 
     async function navigate(route) {
+        // Bloqueo de salida/login para Chofer con turno activo ('IN_PROGRESS')
+        if (route === 'login' && typeof App !== 'undefined' && typeof App.isDriverShiftLocked === 'function' && App.isDriverShiftLocked()) {
+            App.showShiftExitBlockedModal();
+            if (currentRoute && currentRoute !== 'login') {
+                return;
+            }
+            route = 'shifts';
+        }
+
         // Si no está logueado, forzar login
         if (!Auth.isLoggedIn() && route !== 'login' && route !== 'apply') {
             route = 'login';
@@ -133,6 +142,9 @@ const Router = (() => {
                     app.innerHTML = Components.renderLayout(content, route);
                     // Reactivar el sidebar overlay para móvil
                     setupMobileMenu();
+                    if (typeof App !== 'undefined' && typeof App.armShiftBackLock === 'function') {
+                        App.armShiftBackLock();
+                    }
                 }
                 // Iniciar listener de anuncios (para todos los roles)
                 if (typeof AnnouncementModule !== 'undefined') {
@@ -148,7 +160,7 @@ const Router = (() => {
                             <h2 style="color:#f1f5f9; margin-bottom:0.5rem;">Error de Carga</h2>
                             <p style="color:#ef4444; margin-bottom:1rem; font-size:0.9rem; font-weight:bold;">${renderError.message || renderError}</p>
                             <button onclick="Router.navigate('${route}')" style="background:linear-gradient(135deg,#6366f1,#06b6d4); color:white; border:none; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer; margin-right:8px;">🔄 Reintentar</button>
-                            <button onclick="Router.navigate('login')" style="background:#334155; color:#f1f5f9; border:1px solid #475569; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer;">🚪 Ir a Login</button>
+                            ${(typeof App !== 'undefined' && typeof App.isDriverShiftLocked === 'function' && App.isDriverShiftLocked()) ? '' : `<button onclick="Router.navigate('login')" style="background:#334155; color:#f1f5f9; border:1px solid #475569; padding:12px 24px; border-radius:12px; font-size:1rem; font-weight:600; cursor:pointer;">🚪 Ir a Login</button>`}
                         </div>
                     </div>`;
             }
