@@ -1035,7 +1035,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
         // Cartel flotante sobre otras apps (Uber/DiDi/Waze) hasta que el usuario lo cierre
         float currentSpeed = (lastSpeed > 0) ? lastSpeed : 0f;
-        showFloatingOverlay("radar", radar.name, radar.desc != null ? radar.desc : "Videocontrol municipal",
+        String overlayType = "COMUNAL_CUESTIONADO".equals(radar.tipoHomologacion) ? "radar_cuestionado" : "radar";
+        showFloatingOverlay(overlayType, radar.name, radar.desc != null ? radar.desc : "Control de velocidad",
                 radar.limit, Math.round(currentSpeed), distanceStage, message);
     }
 
@@ -2848,8 +2849,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 int dp58 = (int) (58 * density);
                 int dp115 = (int) (115 * density);
 
-                boolean isRadar = "radar".equalsIgnoreCase(type) || limit > 0;
-                int borderColor = isRadar ? Color.parseColor("#DC2626") : Color.parseColor("#F59E0B");
+                boolean isCuestionado = "radar_cuestionado".equalsIgnoreCase(type);
+                boolean isRadar = isCuestionado || "radar".equalsIgnoreCase(type) || limit > 0;
+                int borderColor = isCuestionado ? Color.parseColor("#D97706")
+                        : (isRadar ? Color.parseColor("#DC2626") : Color.parseColor("#F59E0B"));
 
                 // Tarjeta principal (Agrandada para máxima visibilidad de conducción)
                 LinearLayout card = new LinearLayout(this);
@@ -2883,10 +2886,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 signFrame.setLayoutParams(signParams);
 
                 if (isRadar && limit > 0) {
+                    int signStrokeCol = isCuestionado ? Color.parseColor("#D97706") : Color.parseColor("#DC2626");
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
-                    signBg.setColor(Color.WHITE);
-                    signBg.setStroke((int) (9 * density), Color.parseColor("#DC2626"));
+                    signBg.setColor(isCuestionado ? Color.parseColor("#FEF3C7") : Color.WHITE);
+                    signBg.setStroke((int) (9 * density), signStrokeCol);
                     signFrame.setBackground(signBg);
 
                     LinearLayout signInner = new LinearLayout(this);
@@ -2896,7 +2900,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                     TextView numText = new TextView(this);
                     numText.setText(String.valueOf(limit));
-                    numText.setTextColor(Color.parseColor("#0F172A"));
+                    numText.setTextColor(Color.parseColor(isCuestionado ? "#78350F" : "#0F172A"));
                     numText.setTextSize(52);
                     numText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     numText.setGravity(Gravity.CENTER);
@@ -2905,7 +2909,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                     TextView unitText = new TextView(this);
                     unitText.setText("MÁX");
-                    unitText.setTextColor(Color.parseColor("#DC2626"));
+                    unitText.setTextColor(signStrokeCol);
                     unitText.setTextSize(13);
                     unitText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     unitText.setGravity(Gravity.CENTER);
@@ -2958,7 +2962,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 topRow.setGravity(Gravity.CENTER_VERTICAL);
 
                 TextView badgeView = new TextView(this);
-                badgeView.setText(isRadar ? "📷 FOTOMULTA" : "🚨 OPERATIVO POLICIAL / CONTROL");
+                badgeView.setText(isCuestionado ? "⚠️ COMUNAL CUESTIONADO"
+                        : (isRadar ? "📷 FOTOMULTA" : "🚨 OPERATIVO POLICIAL / CONTROL"));
                 badgeView.setTextColor(Color.WHITE);
                 badgeView.setTextSize(13);
                 badgeView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);

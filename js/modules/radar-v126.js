@@ -44,6 +44,9 @@ const RadarModule = (() => {
     ];
 
     let _HTMLMapMarkerClass = null;
+    let _isZooming = false;
+    let _zoomResetTimer = null;
+
     function _getHTMLMapMarkerClass() {
         if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
         if (typeof google === 'undefined' || !google.maps || !google.maps.OverlayView) {
@@ -51,19 +54,25 @@ const RadarModule = (() => {
         }
         
         _HTMLMapMarkerClass = class extends google.maps.OverlayView {
-            constructor(latlng, html, popupHtml, offsetX = 30, offsetY = 40) {
+            constructor(latlng, html, popupHtml, width = 60, height = 60) {
                 super();
                 this.latlng = latlng;
                 this.html = html;
                 this.popupHtml = popupHtml;
-                this.offsetX = offsetX;
-                this.offsetY = offsetY;
+                this.width = width;
+                this.height = height;
+                // Anclaje explícito al centro geométrico exacto (width/2, height/2)
+                this.anchorX = width / 2;
+                this.anchorY = height / 2;
                 this.div = null;
                 this.isUpdatingPosition = false;
             }
             onAdd() {
                 this.div = document.createElement('div');
                 this.div.style.position = 'absolute';
+                this.div.style.width = this.width + 'px';
+                this.div.style.height = this.height + 'px';
+                this.div.style.boxSizing = 'border-box';
                 this.div.style.cursor = 'pointer';
                 this.div.style.zIndex = '10';
                 this.div.style.transition = 'none'; // v166: Sin transición por defecto para evitar rezago en drag/zoom
@@ -80,13 +89,14 @@ const RadarModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
-                    if (this.isUpdatingPosition) {
-                        this.div.style.transition = 'left 2s linear, top 2s linear'; // Solo al cambiar posición de GPS
-                    } else {
+                    if (_isZooming || !this.isUpdatingPosition) {
+                        this.isUpdatingPosition = false;
                         this.div.style.transition = 'none'; // Instantáneo al arrastrar/hacer zoom el mapa
+                    } else {
+                        this.div.style.transition = 'left 2s linear, top 2s linear'; // Solo al cambiar posición de GPS
                     }
-                    this.div.style.left = (pos.x - this.offsetX) + 'px';
-                    this.div.style.top = (pos.y - this.offsetY) + 'px';
+                    this.div.style.left = (pos.x - this.anchorX) + 'px';
+                    this.div.style.top = (pos.y - this.anchorY) + 'px';
                 }
             }
             onRemove() {
@@ -97,7 +107,7 @@ const RadarModule = (() => {
             }
             setPosition(latlng) {
                 this.latlng = latlng;
-                this.isUpdatingPosition = true;
+                this.isUpdatingPosition = !_isZooming;
                 this.draw();
                 // Limpiar el flag después de que inicie la transición
                 setTimeout(() => {
@@ -116,7 +126,7 @@ const RadarModule = (() => {
                 if (window._activeInfoWindow) window._activeInfoWindow.close();
                 const iw = new google.maps.InfoWindow({
                     content: this.popupHtml,
-                    pixelOffset: new google.maps.Size(0, -this.offsetY)
+                    pixelOffset: new google.maps.Size(0, -this.anchorY)
                 });
                 iw.setPosition(this.latlng);
                 iw.open(this.getMap());
@@ -361,6 +371,21 @@ const RadarModule = (() => {
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false
+        });
+
+        // Evitar deriva visual de marcadores al cambiar el nivel de zoom
+        _map.addListener('zoom_changed', () => {
+            _isZooming = true;
+            if (_zoomResetTimer) clearTimeout(_zoomResetTimer);
+            const resetMarkerTransition = (m) => {
+                if (!m) return;
+                m.isUpdatingPosition = false;
+                if (m.div) m.div.style.transition = 'none';
+            };
+            Object.values(_markers).forEach(resetMarkerTransition);
+            Object.values(_alertMarkers).forEach(resetMarkerTransition);
+            (_cameraMarkers || []).forEach(resetMarkerTransition);
+            _zoomResetTimer = setTimeout(() => { _isZooming = false; }, 180);
         });
 
         // Supresión continua de marcas de agua 'For development purposes only' y carteles de error
@@ -826,9 +851,9 @@ const RadarModule = (() => {
             _markers[driverId].setHtml(html);
             _markers[driverId].setPopupContent(popupContent);
         } else {
-            // Create new marker
+            // Create new marker (60x60 -> anchor exacto 30, 30)
             const MarkerClass = _getHTMLMapMarkerClass();
-            const marker = new MarkerClass(latlng, html, popupContent);
+            const marker = new MarkerClass(latlng, html, popupContent, 60, 60);
             marker.setMap(_map);
             _markers[driverId] = marker;
         }
@@ -1278,9 +1303,9 @@ const RadarModule = (() => {
             _alertMarkers[id].setHtml(iconHtml);
             _alertMarkers[id].setPopupContent(popupContent);
         } else {
-            // Alerta NUEVA: instanciar HTMLMapMarker (offset 20, 20 para centrar la chapa de 40px)
+            // Alerta NUEVA: instanciar HTMLMapMarker (40x40 -> anchor exacto 20, 20)
             const MarkerClass = _getHTMLMapMarkerClass();
-            const marker = new MarkerClass(latlng, iconHtml, popupContent, 20, 20);
+            const marker = new MarkerClass(latlng, iconHtml, popupContent, 40, 40);
             marker.setMap(_map);
             _alertMarkers[id] = marker;
             
@@ -1669,33 +1694,56 @@ const RadarModule = (() => {
         const radars = CopilotModule.getAllRadars ? CopilotModule.getAllRadars() : [];
         const countEl = document.getElementById('radarCameraCount');
         if (countEl && radars) {
-            countEl.textContent = `${radars.length} oficiales`;
+            const cuestionadosCount = radars.filter(r => r.tipoHomologacion === 'COMUNAL_CUESTIONADO').length;
+            const oficialesCount = radars.length - cuestionadosCount;
+            countEl.textContent = cuestionadosCount > 0
+                ? `${oficialesCount} oficiales · ${cuestionadosCount} comunales`
+                : `${oficialesCount} oficiales`;
         }
         if (!radars || !radars.length) return;
 
         const MarkerClass = _getHTMLMapMarkerClass();
+        if (!MarkerClass) return;
 
         radars.forEach(radar => {
+            const isCuestionado = radar.tipoHomologacion === 'COMUNAL_CUESTIONADO';
             const isThreeDigits = (radar.limit >= 100);
-            const fontSize = isThreeDigits ? '6.5px' : '7.5px';
+            const fontSize = isThreeDigits ? '7px' : '8px';
             const letterSpacing = isThreeDigits ? '-0.5px' : '-0.2px';
+
+            const bgCircle = isCuestionado ? '#fef3c7' : '#ffffff';
+            const borderCircle = isCuestionado ? '2.2px dashed #d97706' : '2.2px solid #dc2626';
+            const ringShadow = isCuestionado
+                ? '0 0 0 1.5px rgba(245, 158, 11, 0.9), 0 1px 4px rgba(0,0,0,0.5)'
+                : '0 1px 4px rgba(0,0,0,0.5)';
+            const textColor = isCuestionado ? '#78350f' : '#0f172a';
+            const titleStatus = isCuestionado ? ' [Comunal Cuestionado / Sin aval ANSV]' : ' [Homologado Oficial]';
+
+            // Disco circular simétrico 20x20px (anchor geométrico exacto 10, 10 = width/2, height/2)
             const pinHtml = `
-                <div class="radar-cam-pin" title="${radar.name} (Máx ${radar.limit} km/h)" style="display:flex;flex-direction:column;align-items:center;pointer-events:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.55));cursor:pointer;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
-                    <div style="background:#ffffff;border:1.8px solid #dc2626;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.4);">
-                        <span style="font-size:${fontSize};font-weight:900;color:#0f172a;line-height:1;letter-spacing:${letterSpacing};">${radar.limit}</span>
+                <div class="radar-cam-pin" title="${radar.name} — Máx ${radar.limit} km/h${titleStatus}" style="width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;transform-origin:center center;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="background:${bgCircle};border:${borderCircle};border-radius:50%;width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:${ringShadow};">
+                        <span style="font-size:${fontSize};font-weight:900;color:${textColor};line-height:1;letter-spacing:${letterSpacing};">${radar.limit}</span>
                     </div>
-                    <div style="width:0;height:0;border-left:2.5px solid transparent;border-right:2.5px solid transparent;border-top:3.5px solid #dc2626;margin-top:-1px;"></div>
                 </div>
             `;
 
+            const badgeBg = isCuestionado ? '#d97706' : '#dc2626';
+            const badgeLabel = isCuestionado ? '⚠️ COMUNAL CUESTIONADO' : '📷 FOTOMULTA OFICIAL';
+            const limitColor = isCuestionado ? '#b45309' : '#dc2626';
+            const homologacionPill = isCuestionado
+                ? `<div style="margin-top:5px;padding:3px 6px;border-radius:6px;background:#fffbeb;border:1px solid #f59e0b;font-size:10px;font-weight:700;color:#92400e;line-height:1.25;">⚠️ Cinemómetro comunal en ruta nacional sin aval ANSV / Vialidad Nacional o en litigio</div>`
+                : `<div style="margin-top:5px;padding:3px 6px;border-radius:6px;background:#f0fdf4;border:1px solid #86efac;font-size:10px;font-weight:700;color:#166534;line-height:1.25;">✅ Homologado INTI / ANSV / APSV</div>`;
+
             const popupHtml = `
-                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;padding:8px 10px;max-width:240px;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                        <span style="background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;">📷 FOTOMULTA</span>
-                        <span style="font-size:11px;font-weight:700;color:#dc2626;">MÁX ${radar.limit} km/h</span>
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;padding:8px 10px;max-width:255px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
+                        <span style="background:${badgeBg};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;">${badgeLabel}</span>
+                        <span style="font-size:11px;font-weight:800;color:${limitColor};">MÁX ${radar.limit} km/h</span>
                     </div>
                     <div style="font-size:13px;font-weight:800;line-height:1.2;color:#0f172a;margin-bottom:4px;">${radar.name}</div>
-                    <div style="font-size:11px;color:#64748b;line-height:1.3;">${radar.desc || 'Videocontrol municipal de tránsito'}</div>
+                    <div style="font-size:11px;color:#64748b;line-height:1.3;">${radar.desc || 'Control electrónico de velocidad'}</div>
+                    ${homologacionPill}
                 </div>
             `;
 
@@ -1703,8 +1751,8 @@ const RadarModule = (() => {
                 new google.maps.LatLng(radar.lat, radar.lng),
                 pinHtml,
                 popupHtml,
-                8,
-                19
+                20,
+                20
             );
             marker.setMap(_map);
             _cameraMarkers.push(marker);

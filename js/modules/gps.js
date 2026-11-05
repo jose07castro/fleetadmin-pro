@@ -152,6 +152,7 @@ const GPSModule = (() => {
     let _fleetUsersRef = null;
     let _fleetDriverMarkers = {};
     let _fleetDriverInfo = {};
+    let _cameraMarkers = [];
 
     // JSON STYLES PARA GOOGLE MAPS API
     const GOOGLE_MAP_DARK_STYLE = [
@@ -178,20 +179,27 @@ const GPSModule = (() => {
         if (_HTMLMapMarkerClass) return _HTMLMapMarkerClass;
         
         _HTMLMapMarkerClass = class extends google.maps.OverlayView {
-            constructor(latlng, html, popupHtml, offsetX = 15, offsetY = 15) {
+            constructor(latlng, html, popupHtml, width = 30, height = 30) {
                 super();
                 this.latlng = latlng;
                 this.html = html;
                 this.popupHtml = popupHtml;
-                this.offsetX = offsetX;
-                this.offsetY = offsetY;
+                this.width = width;
+                this.height = height;
+                // Anclaje explícito al centro geométrico exacto (width/2, height/2)
+                this.anchorX = width / 2;
+                this.anchorY = height / 2;
                 this.div = null;
             }
             onAdd() {
                 this.div = document.createElement('div');
                 this.div.style.position = 'absolute';
+                this.div.style.width = this.width + 'px';
+                this.div.style.height = this.height + 'px';
+                this.div.style.boxSizing = 'border-box';
                 this.div.style.cursor = 'pointer';
                 this.div.style.zIndex = '10';
+                this.div.style.transition = 'none';
                 this.div.innerHTML = this.html;
                 
                 if (this.popupHtml) {
@@ -205,8 +213,8 @@ const GPSModule = (() => {
                 if (!this.div) return;
                 const pos = this.getProjection().fromLatLngToDivPixel(this.latlng);
                 if (pos) {
-                    this.div.style.left = (pos.x - this.offsetX) + 'px';
-                    this.div.style.top = (pos.y - this.offsetY) + 'px';
+                    this.div.style.left = (pos.x - this.anchorX) + 'px';
+                    this.div.style.top = (pos.y - this.anchorY) + 'px';
                 }
             }
             onRemove() {
@@ -231,7 +239,7 @@ const GPSModule = (() => {
                 if (window._activeInfoWindow) window._activeInfoWindow.close();
                 const iw = new google.maps.InfoWindow({
                     content: this.popupHtml,
-                    pixelOffset: new google.maps.Size(0, -this.offsetY)
+                    pixelOffset: new google.maps.Size(0, -this.anchorY)
                 });
                 iw.setPosition(this.latlng);
                 iw.open(this.getMap());
@@ -321,6 +329,81 @@ const GPSModule = (() => {
 
         // 3. Escuchar alertas de Firebase
         _listenToFirebaseAlerts();
+
+        // 4. Renderizar cámaras y radares fijos sobre la traza real
+        _renderCameraMarkers();
+    }
+
+    function _clearCameraMarkers() {
+        if (_cameraMarkers && _cameraMarkers.length) {
+            _cameraMarkers.forEach(m => {
+                try { if (m && m.setMap) m.setMap(null); } catch (e) {}
+            });
+            _cameraMarkers = [];
+        }
+    }
+
+    function _renderCameraMarkers() {
+        _clearCameraMarkers();
+        if (!map || typeof CopilotModule === 'undefined' || !CopilotModule.getAllRadars) return;
+
+        const radars = CopilotModule.getAllRadars() || [];
+        if (!radars.length) return;
+
+        const MarkerClass = _getHTMLMapMarkerClass();
+        if (!MarkerClass) return;
+
+        radars.forEach(radar => {
+            const isCuestionado = radar.tipoHomologacion === 'COMUNAL_CUESTIONADO';
+            const isThreeDigits = (radar.limit >= 100);
+            const fontSize = isThreeDigits ? '7px' : '8px';
+            const letterSpacing = isThreeDigits ? '-0.5px' : '-0.2px';
+
+            const bgCircle = isCuestionado ? '#fef3c7' : '#ffffff';
+            const borderCircle = isCuestionado ? '2.2px dashed #d97706' : '2.2px solid #dc2626';
+            const ringShadow = isCuestionado
+                ? '0 0 0 1.5px rgba(245, 158, 11, 0.9), 0 1px 4px rgba(0,0,0,0.5)'
+                : '0 1px 4px rgba(0,0,0,0.5)';
+            const textColor = isCuestionado ? '#78350f' : '#0f172a';
+            const titleStatus = isCuestionado ? ' [Comunal Cuestionado / Sin aval ANSV]' : ' [Homologado Oficial]';
+
+            const pinHtml = `
+                <div class="radar-cam-pin" title="${radar.name} — Máx ${radar.limit} km/h${titleStatus}" style="width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;transform-origin:center center;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
+                    <div style="background:${bgCircle};border:${borderCircle};border-radius:50%;width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:${ringShadow};">
+                        <span style="font-size:${fontSize};font-weight:900;color:${textColor};line-height:1;letter-spacing:${letterSpacing};">${radar.limit}</span>
+                    </div>
+                </div>
+            `;
+
+            const badgeBg = isCuestionado ? '#d97706' : '#dc2626';
+            const badgeLabel = isCuestionado ? '⚠️ COMUNAL CUESTIONADO' : '📷 FOTOMULTA OFICIAL';
+            const limitColor = isCuestionado ? '#b45309' : '#dc2626';
+            const homologacionPill = isCuestionado
+                ? `<div style="margin-top:5px;padding:3px 6px;border-radius:6px;background:#fffbeb;border:1px solid #f59e0b;font-size:10px;font-weight:700;color:#92400e;line-height:1.25;">⚠️ Cinemómetro comunal en ruta nacional sin aval ANSV / Vialidad Nacional o en litigio</div>`
+                : `<div style="margin-top:5px;padding:3px 6px;border-radius:6px;background:#f0fdf4;border:1px solid #86efac;font-size:10px;font-weight:700;color:#166534;line-height:1.25;">✅ Homologado INTI / ANSV / APSV</div>`;
+
+            const popupHtml = `
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;padding:8px 10px;max-width:255px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
+                        <span style="background:${badgeBg};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;">${badgeLabel}</span>
+                        <span style="font-size:11px;font-weight:800;color:${limitColor};">MÁX ${radar.limit} km/h</span>
+                    </div>
+                    <div style="font-size:13px;font-weight:800;line-height:1.2;color:#0f172a;margin-bottom:4px;">${radar.name}</div>
+                    <div style="font-size:11px;color:#64748b;line-height:1.3;">${radar.desc || 'Control electrónico de velocidad'}</div>
+                    ${homologacionPill}
+                </div>
+            `;
+
+            const marker = new MarkerClass(
+                new google.maps.LatLng(radar.lat, radar.lng),
+                pinHtml,
+                popupHtml,
+                20,
+                20
+            );
+            marker.setMap(map);
+            _cameraMarkers.push(marker);
+        });
     }
 
     function _trackUserLocation() {
@@ -388,7 +471,7 @@ const GPSModule = (() => {
                         </div>
                     `;
 
-                    userMarker = new MarkerClass(latlng, html, null, 11, 20);
+                    userMarker = new MarkerClass(latlng, html, null, 22, 40);
                     userMarker.setMap(map);
                     
                     map.panTo(latlng);
@@ -483,7 +566,7 @@ const GPSModule = (() => {
                             </svg>
                         </div>
                     `;
-                    userMarker = new MarkerClass(latlng, html, null, 11, 20);
+                    userMarker = new MarkerClass(latlng, html, null, 22, 40);
                     userMarker.setMap(map);
                     map.panTo(latlng);
                 } else {
@@ -635,7 +718,7 @@ const GPSModule = (() => {
             const carStopB = isIrregular ? '#ef4444' : '#10b981';
 
             const html = `
-                <div style="position: relative; cursor: pointer;">
+                <div style="position: relative; width: 22px; height: 40px; box-sizing: border-box; cursor: pointer;">
                     <!-- Etiqueta Flotante con Nombre y Velocidad -->
                     <div style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: ${bgCol}; border: 1.5px solid ${borderCol}; border-radius: 12px; padding: 2px 7px; color: #ffffff; font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: none; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); z-index: 20;">
                         <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotCol}; box-shadow: 0 0 6px ${dotCol};"></span>
@@ -715,7 +798,7 @@ const GPSModule = (() => {
             `;
 
             if (!_fleetDriverMarkers[driverKey]) {
-                _fleetDriverMarkers[driverKey] = new MarkerClass(latlng, html, popupHtml, 11, 20);
+                _fleetDriverMarkers[driverKey] = new MarkerClass(latlng, html, popupHtml, 22, 40);
                 _fleetDriverMarkers[driverKey].setMap(map);
             } else {
                 _fleetDriverMarkers[driverKey].setPosition(latlng);
@@ -914,7 +997,7 @@ const GPSModule = (() => {
                 markers[id].setPopupContent(popupContent);
             } else {
                 const MarkerClass = _getHTMLMapMarkerClass();
-                const marker = new MarkerClass(latlng, iconHtml, popupContent, 20, 20);
+                const marker = new MarkerClass(latlng, iconHtml, popupContent, 40, 40);
                 marker.setMap(map);
                 markers[id] = marker;
 
@@ -1112,6 +1195,7 @@ const GPSModule = (() => {
             try { _fleetDriverMarkers[k].setMap(null); } catch (e) {}
         }
         _fleetDriverMarkers = {};
+        _clearCameraMarkers();
     }
 
     return { render, saveToken, simulateGPS, toggleMapStyle, playAudio, cleanup };

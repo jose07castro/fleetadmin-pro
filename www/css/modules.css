@@ -2788,14 +2788,17 @@ div[class*="gm-err"] {
     align-items: center;
     justify-content: center;
     width: 60px;
-    height: 80px;
+    height: 60px;
+    box-sizing: border-box;
 }
 
 .radar-car-label {
     position: absolute;
-    top: -24px;
+    bottom: 100%;
+    margin-bottom: 2px;
     left: 50%;
     transform: translateX(-50%);
+    pointer-events: none;
     background: rgba(15, 23, 42, 0.2);
     color: #e2e8f0;
     font-size: 9px; letter-spacing: -0.2px;
