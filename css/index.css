@@ -414,8 +414,10 @@ button {
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
     z-index: 100;
     transition: transform var(--transition-base);
+    overflow: hidden;
 }
 
 .app-sidebar.collapsed {
@@ -428,6 +430,7 @@ button {
     width: 100%;
     position: relative;
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .sidebar-logo {
@@ -447,10 +450,50 @@ button {
     display: none;
 }
 
-.sidebar-nav {
-    flex: 1;
-    padding: var(--space-4);
+/* Contenedor desplazable verticalmente (scrollable) para todo el menú lateral */
+.sidebar-scrollable {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: calc(100vh - 160px);
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
+}
+
+@supports (height: 100dvh) {
+    .sidebar-scrollable {
+        height: calc(100dvh - 160px);
+        max-height: calc(100dvh - 160px);
+    }
+}
+
+.sidebar-scrollable::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-scrollable::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.4);
+    border-radius: var(--radius-full);
+}
+
+.sidebar-scrollable::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.7);
+}
+
+.sidebar-nav {
+    flex: 1 0 auto;
+    padding: var(--space-4);
+    overflow: visible;
 }
 
 .nav-section-title {
@@ -496,6 +539,9 @@ button {
 .sidebar-footer {
     padding: var(--space-4);
     border-top: 1px solid var(--border-color);
+    margin-top: auto;
+    flex-shrink: 0;
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
 }
 
 .sidebar-user {

@@ -52,69 +52,71 @@ const Components = (() => {
                         <img src="assets/sidebar-banner.png" class="sidebar-logo-img" alt="Punto Alertas Branding">
                     </div>
                 </div>
-                <nav class="sidebar-nav">
-                    <div class="nav-section-title">${I18n.t('nav_operations')}</div>
-                    ${navItems.filter(n => n.section === 'ops').map(item => {
-                        if (item.route === 'apply') {
-                            return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
-                                <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                <div class="sidebar-scrollable" id="sidebarScrollable">
+                    <nav class="sidebar-nav">
+                        <div class="nav-section-title">${I18n.t('nav_operations')}</div>
+                        ${navItems.filter(n => n.section === 'ops').map(item => {
+                            if (item.route === 'apply') {
+                                return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
+                                    <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                                    <span>${I18n.t(item.label)}</span>
+                                </div>`;
+                            }
+                            return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
+                                <span class="nav-icon">${item.icon}</span>
                                 <span>${I18n.t(item.label)}</span>
                             </div>`;
-                        }
-                        return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
-                            <span class="nav-icon">${item.icon}</span>
-                            <span>${I18n.t(item.label)}</span>
-                        </div>`;
-                    }).join('')}
+                        }).join('')}
 
-                    <div class="nav-section-title">${I18n.t('nav_management')}</div>
-                    ${navItems.filter(n => n.section === 'mgmt').map(item => {
-                        if (item.route === 'apply') {
-                            return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
-                                <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                        <div class="nav-section-title">${I18n.t('nav_management')}</div>
+                        ${navItems.filter(n => n.section === 'mgmt').map(item => {
+                            if (item.route === 'apply') {
+                                return `<div class="nav-item apply-mobile-btn" onclick="Router.navigate('${item.route}')" style="display:flex !important; visibility:visible !important; opacity:1 !important; margin: var(--space-4) 0; padding: var(--space-3); width: 100% !important; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; color: #10b981; border-radius: var(--radius-lg); justify-content: center; align-items: center; font-weight: 700; font-size: 1.1rem; box-sizing: border-box;">
+                                    <span style="font-size: 1.3rem; margin-right: 8px;">${item.icon}</span>
+                                    <span>${I18n.t(item.label)}</span>
+                                </div>`;
+                            }
+                            return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
+                                <span class="nav-icon">${item.icon}</span>
                                 <span>${I18n.t(item.label)}</span>
                             </div>`;
-                        }
-                        return `<div class="nav-item ${activeRoute === item.route ? 'active' : ''}" onclick="Router.navigate('${item.route}')">
-                            <span class="nav-icon">${item.icon}</span>
-                            <span>${I18n.t(item.label)}</span>
-                        </div>`;
-                    }).join('')}
-                    ${role === 'owner' ? `<div class="nav-item" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); (typeof SettingsModule !== 'undefined' ? SettingsModule.showReportModal() : Router.loadModule('settings').then(() => SettingsModule.showReportModal()))">
-                            <span class="nav-icon">🚩</span>
-                            <span>Veraz de Conductores</span>
-                        </div>` : ''}
-                </nav>
-                <div class="sidebar-footer">
-                    <div class="nav-item" onclick="Components.showSuggestionModal()" style="margin-bottom: var(--space-2); background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
-                        <span class="nav-icon" style="color: #818cf8; margin-right: 8px;">💡</span>
-                        <span>Sugerencia Desarrollador</span>
-                    </div>
-                    <div class="nav-item" onclick="Components.showDonationModal()" style="margin-bottom: var(--space-3); background: rgba(255, 193, 7, 0.08); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
-                        <span class="nav-icon" style="color: #ffc107; margin-right: 8px;">💝</span>
-                        <span>Colaborar App</span>
-                    </div>
-                    <div class="sidebar-user">
-                        ${user?.profilePhoto
-                ? `<img src="${user.profilePhoto}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-                : `<div class="sidebar-user-avatar">${(user?.name || 'U')[0].toUpperCase()}</div>`
-            }
-                        <div class="sidebar-user-info">
-                            <div class="sidebar-user-name">${user?.name || ''}</div>
-                            <div class="sidebar-user-role">${I18n.t('role_' + role)}</div>
+                        }).join('')}
+                        ${role === 'owner' ? `<div class="nav-item" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); (typeof SettingsModule !== 'undefined' ? SettingsModule.showReportModal() : Router.loadModule('settings').then(() => SettingsModule.showReportModal()))">
+                                <span class="nav-icon">🚩</span>
+                                <span>Veraz de Conductores</span>
+                            </div>` : ''}
+                    </nav>
+                    <div class="sidebar-footer">
+                        <div class="nav-item" onclick="Components.showSuggestionModal()" style="margin-bottom: var(--space-2); background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
+                            <span class="nav-icon" style="color: #818cf8; margin-right: 8px;">💡</span>
+                            <span>Sugerencia Desarrollador</span>
                         </div>
+                        <div class="nav-item" onclick="Components.showDonationModal()" style="margin-bottom: var(--space-3); background: rgba(255, 193, 7, 0.08); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107; border-radius: var(--radius-md); font-weight: 700; display: flex; align-items: center; cursor: pointer;">
+                            <span class="nav-icon" style="color: #ffc107; margin-right: 8px;">💝</span>
+                            <span>Colaborar App</span>
+                        </div>
+                        <div class="sidebar-user">
+                            ${user?.profilePhoto
+                    ? `<img src="${user.profilePhoto}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+                    : `<div class="sidebar-user-avatar">${(user?.name || 'U')[0].toUpperCase()}</div>`
+                }
+                            <div class="sidebar-user-info">
+                                <div class="sidebar-user-name">${user?.name || ''}</div>
+                                <div class="sidebar-user-role">${I18n.t('role_' + role)}</div>
+                            </div>
+                        </div>
+                        ${shiftExitLocked ? `
+                        <div class="nav-item" onclick="if(typeof App!=='undefined'&&App.showShiftExitBlockedModal)App.showShiftExitBlockedModal();" title="Turno activo en curso: Debes finalizar el turno formalmente para salir" style="margin-top: var(--space-2); opacity: 0.5; cursor: not-allowed; background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-md);">
+                            <span class="nav-icon">🔒</span>
+                            <span>Turno activo (Salida bloqueada)</span>
+                        </div>
+                        ` : `
+                        <div class="nav-item" onclick="App.logout()" style="margin-top: var(--space-2);">
+                            <span class="nav-icon">🚪</span>
+                            <span>${I18n.t('nav_logout')}</span>
+                        </div>
+                        `}
                     </div>
-                    ${shiftExitLocked ? `
-                    <div class="nav-item" onclick="if(typeof App!=='undefined'&&App.showShiftExitBlockedModal)App.showShiftExitBlockedModal();" title="Turno activo en curso: Debes finalizar el turno formalmente para salir" style="margin-top: var(--space-2); opacity: 0.5; cursor: not-allowed; background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.35); border-radius: var(--radius-md);">
-                        <span class="nav-icon">🔒</span>
-                        <span>Turno activo (Salida bloqueada)</span>
-                    </div>
-                    ` : `
-                    <div class="nav-item" onclick="App.logout()" style="margin-top: var(--space-2);">
-                        <span class="nav-icon">🚪</span>
-                        <span>${I18n.t('nav_logout')}</span>
-                    </div>
-                    `}
                 </div>
             </aside>
         `;

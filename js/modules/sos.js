@@ -775,43 +775,24 @@ const SOSModule = (() => {
             return;
         }
         if (Notification.permission === 'denied') {
-            console.warn('🚨 SOS NOTIFY: ❌ Permisos denegados — mostrando aviso persistente');
-            Components.showToast('⚠️ Notificaciones SOS bloqueadas. Andá a Configuración del navegador y activá las notificaciones para recibir alertas de emergencia.', 'danger');
+            console.log('🚨 SOS NOTIFY: Permisos de notificación denegados en navegador');
             return;
         }
-        // Pedir permiso (estado: 'default')
-        Notification.requestPermission().then(permission => {
-            console.log('🚨 SOS NOTIFY: Permiso:', permission);
-            if (permission === 'granted') {
-                Components.showToast('🔔 Notificaciones SOS activadas — recibirás alertas en segundo plano', 'success');
-                if (_permissionRetryTimer) {
-                    clearInterval(_permissionRetryTimer);
-                    _permissionRetryTimer = null;
-                }
-            } else {
-                Components.showToast('⚠️ Sin notificaciones no recibirás alertas SOS en segundo plano', 'warning');
-            }
-        });
+        // Pedir permiso (estado: 'default') silenciosamente sin toasts flotantes
+        try {
+            Notification.requestPermission().then(permission => {
+                console.log('🚨 SOS NOTIFY: Permiso obtenido:', permission);
+            }).catch(e => {
+                console.warn('🚨 SOS NOTIFY: Error al solicitar permisos:', e);
+            });
+        } catch (e) {
+            console.warn('🚨 SOS NOTIFY: Excepción al solicitar permisos:', e);
+        }
     }
 
-    // Para conductores: solicitar permisos de forma persistente
+    // Para conductores: solicitar permisos de forma silenciosa
     function _requestMandatoryNotificationPermission() {
         _requestNotificationPermission();
-
-        // Si no estamos granted, reintentar cada 30s con toast
-        if ('Notification' in window && Notification.permission === 'default') {
-            _permissionRetryTimer = setInterval(() => {
-                if (Notification.permission === 'granted') {
-                    clearInterval(_permissionRetryTimer);
-                    _permissionRetryTimer = null;
-                    return;
-                }
-                if (Notification.permission === 'default') {
-                    Components.showToast('🔔 Activá las notificaciones para recibir alertas SOS de emergencia', 'warning');
-                    _requestNotificationPermission();
-                }
-            }, 30000);
-        }
     }
 
     // =============================================
