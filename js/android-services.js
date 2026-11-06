@@ -204,7 +204,10 @@ const AndroidServices = (() => {
             // --- INTEGRACIÓN DE COPILOTO DE RADARES (siempre activo) ---
             if (typeof CopilotModule !== 'undefined') {
                 // LocationTrackingService.java ya envía la velocidad en km/h (getSpeed() * 3.6)
-                CopilotModule.checkProximity(lat, lng, speed, validBearing, null, 'kmh');
+                const currentSpeedKmH = (typeof speed === 'number' && !isNaN(speed) && speed >= 0)
+                    ? Math.round(speed)
+                    : null;
+                CopilotModule.checkProximity(lat, lng, currentSpeedKmH, validBearing, null, 'kmh');
             }
 
             // Validar que estemos en turno activo para enviar a Firebase
@@ -621,15 +624,21 @@ const AndroidServices = (() => {
         if (typeof window === 'undefined' || !window.speechSynthesis) return false;
         if (typeof window.unlockGlobalAudio === 'function') window.unlockGlobalAudio();
 
+        const chunks = _splitIntoShortSentences(text);
+        if (chunks.length === 0) return false;
+
+        if (options.enqueue && _isSpeakingTtsQueue) {
+            // Encolar al final de la cola activa sin cortar la frase en curso
+            _ttsSentenceQueue.push(...chunks);
+            return true;
+        }
+
         try {
             window.speechSynthesis.cancel();
         } catch (_) {}
         window._faActiveSpeechUtterances.clear();
         _ttsSentenceQueue = [];
         _isSpeakingTtsQueue = false;
-
-        const chunks = _splitIntoShortSentences(text);
-        if (chunks.length === 0) return false;
 
         _ttsSentenceQueue = [...chunks];
         _startTtsHeartbeat();
@@ -700,12 +709,22 @@ const AndroidServices = (() => {
         }
     }
 
-    function speak(text) {
+    function speak(text, options = {}) {
         if (!text || typeof text !== 'string') return false;
         const cleanText = text.trim();
         if (!cleanText) return false;
 
-        // 1. Si existe el Bridge Nativo (APK Android), vocalizar por el servicio nativo
+        // 1. Si es aviso obligatorio de fotomulta/exceso, priorizar speakMandatory nativo
+        if (options.mandatory && _hasNativeBridge() && typeof window.NativeServiceBridge.speakMandatory === 'function') {
+            try {
+                window.NativeServiceBridge.speakMandatory(cleanText, !!options.enqueue);
+                return true;
+            } catch (e) {
+                console.warn('⚠️ Error en NativeServiceBridge.speakMandatory:', e);
+            }
+        }
+
+        // 2. Si existe el Bridge Nativo (APK Android), vocalizar por el servicio nativo
         if (_hasNativeBridge() && typeof window.NativeServiceBridge.speak === 'function') {
             try {
                 window.NativeServiceBridge.speak(cleanText);
@@ -715,8 +734,8 @@ const AndroidServices = (() => {
             }
         }
 
-        // 2. Fallback universal Web Speech API con motor anti-recorte y encadenamiento de oraciones
-        return speakWithAntiCutoff(cleanText);
+        // 3. Fallback universal Web Speech API con motor anti-recorte y encadenamiento de oraciones
+        return speakWithAntiCutoff(cleanText, options);
     }
 
     function playAudio(audioUrl, fallbackText) {

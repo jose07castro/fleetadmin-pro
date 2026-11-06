@@ -807,11 +807,14 @@ const GPSPermissions = (() => {
                     clearTimeout(timeoutId);
                     _permissionState = 'granted';
                     if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+                    const hasSpd = typeof p.coords.speed === 'number' && !isNaN(p.coords.speed) && p.coords.speed >= 0;
+                    const speedKmH = hasSpd ? Math.round(p.coords.speed * 3.6) : null;
                     resolve({
                         lat: p.coords.latitude,
                         lng: p.coords.longitude,
                         heading: p.coords.heading || 0,
-                        speed: (p.coords.speed || 0) * 3.6
+                        speed: speedKmH,
+                        accuracy: p.coords.accuracy
                     });
                 };
 
@@ -822,18 +825,19 @@ const GPSPermissions = (() => {
 
                 // Prioridad absoluta a API Nativa de Capacitor si existe (funciona perfecto en 2do plano con BackgroundMode)
                 if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Geolocation) {
-                    Capacitor.Plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 })
+                    Capacitor.Plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 })
                         .then(handleSuccess)
                         .catch(handleError);
                 } else {
-                    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
+                    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 });
                 }
             });
 
             _cachedPosition = pos;
 
             // --- INTEGRACIÓN DE COPILOTO DE RADARES ---
-            if (typeof CopilotModule !== 'undefined') {
+            const isNativeGpsActive = typeof AndroidServices !== 'undefined' && typeof AndroidServices.isNativeGPSAlive === 'function' && AndroidServices.isNativeGPSAlive();
+            if (typeof CopilotModule !== 'undefined' && !isNativeGpsActive) {
                 // pos.speed ya fue convertido a km/h en handleSuccess
                 CopilotModule.checkProximity(pos.lat, pos.lng, pos.speed, pos.heading, pos.accuracy, 'kmh');
             }
@@ -842,7 +846,7 @@ const GPSPermissions = (() => {
                 pos.lat,
                 pos.lng,
                 pos.heading,
-                pos.speed,
+                pos.speed || 0,
                 batteryLevel,
                 'force_send_position'
             );
@@ -871,15 +875,18 @@ const GPSPermissions = (() => {
     function _onCopilotPosition(pos) {
         if (!pos || !pos.coords) return;
         _lastCopilotFixTime = Date.now();
+        const hasSpd = typeof pos.coords.speed === 'number' && !isNaN(pos.coords.speed) && pos.coords.speed >= 0;
+        const currentSpeedKmH = hasSpd ? Math.round(pos.coords.speed * 3.6) : null;
         window._cachedGpsPosition = {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
-            speed: pos.coords.speed,
+            speed: currentSpeedKmH,
             heading: pos.coords.heading,
             accuracy: pos.coords.accuracy,
             time: _lastCopilotFixTime
         };
-        if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function') {
+        const isNativeGpsActive = typeof AndroidServices !== 'undefined' && typeof AndroidServices.isNativeGPSAlive === 'function' && AndroidServices.isNativeGPSAlive();
+        if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.checkProximity === 'function' && !isNativeGpsActive) {
             CopilotModule.checkProximity(pos.coords.latitude, pos.coords.longitude, pos.coords.speed, pos.coords.heading, pos.coords.accuracy, 'ms');
         }
     }
@@ -903,7 +910,7 @@ const GPSPermissions = (() => {
                 (err) => {
                     console.warn('📡 [COPILOTO-UNIVERSAL] Fix inicial diferido:', err.message);
                 },
-                { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
             );
         }
 
@@ -917,7 +924,7 @@ const GPSPermissions = (() => {
                             console.warn('📡 [COPILOTO-UNIVERSAL] Error GPS watch:', err.message);
                         }
                     },
-                    { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
                 );
                 console.log('📡 [COPILOTO-UNIVERSAL] ✅ watchPosition activo, ID:', _copilotWatchId);
             } catch(e) {
@@ -934,7 +941,7 @@ const GPSPermissions = (() => {
                     navigator.geolocation.getCurrentPosition(
                         _onCopilotPosition,
                         () => {},
-                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 15000 }
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 2000 }
                     );
                 }
             }, 5000);

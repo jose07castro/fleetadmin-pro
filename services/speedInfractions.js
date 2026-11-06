@@ -29,7 +29,10 @@ function _loadRadars() {
     try {
         const radarPath = path.join(__dirname, '..', 'data', 'static_radars.json');
         if (fs.existsSync(radarPath)) {
-            _staticRadars = JSON.parse(fs.readFileSync(radarPath, 'utf8'));
+            _staticRadars = JSON.parse(fs.readFileSync(radarPath, 'utf8')).map(r => ({
+                ...r,
+                maxSpeed: Number(r.maxSpeed ?? r.limit ?? 60)
+            }));
             console.log(`📡 [SPEED-INFRACTIONS] Cargados ${_staticRadars.length} radares oficiales para monitoreo.`);
         } else {
             console.warn('⚠️ [SPEED-INFRACTIONS] No se encontró data/static_radars.json');
@@ -292,9 +295,9 @@ async function checkPosition({ driverId, driverName, lat, lng, speed, heading, s
     const PROXIMITY_METERS = 35;
 
     for (const radar of _staticRadars) {
-        const limit = radar.limit || 40;
-        // Solo evaluar radares si la velocidad supera el límite
-        if (speedNum <= limit) continue;
+        const maxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 40);
+        // Solo evaluar radares si la velocidad en km/h supera la máxima permitida
+        if (speedNum <= maxSpeed) continue;
 
         const dist = getDistanceMeters(lat, lng, radar.lat, radar.lng);
         if (dist <= PROXIMITY_METERS) {

@@ -146,6 +146,21 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
     private BgRadarApproach activeBgApproach = null;
+
+    // 2. Mapa de estado global persistente fuera de las funciones de escucha
+    public static class RadarTrackingState {
+        public boolean initialAlertDone;
+        public long lastOverspeedAlertTime;
+        public boolean passedCamera = false;
+        public float minDistance = 9999f;
+
+        public RadarTrackingState(boolean initialAlertDone, long lastOverspeedAlertTime) {
+            this.initialAlertDone = initialAlertDone;
+            this.lastOverspeedAlertTime = lastOverspeedAlertTime;
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, RadarTrackingState> radarTrackingState = new java.util.concurrent.ConcurrentHashMap<>();
     private ToneGenerator bgToneGen = null;
     private final LinkedList<Location> recentLocations = new LinkedList<>();
 
@@ -1060,111 +1075,68 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             long now = System.currentTimeMillis();
             Float reliableBearing = (lastBearing >= 0) ? lastBearing : getReliableBearing(myLocation);
 
-            // Umbral dinámico de proximidad según velocidad:
-            // Si velocidadKmH > 60: radioAlerta = 500m. Si velocidadKmH <= 60 (o reposo/no disponible): radioAlerta = 300m.
-            float speedKmh = myLocation.hasSpeed() ? (myLocation.getSpeed() * 3.6f) : (lastSpeed > 0 ? lastSpeed : 0f);
-            int radioAlerta = (speedKmh > 60.0f) ? 500 : 300;
-
-            // 1. SEGUIMIENTO DE APROXIMACIÓN A RADAR ACTIVO EN SEGUNDO PLANO
-            if (activeBgApproach != null) {
-                RosarioRadars.StaticRadar radar = activeBgApproach.radar;
-                float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                                           radar.lat, radar.lng);
-                CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
-
-                // A) Cámara superada (<= 18m, alongTrack <= 0 tras estar cerca, o distancia aumentó tras haber estado < 35m)
-                boolean passedByAlongTrack = cr.alongTrack <= 0 && distance <= 40.0f;
-                boolean passedByDistanceIncrease = activeBgApproach.minDistance < 35.0f && distance > activeBgApproach.minDistance + 10.0f;
-                if (distance <= 18.0f || passedByAlongTrack || passedByDistanceIncrease) {
-                    Log.i(TAG, "📷 [RADAR NATIVO] 🏁 Cámara superada en background: " + radar.name);
-                    playBgPassedTone();
-                    lastRadarAlertTimestamps.put(radar.id, now);
-                    activeBgApproach = null;
-                    if (activeOverlayView != null) {
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            if (activeOverlayDistView != null) activeOverlayDistView.setText("  🏁 CÁMARA SUPERADA");
-                            if (activeOverlaySpeedGauge != null) {
-                                activeOverlaySpeedGauge.setText("✅ Zona superada");
-                                activeOverlaySpeedGauge.setTextColor(Color.parseColor("#6EE7B7"));
-                            }
-                            overlayDismissHandler.removeCallbacksAndMessages(null);
-                            overlayDismissHandler.postDelayed(() -> hideFloatingOverlay(), 6000);
-                        });
-                    }
-                    return;
-                }
-
-                // B) Vehículo dobló, se alejó o se desvió lateralmente (> 35m)
-                boolean isMovingAway = distance > activeBgApproach.lastDistance + 9.0f;
-                if (isMovingAway || (!cr.aligned && distance > 35.0f)) {
-                    Log.i(TAG, "📷 [RADAR NATIVO] ↪️ Vehículo dobló o se desvió de corredor, cancelando: " + radar.name);
-                    activeBgApproach = null;
-                    hideFloatingOverlay();
-                    return;
-                }
-
-                // Actualizar distancias
-                if (distance < activeBgApproach.minDistance) {
-                    activeBgApproach.minDistance = distance;
-                }
-                activeBgApproach.lastDistance = distance;
-
-                // Actualizar overlay flotante en vivo
-                if (activeOverlayView != null) {
-                    final int spd = Math.round(lastSpeed);
-                    final int dst = Math.round(distance);
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        updateOverlayLiveViews(radar.limit, spd, dst, null);
-                    });
-                }
-
-                // C) POLÍTICA DE AVISOS EN ZONA DE RADAR (Punto Alertas):
-                // 1. Supresión de avisos repetitivos: Mientras permanezca en la zona del radar,
-                //    si la velocidad actual es menor o igual a la máxima (curSpeed <= maxSpeed), silencio total.
-                // 2. Alerta exclusiva por exceso de velocidad: Si curSpeed > maxSpeed,
-                //    disparar aviso con mensaje exacto "Reduce la velocidad, vas muy rápido" con cooldown de 12 segundos.
-                int maxSpeed = radar.limit;
-                float curSpeed = lastSpeed > 0 ? lastSpeed : 0f;
-                if (curSpeed > maxSpeed) {
-                    long SPEED_COOLDOWN_MS = 12000L;
-                    if (now - activeBgApproach.lastSpeedAlertTime >= SPEED_COOLDOWN_MS) {
-                        activeBgApproach.lastSpeedAlertTime = now;
-                        String speedWarningMsg = "Reduce la velocidad, vas muy rápido";
-                        Log.w(TAG, "🚨 [RADAR NATIVO-EXCESO] " + Math.round(curSpeed) + " km/h > " + maxSpeed + " km/h: " + speedWarningMsg);
-                        speakMandatory(speedWarningMsg);
-                    }
-                }
-                // Si curSpeed <= maxSpeed: Silencio total. No emitir avisos ni pitidos.
-                return;
-            }
-
-            // 2. BUSCAR NUEVA FOTOMULTA OFICIAL DENTRO DE LA VENTANA DINÁMICA (radioAlerta a 50m)
-            RosarioRadars.StaticRadar bestRadar = null;
-            float bestRadarDistance = Float.MAX_VALUE;
+            // 1. Conversión estricta de metros por segundo (m/s) a kilómetros por hora (km/h)
+            final int currentSpeedKmH = Math.round(myLocation.hasSpeed() ? (myLocation.getSpeed() * 3.6f) : (lastSpeed > 0 ? lastSpeed : 0f));
 
             for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
-                float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
-                                                           radar.lat, radar.lng);
+                double distance = getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), radar.lat, radar.lng);
 
-                if (distance <= (radioAlerta + 50.0f)) {
-                    long lastTime = lastRadarAlertTimestamps.getOrDefault(radar.id, 0L);
-                    if (now - lastTime > RADAR_COOLDOWN_MS) {
-                        CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, distance);
-                        // Alertar únicamente dentro del corredor útil frontal (entre radioAlerta y 50m)
-                        if (cr.aligned && cr.alongTrack >= 50.0 && cr.alongTrack <= (double)radioAlerta) {
-                            if (distance < bestRadarDistance) {
-                                bestRadarDistance = distance;
-                                bestRadar = radar;
-                            }
+                // Inicializar el estado individual del radar si no existe
+                RadarTrackingState state = radarTrackingState.get(radar.id);
+                if (state == null) {
+                    state = new RadarTrackingState(false, 0L);
+                    radarTrackingState.put(radar.id, state);
+                }
+
+                // 4. Histéresis de salida: limpiar el estado recién cuando el vehículo supera los 580 metros
+                if (distance > 580.0) {
+                    radarTrackingState.remove(radar.id);
+                    continue;
+                }
+
+                int radarMaxSpeed = radar.maxSpeed;
+
+                // 2. Control dentro del radio de aproximación (<= 500 metros)
+                if (distance <= 500.0) {
+                    // Emitir aviso de proximidad UNA SOLA VEZ
+                    if (!state.initialAlertDone) {
+                        speakRadarConcise(radar, 500);
+                        state.initialAlertDone = true;
+                    }
+
+                    // 3. Disparador exclusivo de exceso de velocidad (requiere alerta inicial previa)
+                    if (state.initialAlertDone && currentSpeedKmH > radarMaxSpeed) {
+                        long currentTime = System.currentTimeMillis();
+                        long cooldownPeriod = 12000L; // 12 segundos en milisegundos
+
+                        if (currentTime - state.lastOverspeedAlertTime >= cooldownPeriod) {
+                            speakMandatory("Reduce la velocidad. Máxima permitida: " + radarMaxSpeed + " km/h.", true);
+                            state.lastOverspeedAlertTime = currentTime;
+                        }
+                    }
+
+                    // Actualizar overlay flotante si está visible
+                    if (activeOverlayView != null) {
+                        final int spd = currentSpeedKmH;
+                        final int dst = (int) Math.round(distance);
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            updateOverlayLiveViews(radar.maxSpeed, spd, dst, null);
+                        });
+                    }
+
+                    // Detección de paso de cámara
+                    if (!state.passedCamera && distance <= 20.0) {
+                        state.passedCamera = true;
+                        playBgPassedTone();
+                        if (activeOverlayView != null) {
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                if (activeOverlayDistView != null) activeOverlayDistView.setText("  🏁 CÁMARA SUPERADA");
+                                overlayDismissHandler.removeCallbacksAndMessages(null);
+                                overlayDismissHandler.postDelayed(() -> hideFloatingOverlay(), 4000);
+                            });
                         }
                     }
                 }
-            }
-
-            if (bestRadar != null) {
-                activeBgApproach = new BgRadarApproach(bestRadar, bestRadarDistance, radioAlerta, now);
-                speakRadarConcise(bestRadar, radioAlerta);
-                return;
             }
 
             // 3. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
@@ -1180,9 +1152,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
                                                                    alert.lat, alert.lng);
 
+                        final float radioAlerta = 500.0f;
                         if (distance <= radioAlerta) {
                             // Si el chofer está detenido (< 7 km/h) y muy cerca (< 70m), evitar locución en bucle
-                            if (speedKmh < 7.0f && distance < 70.0f) {
+                            if (currentSpeedKmH < 7 && distance < 70.0f) {
                                 continue;
                             }
 
@@ -1945,16 +1918,20 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
      * Locución obligatoria para fotomultas: ignora silencio total y suena con volumen completo del SO.
      */
     public void speakMandatory(String text) {
+        speakMandatory(text, false);
+    }
+
+    public void speakMandatory(String text, boolean enqueue) {
         if (text == null || text.trim().isEmpty()) return;
         long now = System.currentTimeMillis();
-        // Evitar repetición idéntica en menos de 8 segundos
-        if (text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 8000) {
+        // Evitar repetición idéntica en menos de 4 segundos
+        if (!enqueue && text.trim().equalsIgnoreCase(lastSpokenText.trim()) && (now - lastSpokenTime) < 4000) {
             return;
         }
         lastSpokenTime = now;
         lastSpokenText = text;
 
-        Log.i(TAG, "🔊 [TTS-MANDATORY] speak obligatorio al volumen del SO (turno: " + isShiftActive + "): \"" + text + "\"");
+        Log.i(TAG, "🔊 [TTS-MANDATORY] speak obligatorio (enqueue=" + enqueue + ", turno: " + isShiftActive + "): \"" + text + "\"");
         if (isTtsInitialized && tts != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 try {
@@ -1968,7 +1945,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             requestNavigationAudioFocus();
             Bundle params = new Bundle();
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, isShiftActive ? 1.0f : alertVolume);
-            int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "mandatory_" + System.currentTimeMillis());
+            int queueMode = enqueue ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH;
+            int result = tts.speak(text, queueMode, params, "mandatory_" + System.currentTimeMillis());
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "❌ [TTS-MANDATORY] tts.speak() returned ERROR");
                 releaseNavigationAudioFocus();
@@ -1978,6 +1956,48 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 if (pendingSpeakQueue.size() < 10) {
                     pendingSpeakQueue.add(text);
                 }
+            }
+        }
+    }
+
+    public static void speakMandatoryText(String text, boolean enqueue, Context context) {
+        if (text == null || text.trim().isEmpty()) return;
+        if (instance != null && instance.isTtsInitialized && instance.tts != null) {
+            instance.speakMandatory(text, enqueue);
+        } else {
+            Log.i(TAG, "🔊 [TTS-MANDATORY] Fallback para: " + text);
+            if (context != null) {
+                initFallbackTts(context);
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    try {
+                        if (staticFallbackTts != null && isStaticFallbackTtsReady) {
+                            Bundle params = new Bundle();
+                            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+                            int queueMode = enqueue ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH;
+                            staticFallbackTts.speak(text, queueMode, params, "fallback_mand_" + System.currentTimeMillis());
+                        }
+                    } catch (Exception ex) {
+                        Log.e(TAG, "❌ Error in fallback speakMandatoryText:", ex);
+                    }
+                });
+            }
+        }
+    }
+
+    public static void syncRadarStateFromJs(String radarId, boolean initialAlertDone, long lastOverspeedAlertTime, boolean passedCamera, boolean remove) {
+        if (radarId == null) return;
+        if (remove) {
+            radarTrackingState.remove(radarId);
+        } else {
+            RadarTrackingState state = radarTrackingState.get(radarId);
+            if (state == null) {
+                state = new RadarTrackingState(initialAlertDone, lastOverspeedAlertTime);
+                state.passedCamera = passedCamera;
+                radarTrackingState.put(radarId, state);
+            } else {
+                state.initialAlertDone = initialAlertDone;
+                state.lastOverspeedAlertTime = lastOverspeedAlertTime;
+                state.passedCamera = passedCamera;
             }
         }
     }

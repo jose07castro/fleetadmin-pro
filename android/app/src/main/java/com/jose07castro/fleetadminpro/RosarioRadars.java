@@ -23,6 +23,7 @@ public class RosarioRadars {
         public final double lat;
         public final double lng;
         public final int limit;
+        public final int maxSpeed;
         public final String desc;
         public final int[] validHeadings;
         public final String tipoHomologacion;
@@ -41,6 +42,7 @@ public class RosarioRadars {
             this.lat = lat;
             this.lng = lng;
             this.limit = limit;
+            this.maxSpeed = limit;
             this.desc = desc;
             this.validHeadings = validHeadings;
             this.tipoHomologacion = tipoHomologacion != null ? tipoHomologacion : HOMOLOGACION_OFICIAL;

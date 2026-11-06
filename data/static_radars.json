@@ -7,7 +7,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "ESPAÑA Y SAN LORENZO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_2",
@@ -17,7 +18,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "MENDOZA Y PROVINCIAS UNIDAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_3",
@@ -27,7 +29,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "LAPRIDA FRANCISCO NARCISO 850",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_4",
@@ -37,7 +40,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "NECOCHEA GRAL. MARIANO 2650",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_5",
@@ -47,7 +51,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "AYACUCHO BATALLA DE Y ARIJON MANUEL",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_6",
@@ -57,7 +62,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "MAIPU Y MENDOZA",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_7",
@@ -67,7 +73,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "CORDOBA Y LAGOS OVIDIO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_8",
@@ -77,7 +84,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "SANTA FE Y PUEYRREDON JUAN MARTIN DE",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_9",
@@ -87,7 +95,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "SANTA FE 1750",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_10",
@@ -97,7 +106,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "LAPRIDA FRANCISCO NARCISO Y TRES DE FEBRERO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_11",
@@ -107,7 +117,8 @@
     "limit": 40,
     "desc": "Cruce en rojo / Senda peatonal",
     "address": "SAN LORENZO 1550",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 40
   },
   {
     "id": "radar_rosario_12",
@@ -117,7 +128,8 @@
     "limit": 50,
     "desc": "Totem disuasorio.",
     "address": "COLOMBRES DR. CARLOS G 1071",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_13",
@@ -127,7 +139,8 @@
     "limit": 50,
     "desc": "Tótem disuasorio de velocidad",
     "address": "COLOMBRES DR. CARLOS G 930",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_14",
@@ -137,7 +150,8 @@
     "limit": 50,
     "desc": "Exceso de velocidad.",
     "address": "FRONDIZI ARTURO 260",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_15",
@@ -147,7 +161,8 @@
     "limit": 50,
     "desc": "Cruce en rojo",
     "address": "RONDEAU GRAL. JOSE Y BAIGORRIA JUAN BAUTISTA",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_16",
@@ -157,7 +172,8 @@
     "limit": 50,
     "desc": "Cruce en rojo",
     "address": "MENDOZA Y AVELLANEDA NICOLAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_17",
@@ -167,7 +183,8 @@
     "limit": 50,
     "desc": "Invasión ciclovía",
     "address": "CAFFERATA JUAN MANUEL 850",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_18",
@@ -177,7 +194,8 @@
     "limit": 50,
     "desc": "Invasión ciclovía",
     "address": "MENDOZA 5350",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_19",
@@ -187,7 +205,8 @@
     "limit": 50,
     "desc": "Invasión de ciclovía",
     "address": "COLOMBRES DR. CARLOS G 1451",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_20",
@@ -197,7 +216,8 @@
     "limit": 50,
     "desc": "Invación carril exclusivo",
     "address": "CORDOBA 3050",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_21",
@@ -207,7 +227,8 @@
     "limit": 50,
     "desc": "Invasión carril exclusivo",
     "address": "SANTA FE 2850",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 50
   },
   {
     "id": "radar_rosario_22",
@@ -217,7 +238,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "ARIJON MANUEL 750",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_23",
@@ -227,7 +249,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad",
     "address": "BELGRANO GRAL. MANUEL 2131",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_24",
@@ -237,7 +260,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "CASAS CASIANO Y SORRENTO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_26",
@@ -247,7 +271,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "LOPEZ ESTANISLAO Y FRANCIA",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_27",
@@ -257,7 +282,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PASO JUAN JOSE Y CULLEN DOMINGO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_28",
@@ -267,7 +293,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PELLEGRINI CARLOS Y GUTENBERG JUAN",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_29",
@@ -277,7 +304,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PROVINCIAS UNIDAS Y PELLEGRINI CARLOS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_30",
@@ -287,7 +315,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PELLEGRINI CARLOS Y LAGOS OVIDIO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_31",
@@ -297,7 +326,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "OROÑO NICASIO Y SEGUI JUAN FRANCISCO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_32",
@@ -307,7 +337,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PELLEGRINI CARLOS Y ROUILLON ALFREDO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_33",
@@ -317,7 +348,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PERON PTE. JUAN DOMINGO Y ROUILLON ALFREDO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_34",
@@ -327,7 +359,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "SABIN ALBERT Y AVELLANEDA NICOLAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_35",
@@ -337,7 +370,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "URIBURU PTE. JOSE EVARISTO Y AVELLANEDA NICOLAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_36",
@@ -347,7 +381,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "RONDEAU GRAL. JOSE 1250",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_37",
@@ -357,7 +392,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "PELLEGRINI CARLOS 1551",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_38",
@@ -367,7 +403,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "PROVINCIAS UNIDAS 750",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_39",
@@ -377,7 +414,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "PROVINCIAS UNIDAS 2550",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_40",
@@ -387,7 +425,8 @@
     "limit": 60,
     "desc": "Tótem disuasorio de velocidad",
     "address": "OROÑO NICASIO 2170",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_41",
@@ -397,7 +436,8 @@
     "limit": 60,
     "desc": "Tótem disuasorio de velocidad",
     "address": "LOPEZ ESTANISLAO 2530",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_42",
@@ -407,7 +447,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "BELGRANO GRAL. MANUEL 181 BIS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_43",
@@ -417,7 +458,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad",
     "address": "LOPEZ ESTANISLAO 2531",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_44",
@@ -427,7 +469,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "URIBURU PTE. JOSE EVARISTO 1185",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_45",
@@ -437,7 +480,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "SORRENTO 6431",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_46",
@@ -447,7 +491,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "VEINTISIETE DE FEBRERO Y MATIENZO CAPITAN BENJAMIN",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_47",
@@ -457,7 +502,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "NEWBERY JORGE 7915",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_48",
@@ -467,7 +513,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "ILLIA PTE. ARTURO U. 1402",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_49",
@@ -477,7 +524,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "SEGUI JUAN FRANCISCO 3820",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_50",
@@ -487,7 +535,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "AVELLANEDA NICOLAS 2951",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_51",
@@ -497,7 +546,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "SORRENTO Y JUAN PABLO II",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_52",
@@ -507,7 +557,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "LAGOS OVIDIO Y ARIJON MANUEL",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_53",
@@ -517,7 +568,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "VEINTISIETE DE FEBRERO Y FRANCIA",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_54",
@@ -527,7 +579,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "AVELLANEDA NICOLAS Y CARBALLO LUIS CANDIDO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_55",
@@ -537,7 +590,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "BELGRANO GRAL. MANUEL Y DOMINGUEZ, RAUL",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_56",
@@ -547,7 +601,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "FRANCIA Y PERON PTE. JUAN DOMINGO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_57",
@@ -557,7 +612,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PELLEGRINI CARLOS Y CORRIENTES",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_58",
@@ -567,7 +623,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "OROÑO NICASIO Y URIBURU PTE. JOSE EVARISTO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_59",
@@ -577,7 +634,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PERON PTE. JUAN DOMINGO Y PROVINCIAS UNIDAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_60",
@@ -587,7 +645,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "SAN MARTIN GRAL. JOSE Y URIBURU PTE. JOSE EVARISTO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_61",
@@ -597,7 +656,8 @@
     "limit": 60,
     "desc": "Invasión ciclovía",
     "address": "LAGOS OVIDIO 3550",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_62",
@@ -607,7 +667,8 @@
     "limit": 60,
     "desc": "Tótem disuasorio de velocidad",
     "address": "BELGRANO GRAL. MANUEL 180 BIS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_63",
@@ -617,7 +678,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "SALTA Y CALLAO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_64",
@@ -627,7 +689,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "RONDEAU GRAL. JOSE 3860",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_65",
@@ -637,7 +700,8 @@
     "limit": 60,
     "desc": "Control de Exceso de Velocidad",
     "address": "RONDEAU GRAL. JOSE 2941",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_66",
@@ -647,7 +711,8 @@
     "limit": 60,
     "desc": "Control de Exceso de Velocidad",
     "address": "URIBURU PTE. JOSE EVARISTO 3555",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_67",
@@ -657,7 +722,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "AVELLANEDA NICOLAS Y SANTA FE",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_68",
@@ -667,7 +733,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "AVELLANEDA NICOLAS Y PERON PTE. JUAN DOMINGO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_69",
@@ -677,7 +744,8 @@
     "limit": 60,
     "desc": "Giro Indebido",
     "address": "SAN MARTIN GRAL. JOSE Y GARIBALDI JOSE",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_70",
@@ -687,7 +755,8 @@
     "limit": 60,
     "desc": "Exceso de velocidad.",
     "address": "CARRASCO EUDORO 3394",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_71",
@@ -697,7 +766,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "OROÑO NICASIO Y VEINTISIETE DE FEBRERO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_72",
@@ -707,7 +777,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "AVELLANEDA NICOLAS Y SEGUI JUAN FRANCISCO",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_73",
@@ -717,7 +788,8 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "PELLEGRINI CARLOS Y AVELLANEDA NICOLAS",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rosario_74",
@@ -727,7 +799,8 @@
     "limit": 70,
     "desc": "Cruce en rojo",
     "address": "OROÑO NICASIO Y BATLLE Y ORDOÑEZ JOSE",
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 70
   },
   {
     "id": "radar_rosario_segui_francia",
@@ -741,7 +814,8 @@
       45,
       225
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_circ_1",
@@ -756,7 +830,8 @@
       177,
       357
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_circ_ovidio_lagos",
@@ -771,7 +846,8 @@
       124,
       304
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_circ_3",
@@ -786,7 +862,8 @@
       140,
       320
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_circ_5",
@@ -801,7 +878,8 @@
       36,
       216
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_circ_6",
@@ -816,7 +894,8 @@
       178,
       358
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 70
   },
   {
     "id": "radar_rn174_islas_9",
@@ -831,7 +910,8 @@
       60,
       240
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn174_islas_20",
@@ -846,7 +926,8 @@
       62,
       242
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn174_victoria_57",
@@ -861,7 +942,8 @@
       44,
       224
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rp21_pesther_279",
@@ -876,7 +958,8 @@
       144,
       324
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rp21_alvear_284",
@@ -891,7 +974,8 @@
       142,
       322
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_pesther_0",
@@ -906,7 +990,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_alvear_2",
@@ -921,7 +1006,8 @@
       68,
       248
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_pinero_10",
@@ -936,7 +1022,8 @@
       89,
       269
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_pinero_15",
@@ -951,7 +1038,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rp14_soldini_4",
@@ -966,7 +1054,8 @@
       7,
       187
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_zavalla_26",
@@ -981,7 +1070,8 @@
       1,
       181
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_roldan_39",
@@ -996,7 +1086,8 @@
       12,
       192
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_roldan_44",
@@ -1011,7 +1102,8 @@
       12,
       192
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_roldan_47",
@@ -1026,7 +1118,8 @@
       12,
       192
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_ricardone_56",
@@ -1041,7 +1134,8 @@
       35,
       215
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_ricardone_60",
@@ -1056,7 +1150,8 @@
       56,
       236
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_ricardone_63",
@@ -1071,7 +1166,8 @@
       57,
       237
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rna012_slorenzo_64",
@@ -1086,7 +1182,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_campana_75",
@@ -1101,7 +1198,8 @@
       144,
       324
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn9_zarate_84",
@@ -1116,7 +1214,8 @@
       117,
       297
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn9_zarate_95",
@@ -1131,7 +1230,8 @@
       113,
       293
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_baradero_142",
@@ -1146,7 +1246,8 @@
       126,
       306
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_baradero_152",
@@ -1161,7 +1262,8 @@
       131,
       311
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_sanpedro_154",
@@ -1176,7 +1278,8 @@
       135,
       315
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_sanpedro_160",
@@ -1191,7 +1294,8 @@
       106,
       286
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_ramallo_205",
@@ -1206,7 +1310,8 @@
       134,
       314
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_ramallo_215",
@@ -1221,7 +1326,8 @@
       166,
       346
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_sannicolas_228",
@@ -1236,7 +1342,8 @@
       131,
       311
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn9_sannicolas_232",
@@ -1251,7 +1358,8 @@
       132,
       312
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_theobald_246",
@@ -1266,7 +1374,8 @@
       132,
       312
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_villaconst_250",
@@ -1281,7 +1390,8 @@
       132,
       312
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_figheira_262",
@@ -1296,7 +1406,8 @@
       139,
       319
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_arroyoseco_268",
@@ -1311,7 +1422,8 @@
       135,
       315
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_glagos_272",
@@ -1326,7 +1438,8 @@
       134,
       314
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn9_alvear_282",
@@ -1341,7 +1454,8 @@
       147,
       327
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn9_au9_roldan_314",
@@ -1356,7 +1470,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_au9_carcarana_339",
@@ -1371,7 +1486,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_au9_cdegomez_361",
@@ -1386,7 +1502,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_au9_tortugas_408",
@@ -1401,7 +1518,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_rn9_funes_travesia",
@@ -1416,7 +1534,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_roldan_travesia",
@@ -1431,7 +1550,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_sanjeronimo_340",
@@ -1446,7 +1566,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_carcarana_361",
@@ -1461,7 +1582,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_correa_352",
@@ -1476,7 +1598,8 @@
       99,
       279
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_cdegomez_379",
@@ -1491,7 +1614,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_armstrong_396",
@@ -1506,7 +1630,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_tortugas_420",
@@ -1521,7 +1646,8 @@
       101,
       281
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_mjuarez_440",
@@ -1536,7 +1662,8 @@
       101,
       281
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_leones_465",
@@ -1551,7 +1678,8 @@
       110,
       290
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_bellville_500",
@@ -1566,7 +1694,8 @@
       81,
       261
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn9_vmaria_560",
@@ -1581,7 +1710,8 @@
       143,
       323
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_ibarlucea_5",
@@ -1596,7 +1726,8 @@
       125,
       305
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_ibarlucea_13",
@@ -1611,7 +1742,8 @@
       95,
       275
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_lpalacios_20",
@@ -1626,7 +1758,8 @@
       138,
       318
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_lpalacios_22",
@@ -1641,7 +1774,8 @@
       147,
       327
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_saltogrande_42",
@@ -1656,7 +1790,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_totoras_54",
@@ -1671,7 +1806,8 @@
       133,
       313
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_clason_68",
@@ -1686,7 +1822,8 @@
       147,
       327
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_sangenaro_86",
@@ -1701,7 +1838,8 @@
       132,
       312
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_centeno_98",
@@ -1716,7 +1854,8 @@
       5,
       185
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_casas_112",
@@ -1731,7 +1870,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_crosquin_129",
@@ -1746,7 +1886,8 @@
       151,
       331
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_smescobas_152",
@@ -1761,7 +1902,8 @@
       11,
       191
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_bandurrias_168",
@@ -1776,7 +1918,8 @@
       19,
       199
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_svicente_178",
@@ -1791,7 +1934,8 @@
       11,
       191
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_angelica_192",
@@ -1806,7 +1950,8 @@
       12,
       192
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_rafaela_220",
@@ -1821,7 +1966,8 @@
       15,
       195
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_lehmann_237",
@@ -1836,7 +1982,8 @@
       11,
       191
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 110
   },
   {
     "id": "radar_rn34_ataliva_248",
@@ -1851,7 +1998,8 @@
       140,
       320
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_sunchales_258",
@@ -1866,7 +2014,8 @@
       173,
       353
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_tacural_276",
@@ -1881,7 +2030,8 @@
       150,
       330
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_arrufo_342",
@@ -1896,7 +2046,8 @@
       159,
       339
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_hersilia_368",
@@ -1911,7 +2062,8 @@
       2,
       182
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn34_ceres_388",
@@ -1926,7 +2078,8 @@
       140,
       320
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_perez_782",
@@ -1941,7 +2094,8 @@
       60,
       240
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_perez_786",
@@ -1956,7 +2110,8 @@
       59,
       239
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_zavalla_775",
@@ -1971,7 +2126,8 @@
       91,
       271
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_pujato_755",
@@ -1986,7 +2142,8 @@
       85,
       265
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_pujato_756",
@@ -2001,7 +2158,8 @@
       111,
       291
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_casilda_741",
@@ -2016,7 +2174,8 @@
       61,
       241
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_sanford_726",
@@ -2031,7 +2190,8 @@
       33,
       213
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_chabas_715",
@@ -2046,7 +2206,8 @@
       34,
       214
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_villada_705",
@@ -2061,7 +2222,8 @@
       34,
       214
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_firmat_694",
@@ -2076,7 +2238,8 @@
       57,
       237
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_cucle_680",
@@ -2091,7 +2254,8 @@
       57,
       237
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_chovet_667",
@@ -2106,7 +2270,8 @@
       57,
       237
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_murphy_648",
@@ -2121,7 +2286,8 @@
       87,
       267
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_vtuerto_634",
@@ -2136,7 +2302,8 @@
       57,
       237
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_sspiritu_575",
@@ -2151,7 +2318,8 @@
       12,
       192
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_amenabar_567",
@@ -2166,7 +2334,8 @@
       62,
       242
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn33_rufino_540",
@@ -2181,7 +2350,8 @@
       26,
       206
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_gbaigorria_315",
@@ -2196,7 +2366,8 @@
       166,
       346
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_gbaigorria_318",
@@ -2211,7 +2382,8 @@
       166,
       346
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_cbermudez_324",
@@ -2226,7 +2398,8 @@
       165,
       345
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_flbeltran_328",
@@ -2241,7 +2414,8 @@
       164,
       344
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_slorenzo_335",
@@ -2256,7 +2430,8 @@
       1,
       181
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_pgsm_340",
@@ -2271,7 +2446,8 @@
       148,
       328
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_timbues_348",
@@ -2286,7 +2462,8 @@
       147,
       327
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_oliveros_360",
@@ -2301,7 +2478,8 @@
       162,
       342
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_maciel_370",
@@ -2316,7 +2494,8 @@
       170,
       350
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_monje_382",
@@ -2331,7 +2510,8 @@
       162,
       342
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_barrancas_395",
@@ -2346,7 +2526,8 @@
       0,
       180
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_arocena_410",
@@ -2361,7 +2542,8 @@
       24,
       204
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_coronda_428",
@@ -2376,7 +2558,8 @@
       10,
       190
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_sauceviejo_460",
@@ -2391,7 +2574,8 @@
       18,
       198
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_stotome_470",
@@ -2406,7 +2590,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_recreo_485",
@@ -2421,7 +2606,8 @@
       170,
       350
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_candioti_495",
@@ -2436,7 +2622,8 @@
       176,
       356
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_nelson_515",
@@ -2451,7 +2638,8 @@
       10,
       190
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_llambi_530",
@@ -2466,7 +2654,8 @@
       9,
       189
     ],
-    "tipoHomologacion": "COMUNAL_CUESTIONADO"
+    "tipoHomologacion": "COMUNAL_CUESTIONADO",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_sjusto_568",
@@ -2481,7 +2670,8 @@
       11,
       191
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_gcrespo_625",
@@ -2496,7 +2686,8 @@
       9,
       189
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_calchaqui_670",
@@ -2511,7 +2702,8 @@
       9,
       189
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_vera_722",
@@ -2526,7 +2718,8 @@
       45,
       225
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_malabrigo_750",
@@ -2541,7 +2734,8 @@
       63,
       243
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_reconquista_789",
@@ -2556,7 +2750,8 @@
       7,
       187
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn11_avellaneda_794",
@@ -2571,7 +2766,8 @@
       8,
       188
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_ap01_gbaigorria_0",
@@ -2586,7 +2782,8 @@
       131,
       311
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_ap01_slorenzo_14",
@@ -2601,7 +2798,8 @@
       161,
       341
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_slorenzo_22",
@@ -2616,7 +2814,8 @@
       148,
       328
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_timbues_28",
@@ -2631,7 +2830,8 @@
       151,
       331
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_monje_58",
@@ -2646,7 +2846,8 @@
       160,
       340
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_arocena_90",
@@ -2661,7 +2862,8 @@
       2,
       182
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_coronda_110",
@@ -2676,7 +2878,8 @@
       42,
       222
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 130
   },
   {
     "id": "radar_ap01_sauceviejo_141",
@@ -2691,7 +2894,8 @@
       15,
       195
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 110
   },
   {
     "id": "radar_ap01_stotome_153",
@@ -2706,7 +2910,8 @@
       26,
       206
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_ap01_stafe_156",
@@ -2721,7 +2926,8 @@
       113,
       293
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_sjose_8",
@@ -2736,7 +2942,8 @@
       108,
       288
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 110
   },
   {
     "id": "radar_rn19_sagustin_20",
@@ -2751,7 +2958,8 @@
       101,
       281
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 110
   },
   {
     "id": "radar_rn19_franck_30",
@@ -2766,7 +2974,8 @@
       87,
       267
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 110
   },
   {
     "id": "radar_rn19_sjsauce_37",
@@ -2781,7 +2990,8 @@
       107,
       287
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn19_sapereira_62",
@@ -2796,7 +3006,8 @@
       103,
       283
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn19_josefina_118",
@@ -2811,7 +3022,8 @@
       101,
       281
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_frontera_127",
@@ -2826,7 +3038,8 @@
       119,
       299
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_devoto_160",
@@ -2841,7 +3054,8 @@
       91,
       271
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_lafrancia_185",
@@ -2856,7 +3070,8 @@
       91,
       271
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_arroyito_225",
@@ -2871,7 +3086,8 @@
       74,
       254
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn19_rioprimero_280",
@@ -2886,7 +3102,8 @@
       120,
       300
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_ecruz_75",
@@ -2901,7 +3118,8 @@
       116,
       296
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn8_sareco_112",
@@ -2916,7 +3134,8 @@
       120,
       300
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_csarmiento_145",
@@ -2931,7 +3150,8 @@
       87,
       267
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_arrecifes_175",
@@ -2946,7 +3166,8 @@
       108,
       288
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_todd_184",
@@ -2961,7 +3182,8 @@
       108,
       288
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_vina_198",
@@ -2976,7 +3198,8 @@
       128,
       308
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_pergamino_222",
@@ -2991,7 +3214,8 @@
       43,
       223
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_colon_276",
@@ -3006,7 +3230,8 @@
       135,
       315
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_wheelwright_302",
@@ -3021,7 +3246,8 @@
       115,
       295
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn8_hughes_320",
@@ -3036,7 +3262,8 @@
       100,
       280
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_sisabel_342",
@@ -3051,7 +3278,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_vtuerto_365",
@@ -3066,7 +3294,8 @@
       147,
       327
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_maggiolo_392",
@@ -3081,7 +3310,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_arias_410",
@@ -3096,7 +3326,8 @@
       101,
       281
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_canals_445",
@@ -3111,7 +3342,8 @@
       103,
       283
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn8_lacarlota_500",
@@ -3126,7 +3358,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_lujan_68",
@@ -3141,7 +3374,8 @@
       66,
       246
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn7_giles_98",
@@ -3156,7 +3390,8 @@
       84,
       264
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn7_careco_140",
@@ -3171,7 +3406,8 @@
       51,
       231
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_chacabuco_208",
@@ -3186,7 +3422,8 @@
       81,
       261
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn7_junin_260",
@@ -3201,7 +3438,8 @@
       134,
       314
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_vedia_312",
@@ -3216,7 +3454,8 @@
       98,
       278
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_dalvear_395",
@@ -3231,7 +3470,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_rufino_425",
@@ -3246,7 +3486,8 @@
       102,
       282
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn7_laboulaye_490",
@@ -3261,7 +3502,8 @@
       100,
       280
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn12_zarate_85",
@@ -3276,7 +3518,8 @@
       77,
       257
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn12_blargo_115",
@@ -3291,7 +3534,8 @@
       30,
       210
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn12_ceibas_158",
@@ -3306,7 +3550,8 @@
       9,
       189
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 80
   },
   {
     "id": "radar_rn14_ceibas_0",
@@ -3321,7 +3566,8 @@
       157,
       337
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn14_gualeguaychu_58",
@@ -3336,7 +3582,8 @@
       19,
       199
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 120
   },
   {
     "id": "radar_rn14_curuguay_125",
@@ -3351,7 +3598,8 @@
       21,
       201
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn14_colon_152",
@@ -3366,7 +3614,8 @@
       174,
       354
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn14_concordia_250",
@@ -3381,7 +3630,8 @@
       7,
       187
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn14_chajari_325",
@@ -3396,7 +3646,8 @@
       11,
       191
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn168_laguardia_3",
@@ -3411,7 +3662,8 @@
       89,
       269
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 100
   },
   {
     "id": "radar_rn168_peaje_11",
@@ -3426,7 +3678,8 @@
       96,
       276
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn168_tunel_14",
@@ -3441,7 +3694,8 @@
       171,
       351
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   },
   {
     "id": "radar_rn168_parana_18",
@@ -3456,6 +3710,7 @@
       119,
       299
     ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
+    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
+    "maxSpeed": 60
   }
 ]

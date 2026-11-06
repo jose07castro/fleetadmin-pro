@@ -593,18 +593,188 @@ async function dispatchAlert(classification, options = {}, db) {
     }
 }
 
+// =========================================================================
+// 5. GESTIÓN PERSISTENTE DE ESTADO DE RADARES Y POLÍTICA DE VELOCIDAD
+//    (Paridad exacta con js/modules/copilot.js, radar-v126.js y Android)
+// =========================================================================
+
+// Mapa global persistente fuera del ciclo de eventos indexado por radar.id
+const radarTrackingState = {};
+
+const RADAR_EXIT_HYSTERESIS_METERS = 580; // Margen de salida (> 580m) anti-rebote GPS
+const RADAR_SPEED_COOLDOWN_MS = 12000;    // 12 segundos entre avisos de exceso
+const RADAR_SPEED_ALERT_TEXT = "Reduce la velocidad, vas muy rápido";
+
 /**
- * 5. Evaluación de velocidad y política de avisos no intrusivos en zonas de radar (Punto Alertas)
- * - Primer aviso de aproximación al ingresar a la zona (500m / 300m)
- * - Supresión de avisos repetitivos mientras currentSpeed <= maxSpeed (silencio total)
- * - Alerta exclusiva por exceso de velocidad: "Reduce la velocidad, vas muy rápido" (cooldown de 12s)
- *
- * @param {object} params { currentSpeed, maxSpeed, alertadaInicialmente, lastSpeedAlertTime }
- * @returns {{ shouldAlert: boolean, alertType: string, alertadaInicialmente: boolean, message: string|null, silent: boolean, inCooldown?: boolean, lastSpeedAlertTime?: number }}
+ * Convierte velocidad de metros por segundo (estándar Geolocation API / Android Location) a km/h.
+ * @param {number|null|undefined} speedMs
+ * @returns {number} Velocidad entera redondeada en km/h
  */
-function evaluateRadarSpeedPolicy({ currentSpeed = 0, maxSpeed = 60, alertadaInicialmente = false, lastSpeedAlertTime = 0 } = {}) {
-    const SPEED_ALERT_TEXT = "Reduce la velocidad, vas muy rápido";
-    const SPEED_COOLDOWN_MS = 12000;
+function convertSpeedMsToKmH(speedMs) {
+    const val = Number(speedMs);
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    return Math.round(val * 3.6);
+}
+
+/**
+ * Evalúa proximidad, histéresis de salida (> 580m), aviso único de aproximación y
+ * disparo exclusivo por exceso de velocidad en km/h usando el mapa global 'radarTrackingState'.
+ *
+ * @param {object} params
+ * @param {object} params.radar - Objeto radar ({ id, maxSpeed, limit, name })
+ * @param {number} params.distance - Distancia actual al radar en metros
+ * @param {number} [params.coordsSpeed] - Velocidad cruda GPS en m/s (coords.speed)
+ * @param {number} [params.currentSpeedKmH] - Velocidad ya convertida en km/h (opcional)
+ * @param {number} [params.approachRadius=500] - Radio de detección de entrada en metros (ej. 500m / 300m)
+ * @param {number} [params.exitDistance=580] - Distancia de salida con histéresis en metros (> 580m)
+ * @param {string} [params.driverId] - Clave opcional por conductor en entorno multi-chofer
+ */
+function evaluateRadarProximityAndSpeed({
+    radar,
+    distance,
+    coordsSpeed = null,
+    currentSpeedKmH = null,
+    approachRadius = 500,
+    exitDistance = RADAR_EXIT_HYSTERESIS_METERS,
+    driverId = null
+} = {}) {
+    if (!radar || !radar.id || !Number.isFinite(distance)) {
+        return { shouldAlert: false, alertType: 'none', message: null, silent: true };
+    }
+
+    const stateKey = driverId ? `${driverId}:${radar.id}` : String(radar.id);
+    const maxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 60);
+    const speedKmH = (typeof currentSpeedKmH === 'number' && Number.isFinite(currentSpeedKmH))
+        ? Math.round(Math.max(0, currentSpeedKmH))
+        : convertSpeedMsToKmH(coordsSpeed);
+    const now = Date.now();
+
+    // 4. HISTÉRESIS DE SALIDA: Solo limpiar el estado cuando se aleje más allá de 580m
+    if (distance > exitDistance) {
+        if (radarTrackingState[stateKey]) {
+            delete radarTrackingState[stateKey];
+        }
+        return {
+            shouldAlert: false,
+            alertType: 'outside_hysteresis',
+            currentSpeedKmH: speedKmH,
+            maxSpeed,
+            message: null,
+            silent: true
+        };
+    }
+
+    // Fuera del radio de aproximación pero dentro de la banda de histéresis (500m < dist <= 580m):
+    // Conservar estado intacto sin disparar alertas para evitar rebotes de GPS.
+    const existingState = radarTrackingState[stateKey];
+    if (distance > approachRadius && !existingState) {
+        return {
+            shouldAlert: false,
+            alertType: 'outside_approach',
+            currentSpeedKmH: speedKmH,
+            maxSpeed,
+            message: null,
+            silent: true
+        };
+    }
+
+    // 2. GESTIÓN DE ESTADO PERSISTENTE POR RADAR (MAPA GLOBAL)
+    if (!existingState || !existingState.initialAlertDone) {
+        radarTrackingState[stateKey] = {
+            initialAlertDone: true,
+            lastOverspeedAlertTime: 0
+        };
+        return {
+            shouldAlert: true,
+            alertType: 'approach',
+            alertadaInicialmente: true,
+            initialAlertDone: true,
+            currentSpeedKmH: speedKmH,
+            maxSpeed,
+            message: null,
+            silent: false,
+            lastOverspeedAlertTime: 0
+        };
+    }
+
+    // Si state.initialAlertDone === true: SILENCIO TOTAL para avisos de proximidad.
+    // 3. DISPARADOR EXCLUSIVO DE EXCESO DE VELOCIDAD (comparación estricta en km/h)
+    if (speedKmH <= maxSpeed) {
+        return {
+            shouldAlert: false,
+            alertType: 'ok',
+            alertadaInicialmente: true,
+            initialAlertDone: true,
+            currentSpeedKmH: speedKmH,
+            maxSpeed,
+            message: null,
+            silent: true,
+            lastOverspeedAlertTime: existingState.lastOverspeedAlertTime
+        };
+    }
+
+    // Exceso de velocidad detectado (speedKmH > maxSpeed): verificar cooldown de 12 segundos
+    if (now - (existingState.lastOverspeedAlertTime || 0) < RADAR_SPEED_COOLDOWN_MS) {
+        return {
+            shouldAlert: false,
+            alertType: 'speed_cooldown',
+            alertadaInicialmente: true,
+            initialAlertDone: true,
+            currentSpeedKmH: speedKmH,
+            maxSpeed,
+            message: RADAR_SPEED_ALERT_TEXT,
+            silent: true,
+            inCooldown: true,
+            lastOverspeedAlertTime: existingState.lastOverspeedAlertTime
+        };
+    }
+
+    existingState.lastOverspeedAlertTime = now;
+    return {
+        shouldAlert: true,
+        alertType: 'speed_excess',
+        alertadaInicialmente: true,
+        initialAlertDone: true,
+        currentSpeedKmH: speedKmH,
+        maxSpeed,
+        message: RADAR_SPEED_ALERT_TEXT,
+        silent: false,
+        inCooldown: false,
+        lastOverspeedAlertTime: now
+    };
+}
+
+/**
+ * Evaluación compatible con firma directa o con estado persistente por radarId.
+ */
+function evaluateRadarSpeedPolicy({
+    radarId = null,
+    distance = null,
+    approachRadius = 500,
+    exitDistance = RADAR_EXIT_HYSTERESIS_METERS,
+    coordsSpeed = null,
+    currentSpeed = null,
+    speedUnit = 'kmh',
+    maxSpeed = 60,
+    alertadaInicialmente = false,
+    lastSpeedAlertTime = 0
+} = {}) {
+    const resolvedSpeedKmH = (coordsSpeed !== null && coordsSpeed !== undefined)
+        ? convertSpeedMsToKmH(coordsSpeed)
+        : (speedUnit === 'ms' ? convertSpeedMsToKmH(currentSpeed) : Math.round(Math.max(0, Number(currentSpeed) || 0)));
+    const resolvedMaxSpeed = Number(maxSpeed) || 60;
+
+    // Si se provee radarId y distancia, delegar al mapa global persistente con histéresis de 580m
+    if (radarId && typeof distance === 'number' && Number.isFinite(distance)) {
+        return evaluateRadarProximityAndSpeed({
+            radar: { id: radarId, maxSpeed: resolvedMaxSpeed, limit: resolvedMaxSpeed },
+            distance,
+            currentSpeedKmH: resolvedSpeedKmH,
+            approachRadius,
+            exitDistance
+        });
+    }
+
     const now = Date.now();
 
     // 1. Primer aviso de aproximación
@@ -613,29 +783,38 @@ function evaluateRadarSpeedPolicy({ currentSpeed = 0, maxSpeed = 60, alertadaIni
             shouldAlert: true,
             alertType: 'approach',
             alertadaInicialmente: true,
+            initialAlertDone: true,
+            currentSpeedKmH: resolvedSpeedKmH,
+            maxSpeed: resolvedMaxSpeed,
             message: null,
             silent: false
         };
     }
 
     // 2. Si ya tuvo aviso inicial y la velocidad es menor o igual a la máxima: silencio total
-    if (currentSpeed <= maxSpeed) {
+    if (resolvedSpeedKmH <= resolvedMaxSpeed) {
         return {
             shouldAlert: false,
             alertType: 'ok',
             alertadaInicialmente: true,
+            initialAlertDone: true,
+            currentSpeedKmH: resolvedSpeedKmH,
+            maxSpeed: resolvedMaxSpeed,
             message: null,
             silent: true
         };
     }
 
-    // 3. Exceso de velocidad (currentSpeed > maxSpeed)
-    if (now - lastSpeedAlertTime < SPEED_COOLDOWN_MS) {
+    // 3. Exceso de velocidad (resolvedSpeedKmH > resolvedMaxSpeed) con cooldown de 12s
+    if (now - lastSpeedAlertTime < RADAR_SPEED_COOLDOWN_MS) {
         return {
             shouldAlert: false,
             alertType: 'speed_cooldown',
             alertadaInicialmente: true,
-            message: SPEED_ALERT_TEXT,
+            initialAlertDone: true,
+            currentSpeedKmH: resolvedSpeedKmH,
+            maxSpeed: resolvedMaxSpeed,
+            message: RADAR_SPEED_ALERT_TEXT,
             silent: true,
             inCooldown: true,
             lastSpeedAlertTime: lastSpeedAlertTime
@@ -646,7 +825,10 @@ function evaluateRadarSpeedPolicy({ currentSpeed = 0, maxSpeed = 60, alertadaIni
         shouldAlert: true,
         alertType: 'speed_excess',
         alertadaInicialmente: true,
-        message: SPEED_ALERT_TEXT,
+        initialAlertDone: true,
+        currentSpeedKmH: resolvedSpeedKmH,
+        maxSpeed: resolvedMaxSpeed,
+        message: RADAR_SPEED_ALERT_TEXT,
         silent: false,
         inCooldown: false,
         lastSpeedAlertTime: now
@@ -663,5 +845,8 @@ module.exports = {
     dispatchAlert,
     updateAgentConfig,
     getAgentConfig,
+    radarTrackingState,
+    convertSpeedMsToKmH,
+    evaluateRadarProximityAndSpeed,
     evaluateRadarSpeedPolicy
 };

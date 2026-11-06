@@ -237,6 +237,17 @@ const RadarModule = (() => {
         // Start listening to driver positions
         _startFirebaseListener();
         _startAlertListener();
+
+        // Monitoreo GPS local de velocidad y radares
+        if (typeof navigator !== 'undefined' && navigator.geolocation && !_watchId) {
+            try {
+                _watchId = navigator.geolocation.watchPosition(
+                    (pos) => processRadarProximityAndSpeed(pos),
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 }
+                );
+            } catch (_) {}
+        }
     }
 
     // ============ CLOSE MAP ============
@@ -301,6 +312,10 @@ const RadarModule = (() => {
         _isOpen = false;
 
         // Limpiar supresor de Google
+        if (_watchId && typeof navigator !== 'undefined' && navigator.geolocation) {
+            try { navigator.geolocation.clearWatch(_watchId); } catch (_) {}
+            _watchId = null;
+        }
         if (_suppressInterval) {
             clearInterval(_suppressInterval);
             _suppressInterval = null;
@@ -1687,6 +1702,95 @@ const RadarModule = (() => {
 
     // ============ CÁMARAS Y FOTOMULTAS OFICIALES ============
 
+    // 2. Mapa de estado global persistente fuera de las funciones de escucha
+    const radarTrackingState = (typeof window !== 'undefined' && window.radarTrackingState && typeof window.radarTrackingState === 'object')
+        ? window.radarTrackingState
+        : {};
+    if (typeof window !== 'undefined') {
+        window.radarTrackingState = radarTrackingState;
+    }
+
+    /**
+     * Calcula distancia geodésica en metros (Fórmula de Haversine)
+     */
+    function calculateDistanceFromCurrentLocation(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function playAudioAlert(message) {
+        speakRadarAlert(message);
+    }
+
+    /**
+     * Evalúa la posición actual del GPS frente a los radares activos
+     * Garantiza paridad entre la lógica Web y el servicio nativo de Android.
+     */
+    function processRadarProximityAndSpeed(position, activeRadars) {
+        if (!position || !position.coords) return;
+        const coords = position.coords;
+        
+        // 1. Conversión estricta de metros por segundo (m/s) a kilómetros por hora (km/h)
+        const currentSpeedKmH = Math.round((coords.speed || 0) * 3.6);
+
+        const radars = activeRadars || (typeof CopilotModule !== 'undefined' && typeof CopilotModule.getAllRadars === 'function' ? CopilotModule.getAllRadars() : []);
+        if (!radars || !radars.length) return;
+
+        radars.forEach(radar => {
+            const distance = calculateDistanceFromCurrentLocation(
+                coords.latitude, 
+                coords.longitude, 
+                radar.lat, 
+                radar.lng
+            );
+
+            // Inicializar el estado individual del radar si no existe
+            if (!radarTrackingState[radar.id]) {
+                radarTrackingState[radar.id] = {
+                    initialAlertDone: false,
+                    lastOverspeedAlertTime: 0
+                };
+            }
+
+            const state = radarTrackingState[radar.id];
+
+            // 4. Histéresis de salida: limpiar el estado recién cuando el vehículo supera los 580 metros
+            if (distance > 580) {
+                delete radarTrackingState[radar.id];
+                return;
+            }
+
+            const radarMaxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 60);
+
+            // 2. Control dentro del radio de aproximación (<= 500 metros)
+            if (distance <= 500) {
+                
+                // Emitir aviso de proximidad UNA SOLA VEZ
+                if (!state.initialAlertDone) {
+                    playAudioAlert("Atención, control de velocidad próximo.");
+                    state.initialAlertDone = true;
+                }
+
+                // 3. Disparador exclusivo de exceso de velocidad (requiere alerta inicial previa)
+                if (state.initialAlertDone && currentSpeedKmH > radarMaxSpeed) {
+                    const currentTime = Date.now();
+                    const cooldownPeriod = 12000; // 12 segundos en milisegundos
+
+                    if (currentTime - state.lastOverspeedAlertTime >= cooldownPeriod) {
+                        playAudioAlert(`Reduce la velocidad. Máxima permitida: ${radarMaxSpeed} km/h.`);
+                        state.lastOverspeedAlertTime = currentTime;
+                    }
+                }
+            }
+        });
+    }
+
     function _renderCameraMarkers() {
         _clearCameraMarkers();
         if (!_showCameras || !_map || typeof CopilotModule === 'undefined') return;
@@ -1707,7 +1811,8 @@ const RadarModule = (() => {
 
         radars.forEach(radar => {
             const isCuestionado = radar.tipoHomologacion === 'COMUNAL_CUESTIONADO';
-            const isThreeDigits = (radar.limit >= 100);
+            const maxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 60);
+            const isThreeDigits = (maxSpeed >= 100);
             const fontSize = isThreeDigits ? '7px' : '8px';
             const letterSpacing = isThreeDigits ? '-0.5px' : '-0.2px';
 
@@ -1721,9 +1826,9 @@ const RadarModule = (() => {
 
             // Disco circular simétrico 20x20px (anchor geométrico exacto 10, 10 = width/2, height/2)
             const pinHtml = `
-                <div class="radar-cam-pin" title="${radar.name} — Máx ${radar.limit} km/h${titleStatus}" style="width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;transform-origin:center center;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
+                <div class="radar-cam-pin" title="${radar.name} — Máx ${maxSpeed} km/h${titleStatus}" style="width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;transform-origin:center center;transition:transform 0.15s ease;" onmouseenter="this.style.transform='scale(1.35)'" onmouseleave="this.style.transform='scale(1)'">
                     <div style="background:${bgCircle};border:${borderCircle};border-radius:50%;width:20px;height:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:${ringShadow};">
-                        <span style="font-size:${fontSize};font-weight:900;color:${textColor};line-height:1;letter-spacing:${letterSpacing};">${radar.limit}</span>
+                        <span style="font-size:${fontSize};font-weight:900;color:${textColor};line-height:1;letter-spacing:${letterSpacing};">${maxSpeed}</span>
                     </div>
                 </div>
             `;
@@ -1739,7 +1844,7 @@ const RadarModule = (() => {
                 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;padding:8px 10px;max-width:255px;">
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
                         <span style="background:${badgeBg};color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;">${badgeLabel}</span>
-                        <span style="font-size:11px;font-weight:800;color:${limitColor};">MÁX ${radar.limit} km/h</span>
+                        <span style="font-size:11px;font-weight:800;color:${limitColor};">MÁX ${maxSpeed} km/h</span>
                     </div>
                     <div style="font-size:13px;font-weight:800;line-height:1.2;color:#0f172a;margin-bottom:4px;">${radar.name}</div>
                     <div style="font-size:11px;color:#64748b;line-height:1.3;">${radar.desc || 'Control electrónico de velocidad'}</div>
@@ -1810,6 +1915,7 @@ const RadarModule = (() => {
     // ============ PUBLIC API ============
 
     return {
-        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts, zoomIn, zoomOut, loadTrafficAlerts: _loadTrafficAlerts
+        renderDashboardButton, open, close, confirmAlert, dismissAlert, toggleVoice, toggleMapStyle, toggleCameras, playAudio, testAlerts, zoomIn, zoomOut, loadTrafficAlerts: _loadTrafficAlerts,
+        processRadarProximityAndSpeed, radarTrackingState, calculateDistanceFromCurrentLocation
     };
 })();

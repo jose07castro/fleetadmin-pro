@@ -399,7 +399,7 @@ const App = (() => {
             if (fixAge < 120000) {
                 hbPayload.lat = window._cachedGpsPosition.lat;
                 hbPayload.lng = window._cachedGpsPosition.lng;
-                hbPayload.speed = (window._cachedGpsPosition.speed || 0) * 3.6;
+                hbPayload.speed = Math.round(Number(window._cachedGpsPosition.speed) || 0);
                 hbPayload.heading = window._cachedGpsPosition.heading || 0;
                 hbPayload.gps_status = 'active';
             }

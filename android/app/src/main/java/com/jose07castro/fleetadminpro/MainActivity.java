@@ -617,6 +617,26 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void speakMandatory(String text, boolean enqueue) {
+            if (text == null || text.trim().isEmpty()) return;
+            Log.i(TAG, "📱 JS → speakMandatory (enqueue=" + enqueue + "): \"" + text + "\"");
+            try {
+                LocationTrackingService.speakMandatoryText(text, enqueue, MainActivity.this);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error delegating speakMandatory to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void syncRadarTrackingState(String radarId, boolean initialAlertDone, double lastOverspeedAlertTime, boolean passedCamera, boolean remove) {
+            try {
+                LocationTrackingService.syncRadarStateFromJs(radarId, initialAlertDone, (long) lastOverspeedAlertTime, passedCamera, remove);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error syncing radar state to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
         public boolean playAudio(String audioUrl, String fallbackText) {
             if (audioUrl == null || audioUrl.trim().isEmpty()) return false;
             Log.i(TAG, "📱 JS → playAudio: " + audioUrl);
