@@ -147,21 +147,48 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     }
     private BgRadarApproach activeBgApproach = null;
 
-    // 2. Mapa de estado global persistente fuera de las funciones de escucha
+    // 2. Mapa de estado global persistente fuera de las funciones de escucha (paridad estricta con Web)
     public static class RadarTrackingState {
+        public boolean initialAlertFired;
         public boolean initialAlertDone;
+        public long initialAlertTime;
+        public float distanciaAnterior = 9999f;
+        public boolean dismissedByUser = false;
+        public long dismissedAt = 0L;
+        public boolean safeSpeedBeepsPlayed = false;
+        public boolean isOverspeedActive = false;
+        public boolean wasOverspeeding = false;
         public long lastOverspeedAlertTime;
+        public long lastOverspeedBeepTime = 0L;
         public boolean passedCamera = false;
         public float minDistance = 9999f;
+        public int entryRadius = 300;
 
-        public RadarTrackingState(boolean initialAlertDone, long lastOverspeedAlertTime) {
-            this.initialAlertDone = initialAlertDone;
+        public RadarTrackingState(boolean initialAlertFired, long lastOverspeedAlertTime) {
+            this.initialAlertFired = initialAlertFired;
+            this.initialAlertDone = initialAlertFired;
             this.lastOverspeedAlertTime = lastOverspeedAlertTime;
+            this.initialAlertTime = System.currentTimeMillis();
+        }
+    }
+
+    private static class PassedCooldown {
+        final float closedDistance;
+        final long timestamp;
+        final int entryRadius;
+
+        PassedCooldown(float closedDistance, long timestamp, int entryRadius) {
+            this.closedDistance = closedDistance;
+            this.timestamp = timestamp;
+            this.entryRadius = entryRadius;
         }
     }
 
     private static final java.util.concurrent.ConcurrentHashMap<String, RadarTrackingState> radarTrackingState = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, PassedCooldown> passedCooldownMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, RadarTrackingState> trafficTrackingState = new java.util.concurrent.ConcurrentHashMap<>();
     private ToneGenerator bgToneGen = null;
+    private ToneGenerator softBeepGen = null;
     private final LinkedList<Location> recentLocations = new LinkedList<>();
 
     // State
@@ -1017,8 +1044,51 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
+    /**
+     * Emite únicamente 2 bips cortos y suaves de confirmación de "velocidad segura" (<= speedLimit).
+     */
+    private void playSafeSpeedBeeps() {
+        try {
+            if (softBeepGen == null) {
+                softBeepGen = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 35);
+            }
+            softBeepGen.startTone(ToneGenerator.TONE_PROP_BEEP, 55);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    if (softBeepGen != null) {
+                        softBeepGen.startTone(ToneGenerator.TONE_PROP_ACK, 65);
+                    }
+                } catch (Exception ignored) {}
+            }, 130L);
+        } catch (Exception e) {
+            Log.w(TAG, "softBeepGen error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Pulso sonoro mientras persista el exceso de velocidad (> speedLimit).
+     */
+    private void playOverspeedBeep() {
+        try {
+            int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_NOTIFICATION;
+            if (isShiftActive) {
+                boostAlertVolume();
+                scheduleAlertVolumeRestore();
+            }
+            if (bgToneGen == null || bgToneGenStream != streamType) {
+                if (bgToneGen != null) {
+                    try { bgToneGen.release(); } catch (Exception ignored) {}
+                }
+                bgToneGen = new ToneGenerator(streamType, 80);
+                bgToneGenStream = streamType;
+            }
+            bgToneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 105);
+        } catch (Exception e) {
+            Log.w(TAG, "playOverspeedBeep error: " + e.getMessage());
+        }
+    }
+
     private void playBgPassedTone() {
-        // Alerta obligatoria de confirmación (override Uber solo si está en turno)
         try {
             int streamType = isShiftActive ? ALERT_STREAM : AudioManager.STREAM_NOTIFICATION;
             if (isShiftActive) {
@@ -1036,23 +1106,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         } catch (Exception e) {}
     }
 
-    private void speakRadarConcise(RosarioRadars.StaticRadar radar, int distanceStage) {
+    private void speakRadarConcise(RosarioRadars.StaticRadar radar, int actualDistanceMeters, int currentSpeedKmH) {
         String firstName = getDriverFirstName();
         String prefix = !firstName.isEmpty() ? firstName + ", " : "";
         String locationName = formatRadarSpeechName(radar.name);
-        String message = String.format(Locale.getDefault(), 
-            "%sfoto multa en %s a %d metros, máxima %d.", 
-            prefix, locationName, distanceStage, radar.limit);
-        Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Locución obligatoria (" + distanceStage + "m): \"" + message + "\"");
+        int distRounded = Math.max(20, Math.round(actualDistanceMeters / 10.0f) * 10);
+        String message = String.format(Locale.getDefault(),
+            "%sfoto multa en %s a %d metros, máxima %d.",
+            prefix, locationName, distRounded, radar.speedLimit);
+        Log.i(TAG, "📷 [RADAR NATIVO-MANDATORY] Primer aviso único (" + actualDistanceMeters + "m): \"" + message + "\"");
         wakeScreenForAlert();
-        postUrgentAlertNotification("📷 FOTOMULTA (MÁX " + radar.limit + " km/h)", message);
+        postUrgentAlertNotification("📷 FOTOMULTA (MÁX " + radar.speedLimit + " km/h)", message);
         speakMandatory(message);
 
-        // Cartel flotante sobre otras apps (Uber/DiDi/Waze) hasta que el usuario lo cierre
-        float currentSpeed = (lastSpeed > 0) ? lastSpeed : 0f;
+        // Píldora flotante compacta y transparente sobre GPS / Uber / DiDi
         String overlayType = "COMUNAL_CUESTIONADO".equals(radar.tipoHomologacion) ? "radar_cuestionado" : "radar";
-        showFloatingOverlay(overlayType, radar.name, radar.desc != null ? radar.desc : "Control de velocidad",
-                radar.limit, Math.round(currentSpeed), distanceStage, message);
+        showFloatingOverlay(radar.id, overlayType, radar.name, radar.desc != null ? radar.desc : "Control de velocidad",
+                radar.speedLimit, currentSpeedKmH, actualDistanceMeters, message);
     }
 
     private void checkProximityToAlerts(Location myLocation) {
@@ -1063,110 +1133,271 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             return;
         }
 
-        // VALIDACIÓN DE PRECISIÓN GPS:
-        // Si el GPS reporta una imprecisión mayor a 50 metros, descartar chequeo de proximidad
-        // para evitar falsos positivos con ubicaciones estimadas por antenas celulares o Wi-Fi
+        // VALIDACIÓN DE PRECISIÓN GPS: descartar fijaciones con error > 50 metros
         if (myLocation.hasAccuracy() && myLocation.getAccuracy() > 50.0f) {
             Log.w(TAG, "📡 [RADAR NATIVO] Precisión GPS insuficiente (" + myLocation.getAccuracy() + "m > 50m). Proximidad descartada.");
             return;
         }
 
         try {
-            long now = System.currentTimeMillis();
+            final long now = System.currentTimeMillis();
             Float reliableBearing = (lastBearing >= 0) ? lastBearing : getReliableBearing(myLocation);
 
-            // 1. Conversión estricta de metros por segundo (m/s) a kilómetros por hora (km/h)
-            final int currentSpeedKmH = Math.round(myLocation.hasSpeed() ? (myLocation.getSpeed() * 3.6f) : (lastSpeed > 0 ? lastSpeed : 0f));
+            // Conversión estricta de m/s a km/h: speedKmh = (speed || 0) * 3.6
+            final float rawSpeedMs = myLocation.hasSpeed() ? Math.max(0f, myLocation.getSpeed()) : -1f;
+            final float speedKmhFloat = (rawSpeedMs >= 0f)
+                    ? (rawSpeedMs * 3.6f)
+                    : ((lastSpeed > 0f && (now - lastGPSTimestamp) < 5000L) ? lastSpeed : 0f);
+            final int speedKmh = (speedKmhFloat < 3.0f) ? 0 : Math.round(speedKmhFloat);
 
-            for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
-                double distance = getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), radar.lat, radar.lng);
-
-                // Inicializar el estado individual del radar si no existe
-                RadarTrackingState state = radarTrackingState.get(radar.id);
-                if (state == null) {
-                    state = new RadarTrackingState(false, 0L);
-                    radarTrackingState.put(radar.id, state);
+            // Limpiar cooldowns post-cruce expirados o ya fuera del radio
+            for (java.util.Map.Entry<String, PassedCooldown> cdEntry : passedCooldownMap.entrySet()) {
+                String cId = cdEntry.getKey();
+                PassedCooldown cd = cdEntry.getValue();
+                RosarioRadars.StaticRadar cam = RosarioRadars.BY_ID.get(cId);
+                if (cd == null || cam == null) {
+                    passedCooldownMap.remove(cId);
+                    continue;
                 }
+                float distCd = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), cam.lat, cam.lng);
+                if (distCd > (cd.entryRadius + 40f) || (now - cd.timestamp > 120000L) || distCd < (cd.closedDistance - 25f)) {
+                    passedCooldownMap.remove(cId);
+                }
+            }
 
-                // 4. Histéresis de salida: limpiar el estado recién cuando el vehículo supera los 580 metros
-                if (distance > 580.0) {
-                    radarTrackingState.remove(radar.id);
+            // =========================================================================
+            // 1. EVALUAR RADARES ACTIVOS EN SEGUIMIENTO (`initialAlertFired = true`)
+            // =========================================================================
+            RosarioRadars.StaticRadar activeCamera = null;
+            RadarTrackingState activeState = null;
+            float activeDist = Float.MAX_VALUE;
+
+            for (java.util.Map.Entry<String, RadarTrackingState> entry : radarTrackingState.entrySet()) {
+                String rId = entry.getKey();
+                RadarTrackingState state = entry.getValue();
+                if (state == null || (!state.initialAlertFired && !state.initialAlertDone)) {
+                    radarTrackingState.remove(rId);
                     continue;
                 }
 
-                int radarMaxSpeed = radar.maxSpeed;
+                RosarioRadars.StaticRadar camera = RosarioRadars.BY_ID.get(rId);
+                if (camera == null) {
+                    radarTrackingState.remove(rId);
+                    continue;
+                }
 
-                // 2. Control dentro del radio de aproximación (<= 500 metros)
-                if (distance <= 500.0) {
-                    // Emitir aviso de proximidad UNA SOLA VEZ
-                    if (!state.initialAlertDone) {
-                        speakRadarConcise(radar, 500);
-                        state.initialAlertDone = true;
+                float distanciaActual = (float) getDistanceInMeters(
+                        myLocation.getLatitude(), myLocation.getLongitude(), camera.lat, camera.lng);
+
+                if (state.distanciaAnterior <= 0f || state.distanciaAnterior > 9000f) {
+                    state.distanciaAnterior = distanciaActual;
+                }
+
+                // 📍 REGLA 3: AUTO-CIERRE INMEDIATO AL CRUZAR LA CÁMARA (distanciaActual > distanciaAnterior + 10)
+                if (distanciaActual > state.distanciaAnterior + 10.0f) {
+                    Log.i(TAG, "📍 [RADAR NATIVO] Auto-cierre al cruzar cámara " + camera.name +
+                            ": actual=" + Math.round(distanciaActual) + "m > anterior=" + Math.round(state.distanciaAnterior) + "m + 10m");
+                    passedCooldownMap.put(rId, new PassedCooldown(distanciaActual, now, state.entryRadius));
+                    radarTrackingState.remove(rId);
+                    stopAllAudio();
+                    if (activeOverlayView != null && (activeOverlayRadarId == null || rId.equals(activeOverlayRadarId))) {
+                        hideFloatingOverlay();
+                    }
+                    continue;
+                }
+
+                // Margen máximo de limpieza (> 580m)
+                if (distanciaActual > 580.0f) {
+                    radarTrackingState.remove(rId);
+                    if (rId.equals(activeOverlayRadarId)) {
+                        hideFloatingOverlay();
+                    }
+                    continue;
+                }
+
+                // Actualizar punto más cercano alcanzado
+                if (distanciaActual < state.distanciaAnterior) {
+                    state.distanciaAnterior = distanciaActual;
+                }
+
+                int entryRadius = state.entryRadius > 0 ? state.entryRadius : ((camera.speedLimit >= 80) ? 500 : 300);
+                if (distanciaActual <= entryRadius + 25f && distanciaActual < activeDist) {
+                    activeDist = distanciaActual;
+                    activeCamera = camera;
+                    activeState = state;
+                }
+            }
+
+            // 🧠 REGLA 2: EVALUACIÓN DINÁMICA DE VELOCIDAD EN CICLOS POST-AVISO
+            if (activeCamera != null && activeState != null) {
+                final RosarioRadars.StaticRadar cam = activeCamera;
+                final RadarTrackingState st = activeState;
+                final int distRounded = Math.max(0, Math.round(activeDist));
+                final int speedLimit = cam.speedLimit;
+                final String overlayType = "COMUNAL_CUESTIONADO".equals(cam.tipoHomologacion) ? "radar_cuestionado" : "radar";
+
+                if (speedKmh <= speedLimit) {
+                    // a) Silenciar inmediatamente la alarma continua de exceso de velocidad
+                    if (st.isOverspeedActive) {
+                        st.isOverspeedActive = false;
+                        stopAllAudio();
                     }
 
-                    // 3. Disparador exclusivo de exceso de velocidad (requiere alerta inicial previa)
-                    if (state.initialAlertDone && currentSpeedKmH > radarMaxSpeed) {
-                        long currentTime = System.currentTimeMillis();
-                        long cooldownPeriod = 12000L; // 12 segundos en milisegundos
+                    // b) Emitir únicamente 2 bips cortos/suaves de confirmación de "velocidad segura"
+                    boolean initialVoiceFinished = (now - st.initialAlertTime) >= 3200L;
+                    if (!st.safeSpeedBeepsPlayed && (st.wasOverspeeding || (initialVoiceFinished && speedKmh >= 5))) {
+                        st.safeSpeedBeepsPlayed = true;
+                        playSafeSpeedBeeps();
+                    }
 
-                        if (currentTime - state.lastOverspeedAlertTime >= cooldownPeriod) {
-                            speakMandatory("Reduce la velocidad. Máxima permitida: " + radarMaxSpeed + " km/h.", true);
-                            state.lastOverspeedAlertTime = currentTime;
+                    // c) Si el usuario cerró el cartel con la 'X', NO volver a mostrarlo
+                    if (st.dismissedByUser) {
+                        if (cam.id.equals(activeOverlayRadarId)) {
+                            hideFloatingOverlay();
                         }
+                    } else {
+                        showFloatingOverlay(cam.id, overlayType, cam.name,
+                                cam.desc != null ? cam.desc : "Control de velocidad",
+                                speedLimit, speedKmh, distRounded, lastFloatingAudioMessage);
+                    }
+                } else {
+                    // speedKmh > camera.speedLimit: mantener activa la advertencia de exceso hasta desacelerar
+                    st.isOverspeedActive = true;
+                    st.wasOverspeeding = true;
+                    st.safeSpeedBeepsPlayed = false;
+
+                    boolean recentlyDismissed = st.dismissedByUser && (now - st.dismissedAt < 5000L);
+                    if (!recentlyDismissed) {
+                        showFloatingOverlay(cam.id, overlayType, cam.name,
+                                cam.desc != null ? cam.desc : "Control de velocidad",
+                                speedLimit, speedKmh, distRounded, lastFloatingAudioMessage);
                     }
 
-                    // Actualizar overlay flotante si está visible
-                    if (activeOverlayView != null) {
-                        final int spd = currentSpeedKmH;
-                        final int dst = (int) Math.round(distance);
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            updateOverlayLiveViews(radar.maxSpeed, spd, dst, null);
-                        });
+                    boolean afterInitialSpeech = (now - st.initialAlertTime) >= 2800L;
+                    if (afterInitialSpeech && (now - st.lastOverspeedBeepTime >= 3500L)) {
+                        st.lastOverspeedBeepTime = now;
+                        playOverspeedBeep();
                     }
 
-                    // Detección de paso de cámara
-                    if (!state.passedCamera && distance <= 20.0) {
-                        state.passedCamera = true;
-                        playBgPassedTone();
-                        if (activeOverlayView != null) {
-                            new Handler(Looper.getMainLooper()).post(() -> {
-                                if (activeOverlayDistView != null) activeOverlayDistView.setText("  🏁 CÁMARA SUPERADA");
-                                overlayDismissHandler.removeCallbacksAndMessages(null);
-                                overlayDismissHandler.postDelayed(() -> hideFloatingOverlay(), 4000);
-                            });
-                        }
+                    if (now - st.lastOverspeedAlertTime >= 10000L) {
+                        st.lastOverspeedAlertTime = now;
+                        speakMandatory("Reduce la velocidad, vas muy rápido", !afterInitialSpeech);
+                    }
+                }
+                return;
+            }
+
+            // =========================================================================
+            // 2. BUSCAR NUEVA DETECCIÓN DE CÁMARA DENTRO DEL RADIO (300m / 500m)
+            // =========================================================================
+            RosarioRadars.StaticRadar bestRadar = null;
+            float bestDist = Float.MAX_VALUE;
+            int bestRadius = 300;
+
+            for (RosarioRadars.StaticRadar radar : RosarioRadars.ALL_RADARS) {
+                if (radarTrackingState.containsKey(radar.id) || passedCooldownMap.containsKey(radar.id)) {
+                    continue;
+                }
+
+                float dist = (float) getDistanceInMeters(
+                        myLocation.getLatitude(), myLocation.getLongitude(), radar.lat, radar.lng);
+                int detectionRadius = (radar.speedLimit >= 80 || speedKmh > 75) ? 500 : 300;
+
+                if (dist <= detectionRadius) {
+                    boolean validApproach = false;
+                    if (reliableBearing != null) {
+                        CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, dist);
+                        validApproach = cr.aligned && cr.alongTrack >= 12.0 && cr.alongTrack <= detectionRadius;
+                    } else if (speedKmh >= 4) {
+                        validApproach = true;
+                    }
+
+                    if (validApproach && dist < bestDist) {
+                        bestDist = dist;
+                        bestRadar = radar;
+                        bestRadius = detectionRadius;
                     }
                 }
             }
 
-            // 3. Chequeo de Alertas Dinámicas en Vivo (Policía, operativos, etc.)
+            if (bestRadar != null) {
+                boolean isOverspeed = speedKmh > bestRadar.speedLimit;
+                RadarTrackingState newState = new RadarTrackingState(true, isOverspeed ? now : 0L);
+                newState.initialAlertFired = true;
+                newState.initialAlertDone = true;
+                newState.initialAlertTime = now;
+                newState.distanciaAnterior = bestDist;
+                newState.entryRadius = bestRadius;
+                newState.isOverspeedActive = isOverspeed;
+                newState.wasOverspeeding = isOverspeed;
+                newState.lastOverspeedBeepTime = isOverspeed ? now : 0L;
+                radarTrackingState.put(bestRadar.id, newState);
+
+                speakRadarConcise(bestRadar, Math.round(bestDist), speedKmh);
+
+                if (isOverspeed) {
+                    final String targetRadarId = bestRadar.id;
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        RadarTrackingState currentSt = radarTrackingState.get(targetRadarId);
+                        if (currentSt != null && currentSt.isOverspeedActive && !isAppInForeground) {
+                            speakMandatory("Reduce la velocidad, vas muy rápido", true);
+                        }
+                    }, 1800L);
+                }
+                return;
+            }
+
+            // =========================================================================
+            // 3. ALERTAS DINÁMICAS DE TRÁNSITO EN VIVO (Policía, operativos, etc.)
+            // =========================================================================
             if (!activeAlerts.isEmpty()) {
                 synchronized (activeAlerts) {
                     for (TrafficAlert alert : activeAlerts) {
-                        // Si el chofer actual es quien reportó la alerta, no disparar aviso de proximidad a sí mismo
                         if ((driverName != null && alert.authorName != null && driverName.trim().equalsIgnoreCase(alert.authorName.trim())) ||
                             (userId != null && alert.authorId != null && userId.trim().equalsIgnoreCase(alert.authorId.trim()))) {
                             continue;
                         }
 
-                        float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(), 
+                        float distance = (float) getDistanceInMeters(myLocation.getLatitude(), myLocation.getLongitude(),
                                                                    alert.lat, alert.lng);
 
-                        final float radioAlerta = 500.0f;
+                        final float radioAlerta = (speedKmh > 60) ? 500.0f : 300.0f;
                         if (distance <= radioAlerta) {
-                            // Si el chofer está detenido (< 7 km/h) y muy cerca (< 70m), evitar locución en bucle
-                            if (currentSpeedKmH < 7 && distance < 70.0f) {
+                            RadarTrackingState trState = trafficTrackingState.get(alert.id);
+                            if (trState == null) {
+                                trState = new RadarTrackingState(false, 0L);
+                                trState.distanciaAnterior = distance;
+                                trafficTrackingState.put(alert.id, trState);
+                            }
+
+                            // Auto-cierre al cruzar alerta dinámica (> distanciaAnterior + 10m)
+                            if (distance > trState.distanciaAnterior + 10.0f) {
+                                trafficTrackingState.remove(alert.id);
+                                if (alert.id != null && alert.id.equals(activeOverlayRadarId)) {
+                                    hideFloatingOverlay();
+                                }
+                                continue;
+                            }
+                            if (distance < trState.distanciaAnterior) {
+                                trState.distanciaAnterior = distance;
+                            }
+
+                            if (speedKmh < 7 && distance < 70.0f) {
                                 continue;
                             }
 
                             long lastTime = lastAlertTimestamps.getOrDefault(alert.id, 0L);
                             if (now - lastTime > COOLDOWN_MS) {
                                 lastAlertTimestamps.put(alert.id, now);
-                                speakProximityWarning(alert, distance);
+                                trState.initialAlertFired = true;
+                                trState.dismissedByUser = false;
+                                speakProximityWarning(alert, distance, speedKmh);
+                            } else if (trState.initialAlertFired && !trState.dismissedByUser && alert.id != null && alert.id.equals(activeOverlayRadarId)) {
+                                updateOverlayLiveViews(0, speedKmh, Math.round(distance), null);
                             }
                         } else if (distance > 1000.0f) {
-                            // Si se aleja a más de 1 km, resetear para permitir nueva advertencia si vuelve a aproximarse
                             lastAlertTimestamps.remove(alert.id);
+                            trafficTrackingState.remove(alert.id);
                         }
                     }
                 }
@@ -1176,7 +1407,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
-    private void speakProximityWarning(TrafficAlert alert, float distance) {
+    private void speakProximityWarning(TrafficAlert alert, float distance, int currentSpeedKmH) {
         String typeLabel = "control policial";
         if (alert.type != null) {
             switch (alert.type) {
@@ -1209,12 +1440,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         wakeScreenForAlert();
         speak(message);
 
-        // Cartel flotante sobre otras apps (Uber/DiDi/Waze)
-        float currentSpeed = (lastSpeed > 0) ? lastSpeed : 0f;
-        showFloatingOverlay(alert.type != null ? alert.type : "traffic", 
+        // Píldora flotante compacta y transparente sobre otras apps (Uber/DiDi/Waze)
+        showFloatingOverlay(alert.id, alert.type != null ? alert.type : "traffic",
                 alert.location != null ? alert.location : "Alerta de Tránsito",
                 alert.originalText != null ? alert.originalText : typeLabel,
-                0, Math.round(currentSpeed), Math.round(distance), message);
+                0, currentSpeedKmH, Math.round(distance), message);
     }
 
     // ================================================================
@@ -1984,21 +2214,61 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
-    public static void syncRadarStateFromJs(String radarId, boolean initialAlertDone, long lastOverspeedAlertTime, boolean passedCamera, boolean remove) {
+    public static void syncRadarStateFromJs(String radarId, boolean initialAlertFired, long lastOverspeedAlertTime, boolean dismissedByUser, boolean remove) {
+        syncRadarStateFromJsFull(radarId, initialAlertFired, lastOverspeedAlertTime, dismissedByUser, false, 9999f, remove);
+    }
+
+    public static void syncRadarStateFromJsFull(
+            String radarId,
+            boolean initialAlertFired,
+            long lastOverspeedAlertTime,
+            boolean dismissedByUser,
+            boolean safeSpeedBeepsPlayed,
+            float distanciaAnterior,
+            boolean remove) {
         if (radarId == null) return;
         if (remove) {
             radarTrackingState.remove(radarId);
         } else {
             RadarTrackingState state = radarTrackingState.get(radarId);
             if (state == null) {
-                state = new RadarTrackingState(initialAlertDone, lastOverspeedAlertTime);
-                state.passedCamera = passedCamera;
+                state = new RadarTrackingState(initialAlertFired, lastOverspeedAlertTime);
+                state.dismissedByUser = dismissedByUser;
+                state.safeSpeedBeepsPlayed = safeSpeedBeepsPlayed;
+                if (distanciaAnterior > 0f && distanciaAnterior < 9000f) {
+                    state.distanciaAnterior = distanciaAnterior;
+                }
                 radarTrackingState.put(radarId, state);
             } else {
-                state.initialAlertDone = initialAlertDone;
-                state.lastOverspeedAlertTime = lastOverspeedAlertTime;
-                state.passedCamera = passedCamera;
+                state.initialAlertFired = initialAlertFired;
+                state.initialAlertDone = initialAlertFired;
+                state.lastOverspeedAlertTime = Math.max(state.lastOverspeedAlertTime, lastOverspeedAlertTime);
+                state.dismissedByUser = state.dismissedByUser || dismissedByUser;
+                state.safeSpeedBeepsPlayed = state.safeSpeedBeepsPlayed || safeSpeedBeepsPlayed;
+                if (distanciaAnterior > 0f && distanciaAnterior < state.distanciaAnterior) {
+                    state.distanciaAnterior = distanciaAnterior;
+                }
             }
+        }
+    }
+
+    public static String exportTrackingStateJson() {
+        try {
+            org.json.JSONObject root = new org.json.JSONObject();
+            for (java.util.Map.Entry<String, RadarTrackingState> entry : radarTrackingState.entrySet()) {
+                RadarTrackingState st = entry.getValue();
+                if (st == null || !st.initialAlertFired) continue;
+                org.json.JSONObject item = new org.json.JSONObject();
+                item.put("initialAlertFired", st.initialAlertFired);
+                item.put("lastOverspeedAlertTime", st.lastOverspeedAlertTime);
+                item.put("dismissedByUser", st.dismissedByUser);
+                item.put("safeSpeedBeepsPlayed", st.safeSpeedBeepsPlayed);
+                item.put("distanciaAnterior", st.distanciaAnterior);
+                root.put(entry.getKey(), item);
+            }
+            return root.toString();
+        } catch (Exception e) {
+            return "{}";
         }
     }
 
@@ -2776,47 +3046,88 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private static WindowManager windowManager = null;
     private static String lastFloatingAudioMessage = null;
     private static TextView activeOverlaySpeedGauge = null;
+    private static GradientDrawable activeOverlaySpeedBg = null;
+    private static GradientDrawable activeOverlayCardBg = null;
     private static TextView activeOverlayDistView = null;
     private static String activeOverlayTargetKey = null;
+    private static String activeOverlayRadarId = null;
+    private static float activeOverlayDensity = 3.0f;
     private static final Handler overlayDismissHandler = new Handler(Looper.getMainLooper());
 
     public static void updateOverlayLiveViews(int limit, int currentSpeed, int distance, String audioMessage) {
         if (audioMessage != null && !audioMessage.isEmpty()) {
             lastFloatingAudioMessage = audioMessage;
         }
+        int distMeters = Math.max(0, distance);
+        boolean isRadar = limit > 0;
+        boolean isSpeeding = isRadar && currentSpeed > limit;
+
         if (activeOverlayDistView != null) {
-            if (distance <= 18) {
-                activeOverlayDistView.setText("  🏁 ¡EN EL LUGAR!");
+            if (!isRadar && distMeters <= 18) {
+                activeOverlayDistView.setText("En zona");
             } else {
-                activeOverlayDistView.setText("  📍 A " + distance + "m");
+                activeOverlayDistView.setText(distMeters + " m");
             }
         }
+
+        if (activeOverlayCardBg != null) {
+            int strokePx = Math.max(1, (int) (1.5f * activeOverlayDensity));
+            if (isSpeeding) {
+                activeOverlayCardBg.setColor(Color.argb(64, 220, 38, 38)); // rgba(220,38,38,0.25)
+                activeOverlayCardBg.setStroke(strokePx, Color.argb(235, 239, 68, 68));
+            } else {
+                activeOverlayCardBg.setColor(Color.argb(51, 0, 0, 0));     // rgba(0,0,0,0.20)
+                activeOverlayCardBg.setStroke(strokePx, Color.argb(72, 255, 255, 255));
+            }
+        }
+
         if (activeOverlaySpeedGauge != null) {
-            boolean isRadar = limit > 0;
+            int badgeStrokePx = Math.max(1, (int) (1.0f * activeOverlayDensity));
             if (isRadar) {
                 if (currentSpeed > limit) {
-                    activeOverlaySpeedGauge.setText("⚠️ Reduce la velocidad, vas muy rápido (" + currentSpeed + " km/h / MÁX " + limit + ")");
-                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FCA5A5"));
+                    activeOverlaySpeedGauge.setText("⚠️ " + currentSpeed + " km/h");
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FECACA"));
+                    if (activeOverlaySpeedBg != null) {
+                        activeOverlaySpeedBg.setColor(Color.argb(115, 239, 68, 68));
+                        activeOverlaySpeedBg.setStroke(badgeStrokePx, Color.argb(180, 252, 165, 165));
+                    }
                 } else if (currentSpeed > 0) {
-                    activeOverlaySpeedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
-                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#6EE7B7"));
+                    activeOverlaySpeedGauge.setText(currentSpeed + " km/h");
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#A7F3D0"));
+                    if (activeOverlaySpeedBg != null) {
+                        activeOverlaySpeedBg.setColor(Color.argb(64, 16, 185, 129));
+                        activeOverlaySpeedBg.setStroke(badgeStrokePx, Color.argb(115, 110, 231, 183));
+                    }
                 } else {
-                    activeOverlaySpeedGauge.setText("⏱️ Detenido (MÁX " + limit + " km/h)");
-                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#CBD5E1"));
+                    activeOverlaySpeedGauge.setText("Máx " + limit);
+                    activeOverlaySpeedGauge.setTextColor(Color.parseColor("#F1F5F9"));
+                    if (activeOverlaySpeedBg != null) {
+                        activeOverlaySpeedBg.setColor(Color.argb(64, 15, 23, 42));
+                        activeOverlaySpeedBg.setStroke(badgeStrokePx, Color.argb(55, 255, 255, 255));
+                    }
                 }
             } else {
-                activeOverlaySpeedGauge.setText(currentSpeed > 0 ? "✅ " + currentSpeed + " km/h" : "⚠️ Conduzca con precaución");
-                activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FCD34D"));
+                activeOverlaySpeedGauge.setText(currentSpeed > 0 ? currentSpeed + " km/h" : "Precaución");
+                activeOverlaySpeedGauge.setTextColor(Color.parseColor("#FDE68A"));
+                if (activeOverlaySpeedBg != null) {
+                    activeOverlaySpeedBg.setColor(Color.argb(64, 15, 23, 42));
+                    activeOverlaySpeedBg.setStroke(badgeStrokePx, Color.argb(70, 253, 230, 138));
+                }
             }
         }
     }
 
     public void showFloatingOverlay(String type, String title, String subtitle, int limit, int currentSpeed, int distance, String audioMessage) {
-        lastFloatingAudioMessage = audioMessage;
+        showFloatingOverlay(null, type, title, subtitle, limit, currentSpeed, distance, audioMessage);
+    }
+
+    public void showFloatingOverlay(String targetId, String type, String title, String subtitle, int limit, int currentSpeed, int distance, String audioMessage) {
+        if (audioMessage != null && !audioMessage.isEmpty()) {
+            lastFloatingAudioMessage = audioMessage;
+        }
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                // Si la app está en primer plano, el HUD Web ya se muestra directamente en pantalla.
-                // No dibujar un cartel flotante de WindowManager encima de la interfaz de la propia app.
+                // Si la app está en primer plano, el HUD Web compacto ya se muestra directamente en pantalla.
                 if (isAppInForeground) {
                     Log.i(TAG, "ℹ️ [OVERLAY] App en primer plano. Omitiendo cartel flotante WindowManager (HUD web activo).");
                     return;
@@ -2832,15 +3143,21 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 }
                 if (windowManager == null) return;
 
-                // Despertar pantalla únicamente si estaba apagada en el soporte
                 wakeScreenForAlert();
 
-                // NOTA: Se eliminó startActivity(bringApp) para NO robar foco ni pasar la app a primer plano sobre Uber/DiDi.
-                // El cartel se dibuja de forma no invasiva con FLAG_NOT_FOCUSABLE.
+                String resolvedId = targetId;
+                if (resolvedId == null && title != null) {
+                    for (RosarioRadars.StaticRadar r : RosarioRadars.ALL_RADARS) {
+                        if (title.equals(r.name) && r.speedLimit == limit) {
+                            resolvedId = r.id;
+                            break;
+                        }
+                    }
+                }
 
-                String targetKey = (title != null ? title : "") + "_" + limit;
+                String targetKey = (resolvedId != null ? resolvedId : (title != null ? title : "")) + "_" + limit;
 
-                // Si ya existe el cartel activo para esta misma cámara/alerta, actualizar los valores en vivo sin parpadeo
+                // Si ya existe la píldora activa para esta misma cámara/alerta, actualizar valores en vivo sin parpadeo
                 if (activeOverlayView != null && targetKey.equals(activeOverlayTargetKey)) {
                     updateOverlayLiveViews(limit, currentSpeed, distance, audioMessage);
                     return;
@@ -2857,52 +3174,50 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     activeOverlayView = null;
                 }
                 activeOverlayTargetKey = targetKey;
+                activeOverlayRadarId = resolvedId;
                 overlayDismissHandler.removeCallbacksAndMessages(null);
 
                 float density = getResources().getDisplayMetrics().density;
+                activeOverlayDensity = density;
+                int dp2 = Math.max(1, (int) (2 * density));
+                int dp4 = (int) (4 * density);
+                int dp5 = (int) (5 * density);
+                int dp6 = (int) (6 * density);
+                int dp7 = (int) (7 * density);
                 int dp8 = (int) (8 * density);
-                int dp10 = (int) (10 * density);
-                int dp12 = (int) (12 * density);
-                int dp14 = (int) (14 * density);
-                int dp16 = (int) (16 * density);
-                int dp18 = (int) (18 * density);
-                int dp58 = (int) (58 * density);
-                int dp115 = (int) (115 * density);
+                int dp26 = (int) (26 * density);
+                int dp36 = (int) (36 * density);
+                int maxTitleWidthPx = (int) (165 * density);
 
                 boolean isCuestionado = "radar_cuestionado".equalsIgnoreCase(type);
                 boolean isRadar = isCuestionado || "radar".equalsIgnoreCase(type) || limit > 0;
-                int borderColor = isCuestionado ? Color.parseColor("#D97706")
-                        : (isRadar ? Color.parseColor("#DC2626") : Color.parseColor("#F59E0B"));
+                boolean isSpeeding = isRadar && limit > 0 && currentSpeed > limit;
 
-                // Tarjeta principal (Agrandada para máxima visibilidad de conducción)
+                // Píldora flotante minimalista y semi-transparente: rgba(0, 0, 0, 0.20)
                 LinearLayout card = new LinearLayout(this);
                 card.setOrientation(LinearLayout.HORIZONTAL);
                 card.setGravity(Gravity.CENTER_VERTICAL);
-                card.setPadding(dp18, dp16, dp16, dp16);
+                card.setPadding(dp5, dp4, dp8, dp4);
 
                 GradientDrawable cardBg = new GradientDrawable();
-                cardBg.setColor(Color.parseColor("#FA0F172A")); // Fondo oscuro translúcido sólido
-                cardBg.setCornerRadius(24 * density);
-                cardBg.setStroke((int) (4.5f * density), borderColor);
+                int cardStrokePx = Math.max(1, (int) (1.5f * density));
+                if (isSpeeding) {
+                    cardBg.setColor(Color.argb(64, 220, 38, 38));
+                    cardBg.setStroke(cardStrokePx, Color.argb(235, 239, 68, 68));
+                } else {
+                    cardBg.setColor(Color.argb(51, 0, 0, 0)); // rgba(0, 0, 0, 0.20)
+                    cardBg.setStroke(cardStrokePx, isCuestionado
+                            ? Color.argb(140, 245, 158, 11)
+                            : Color.argb(72, 255, 255, 255));
+                }
+                cardBg.setCornerRadius(999 * density);
                 card.setBackground(cardBg);
+                activeOverlayCardBg = cardBg;
 
-                // Click sobre el cartel trae la app completa a primer plano
-                card.setClickable(true);
-                card.setFocusable(true);
-                card.setOnClickListener(v -> {
-                    try {
-                        Intent openApp = new Intent(this, MainActivity.class);
-                        openApp.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                        startActivity(openApp);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error abriendo app desde cartel:", e);
-                    }
-                });
-
-                // 1. INDICADOR DE MÁXIMA / ALERTA (Agrandado a 115dp x 115dp)
+                // 1. SEÑAL COMPACTA DE VELOCIDAD MÁXIMA (36dp x 36dp)
                 FrameLayout signFrame = new FrameLayout(this);
-                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp115, dp115);
-                signParams.setMargins(0, 0, dp16, 0);
+                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp36, dp36);
+                signParams.setMargins(0, 0, dp8, 0);
                 signFrame.setLayoutParams(signParams);
 
                 if (isRadar && limit > 0) {
@@ -2910,250 +3225,196 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
                     signBg.setColor(isCuestionado ? Color.parseColor("#FEF3C7") : Color.WHITE);
-                    signBg.setStroke((int) (9 * density), signStrokeCol);
+                    signBg.setStroke(Math.max(2, (int) (3.5f * density)), signStrokeCol);
                     signFrame.setBackground(signBg);
-
-                    LinearLayout signInner = new LinearLayout(this);
-                    signInner.setOrientation(LinearLayout.VERTICAL);
-                    signInner.setGravity(Gravity.CENTER);
-                    signInner.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
                     TextView numText = new TextView(this);
                     numText.setText(String.valueOf(limit));
                     numText.setTextColor(Color.parseColor(isCuestionado ? "#78350F" : "#0F172A"));
-                    numText.setTextSize(52);
+                    numText.setTextSize(limit >= 100 ? 12.5f : 14.5f);
                     numText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     numText.setGravity(Gravity.CENTER);
                     numText.setIncludeFontPadding(false);
-                    signInner.addView(numText);
-
-                    TextView unitText = new TextView(this);
-                    unitText.setText("MÁX");
-                    unitText.setTextColor(signStrokeCol);
-                    unitText.setTextSize(13);
-                    unitText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                    unitText.setGravity(Gravity.CENTER);
-                    unitText.setIncludeFontPadding(false);
-                    signInner.addView(unitText);
-
-                    signFrame.addView(signInner);
+                    numText.setLayoutParams(new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    signFrame.addView(numText);
                 } else {
+                    int trafficBorderCol = Color.parseColor("#F59E0B");
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
-                    signBg.setColor(Color.parseColor("#1E293B"));
-                    signBg.setStroke((int) (8 * density), borderColor);
+                    signBg.setColor(Color.argb(190, 15, 23, 42));
+                    signBg.setStroke(Math.max(2, (int) (2.5f * density)), trafficBorderCol);
                     signFrame.setBackground(signBg);
-
-                    LinearLayout signInner = new LinearLayout(this);
-                    signInner.setOrientation(LinearLayout.VERTICAL);
-                    signInner.setGravity(Gravity.CENTER);
-                    signInner.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
                     TextView iconText = new TextView(this);
                     String icon = "police".equalsIgnoreCase(type) ? "🚔" :
                                  "checkpoint".equalsIgnoreCase(type) ? "🚧" :
                                  "municipal".equalsIgnoreCase(type) ? "🦊" : "⚠️";
                     iconText.setText(icon);
-                    iconText.setTextSize(50);
+                    iconText.setTextSize(16);
                     iconText.setGravity(Gravity.CENTER);
-                    signInner.addView(iconText);
-
-                    TextView opLbl = new TextView(this);
-                    opLbl.setText("CONTROL");
-                    opLbl.setTextColor(borderColor);
-                    opLbl.setTextSize(11);
-                    opLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                    opLbl.setGravity(Gravity.CENTER);
-                    signInner.addView(opLbl);
-
-                    signFrame.addView(signInner);
+                    iconText.setLayoutParams(new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    signFrame.addView(iconText);
                 }
-                card.addView(signFrame);
 
-                // 2. DETALLE CENTRAL (Badge, Distancia, Calle en 2 líneas, Velocímetro)
-                LinearLayout centerCol = new LinearLayout(this);
-                centerCol.setOrientation(LinearLayout.VERTICAL);
-                LinearLayout.LayoutParams centerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                centerCol.setLayoutParams(centerParams);
-
-                // Fila Superior
-                LinearLayout topRow = new LinearLayout(this);
-                topRow.setOrientation(LinearLayout.HORIZONTAL);
-                topRow.setGravity(Gravity.CENTER_VERTICAL);
-
-                TextView badgeView = new TextView(this);
-                badgeView.setText(isCuestionado ? "⚠️ COMUNAL CUESTIONADO"
-                        : (isRadar ? "📷 FOTOMULTA" : "🚨 OPERATIVO POLICIAL / CONTROL"));
-                badgeView.setTextColor(Color.WHITE);
-                badgeView.setTextSize(13);
-                badgeView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                badgeView.setPadding((int)(10*density), (int)(4*density), (int)(10*density), (int)(4*density));
-                GradientDrawable badgeBg = new GradientDrawable();
-                badgeBg.setColor(borderColor);
-                badgeBg.setCornerRadius(9 * density);
-                badgeView.setBackground(badgeBg);
-                topRow.addView(badgeView);
-
-                TextView distView = new TextView(this);
-                distView.setText(distance <= 18 ? "  🏁 ¡EN EL LUGAR!" : "  📍 A " + distance + "m");
-                distView.setTextColor(Color.parseColor("#38BDF8"));
-                distView.setTextSize(18);
-                distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                topRow.addView(distView);
-                activeOverlayDistView = distView;
-
-                centerCol.addView(topRow);
-
-                // Nombre / Ubicación (2 líneas para que NUNCA se corte)
-                TextView titleView = new TextView(this);
-                titleView.setText(title != null ? title : "Zona de videocontrol");
-                titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(19);
-                titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                titleView.setSingleLine(false);
-                titleView.setMaxLines(2);
-                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                titleView.setPadding(0, (int)(6*density), 0, (int)(4*density));
-                centerCol.addView(titleView);
-
-                // Velocidad / Exceso
-                TextView speedGauge = new TextView(this);
-                if (isRadar && limit > 0) {
-                    if (currentSpeed > limit) {
-                        speedGauge.setText("⚠️ Reduce la velocidad, vas muy rápido (" + currentSpeed + " km/h / MÁX " + limit + ")");
-                        speedGauge.setTextColor(Color.parseColor("#FCA5A5"));
-                    } else if (currentSpeed > 0) {
-                        speedGauge.setText("✅ Velocidad OK: " + currentSpeed + " km/h");
-                        speedGauge.setTextColor(Color.parseColor("#6EE7B7"));
-                    } else {
-                        speedGauge.setText("⏱️ Detenido (MÁX " + limit + " km/h)");
-                        speedGauge.setTextColor(Color.parseColor("#CBD5E1"));
-                    }
-                } else {
-                    speedGauge.setText("⚠️ Conduzca con precaución / Reduzca velocidad");
-                    speedGauge.setTextColor(Color.parseColor("#FCD34D"));
-                }
-                speedGauge.setTextSize(15);
-                speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                centerCol.addView(speedGauge);
-                activeOverlaySpeedGauge = speedGauge;
-
-                card.addView(centerCol);
-
-                // 3. BOTONES DE ACCIÓN: REPETIR y CERRAR (58dp x 58dp)
-                LinearLayout actionsCol = new LinearLayout(this);
-                actionsCol.setOrientation(LinearLayout.VERTICAL);
-                actionsCol.setGravity(Gravity.CENTER);
-                LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                actionsParams.setMargins(dp14, 0, 0, 0);
-                actionsCol.setLayoutParams(actionsParams);
-
-                // Botón Repetir Audio
-                LinearLayout repeatBtn = new LinearLayout(this);
-                repeatBtn.setOrientation(LinearLayout.VERTICAL);
-                repeatBtn.setGravity(Gravity.CENTER);
-                repeatBtn.setLayoutParams(new LinearLayout.LayoutParams(dp58, dp58));
-                GradientDrawable repBg = new GradientDrawable();
-                repBg.setColor(Color.parseColor("#403B82F6"));
-                repBg.setStroke((int)(2.5f*density), Color.parseColor("#3B82F6"));
-                repBg.setCornerRadius(16 * density);
-                repeatBtn.setBackground(repBg);
-
-                TextView repIcon = new TextView(this);
-                repIcon.setText("🔊");
-                repIcon.setTextSize(22);
-                repIcon.setGravity(Gravity.CENTER);
-                repeatBtn.addView(repIcon);
-
-                TextView repLbl = new TextView(this);
-                repLbl.setText("REPETIR");
-                repLbl.setTextColor(Color.parseColor("#93C5FD"));
-                repLbl.setTextSize(9);
-                repLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                repLbl.setGravity(Gravity.CENTER);
-                repeatBtn.addView(repLbl);
-
-                repeatBtn.setOnClickListener(v -> {
+                // Tocar el círculo de velocidad repite la locución
+                signFrame.setClickable(true);
+                signFrame.setOnClickListener(v -> {
                     if (lastFloatingAudioMessage != null && !lastFloatingAudioMessage.isEmpty()) {
                         speakMandatory(lastFloatingAudioMessage);
                     }
                 });
-                actionsCol.addView(repeatBtn);
+                card.addView(signFrame);
 
-                // Separador
-                View space = new View(this);
-                space.setLayoutParams(new LinearLayout.LayoutParams(dp58, (int)(8*density)));
-                actionsCol.addView(space);
+                // 2. COLUMNA COMPACTA CENTRAL: Metros restantes + Badge velocidad + Calle truncada 1 línea
+                LinearLayout centerCol = new LinearLayout(this);
+                centerCol.setOrientation(LinearLayout.VERTICAL);
+                centerCol.setGravity(Gravity.CENTER_VERTICAL);
+                LinearLayout.LayoutParams centerParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                centerCol.setLayoutParams(centerParams);
 
-                // Botón Cerrar
-                LinearLayout closeBtn = new LinearLayout(this);
-                closeBtn.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout topRow = new LinearLayout(this);
+                topRow.setOrientation(LinearLayout.HORIZONTAL);
+                topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                int distMeters = Math.max(0, distance);
+                TextView distView = new TextView(this);
+                distView.setText((!isRadar && distMeters <= 18) ? "En zona" : (distMeters + " m"));
+                distView.setTextColor(Color.WHITE);
+                distView.setTextSize(15);
+                distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                distView.setIncludeFontPadding(false);
+                distView.setShadowLayer(6f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
+                topRow.addView(distView);
+                activeOverlayDistView = distView;
+
+                TextView speedGauge = new TextView(this);
+                LinearLayout.LayoutParams speedParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                speedParams.setMargins(dp6, 0, 0, 0);
+                speedGauge.setLayoutParams(speedParams);
+                speedGauge.setPadding(dp7, dp2, dp7, dp2);
+                speedGauge.setTextSize(11.5f);
+                speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                speedGauge.setIncludeFontPadding(false);
+                speedGauge.setShadowLayer(4f, 0f, 1f, Color.argb(230, 0, 0, 0));
+
+                GradientDrawable speedBg = new GradientDrawable();
+                speedBg.setCornerRadius(999 * density);
+                speedGauge.setBackground(speedBg);
+                activeOverlaySpeedBg = speedBg;
+                activeOverlaySpeedGauge = speedGauge;
+                topRow.addView(speedGauge);
+
+                centerCol.addView(topRow);
+
+                TextView titleView = new TextView(this);
+                titleView.setText(title != null ? title : "Control de velocidad");
+                titleView.setTextColor(Color.argb(242, 248, 250, 252));
+                titleView.setTextSize(10.5f);
+                titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                titleView.setSingleLine(true);
+                titleView.setMaxLines(1);
+                titleView.setMaxWidth(maxTitleWidthPx);
+                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                titleView.setIncludeFontPadding(false);
+                titleView.setShadowLayer(5f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
+                centerCol.addView(titleView);
+
+                // Tocar el texto central abre Punto Alertas si el chofer lo desea
+                centerCol.setClickable(true);
+                centerCol.setOnClickListener(v -> {
+                    try {
+                        Intent openApp = new Intent(this, MainActivity.class);
+                        openApp.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        startActivity(openApp);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error abriendo app desde píldora:", e);
+                    }
+                });
+
+                card.addView(centerCol);
+
+                // Aplicar colores y textos iniciales de velocidad/distancia
+                updateOverlayLiveViews(limit, currentSpeed, distMeters, null);
+
+                // 3. BOTÓN COMPACTO CERRAR 'X' (26dp x 26dp)
+                TextView closeBtn = new TextView(this);
+                LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp26, dp26);
+                closeParams.setMargins(dp6, 0, 0, 0);
+                closeBtn.setLayoutParams(closeParams);
+                closeBtn.setText("✕");
+                closeBtn.setTextColor(Color.WHITE);
+                closeBtn.setTextSize(12.5f);
+                closeBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 closeBtn.setGravity(Gravity.CENTER);
-                closeBtn.setLayoutParams(new LinearLayout.LayoutParams(dp58, dp58));
+                closeBtn.setIncludeFontPadding(false);
+                closeBtn.setShadowLayer(4f, 0f, 1f, Color.argb(220, 0, 0, 0));
+
                 GradientDrawable closeBg = new GradientDrawable();
-                closeBg.setColor(Color.parseColor("#40EF4444"));
-                closeBg.setStroke((int)(2.5f*density), Color.parseColor("#EF4444"));
-                closeBg.setCornerRadius(16 * density);
+                closeBg.setShape(GradientDrawable.OVAL);
+                closeBg.setColor(Color.argb(72, 0, 0, 0));
+                closeBg.setStroke(Math.max(1, (int) (1.0f * density)), Color.argb(85, 255, 255, 255));
                 closeBtn.setBackground(closeBg);
 
-                TextView closeIcon = new TextView(this);
-                closeIcon.setText("✕");
-                closeIcon.setTextColor(Color.parseColor("#FCA5A5"));
-                closeIcon.setTextSize(22);
-                closeIcon.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                closeIcon.setGravity(Gravity.CENTER);
-                closeBtn.addView(closeIcon);
-
-                TextView closeLbl = new TextView(this);
-                closeLbl.setText("CERRAR");
-                closeLbl.setTextColor(Color.parseColor("#FCA5A5"));
-                closeLbl.setTextSize(9);
-                closeLbl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-                closeLbl.setGravity(Gravity.CENTER);
-                closeBtn.addView(closeLbl);
-
+                final String finalResolvedId = resolvedId;
                 closeBtn.setOnClickListener(v -> {
+                    stopAllAudio();
+                    long dismissNow = System.currentTimeMillis();
+                    if (finalResolvedId != null) {
+                        RadarTrackingState rSt = radarTrackingState.get(finalResolvedId);
+                        if (rSt != null) {
+                            rSt.dismissedByUser = true;
+                            rSt.dismissedAt = dismissNow;
+                        }
+                        RadarTrackingState tSt = trafficTrackingState.get(finalResolvedId);
+                        if (tSt != null) {
+                            tSt.dismissedByUser = true;
+                            tSt.dismissedAt = dismissNow;
+                        }
+                    }
                     hideFloatingOverlay();
                 });
-                actionsCol.addView(closeBtn);
-
-                card.addView(actionsCol);
+                card.addView(closeBtn);
 
                 int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ?
                         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY :
                         WindowManager.LayoutParams.TYPE_PHONE;
 
                 int windowFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                                  WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
                                   WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
                                   WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
 
-                // Primer plano sobre pantalla bloqueada o apagada
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     windowFlags |= WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
                 }
 
+                // WRAP_CONTENT en ancho y alto para NO bloquear toques del mapa de Uber / DiDi / GPS alrededor de la píldora
                 WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT,
                         WindowManager.LayoutParams.WRAP_CONTENT,
                         layoutType,
                         windowFlags,
                         PixelFormat.TRANSLUCENT
                 );
                 params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-                params.y = (int) (20 * density);
+                params.y = (int) (10 * density);
                 params.x = 0;
 
                 FrameLayout overlayContainer = new FrameLayout(this);
-                overlayContainer.setPadding(dp10, 0, dp10, 0);
+                overlayContainer.setBackgroundColor(Color.TRANSPARENT);
                 overlayContainer.addView(card);
 
                 activeOverlayView = overlayContainer;
                 windowManager.addView(activeOverlayView, params);
-                Log.i(TAG, "✅ [OVERLAY] Cartel flotante en primer plano sobre otras apps: " + title);
+                Log.i(TAG, "✅ [OVERLAY] Píldora flotante compacta y transparente activa: " + title);
 
             } catch (Exception e) {
-                Log.e(TAG, "❌ [OVERLAY] Error mostrando cartel flotante:", e);
+                Log.e(TAG, "❌ [OVERLAY] Error mostrando píldora flotante:", e);
             }
         });
     }
@@ -3168,13 +3429,16 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     } else {
                         windowManager.removeView(activeOverlayView);
                     }
-                    Log.i(TAG, "🛑 [OVERLAY] Cartel flotante cerrado");
+                    Log.i(TAG, "🛑 [OVERLAY] Píldora flotante cerrada");
                 }
             } catch (Exception ignored) {}
             activeOverlayView = null;
             activeOverlaySpeedGauge = null;
+            activeOverlaySpeedBg = null;
+            activeOverlayCardBg = null;
             activeOverlayDistView = null;
             activeOverlayTargetKey = null;
+            activeOverlayRadarId = null;
             lastFloatingAudioMessage = null;
         });
     }

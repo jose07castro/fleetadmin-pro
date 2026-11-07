@@ -24,6 +24,7 @@ public class RosarioRadars {
         public final double lng;
         public final int limit;
         public final int maxSpeed;
+        public final int speedLimit;
         public final String desc;
         public final int[] validHeadings;
         public final String tipoHomologacion;
@@ -43,6 +44,7 @@ public class RosarioRadars {
             this.lng = lng;
             this.limit = limit;
             this.maxSpeed = limit;
+            this.speedLimit = limit;
             this.desc = desc;
             this.validHeadings = validHeadings;
             this.tipoHomologacion = tipoHomologacion != null ? tipoHomologacion : HOMOLOGACION_OFICIAL;
@@ -50,6 +52,7 @@ public class RosarioRadars {
     }
 
     public static final List<StaticRadar> ALL_RADARS;
+    public static final java.util.Map<String, StaticRadar> BY_ID;
 
     static {
         List<StaticRadar> list = new ArrayList<>(255);
@@ -309,5 +312,10 @@ public class RosarioRadars {
         list.add(new StaticRadar("radar_rn168_tunel_14", "RN 168 Boca Paraná (Túnel Subfluvial)", -31.711985, -60.501889, 60, "Fotomulta acceso Túnel Subfluvial Paraná", new int[]{171, 351}, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rn168_parana_18", "RN 168 Acceso Paraná", -31.727728, -60.496737, 60, "Fotomulta acceso ciudad de Paraná", new int[]{119, 299}, HOMOLOGACION_OFICIAL));
         ALL_RADARS = Collections.unmodifiableList(list);
+        java.util.HashMap<String, StaticRadar> map = new java.util.HashMap<>(list.size() * 2);
+        for (StaticRadar r : list) {
+            map.put(r.id, r);
+        }
+        BY_ID = Collections.unmodifiableMap(map);
     }
 }

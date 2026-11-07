@@ -1628,49 +1628,44 @@ const RadarModule = (() => {
         const toast = document.createElement('div');
         toast.className = `radar-warning-toast ${type}`;
         toast.style.cssText = `
-            background: ${type === 'danger' ? '#7f1d1d' : '#7c2d12'};
-            color: ${type === 'danger' ? '#fecaca' : '#ffedd5'};
-            border: 2px solid ${type === 'danger' ? '#ef4444' : '#f97316'};
-            border-radius: 12px;
-            padding: 12px 16px;
-            font-family: Inter, sans-serif;
-            font-size: 0.9rem;
-            font-weight: 600;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            display: flex;
+            background: rgba(0, 0, 0, 0.22);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            color: #ffffff;
+            border: 1.5px solid ${type === 'danger' ? 'rgba(239, 68, 68, 0.75)' : 'rgba(249, 115, 22, 0.75)'};
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-family: Inter, -apple-system, sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.95);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.22);
+            display: inline-flex;
             align-items: center;
             justify-content: space-between;
+            gap: 8px;
             pointer-events: auto;
-            margin-bottom: 8px;
-            animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            margin: 0 auto 6px;
+            max-width: calc(100vw - 24px);
+            animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         `;
-        
-        const now = new Date();
-        const dateStr = now.toLocaleDateString();
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const dateTimeStr = `${dateStr} ${timeStr}`;
 
         toast.innerHTML = `
-            <div style="display:flex; flex-direction:column; gap:2px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span>${type === 'danger' ? '🚨' : '⚠️'}</span>
-                    <span>${message}</span>
-                </div>
-                <div style="font-size:0.75rem; opacity:0.8; margin-left:24px; font-weight:normal;">
-                    ${dateTimeStr}
-                </div>
+            <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <span>${type === 'danger' ? '🚨' : '⚠️'}</span>
+                <span style="overflow:hidden; text-overflow:ellipsis;">${message}</span>
             </div>
-            <button onclick="this.parentElement.remove()" style="background:none; border:none; color:white; font-size:1.1rem; cursor:pointer; padding: 0 4px; align-self: center; margin-left: 12px;">✕</button>
+            <button onclick="this.parentElement.remove()" style="background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.3); border-radius:50%; width:22px; height:22px; color:white; font-size:0.78rem; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0;">✕</button>
         `;
-        
+
         container.appendChild(toast);
-        
+
         setTimeout(() => {
             if (toast.parentElement) {
-                toast.style.animation = 'slideUp 0.4s forwards';
-                setTimeout(() => toast.remove(), 400);
+                toast.style.animation = 'slideUp 0.3s forwards';
+                setTimeout(() => toast.remove(), 300);
             }
-        }, 10000);
+        }, 8000);
     }
 
     function _updateActiveCount(count) {
@@ -1728,65 +1723,126 @@ const RadarModule = (() => {
         speakRadarAlert(message);
     }
 
+    const _fallbackPassedCooldown = {};
+
+    function _playSoftSafeSpeedBeepsFallback() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = window._sharedAudioContext || (window._sharedAudioContext = new AudioCtx());
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+            const now = ctx.currentTime;
+            [0, 0.125].forEach((delay, idx) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(idx === 0 ? 784 : 1046.5, now + delay);
+                gain.gain.setValueAtTime(0.08, now + delay);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.065);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + delay);
+                osc.stop(now + delay + 0.075);
+            });
+        } catch (_) {}
+    }
+
     /**
-     * Evalúa la posición actual del GPS frente a los radares activos
-     * Garantiza paridad entre la lógica Web y el servicio nativo de Android.
+     * Evalúa la posición actual del GPS frente a los radares activos.
+     * Garantiza paridad estricta entre el mapa RadarModule, CopilotModule y el servicio nativo Android.
      */
     function processRadarProximityAndSpeed(position, activeRadars) {
         if (!position || !position.coords) return;
+
+        // Delegar al motor unificado de CopilotModule para evitar alertas duplicadas y sincronizar el HUD compacto
+        if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.processRadarProximityAndSpeed === 'function') {
+            CopilotModule.processRadarProximityAndSpeed(position, activeRadars);
+            return;
+        }
+
         const coords = position.coords;
-        
-        // 1. Conversión estricta de metros por segundo (m/s) a kilómetros por hora (km/h)
-        const currentSpeedKmH = Math.round((coords.speed || 0) * 3.6);
+        const speedKmh = Math.max(0, (coords.speed || 0) * 3.6);
+        const now = Date.now();
 
-        const radars = activeRadars || (typeof CopilotModule !== 'undefined' && typeof CopilotModule.getAllRadars === 'function' ? CopilotModule.getAllRadars() : []);
-        if (!radars || !radars.length) return;
+        const radars = activeRadars || [];
+        if (!radars.length) return;
 
-        radars.forEach(radar => {
-            const distance = calculateDistanceFromCurrentLocation(
-                coords.latitude, 
-                coords.longitude, 
-                radar.lat, 
-                radar.lng
+        radars.forEach(camera => {
+            if (!camera || !camera.id) return;
+            const distanciaActual = calculateDistanceFromCurrentLocation(
+                coords.latitude,
+                coords.longitude,
+                camera.lat,
+                camera.lng
             );
+            const speedLimit = Number(camera.speedLimit ?? camera.maxSpeed ?? camera.limit ?? 60);
+            const detectionRadius = (speedLimit >= 80 || speedKmh > 75) ? 500 : 300;
 
-            // Inicializar el estado individual del radar si no existe
-            if (!radarTrackingState[radar.id]) {
-                radarTrackingState[radar.id] = {
-                    initialAlertDone: false,
-                    lastOverspeedAlertTime: 0
-                };
+            const cd = _fallbackPassedCooldown[camera.id];
+            if (cd) {
+                if (distanciaActual > detectionRadius + 40 || (now - cd.timestamp > 120000) || distanciaActual < cd.closedDistance - 25) {
+                    delete _fallbackPassedCooldown[camera.id];
+                } else {
+                    return;
+                }
             }
 
-            const state = radarTrackingState[radar.id];
+            let state = radarTrackingState[camera.id];
+            if (state && (state.initialAlertFired || state.initialAlertDone)) {
+                if (typeof state.distanciaAnterior !== 'number' || !isFinite(state.distanciaAnterior)) {
+                    state.distanciaAnterior = distanciaActual;
+                }
 
-            // 4. Histéresis de salida: limpiar el estado recién cuando el vehículo supera los 580 metros
-            if (distance > 580) {
-                delete radarTrackingState[radar.id];
+                // Auto-cierre inmediato al cruzar la cámara
+                if (distanciaActual > state.distanciaAnterior + 10) {
+                    _fallbackPassedCooldown[camera.id] = { closedDistance: distanciaActual, timestamp: now };
+                    delete radarTrackingState[camera.id];
+                    if (window.speechSynthesis) {
+                        try { window.speechSynthesis.cancel(); } catch (_) {}
+                    }
+                    return;
+                }
+
+                if (distanciaActual < state.distanciaAnterior) {
+                    state.distanciaAnterior = distanciaActual;
+                }
+
+                if (speedKmh <= speedLimit) {
+                    if (state.isOverspeedActive) {
+                        state.isOverspeedActive = false;
+                        if (window.speechSynthesis) {
+                            try { window.speechSynthesis.cancel(); } catch (_) {}
+                        }
+                    }
+                    if (!state.safeSpeedBeepsPlayed && (state.wasOverspeeding || (now - (state.initialAlertTime || 0) >= 3200 && speedKmh >= 5))) {
+                        state.safeSpeedBeepsPlayed = true;
+                        _playSoftSafeSpeedBeepsFallback();
+                    }
+                } else {
+                    state.isOverspeedActive = true;
+                    state.wasOverspeeding = true;
+                    state.safeSpeedBeepsPlayed = false;
+                    if (now - (state.lastOverspeedAlertTime || 0) >= 10000) {
+                        playAudioAlert(`Reduce la velocidad. Máxima permitida: ${speedLimit} km/h.`);
+                        state.lastOverspeedAlertTime = now;
+                    }
+                }
                 return;
             }
 
-            const radarMaxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 60);
-
-            // 2. Control dentro del radio de aproximación (<= 500 metros)
-            if (distance <= 500) {
-                
-                // Emitir aviso de proximidad UNA SOLA VEZ
-                if (!state.initialAlertDone) {
-                    playAudioAlert("Atención, control de velocidad próximo.");
-                    state.initialAlertDone = true;
-                }
-
-                // 3. Disparador exclusivo de exceso de velocidad (requiere alerta inicial previa)
-                if (state.initialAlertDone && currentSpeedKmH > radarMaxSpeed) {
-                    const currentTime = Date.now();
-                    const cooldownPeriod = 12000; // 12 segundos en milisegundos
-
-                    if (currentTime - state.lastOverspeedAlertTime >= cooldownPeriod) {
-                        playAudioAlert(`Reduce la velocidad. Máxima permitida: ${radarMaxSpeed} km/h.`);
-                        state.lastOverspeedAlertTime = currentTime;
-                    }
-                }
+            if (distanciaActual <= detectionRadius) {
+                radarTrackingState[camera.id] = {
+                    initialAlertFired: true,
+                    initialAlertDone: true,
+                    initialAlertTime: now,
+                    distanciaAnterior: distanciaActual,
+                    dismissedByUser: false,
+                    safeSpeedBeepsPlayed: false,
+                    isOverspeedActive: speedKmh > speedLimit,
+                    wasOverspeeding: speedKmh > speedLimit,
+                    lastOverspeedAlertTime: speedKmh > speedLimit ? now : 0
+                };
+                playAudioAlert(`Atención, fotomulta a ${Math.round(distanciaActual)} metros, máxima ${speedLimit}.`);
             }
         });
     }

@@ -251,6 +251,7 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         LocationTrackingService.isAppInForeground = true;
+        LocationTrackingService.hideFloatingOverlay();
         try {
             if (this.bridge != null && this.bridge.getWebView() != null) {
                 if (webView == null) {
@@ -258,11 +259,14 @@ public class MainActivity extends BridgeActivity {
                     webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
                     webView.addJavascriptInterface(new NativeServiceBridge(), "NativeServiceBridge");
                 }
+                final String nativeStateJson = LocationTrackingService.exportTrackingStateJson();
                 this.bridge.getWebView().post(new Runnable() {
                     @Override
                     public void run() {
                         if (webView != null) {
-                            webView.evaluateJavascript("if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
+                            webView.evaluateJavascript(
+                                "try { if (typeof CopilotModule !== 'undefined' && typeof CopilotModule.syncStateFromNative === 'function') { CopilotModule.syncStateFromNative(" + nativeStateJson + "); } } catch(_e){}" +
+                                "if (typeof GPSPermissions !== 'undefined' && typeof GPSPermissions.onResumeCheck === 'function') { " +
                                 "GPSPermissions.onResumeCheck(); " +
                                 "}", null);
                         }
@@ -628,11 +632,35 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void syncRadarTrackingState(String radarId, boolean initialAlertDone, double lastOverspeedAlertTime, boolean passedCamera, boolean remove) {
+        public void syncRadarTrackingState(String radarId, boolean initialAlertFired, double lastOverspeedAlertTime, boolean dismissedByUser, boolean remove) {
             try {
-                LocationTrackingService.syncRadarStateFromJs(radarId, initialAlertDone, (long) lastOverspeedAlertTime, passedCamera, remove);
+                LocationTrackingService.syncRadarStateFromJs(radarId, initialAlertFired, (long) lastOverspeedAlertTime, dismissedByUser, remove);
             } catch (Exception e) {
                 Log.e(TAG, "❌ Error syncing radar state to LocationTrackingService:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void syncRadarTrackingStateFull(
+                String radarId,
+                boolean initialAlertFired,
+                double lastOverspeedAlertTime,
+                boolean dismissedByUser,
+                boolean safeSpeedBeepsPlayed,
+                double distanciaAnterior,
+                boolean remove) {
+            try {
+                LocationTrackingService.syncRadarStateFromJsFull(
+                        radarId,
+                        initialAlertFired,
+                        (long) lastOverspeedAlertTime,
+                        dismissedByUser,
+                        safeSpeedBeepsPlayed,
+                        (float) distanciaAnterior,
+                        remove
+                );
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error syncing full radar state to LocationTrackingService:", e);
             }
         }
 

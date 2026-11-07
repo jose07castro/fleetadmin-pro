@@ -5,17 +5,23 @@
    ========================================================================== */
 
 const CopilotModule = (() => {
-    // Configuración de proximidad, histéresis y alertas
-    const WARNING_DISTANCE_METERS = 315;  // 300m para fotomultas fijas urbanas (base)
-    const TRAFFIC_WARNING_METERS = 500;   // 500m para operativos dinámicos de tránsito
-    const PASSING_DISTANCE_METERS = 20;   // Distancia mínima para considerar cámara superada
-    const EXIT_HYSTERESIS_METERS = 580;   // Margen de salida (> 580m) para evitar rebotes de GPS
-    const OVERSPEED_COOLDOWN_MS = 12000;  // 12s de enfriamiento entre avisos de exceso de velocidad
+    // Configuración de proximidad, evaluación dinámica de velocidad y auto-cierre
+    const WARNING_DISTANCE_METERS = 300;      // 300m radio estándar para fotomultas urbanas
+    const HIGHWAY_WARNING_METERS = 500;       // 500m para autopistas / avenidas rápidas (>= 80 km/h)
+    const TRAFFIC_WARNING_METERS = 400;       // 400m para operativos dinámicos de tránsito
+    const CROSSING_DELTA_METERS = 10;         // Auto-cierre inmediato si distanciaActual > distanciaAnterior + 10
+    const PASSING_DISTANCE_METERS = 18;       // Distancia inmediata al punto de cámara
+    const EXIT_HYSTERESIS_METERS = 580;       // Margen máximo de limpieza de estado (> 580m)
+    const OVERSPEED_COOLDOWN_MS = 10000;      // Intervalo entre avisos hablados de exceso de velocidad
+    const OVERSPEED_BEEP_INTERVAL_MS = 3500;  // Intervalo de pulso sonoro mientras persista el exceso
     const OVERSPEED_ALERT_TEXT = "Reduce la velocidad, vas muy rápido";
-    const COOLDOWN_MS = 15 * 60 * 1000;   // 15 minutos de enfriamiento para alertas dinámicas de tránsito
+    const COOLDOWN_MS = 15 * 60 * 1000;       // 15 minutos de enfriamiento para alertas dinámicas de tránsito
 
     // Mapa global persistente fuera del ciclo de eventos indexado por radar.id:
-    // radarTrackingState[radar.id] = { initialAlertDone: true, lastOverspeedAlertTime: 0, ... }
+    // radarTrackingState[radar.id] = {
+    //   initialAlertFired: true, initialAlertDone: true, distanciaAnterior: 300,
+    //   dismissedByUser: false, safeSpeedBeepsPlayed: false, isOverspeedActive: false, ...
+    // }
     const radarTrackingState = (typeof window !== 'undefined' && window.radarTrackingState && typeof window.radarTrackingState === 'object')
         ? window.radarTrackingState
         : {};
@@ -23,12 +29,18 @@ const CopilotModule = (() => {
         window.radarTrackingState = radarTrackingState;
     }
 
+    // Cooldown post-cruce para no re-disparar la misma cámara mientras el vehículo se aleja dentro del radio
+    const _passedCooldownMap = {};            // { radarId: { closedDistance, timestamp, entryRadius } }
+    const _trafficTrackingState = {};         // { alertId: { distanciaAnterior, dismissedByUser } }
+    let _pendingOverspeedTimer = null;
+
     // Estado del módulo
     let _isEnabled = localStorage.getItem('copilotRadar') !== 'off';
     let _isVoiceEnabled = localStorage.getItem('radarVoice') !== 'off';
     let _alertVolumePercent = parseInt(localStorage.getItem('radarVolumePercent') || '85', 10);
     let _lastAlertTime = {};              // { trafficAlertId: timestamp }
     let _activeHudRadarId = null;         // ID del radar actualmente mostrado en el HUD
+    let _currentHudTarget = null;         // Objeto radar/alerta actualmente renderizado en el HUD
     let _lastPosition = null;             // { lat, lng, time, speed, bearing }
     let _audioCtx = null;
     let _hudTimer = null;
@@ -37,6 +49,10 @@ const CopilotModule = (() => {
     let _firebaseAlertsListening = false;
 
     function _stopAllAudio() {
+        if (_pendingOverspeedTimer) {
+            clearTimeout(_pendingOverspeedTimer);
+            _pendingOverspeedTimer = null;
+        }
         console.log('⏹️ [COPILOTO] _stopAllAudio() ejecutado');
         if (typeof window !== 'undefined' && window.speechSynthesis) {
             try { window.speechSynthesis.cancel(); } catch (_) {}
@@ -3579,12 +3595,13 @@ const CopilotModule = (() => {
     }
 ];
 
-    // Normalizar maxSpeed (km/h) e indexar todos los radares por ID en diccionario O(1)
+    // Normalizar speedLimit / maxSpeed / limit (km/h) e indexar todos los radares por ID en diccionario O(1)
     const _radarByIdMap = {};
     STATIC_RADARS.forEach(r => {
-        if (typeof r.maxSpeed !== 'number' || isNaN(r.maxSpeed)) {
-            r.maxSpeed = Number(r.limit) || 60;
-        }
+        const normalizedLimit = Number(r.speedLimit ?? r.maxSpeed ?? r.limit ?? 60) || 60;
+        r.speedLimit = normalizedLimit;
+        r.maxSpeed = normalizedLimit;
+        r.limit = normalizedLimit;
         _radarByIdMap[r.id] = r;
     });
 
@@ -3848,6 +3865,95 @@ const CopilotModule = (() => {
                 ctx.resume().then(playTone).catch(() => {});
             } else {
                 playTone();
+            }
+        } catch (_) {}
+    }
+
+    /**
+     * Reproduce 2 bips cortos y suaves de confirmación de "velocidad segura" (<= speedLimit).
+     */
+    function _playSafeSpeedBeeps() {
+        try {
+            const ctx = _getAudioContext();
+            if (!ctx) return;
+
+            const playSoftBeeps = () => {
+                try {
+                    const now = ctx.currentTime;
+                    const volFactor = Math.max(0.08, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    const masterGain = ctx.createGain();
+                    masterGain.gain.setValueAtTime(volFactor * 0.22, now);
+                    masterGain.connect(ctx.destination);
+
+                    // Bip 1 corto y suave (G5 - 784 Hz, 60ms)
+                    const osc1 = ctx.createOscillator();
+                    const gain1 = ctx.createGain();
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(784, now);
+                    gain1.gain.setValueAtTime(0.35, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+                    osc1.connect(gain1);
+                    gain1.connect(masterGain);
+                    osc1.start(now);
+                    osc1.stop(now + 0.07);
+
+                    // Bip 2 corto y suave (C6 - 1046.5 Hz, 70ms)
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(1046.5, now + 0.125);
+                    gain2.gain.setValueAtTime(0.38, now + 0.125);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.195);
+                    osc2.connect(gain2);
+                    gain2.connect(masterGain);
+                    osc2.start(now + 0.125);
+                    osc2.stop(now + 0.205);
+                } catch (_) {}
+            };
+
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(playSoftBeeps).catch(() => {});
+            } else {
+                playSoftBeeps();
+            }
+        } catch (_) {}
+    }
+
+    /**
+     * Pulso sonoro de advertencia activa mientras persista exceso de velocidad (> speedLimit).
+     */
+    function _playOverspeedBeep() {
+        try {
+            const ctx = _getAudioContext();
+            if (!ctx) return;
+
+            const playAlertPulse = () => {
+                try {
+                    const now = ctx.currentTime;
+                    const volFactor = Math.max(0.15, Math.min(1.0, (_alertVolumePercent || 85) / 100.0));
+                    const masterGain = ctx.createGain();
+                    masterGain.gain.setValueAtTime(volFactor * 0.55, now);
+                    masterGain.connect(ctx.destination);
+
+                    [0, 0.12].forEach((delay, idx) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(idx === 0 ? 988 : 1175, now + delay);
+                        gain.gain.setValueAtTime(0.45, now + delay);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.09);
+                        osc.connect(gain);
+                        gain.connect(masterGain);
+                        osc.start(now + delay);
+                        osc.stop(now + delay + 0.10);
+                    });
+                } catch (_) {}
+            };
+
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(playAlertPulse).catch(() => {});
+            } else {
+                playAlertPulse();
             }
         } catch (_) {}
     }
@@ -4204,10 +4310,11 @@ const CopilotModule = (() => {
     function _getRadarSpeechText(target, distanceStage) {
         const firstName = _getDriverFirstName();
         const prefix = firstName ? `${firstName}, ` : '';
-        const limit = target.maxSpeed ?? target.limit ?? 60;
-        const distText = (distanceStage === 150) ? '150' : (distanceStage === 500 ? '500' : '300');
+        const limit = target.speedLimit ?? target.maxSpeed ?? target.limit ?? 60;
+        const rawDist = Number(distanceStage) || 300;
+        const distRound = Math.max(20, Math.round(rawDist / 10) * 10);
         const locationName = _formatRadarSpeechName(target.name);
-        return `${prefix}foto multa en ${locationName} a ${distText} metros, máxima ${limit}.`;
+        return `${prefix}foto multa en ${locationName} a ${distRound} metros, máxima ${limit}.`;
     }
 
     function _getTrafficSpeechText(target, dist) {
@@ -4223,7 +4330,7 @@ const CopilotModule = (() => {
             }
             return text;
         } else {
-            const limit = target.maxSpeed ?? target.limit ?? 60;
+            const limit = target.speedLimit ?? target.maxSpeed ?? target.limit ?? 60;
             return `${prefix}foto multa a ${distRound} metros, máxima ${limit}.`;
         }
     }
@@ -4264,7 +4371,8 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Inyecta los estilos CSS necesarios para el HUD de alta visibilidad.
+     * Inyecta los estilos CSS del banner píldora minimalista y transparente en la parte superior
+     * (no obstruye el mapa de navegación GPS / Uber / DiDi).
      */
     function _ensureHUDStyles() {
         if (typeof document === 'undefined') return;
@@ -4276,16 +4384,19 @@ const CopilotModule = (() => {
         style.textContent = `
             #radarCopilotHUD {
                 position: fixed;
-                top: 14px;
+                top: calc(env(safe-area-inset-top, 0px) + 8px);
                 left: 50%;
-                transform: translateX(-50%) translateY(-140%);
-                width: calc(100% - 16px);
-                max-width: 680px;
+                transform: translateX(-50%) translateY(-150%);
+                width: auto;
+                max-width: calc(100vw - 16px);
+                background: transparent !important;
+                border: none;
+                box-shadow: none;
                 z-index: 2147483647;
                 box-sizing: border-box;
-                transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.25), opacity 0.25s ease;
+                transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
                 opacity: 0;
-                pointer-events: auto;
+                pointer-events: none;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             #radarCopilotHUD.hud-active {
@@ -4293,219 +4404,145 @@ const CopilotModule = (() => {
                 opacity: 1;
             }
             .copilot-hud-card {
+                pointer-events: auto;
                 position: relative;
-                background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(28, 16, 26, 0.98) 100%);
-                border: 4.5px solid #ef4444;
-                border-radius: 24px;
-                box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), 0 0 45px rgba(239, 68, 68, 0.6);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                padding: 16px 20px;
-                display: flex;
+                background: rgba(0, 0, 0, 0.2);
+                border: 1.5px solid rgba(255, 255, 255, 0.28);
+                border-radius: 999px;
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+                backdrop-filter: blur(4px);
+                -webkit-backdrop-filter: blur(4px);
+                padding: 4px 8px 4px 5px;
+                display: inline-flex;
                 align-items: center;
-                gap: 16px;
+                gap: 8px;
                 color: #ffffff;
                 box-sizing: border-box;
+                max-width: calc(100vw - 16px);
             }
             .copilot-hud-card.hud-speeding {
-                border-color: #ef4444;
-                animation: copilotBorderPulse 1.1s infinite alternate;
+                background: rgba(220, 38, 38, 0.25);
+                border-color: rgba(239, 68, 68, 0.9);
+                animation: copilotBorderPulse 0.95s infinite alternate;
             }
             @keyframes copilotBorderPulse {
-                0% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.5); }
-                100% { box-shadow: 0 0 55px rgba(239, 68, 68, 0.98), 0 0 0 8px rgba(239, 68, 68, 0.4); }
+                0% { box-shadow: 0 2px 10px rgba(239, 68, 68, 0.35); }
+                100% { box-shadow: 0 2px 18px rgba(239, 68, 68, 0.8), 0 0 0 3px rgba(239, 68, 68, 0.28); }
             }
             .copilot-traffic-sign {
                 flex-shrink: 0;
-                width: 115px;
-                height: 115px;
+                width: 36px;
+                height: 36px;
                 border-radius: 50%;
                 background: #ffffff;
-                border: 9px solid #dc2626;
+                border: 3.5px solid #dc2626;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), inset 0 2px 4px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
                 box-sizing: border-box;
             }
             .copilot-traffic-sign .speed-num {
-                font-size: 54px;
+                font-size: 15px;
                 font-weight: 900;
-                line-height: 0.92;
+                line-height: 1;
                 color: #0f172a;
-                letter-spacing: -2px;
-                margin-top: -3px;
+                letter-spacing: -0.6px;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
-            .copilot-traffic-sign .speed-unit {
-                font-size: 13px;
-                font-weight: 900;
-                color: #dc2626;
-                margin-top: 3px;
-                letter-spacing: 1.5px;
-                text-transform: uppercase;
-                line-height: 1;
-            }
             .copilot-traffic-sign.is-traffic {
-                background: radial-gradient(circle, #1e293b 0%, #0f172a 100%);
-                border-width: 8px;
+                background: rgba(15, 23, 42, 0.75);
+                border-width: 2.5px;
             }
             .copilot-traffic-sign.is-traffic .traffic-icon {
-                font-size: 52px;
+                font-size: 18px;
                 line-height: 1;
-                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-            }
-            .copilot-traffic-sign.is-traffic .speed-unit {
-                font-size: 12px;
-                font-weight: 900;
-                margin-top: 4px;
-                letter-spacing: 1.2px;
             }
             .copilot-hud-main {
-                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
                 min-width: 0;
+                gap: 1px;
             }
             .copilot-hud-pill-row {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                margin-bottom: 4px;
-                flex-wrap: wrap;
-            }
-            .copilot-hud-pill-badge {
-                background: #dc2626;
-                color: #ffffff;
-                font-size: 14px;
-                font-weight: 900;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                padding: 5px 12px;
-                border-radius: 10px;
-                display: inline-flex;
-                align-items: center;
                 gap: 6px;
+                white-space: nowrap;
             }
             .copilot-hud-pill-dist {
-                background: rgba(56, 189, 248, 0.22);
-                color: #38bdf8;
-                font-size: 18px;
-                font-weight: 900;
-                padding: 5px 14px;
-                border-radius: 10px;
-                border: 1.5px solid rgba(56, 189, 248, 0.5);
-            }
-            .copilot-hud-name {
-                font-size: 22px;
-                font-weight: 900;
-                color: #f8fafc;
-                line-height: 1.25;
-                margin: 5px 0 4px;
-                white-space: normal;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.6);
-            }
-            .copilot-hud-desc {
+                color: #ffffff;
                 font-size: 15px;
-                font-weight: 600;
-                color: #cbd5e1;
-                margin-bottom: 6px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                font-weight: 900;
+                line-height: 1.1;
+                letter-spacing: -0.2px;
+                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.75);
             }
             .copilot-hud-speed-gauge {
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
-                font-size: 17px;
+                gap: 3px;
+                font-size: 12px;
                 font-weight: 800;
-                padding: 7px 16px;
-                border-radius: 12px;
+                line-height: 1.1;
+                padding: 2px 7px;
+                border-radius: 999px;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
             }
             .copilot-speed-over {
-                background: rgba(239, 68, 68, 0.32);
-                color: #fca5a5;
-                border: 1.5px solid rgba(239, 68, 68, 0.6);
+                background: rgba(239, 68, 68, 0.45);
+                color: #fecaca;
+                border: 1px solid rgba(252, 165, 165, 0.7);
                 font-weight: 900;
             }
             .copilot-speed-ok {
-                background: rgba(16, 185, 129, 0.22);
-                color: #6ee7b7;
-                border: 1.5px solid rgba(16, 185, 129, 0.5);
+                background: rgba(16, 185, 129, 0.25);
+                color: #a7f3d0;
+                border: 1px solid rgba(110, 231, 183, 0.45);
             }
             .copilot-speed-neutral {
-                background: rgba(148, 163, 184, 0.2);
-                color: #e2e8f0;
+                background: rgba(15, 23, 42, 0.25);
+                color: #f1f5f9;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }
-            .copilot-hud-actions {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-                align-self: center;
+            .copilot-hud-name {
+                font-size: 10.5px;
+                font-weight: 700;
+                color: rgba(248, 250, 252, 0.95);
+                line-height: 1.15;
+                max-width: 165px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.75);
+            }
+            .copilot-close-btn {
                 flex-shrink: 0;
-            }
-            .copilot-hud-action-btn {
-                width: 58px;
-                height: 58px;
-                border-radius: 16px;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                background: rgba(0, 0, 0, 0.28);
+                border: 1px solid rgba(255, 255, 255, 0.32);
+                color: #ffffff;
                 display: flex;
-                flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
+                padding: 0;
+                margin-left: 2px;
+                font-size: 13px;
+                font-weight: 900;
+                line-height: 1;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
                 transition: transform 0.12s ease, background 0.15s ease;
-                box-sizing: border-box;
                 user-select: none;
                 -webkit-user-select: none;
-                border-width: 2.5px;
-                border-style: solid;
             }
-            .copilot-hud-action-btn:active {
-                transform: scale(0.92);
-            }
-            .copilot-repeat-btn {
-                background: rgba(59, 130, 246, 0.25);
-                border-color: #3b82f6;
-                color: #93c5fd;
-            }
-            .copilot-repeat-btn span.btn-icon {
-                font-size: 22px;
-                line-height: 1;
-            }
-            .copilot-repeat-btn span.btn-lbl {
-                font-size: 9px;
-                font-weight: 900;
-                letter-spacing: 0.5px;
-                margin-top: 2px;
-            }
-            .copilot-close-btn {
-                background: rgba(239, 68, 68, 0.25);
-                border-color: #ef4444;
-                color: #fca5a5;
-            }
-            .copilot-close-btn span.btn-icon {
-                font-size: 22px;
-                line-height: 1;
-                font-weight: 900;
-            }
-            .copilot-close-btn span.btn-lbl {
-                font-size: 9px;
-                font-weight: 900;
-                letter-spacing: 0.5px;
-                margin-top: 2px;
-            }
-            .copilot-hud-bottom-row {
-                display: flex;
-                align-items: center;
-                justify-content: flex-start;
-                gap: 8px;
-                margin-top: 2px;
-                width: 100%;
+            .copilot-close-btn:active {
+                transform: scale(0.9);
+                background: rgba(239, 68, 68, 0.45);
             }
         `;
         document.head.appendChild(style);
@@ -4518,92 +4555,86 @@ const CopilotModule = (() => {
     let _lastDisplayedSpeed = 0;
 
     /**
-     * Muestra o actualiza el banner HUD de gran visibilidad en la pantalla.
-     * Soporta tanto cámaras fijas (Fotomultas) como alertas de tránsito en vivo.
-     * Incorpora UI Throttle (refresco cada 800ms-1s) y elimina sliders de volumen.
+     * Muestra o actualiza la píldora compacta y transparente en la parte superior.
+     * Muestra límite de velocidad, metros restantes, velocidad actual y botón 'X' sin obstruir el mapa.
      */
     function _showRadarHUD(target, dist, currentSpeed) {
-        if (typeof document === 'undefined') return;
+        if (typeof document === 'undefined' || !target) return;
         _ensureHUDStyles();
 
         const now = Date.now();
         let hud = document.getElementById('radarCopilotHUD');
 
-        const isTraffic = !!target.isTrafficAlert;
-        const isSpeeding = (!isTraffic && target.limit && currentSpeed !== null && currentSpeed > target.limit);
-        const distMeters = Math.round(dist);
-        let distLabel = `📍 A ${distMeters}m`;
-        if (distMeters <= PASSING_DISTANCE_METERS) {
-            distLabel = isTraffic ? '📍 ¡EN EL LUGAR!' : '📍 ¡PASANDO CÁMARA!';
-        }
+        _activeHudRadarId = target.id || null;
+        _currentHudTarget = target;
 
-        // Registrar datos para botón de repetición de audio
+        const isTraffic = !!target.isTrafficAlert;
+        const speedLimit = Number(target.speedLimit ?? target.maxSpeed ?? target.limit ?? 0);
+        const numericSpeed = (currentSpeed !== null && !isNaN(currentSpeed) && currentSpeed > 0) ? Math.round(currentSpeed) : 0;
+        const isSpeeding = (!isTraffic && speedLimit > 0 && numericSpeed > speedLimit);
+        const distMeters = Math.max(0, Math.round(dist));
+        const distLabel = (distMeters <= PASSING_DISTANCE_METERS)
+            ? (isTraffic ? 'En zona' : `${distMeters} m`)
+            : `${distMeters} m`;
+
+        // Registrar datos para repetición de audio si se toca el signo
         _lastAlertAudioTarget = target;
         _lastAlertAudioDistance = distMeters;
-        _lastAlertAudioSpeed = currentSpeed || 0;
+        _lastAlertAudioSpeed = numericSpeed;
 
-        // Determinar velocidad redondeada estabilizada
-        if (now - _lastUIThrottleTime >= 800 || _lastDisplayedSpeed === 0) {
+        // Actualizar velocidad mostrada con respuesta inmediata ante exceso
+        if (isSpeeding || (now - _lastUIThrottleTime >= 500) || _lastDisplayedSpeed === 0) {
             _lastUIThrottleTime = now;
-            _lastDisplayedSpeed = (currentSpeed !== null && currentSpeed > 0) ? Math.round(currentSpeed) : 0;
+            _lastDisplayedSpeed = numericSpeed;
         }
 
         let speedBadgeHtml = '';
-        if (!isTraffic) {
-            if (_lastDisplayedSpeed > 0) {
-                if (_lastDisplayedSpeed > target.limit) {
-                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-over" id="copilotHudSpeedGauge">⚠️ Reduce la velocidad, vas muy rápido (${_lastDisplayedSpeed} km/h / MÁX ${target.limit})</div>`;
-                } else {
-                    speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-ok" id="copilotHudSpeedGauge">✅ Velocidad OK: ${_lastDisplayedSpeed} km/h</div>`;
-                }
+        if (!isTraffic && speedLimit > 0) {
+            if (_lastDisplayedSpeed > speedLimit) {
+                speedBadgeHtml = `<span class="copilot-hud-speed-gauge copilot-speed-over" id="copilotHudSpeedGauge">⚠️ ${_lastDisplayedSpeed} km/h</span>`;
+            } else if (_lastDisplayedSpeed > 0) {
+                speedBadgeHtml = `<span class="copilot-hud-speed-gauge copilot-speed-ok" id="copilotHudSpeedGauge">${_lastDisplayedSpeed} km/h</span>`;
             } else {
-                speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⏱️ Detenido (MÁX ${target.limit} km/h)</div>`;
+                speedBadgeHtml = `<span class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">Máx ${speedLimit}</span>`;
             }
         } else {
-            speedBadgeHtml = `<div class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">⚠️ Conduzca con precaución en la zona</div>`;
+            speedBadgeHtml = `<span class="copilot-hud-speed-gauge copilot-speed-neutral" id="copilotHudSpeedGauge">${_lastDisplayedSpeed > 0 ? `${_lastDisplayedSpeed} km/h` : 'Precaución'}</span>`;
         }
 
-        // Icono y distintivo
         let signHtml = '';
-        let badgeHtml = '';
-        let cardBorderColor = '#ef4444';
+        let cardBorderColor = 'rgba(255, 255, 255, 0.28)';
 
         if (isTraffic) {
             const alertIcons = {
-                police:     { icon: '🚔', badge: 'POLICÍA', color: '#3b82f6' },
-                checkpoint: { icon: '🚧', badge: 'CONTROL', color: '#2563eb' },
-                municipal:  { icon: '🦊', badge: 'INSPECTOR', color: '#10b981' },
-                radar:      { icon: '📷', badge: 'RADAR MÓVIL', color: '#f59e0b' },
-                helicopter: { icon: '🚁', badge: 'HELICÓPTERO', color: '#10b981' },
-                ambulance:  { icon: '🚑', badge: 'AMBULANCIA', color: '#ef4444' },
-                firetruck:  { icon: '🚒', badge: 'BOMBEROS', color: '#b91c1c' },
-                accident:   { icon: '💥', badge: 'ACCIDENTE', color: '#ef4444' },
-                traffic:    { icon: '🚗', badge: 'TRÁNSITO', color: '#f97316' },
-                warning:    { icon: '⚠️', badge: 'ALERTA', color: '#f59e0b' }
+                police:     { icon: '🚔', color: '#3b82f6' },
+                checkpoint: { icon: '🚧', color: '#2563eb' },
+                municipal:  { icon: '🦊', color: '#10b981' },
+                radar:      { icon: '📷', color: '#f59e0b' },
+                helicopter: { icon: '🚁', color: '#10b981' },
+                ambulance:  { icon: '🚑', color: '#ef4444' },
+                firetruck:  { icon: '🚒', color: '#b91c1c' },
+                accident:   { icon: '💥', color: '#ef4444' },
+                traffic:    { icon: '🚗', color: '#f97316' },
+                warning:    { icon: '⚠️', color: '#f59e0b' }
             };
             const meta = alertIcons[target.type] || alertIcons.warning;
-            cardBorderColor = meta.color;
+            cardBorderColor = 'rgba(255, 255, 255, 0.32)';
             signHtml = `
                 <div class="copilot-traffic-sign is-traffic" style="border-color:${meta.color};">
                     <span class="traffic-icon">${meta.icon}</span>
-                    <span class="speed-unit" style="color:${meta.color};">${meta.badge}</span>
                 </div>
             `;
-            badgeHtml = `<span class="copilot-hud-pill-badge" style="background:${meta.color};">${meta.icon} ${meta.badge}</span>`;
         } else {
             const isCuestionado = target.tipoHomologacion === 'COMUNAL_CUESTIONADO';
-            cardBorderColor = isCuestionado ? '#f59e0b' : '#ef4444';
+            cardBorderColor = isSpeeding
+                ? 'rgba(239, 68, 68, 0.92)'
+                : (isCuestionado ? 'rgba(245, 158, 11, 0.55)' : 'rgba(255, 255, 255, 0.28)');
             const signBorderStyle = isCuestionado ? ' style="border-color:#d97706;"' : '';
-            const unitStyle = isCuestionado ? ' style="color:#d97706;"' : '';
             signHtml = `
-                <div class="copilot-traffic-sign"${signBorderStyle}>
-                    <span class="speed-num">${target.limit || 60}</span>
-                    <span class="speed-unit"${unitStyle}>MÁX</span>
+                <div class="copilot-traffic-sign"${signBorderStyle} title="Tocar para repetir aviso">
+                    <span class="speed-num">${speedLimit || 60}</span>
                 </div>
             `;
-            badgeHtml = isCuestionado
-                ? `<span class="copilot-hud-pill-badge" style="background:#d97706;">⚠️ COMUNAL CUESTIONADO</span>`
-                : `<span class="copilot-hud-pill-badge">📷 FOTOMULTA</span>`;
         }
 
         const cardClass = isSpeeding ? 'copilot-hud-card hud-speeding' : 'copilot-hud-card';
@@ -4612,38 +4643,25 @@ const CopilotModule = (() => {
             hud = document.createElement('div');
             hud.id = 'radarCopilotHUD';
             hud.setAttribute('role', 'alert');
-            hud.setAttribute('aria-live', 'assertive');
+            hud.setAttribute('aria-live', 'polite');
             hud.innerHTML = `
                 <div class="${cardClass}" id="copilotHudCard" style="border-color:${cardBorderColor};">
-                    <div id="copilotHudSignWrap">${signHtml}</div>
+                    <div id="copilotHudSignWrap" style="cursor:pointer;">${signHtml}</div>
                     <div class="copilot-hud-main">
                         <div class="copilot-hud-pill-row">
-                            <span id="copilotHudBadgeWrap">${badgeHtml}</span>
                             <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
+                            <span id="copilotHudBottomRow">${speedBadgeHtml}</span>
                         </div>
-                        <div class="copilot-hud-name" id="copilotHudName" title="${target.name}">${target.name}</div>
-                        <div class="copilot-hud-desc" id="copilotHudDesc">${target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito')}</div>
-                        <div class="copilot-hud-bottom-row" id="copilotHudBottomRow">
-                            ${speedBadgeHtml}
-                        </div>
+                        <div class="copilot-hud-name" id="copilotHudName" title="${target.name || ''}">${target.name || ''}</div>
                     </div>
-                    <div class="copilot-hud-actions">
-                        <button class="copilot-hud-action-btn copilot-repeat-btn" id="copilotRepeatBtn" title="Repetir audio">
-                            <span class="btn-icon">🔊</span>
-                            <span class="btn-lbl">REPETIR</span>
-                        </button>
-                        <button class="copilot-hud-action-btn copilot-close-btn" id="copilotCloseBtn" title="Cerrar aviso">
-                            <span class="btn-icon">✕</span>
-                            <span class="btn-lbl">CERRAR</span>
-                        </button>
-                    </div>
+                    <button class="copilot-close-btn" id="copilotCloseBtn" type="button" aria-label="Cerrar alerta" title="Cerrar aviso">✕</button>
                 </div>
             `;
             document.body.appendChild(hud);
 
-            const repeatBtn = document.getElementById('copilotRepeatBtn');
-            if (repeatBtn) {
-                repeatBtn.onclick = (e) => {
+            const signTap = document.getElementById('copilotHudSignWrap');
+            if (signTap) {
+                signTap.onclick = (e) => {
                     e.stopPropagation();
                     repeatAlertAudio();
                 };
@@ -4654,39 +4672,44 @@ const CopilotModule = (() => {
                 closeBtn.onclick = (e) => {
                     e.stopPropagation();
                     _stopAllAudio();
-                    _userDismissedTargetId = target.id;
-                    _userDismissedAt = Date.now();
-                    _hideRadarHUD();
+                    const activeTarget = _currentHudTarget || target;
+                    const nowDismiss = Date.now();
+                    if (activeTarget && activeTarget.id) {
+                        _userDismissedTargetId = activeTarget.id;
+                        _userDismissedAt = nowDismiss;
+                        if (activeTarget.isTrafficAlert) {
+                            if (!_trafficTrackingState[activeTarget.id]) {
+                                _trafficTrackingState[activeTarget.id] = { distanciaAnterior: distMeters };
+                            }
+                            _trafficTrackingState[activeTarget.id].dismissedByUser = true;
+                        } else if (radarTrackingState[activeTarget.id]) {
+                            radarTrackingState[activeTarget.id].dismissedByUser = true;
+                            radarTrackingState[activeTarget.id].dismissedAt = nowDismiss;
+                            _syncStateToNative(activeTarget.id, radarTrackingState[activeTarget.id], false);
+                        }
+                    }
+                    _hideRadarHUD(true);
                     if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
                         try { window.NativeServiceBridge.hideOverlayAlert(); } catch(_) {}
                     }
                 };
             }
         } else {
-            // Actualización suave sin reconstrucción de DOM
             const distEl = document.getElementById('copilotHudDist');
             if (distEl) distEl.textContent = distLabel;
 
             const nameEl = document.getElementById('copilotHudName');
-            if (nameEl && nameEl.textContent !== target.name) {
-                nameEl.textContent = target.name;
-                nameEl.title = target.name;
-            }
-
-            const descEl = document.getElementById('copilotHudDesc');
-            if (descEl) {
-                descEl.textContent = target.desc || (isTraffic ? 'Reporte activo en la vía' : 'Videocontrol municipal de tránsito');
+            if (nameEl && nameEl.textContent !== (target.name || '')) {
+                nameEl.textContent = target.name || '';
+                nameEl.title = target.name || '';
             }
 
             const signWrap = document.getElementById('copilotHudSignWrap');
             if (signWrap) signWrap.innerHTML = signHtml;
 
-            const badgeWrap = document.getElementById('copilotHudBadgeWrap');
-            if (badgeWrap) badgeWrap.innerHTML = badgeHtml;
-
             const card = document.getElementById('copilotHudCard');
             if (card) {
-                card.className = isSpeeding ? 'copilot-hud-card hud-speeding' : 'copilot-hud-card';
+                card.className = cardClass;
                 card.style.borderColor = cardBorderColor;
             }
 
@@ -4696,14 +4719,12 @@ const CopilotModule = (() => {
             }
         }
 
-        // Activar transición visible
         const raf = (typeof window !== 'undefined' && window.requestAnimationFrame) ? window.requestAnimationFrame : setTimeout;
         raf(() => {
             if (hud && hud.classList) hud.classList.add('hud-active');
         }, 16);
 
         // Despachar a cartel flotante nativo de Android únicamente si la app está en segundo plano (document.hidden)
-        // En primer plano, el HUD HTML ya se muestra directamente en pantalla, evitando superponer dos carteles.
         if (document.hidden && window.NativeServiceBridge && typeof window.NativeServiceBridge.showOverlayAlert === 'function') {
             try {
                 const audioMsg = !isTraffic ? _getRadarSpeechText(target, distMeters) : _getTrafficSpeechText(target, distMeters);
@@ -4714,7 +4735,7 @@ const CopilotModule = (() => {
                     overlayType,
                     target.name,
                     target.desc || (isTraffic ? 'Reporte en vía' : 'Fotomulta municipal'),
-                    target.limit || 0,
+                    speedLimit,
                     _lastDisplayedSpeed,
                     distMeters,
                     audioMsg
@@ -4722,8 +4743,6 @@ const CopilotModule = (() => {
             } catch (_) {}
         }
 
-        // NOTA: Se eliminó el auto-cierre tras 25 segundos por requerimiento del chofer:
-        // El cartel permanece visible hasta que el usuario lo cierre manualmente con el botón ✕.
         if (_hudTimer) {
             clearTimeout(_hudTimer);
             _hudTimer = null;
@@ -4731,18 +4750,23 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Oculta el banner HUD con animación fluida.
+     * Oculta el banner HUD (inmediatamente al cruzar cámara o cerrar con 'X', o con transición suave).
      */
-    function _hideRadarHUD() {
+    function _hideRadarHUD(immediate = false) {
         _activeHudRadarId = null;
+        _currentHudTarget = null;
         const hud = document.getElementById('radarCopilotHUD');
         if (hud) {
             hud.classList.remove('hud-active');
-            setTimeout(() => {
-                if (hud && !hud.classList.contains('hud-active')) {
-                    hud.remove();
-                }
-            }, 450);
+            if (immediate) {
+                hud.remove();
+            } else {
+                setTimeout(() => {
+                    if (hud && !hud.classList.contains('hud-active')) {
+                        hud.remove();
+                    }
+                }, 260);
+            }
         }
         if (_hudTimer) {
             clearTimeout(_hudTimer);
@@ -4754,17 +4778,63 @@ const CopilotModule = (() => {
      * Sincroniza el estado del radar hacia el servicio nativo de Android si está presente.
      */
     function _syncStateToNative(radarId, state, remove = false) {
-        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.syncRadarTrackingState === 'function') {
+        if (!window.NativeServiceBridge) return;
+        const fired = state ? !!(state.initialAlertFired || state.initialAlertDone) : false;
+        const lastOver = state ? (state.lastOverspeedAlertTime || 0) : 0;
+        const dismissed = state ? !!state.dismissedByUser : false;
+        const safeBeeps = state ? !!state.safeSpeedBeepsPlayed : false;
+        const prevDist = (state && typeof state.distanciaAnterior === 'number' && isFinite(state.distanciaAnterior))
+            ? state.distanciaAnterior
+            : 9999;
+
+        if (typeof window.NativeServiceBridge.syncRadarTrackingStateFull === 'function') {
+            try {
+                window.NativeServiceBridge.syncRadarTrackingStateFull(
+                    radarId,
+                    fired,
+                    lastOver,
+                    dismissed,
+                    safeBeeps,
+                    prevDist,
+                    !!remove
+                );
+                return;
+            } catch (_) {}
+        }
+        if (typeof window.NativeServiceBridge.syncRadarTrackingState === 'function') {
             try {
                 window.NativeServiceBridge.syncRadarTrackingState(
                     radarId,
-                    state ? !!state.initialAlertDone : false,
-                    state ? (state.lastOverspeedAlertTime || 0) : 0,
-                    state ? !!state.passedCamera : false,
+                    fired,
+                    lastOver,
+                    dismissed,
                     !!remove
                 );
             } catch (_) {}
         }
+    }
+
+    /**
+     * Recibe sincronización de estado desde el servicio en segundo plano de Android al volver a primer plano.
+     */
+    function syncStateFromNative(nativeMap) {
+        if (!nativeMap || typeof nativeMap !== 'object') return;
+        Object.keys(nativeMap).forEach(rId => {
+            const ns = nativeMap[rId];
+            if (!ns) return;
+            const existing = radarTrackingState[rId] || {};
+            radarTrackingState[rId] = Object.assign(existing, {
+                initialAlertFired: !!ns.initialAlertFired,
+                initialAlertDone: !!ns.initialAlertFired,
+                lastOverspeedAlertTime: ns.lastOverspeedAlertTime || existing.lastOverspeedAlertTime || 0,
+                dismissedByUser: !!(ns.dismissedByUser || existing.dismissedByUser),
+                safeSpeedBeepsPlayed: !!(ns.safeSpeedBeepsPlayed || existing.safeSpeedBeepsPlayed),
+                distanciaAnterior: (typeof ns.distanciaAnterior === 'number' && ns.distanciaAnterior > 0)
+                    ? Math.min(existing.distanciaAnterior || Infinity, ns.distanciaAnterior)
+                    : (existing.distanciaAnterior || 300),
+                initialAlertTime: existing.initialAlertTime || (Date.now() - 4000)
+            });
+        });
     }
 
     /**
@@ -4831,14 +4901,15 @@ const CopilotModule = (() => {
 
     /**
      * Chequea la posición actual respecto a radares fijos y alertas de tránsito en tiempo real.
-     * Aplica:
-     * 1) Histéresis de salida con margen (> 580m) para evitar rebotes de GPS.
-     * 2) Un único aviso inicial de aproximación al entrar en zona (<= 500m o 300m).
-     * 3) Silencio total mientras la velocidad sea <= límite del radar.
-     * 4) Disparador exclusivo por exceso de velocidad ("Reduce la velocidad, vas muy rápido") cada 12 segundos.
-     * 5) Supresión de falsos positivos con corredor direccional y anclaje geodésico exacto.
+     * Implementa paridad estricta Web / Android:
+     * 1) Detección inicial (300m urbano / 500m autopista) con aviso sonoro/visual único (`initialAlertFired = true`).
+     * 2) Evaluación dinámica post-aviso en cada ciclo GPS:
+     *    - `speedKmh <= camera.speedLimit`: silencia alarma continua, emite 2 bips cortos/suaves de confirmación
+     *      una única vez, y respeta cierre manual con 'X' (`dismissedByUser`).
+     *    - `speedKmh > camera.speedLimit`: mantiene activa la advertencia visual y sonora hasta desacelerar.
+     * 3) Auto-cierre inmediato al cruzar la cámara (`distanciaActual > distanciaAnterior + 10`).
      */
-    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null, accuracy = null, speedUnit = 'kmh') {
+    function checkProximity(currentLat, currentLng, rawSpeed = null, rawBearing = null, accuracy = null, speedUnit = 'kmh', customRadars = null) {
         if (!_isEnabled) return;
         if (!currentLat || !currentLng || isNaN(currentLat) || isNaN(currentLng)) return;
 
@@ -4849,11 +4920,11 @@ const CopilotModule = (() => {
         }
 
         const now = Date.now();
-        const currentSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed, accuracy, speedUnit);
-        const speedKmh = (currentSpeed !== null && currentSpeed >= 0) ? currentSpeed : 0;
+        const calculatedSpeed = _calculateSpeed(currentLat, currentLng, rawSpeed, accuracy, speedUnit);
+        const speedKmh = (calculatedSpeed !== null && calculatedSpeed >= 0) ? calculatedSpeed : 0;
 
         // Determinar rumbo (bearing) confiable de trayectoria vehicular
-        const reliableBearing = _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, currentSpeed);
+        const reliableBearing = _getReliableTrajectoryHeading(currentLat, currentLng, rawBearing, calculatedSpeed);
 
         // Guardar última posición confirmada con timestamp y accuracy
         _lastPosition = { lat: currentLat, lng: currentLng, time: now, speed: speedKmh, bearing: reliableBearing, accuracy: accuracy };
@@ -4861,8 +4932,25 @@ const CopilotModule = (() => {
             window._cachedGpsPosition = _lastPosition;
         }
 
+        const radarsSource = (Array.isArray(customRadars) && customRadars.length > 0) ? customRadars : STATIC_RADARS;
+
+        // Limpiar cooldowns post-cruce expirados o fuera de radio
+        for (const cId of Object.keys(_passedCooldownMap)) {
+            const cd = _passedCooldownMap[cId];
+            const cam = _radarByIdMap[cId] || radarsSource.find(r => r && r.id === cId);
+            if (!cd || !cam) {
+                delete _passedCooldownMap[cId];
+                continue;
+            }
+            const distCd = getDistanceInMeters(currentLat, currentLng, cam.lat, cam.lng);
+            const maxRadius = (cd.entryRadius || WARNING_DISTANCE_METERS) + 40;
+            if (distCd > maxRadius || (now - cd.timestamp > 120000) || distCd < (cd.closedDistance - 25)) {
+                delete _passedCooldownMap[cId];
+            }
+        }
+
         // =========================================================================
-        // 1. EVALUAR HISTÉRESIS DE SALIDA (> 580m) Y RADARES YA EN SEGUIMIENTO
+        // 1. EVALUAR RADARES ACTIVOS EN SEGUIMIENTO (`initialAlertFired = true`)
         // =========================================================================
         const trackedIds = Object.keys(radarTrackingState);
         let activeTrackedRadarInZone = null;
@@ -4870,159 +4958,202 @@ const CopilotModule = (() => {
 
         for (const rId of trackedIds) {
             const state = radarTrackingState[rId];
-            if (!state) continue;
+            if (!state || (!state.initialAlertFired && !state.initialAlertDone)) {
+                delete radarTrackingState[rId];
+                continue;
+            }
 
-            const radar = _radarByIdMap[rId];
-            if (!radar) {
+            const camera = _radarByIdMap[rId] || radarsSource.find(r => r && r.id === rId);
+            if (!camera) {
                 delete radarTrackingState[rId];
                 _syncStateToNative(rId, null, true);
                 continue;
             }
 
-            const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
-            const radarMaxSpeed = radar.maxSpeed ?? radar.limit ?? 60;
+            const distanciaActual = getDistanceInMeters(currentLat, currentLng, camera.lat, camera.lng);
+            const speedLimit = Number(camera.speedLimit ?? camera.maxSpeed ?? camera.limit ?? 60);
 
-            // Histéresis de salida: NO limpiar apenas supere 500m.
-            // Solo cuando dist > 580m se libera el radar para evitar rebotes de señal GPS.
-            if (dist > EXIT_HYSTERESIS_METERS) {
-                console.log(`📡 [COPILOTO] Histéresis superada (${Math.round(dist)}m > ${EXIT_HYSTERESIS_METERS}m): liberando radar ${radar.id}`);
+            if (typeof state.distanciaAnterior !== 'number' || !isFinite(state.distanciaAnterior)) {
+                state.distanciaAnterior = distanciaActual;
+            }
+
+            // 📍 REGLA 3: AUTO-CIERRE INMEDIATO AL CRUZAR LA CÁMARA (distanciaActual > distanciaAnterior + 10)
+            if (distanciaActual > state.distanciaAnterior + CROSSING_DELTA_METERS) {
+                console.log(`📍 [COPILOTO] Auto-cierre al cruzar cámara ${camera.name}: ${Math.round(distanciaActual)}m > ${Math.round(state.distanciaAnterior)}m + 10m`);
+
+                if ((state.maxSpeedRecorded || 0) > speedLimit && state.distanciaAnterior <= 45) {
+                    console.warn(`🚨 [COPILOTO] Infracción registrada en ${camera.name}: ${state.maxSpeedRecorded} km/h (máx ${speedLimit})`);
+                    _reportSpeedInfractionToServer(camera, state.maxSpeedRecorded);
+                }
+
+                _passedCooldownMap[rId] = {
+                    closedDistance: distanciaActual,
+                    timestamp: now,
+                    entryRadius: state.entryRadius || WARNING_DISTANCE_METERS
+                };
+
                 delete radarTrackingState[rId];
                 _syncStateToNative(rId, null, true);
-                if (_activeHudRadarId === rId) {
-                    _hideRadarHUD();
+                _stopAllAudio();
+                if (_activeHudRadarId === rId || !_activeHudRadarId) {
+                    _hideRadarHUD(true);
+                }
+                if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
+                    try { window.NativeServiceBridge.hideOverlayAlert(); } catch (_) {}
                 }
                 continue;
             }
 
-            // Radar dentro de la zona de histéresis (dist <= 580m)
-            const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
-            state.minDistance = Math.min(state.minDistance || dist, dist);
+            // Limpieza por margen máximo de seguridad (> 580m)
+            if (distanciaActual > EXIT_HYSTERESIS_METERS) {
+                delete radarTrackingState[rId];
+                _syncStateToNative(rId, null, true);
+                if (_activeHudRadarId === rId) {
+                    _hideRadarHUD(true);
+                }
+                continue;
+            }
+
+            // Actualizar distancia mínima alcanzada para comparar alejamiento neto (> +10m)
+            if (distanciaActual < state.distanciaAnterior) {
+                state.distanciaAnterior = distanciaActual;
+            }
             state.maxSpeedRecorded = Math.max(state.maxSpeedRecorded || 0, speedKmh);
 
-            // A) Detección de paso por la cámara (punto crítico)
-            const passedByDistance = dist <= PASSING_DISTANCE_METERS;
-            const passedByAlongTrack = (cr.alongTrack !== undefined && cr.alongTrack <= 0 && dist <= 40);
-            const passedByReceding = (state.minDistance <= 40 && dist > (state.minDistance + 12));
-            const passedByTurning = (state.minDistance <= 60 && cr.angleDiff > 105.0);
-
-            if (!state.passedCamera && (passedByDistance || passedByAlongTrack || passedByReceding || passedByTurning)) {
-                state.passedCamera = true;
-                _syncStateToNative(rId, state, false);
-                console.log(`📡 [COPILOTO] 🏁 Cámara superada: ${radar.name}`);
-                _playPassedChime();
-
-                if (_activeHudRadarId === rId) {
-                    const distEl = document.getElementById('copilotHudDist');
-                    if (distEl) distEl.textContent = '🏁 CÁMARA SUPERADA';
-                    setTimeout(() => {
-                        if (_activeHudRadarId === rId) {
-                            _hideRadarHUD();
-                        }
-                    }, 4000);
-                }
-
-                // Reporte al servidor de infracción si superó el límite de velocidad
-                if (state.maxSpeedRecorded > radarMaxSpeed && state.minDistance <= 45) {
-                    console.warn(`🚨 [COPILOTO] Infracción al pasar fotomulta ${radar.name}: ${state.maxSpeedRecorded} km/h (máx ${radarMaxSpeed})`);
-                    _reportSpeedInfractionToServer(radar, state.maxSpeedRecorded);
-                }
-            }
-
-            // B) Si el vehículo dobló o tomó una transversal alejada
-            if (!state.passedCamera && cr.angleDiff > 95.0 && dist > (state.minDistance + 30)) {
-                if (_activeHudRadarId === rId) {
-                    _hideRadarHUD();
-                }
-            }
-
-            // C) Mientras continúe en zona activa de aproximación (< 500m y no superada)
-            const entryRadius = Math.max(500, state.entryRadius || 500);
-            if (!state.passedCamera && dist <= entryRadius) {
-                if (dist < minTrackedDist) {
-                    minTrackedDist = dist;
-                    activeTrackedRadarInZone = { radar, state, dist, radarMaxSpeed };
-                }
+            const entryRadius = state.entryRadius || ((speedLimit >= 80) ? HIGHWAY_WARNING_METERS : WARNING_DISTANCE_METERS);
+            if (distanciaActual <= entryRadius + 25 && distanciaActual < minTrackedDist) {
+                minTrackedDist = distanciaActual;
+                activeTrackedRadarInZone = { camera, state, distanciaActual, speedLimit };
             }
         }
 
-        // Si hay un radar en seguimiento activo dentro de zona:
+        // 🧠 REGLA 2: EVALUACIÓN DINÁMICA DE VELOCIDAD EN CICLOS POST-AVISO
         if (activeTrackedRadarInZone) {
-            const { radar, state, dist, radarMaxSpeed } = activeTrackedRadarInZone;
+            const { camera, state, distanciaActual, speedLimit } = activeTrackedRadarInZone;
 
-            // Actualizar HUD visual
-            _showRadarHUD(radar, dist, speedKmh);
+            if (speedKmh <= speedLimit) {
+                // a) Silenciar inmediatamente cualquier alarma continua de exceso de velocidad
+                if (state.isOverspeedActive) {
+                    state.isOverspeedActive = false;
+                    _stopAllAudio();
+                }
 
-            // CONTROL EXCLUSIVO DE EXCESO DE VELOCIDAD:
-            if (speedKmh > radarMaxSpeed) {
-                const elapsedSinceLastSpeedAlert = now - (state.lastOverspeedAlertTime || 0);
-                if (elapsedSinceLastSpeedAlert >= OVERSPEED_COOLDOWN_MS) {
+                // b) Permitir únicamente 2 bips cortos/suaves de confirmación de "velocidad segura"
+                const initialVoiceFinished = (now - (state.initialAlertTime || 0)) >= 3200;
+                if (!state.safeSpeedBeepsPlayed && (state.wasOverspeeding || (initialVoiceFinished && speedKmh >= 5))) {
+                    state.safeSpeedBeepsPlayed = true;
+                    _playSafeSpeedBeeps();
+                    _syncStateToNative(camera.id, state, false);
+                }
+
+                // c) Si el usuario cerró el cartel con la 'X', NO volver a mostrarlo
+                if (state.dismissedByUser) {
+                    if (_activeHudRadarId === camera.id) {
+                        _hideRadarHUD(true);
+                    }
+                } else {
+                    _showRadarHUD(camera, distanciaActual, speedKmh);
+                }
+            } else {
+                // speedKmh > camera.speedLimit: mantener advertencia de exceso activa hasta desacelerar
+                state.isOverspeedActive = true;
+                state.wasOverspeeding = true;
+                state.safeSpeedBeepsPlayed = false;
+
+                const recentlyDismissed = state.dismissedByUser && (now - (state.dismissedAt || 0) < 5000);
+                if (!recentlyDismissed) {
+                    _showRadarHUD(camera, distanciaActual, speedKmh);
+                }
+
+                const afterInitialSpeech = (now - (state.initialAlertTime || 0)) >= 2800;
+                if (afterInitialSpeech && (now - (state.lastOverspeedBeepTime || 0) >= OVERSPEED_BEEP_INTERVAL_MS)) {
+                    state.lastOverspeedBeepTime = now;
+                    _playOverspeedBeep();
+                }
+
+                if (now - (state.lastOverspeedAlertTime || 0) >= OVERSPEED_COOLDOWN_MS) {
                     state.lastOverspeedAlertTime = now;
-                    _syncStateToNative(radar.id, state, false);
-
-                    const enqueueWarning = (now - (state.initialAlertTime || 0)) < 3800;
-                    console.warn(`🚨 [COPILOTO-EXCESO] ${speedKmh} km/h > máx ${radarMaxSpeed} km/h: ${OVERSPEED_ALERT_TEXT}`);
+                    _syncStateToNative(camera.id, state, false);
+                    const enqueueWarning = !afterInitialSpeech;
+                    console.warn(`🚨 [COPILOTO-EXCESO] ${speedKmh} km/h > máx ${speedLimit} km/h: ${OVERSPEED_ALERT_TEXT}`);
                     _speakTextDirect(OVERSPEED_ALERT_TEXT, true, enqueueWarning);
                     _triggerVibration(true);
                 }
             }
 
-            // Ya hay un radar prioritario gestionándose en zona
             return;
         }
 
         // =========================================================================
-        // 2. BUSCAR NUEVA ENTRADA A RADAR FIJO (NO PRESENTE EN radarTrackingState)
+        // 2. BUSCAR NUEVA DETECCIÓN DE CÁMARA DENTRO DEL RADIO (300m / 500m)
         // =========================================================================
         let bestRadar = null;
         let bestRadarDist = Infinity;
-        let bestRadarRadio = 300;
+        let bestRadarRadio = WARNING_DISTANCE_METERS;
 
-        for (const radar of STATIC_RADARS) {
-            if (radarTrackingState[radar.id]) continue;
+        for (const radar of radarsSource) {
+            if (!radar || !radar.id) continue;
+            if (radarTrackingState[radar.id] || _passedCooldownMap[radar.id]) continue;
 
             const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
-            const radarMaxSpeed = radar.maxSpeed ?? radar.limit ?? 60;
-            const radioAlerta = (speedKmh > 60 || radarMaxSpeed >= 80) ? 500 : 300;
+            const speedLimit = Number(radar.speedLimit ?? radar.maxSpeed ?? radar.limit ?? 60);
+            const radioAlerta = (speedLimit >= 80 || speedKmh > 75) ? HIGHWAY_WARNING_METERS : WARNING_DISTANCE_METERS;
 
-            if (dist <= (radioAlerta + 50)) {
-                const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
-                if (cr.aligned && cr.alongTrack >= 20 && cr.alongTrack <= radioAlerta) {
-                    if (dist < bestRadarDist) {
-                        bestRadarDist = dist;
-                        bestRadar = radar;
-                        bestRadarRadio = radioAlerta;
-                    }
+            if (dist <= radioAlerta) {
+                let isValidApproach = false;
+                if (reliableBearing !== null) {
+                    const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
+                    isValidApproach = cr.aligned && cr.alongTrack >= 12 && cr.alongTrack <= radioAlerta;
+                } else if (speedKmh >= 4 || customRadars !== null) {
+                    isValidApproach = true;
+                }
+
+                if (isValidApproach && dist < bestRadarDist) {
+                    bestRadarDist = dist;
+                    bestRadar = radar;
+                    bestRadarRadio = radioAlerta;
                 }
             }
         }
 
-        if (bestRadar && !(_userDismissedTargetId === bestRadar.id && (now - _userDismissedAt < 60000))) {
-            const bestRadarMaxSpeed = bestRadar.maxSpeed ?? bestRadar.limit ?? 60;
+        if (bestRadar) {
+            const bestSpeedLimit = Number(bestRadar.speedLimit ?? bestRadar.maxSpeed ?? bestRadar.limit ?? 60);
+            const isInitiallyOverspeed = speedKmh > bestSpeedLimit;
 
+            // Registrar `initialAlertFired = true` para emitir el aviso inicial una única vez
             radarTrackingState[bestRadar.id] = {
+                initialAlertFired: true,
                 initialAlertDone: true,
-                lastOverspeedAlertTime: 0,
                 initialAlertTime: now,
-                passedCamera: false,
-                minDistance: bestRadarDist,
+                distanciaAnterior: bestRadarDist,
+                dismissedByUser: false,
+                dismissedAt: 0,
+                safeSpeedBeepsPlayed: false,
+                isOverspeedActive: isInitiallyOverspeed,
+                wasOverspeeding: isInitiallyOverspeed,
+                lastOverspeedAlertTime: isInitiallyOverspeed ? now : 0,
+                lastOverspeedBeepTime: isInitiallyOverspeed ? now : 0,
                 maxSpeedRecorded: speedKmh,
                 entryRadius: bestRadarRadio
             };
 
             _syncStateToNative(bestRadar.id, radarTrackingState[bestRadar.id], false);
             _showRadarHUD(bestRadar, bestRadarDist, speedKmh);
-            _triggerVibration(false);
+            _triggerVibration(isInitiallyOverspeed);
 
-            console.log(`🔊 [COPILOTO-PROXIMITY] Aviso inicial radar ${bestRadar.name} a ${Math.round(bestRadarDist)}m (máx ${bestRadarMaxSpeed} km/h)`);
-            _speakRadarConcise(bestRadar, bestRadarRadio);
+            console.log(`🔊 [COPILOTO-PROXIMITY] Primer aviso único radar ${bestRadar.name} a ${Math.round(bestRadarDist)}m (límite ${bestSpeedLimit} km/h)`);
+            _speakRadarConcise(bestRadar, bestRadarDist);
 
-            if (speedKmh > bestRadarMaxSpeed) {
-                radarTrackingState[bestRadar.id].lastOverspeedAlertTime = now;
-                _syncStateToNative(bestRadar.id, radarTrackingState[bestRadar.id], false);
-                console.warn(`🚨 [COPILOTO-EXCESO-INICIAL] Encolando: ${OVERSPEED_ALERT_TEXT}`);
-                setTimeout(() => {
-                    _speakTextDirect(OVERSPEED_ALERT_TEXT, true, true);
-                    _triggerVibration(true);
+            if (isInitiallyOverspeed) {
+                if (_pendingOverspeedTimer) clearTimeout(_pendingOverspeedTimer);
+                const targetId = bestRadar.id;
+                _pendingOverspeedTimer = setTimeout(() => {
+                    _pendingOverspeedTimer = null;
+                    const st = radarTrackingState[targetId];
+                    if (st && st.isOverspeedActive) {
+                        _speakTextDirect(OVERSPEED_ALERT_TEXT, true, true);
+                        _triggerVibration(true);
+                    }
                 }, 1800);
             }
             return;
@@ -5046,9 +5177,28 @@ const CopilotModule = (() => {
         if (nearestTraffic) {
             if (minTrafficDist > 1000 && _warnedTrafficApproaches.has(nearestTraffic.id)) {
                 _warnedTrafficApproaches.delete(nearestTraffic.id);
+                delete _trafficTrackingState[nearestTraffic.id];
             }
 
             if (minTrafficDist <= defaultTrafficRadio) {
+                let trState = _trafficTrackingState[nearestTraffic.id];
+                if (!trState) {
+                    trState = { distanciaAnterior: minTrafficDist, dismissedByUser: false };
+                    _trafficTrackingState[nearestTraffic.id] = trState;
+                }
+
+                // Auto-cierre al cruzar alerta dinámica (> distanciaAnterior + 10m)
+                if (minTrafficDist > trState.distanciaAnterior + CROSSING_DELTA_METERS) {
+                    delete _trafficTrackingState[nearestTraffic.id];
+                    if (_activeHudRadarId === nearestTraffic.id) {
+                        _hideRadarHUD(true);
+                    }
+                    return;
+                }
+                if (minTrafficDist < trState.distanciaAnterior) {
+                    trState.distanciaAnterior = minTrafficDist;
+                }
+
                 const isStationaryAtAlert = (speedKmh < 7 && minTrafficDist < 70);
                 const driverFirst = _getDriverFirstName();
                 const isOwnAlert = nearestTraffic.authorName && driverFirst &&
@@ -5061,11 +5211,12 @@ const CopilotModule = (() => {
                 if (!isStationaryAtAlert && !isOwnAlert && !alreadyWarned && !inCooldown) {
                     _warnedTrafficApproaches.add(nearestTraffic.id);
                     _lastAlertTime[nearestTraffic.id] = now;
+                    trState.dismissedByUser = false;
                     _showRadarHUD(nearestTraffic, minTrafficDist, speedKmh);
                     _playWarningChime(false);
                     _speakWarning(nearestTraffic, minTrafficDist, speedKmh);
                     _triggerVibration(false);
-                } else if (!isOwnAlert && !alreadyWarned) {
+                } else if (!isOwnAlert && !trState.dismissedByUser && alreadyWarned) {
                     _showRadarHUD(nearestTraffic, minTrafficDist, speedKmh);
                 }
             }
@@ -5073,7 +5224,7 @@ const CopilotModule = (() => {
     }
 
     /**
-     * Prueba inmediata de alerta (HUD, Locución concisa y Pitidos de proximidad).
+     * Prueba inmediata de alerta (Píldora transparente compacta, locución inicial única y 2 bips suaves).
      * @param {'fotomulta'|'transito'|string} typeOrRadarId
      */
     function testAlert(typeOrRadarId = 'fotomulta') {
@@ -5108,20 +5259,21 @@ const CopilotModule = (() => {
             const foundRadar = STATIC_RADARS.find(r => r.id === typeOrRadarId);
             target = foundRadar || STATIC_RADARS[0];
             testDist = 300;
-            testSpeed = target.maxSpeed ?? target.limit ?? 60;
+            const limit = target.speedLimit ?? target.maxSpeed ?? target.limit ?? 60;
+            testSpeed = Math.max(20, limit - 8);
 
-            console.log('📡 [COPILOTO] Ejecutando TEST conciso para:', target.name);
+            console.log('📡 [COPILOTO] Ejecutando TEST compacto para:', target.name);
 
             _showRadarHUD(target, testDist, testSpeed);
-            _speakRadarConcise(target, 300);
+            _speakRadarConcise(target, testDist);
             _triggerVibration(false);
 
-            // Simulación de pitidos ascendentes cada 30 metros de muestra
-            setTimeout(() => _playProximityBeep(120), 2200);
-            setTimeout(() => _playProximityBeep(90), 3200);
-            setTimeout(() => _playProximityBeep(60), 4200);
-            setTimeout(() => _playProximityBeep(30), 5200);
-            setTimeout(() => _playPassedChime(), 6400);
+            // Confirmación suave de velocidad segura tras locución inicial
+            setTimeout(() => {
+                if (_activeHudRadarId === target.id) {
+                    _playSafeSpeedBeeps();
+                }
+            }, 3200);
         }
 
         if (typeof Components !== 'undefined' && Components.showToast) {
@@ -5211,64 +5363,54 @@ const CopilotModule = (() => {
 
     function dismissHUD() {
         _stopAllAudio();
-        _hideRadarHUD();
+        const activeTarget = _currentHudTarget;
+        const nowDismiss = Date.now();
+        if (activeTarget && activeTarget.id) {
+            _userDismissedTargetId = activeTarget.id;
+            _userDismissedAt = nowDismiss;
+            if (activeTarget.isTrafficAlert) {
+                if (!_trafficTrackingState[activeTarget.id]) {
+                    _trafficTrackingState[activeTarget.id] = { distanciaAnterior: _lastAlertAudioDistance || 300 };
+                }
+                _trafficTrackingState[activeTarget.id].dismissedByUser = true;
+            } else if (radarTrackingState[activeTarget.id]) {
+                radarTrackingState[activeTarget.id].dismissedByUser = true;
+                radarTrackingState[activeTarget.id].dismissedAt = nowDismiss;
+                _syncStateToNative(activeTarget.id, radarTrackingState[activeTarget.id], false);
+            }
+        }
+        _hideRadarHUD(true);
+        if (window.NativeServiceBridge && typeof window.NativeServiceBridge.hideOverlayAlert === 'function') {
+            try { window.NativeServiceBridge.hideOverlayAlert(); } catch (_) {}
+        }
     }
 
     /**
-     * Evalúa la posición actual del GPS frente a los radares activos
-     * Garantiza paridad entre la lógica Web y el servicio nativo de Android.
+     * Evalúa la posición actual del GPS frente a los radares activos.
+     * Garantiza paridad estricta entre la lógica Web y el servicio nativo de Android:
+     * - Convierte velocidad: `const speedKmh = (position.coords.speed || 0) * 3.6;`
+     * - Emite aviso inicial único (`initialAlertFired = true`), evalúa velocidad dinámica y auto-cierra al cruzar (`distanciaActual > distanciaAnterior + 10`).
      */
     function processRadarProximityAndSpeed(position, activeRadars) {
         if (!position || !position.coords) return;
         const coords = position.coords;
-        const currentSpeedKmH = Math.round((coords.speed || 0) * 3.6);
-        const radars = activeRadars || STATIC_RADARS;
-        if (!radars || !radars.length) return;
+        const speedKmh = Math.max(0, (coords.speed || 0) * 3.6);
 
-        radars.forEach(radar => {
-            const distance = getDistanceInMeters(coords.latitude, coords.longitude, radar.lat, radar.lng);
-
-            if (!radarTrackingState[radar.id]) {
-                radarTrackingState[radar.id] = {
-                    initialAlertDone: false,
-                    lastOverspeedAlertTime: 0
-                };
-            }
-
-            const state = radarTrackingState[radar.id];
-
-            if (distance > EXIT_HYSTERESIS_METERS) {
-                delete radarTrackingState[radar.id];
-                _syncStateToNative(radar.id, null, true);
-                return;
-            }
-
-            const radarMaxSpeed = Number(radar.maxSpeed ?? radar.limit ?? 60);
-
-            if (distance <= 500) {
-                if (!state.initialAlertDone) {
-                    _speakRadarConcise(radar, 500);
-                    state.initialAlertDone = true;
-                    _syncStateToNative(radar.id, state, false);
-                }
-
-                if (state.initialAlertDone && currentSpeedKmH > radarMaxSpeed) {
-                    const currentTime = Date.now();
-                    const cooldownPeriod = OVERSPEED_COOLDOWN_MS;
-
-                    if (currentTime - (state.lastOverspeedAlertTime || 0) >= cooldownPeriod) {
-                        _speakTextDirect(`Reduce la velocidad. Máxima permitida: ${radarMaxSpeed} km/h.`, true);
-                        state.lastOverspeedAlertTime = currentTime;
-                        _syncStateToNative(radar.id, state, false);
-                    }
-                }
-            }
-        });
+        checkProximity(
+            coords.latitude,
+            coords.longitude,
+            speedKmh,
+            (typeof coords.heading === 'number' && !isNaN(coords.heading)) ? coords.heading : null,
+            (typeof coords.accuracy === 'number' && !isNaN(coords.accuracy)) ? coords.accuracy : null,
+            'kmh',
+            Array.isArray(activeRadars) && activeRadars.length > 0 ? activeRadars : null
+        );
     }
 
     return {
         checkProximity,
         processRadarProximityAndSpeed,
+        syncStateFromNative,
         setEnabled,
         isEnabled,
         setVoiceEnabled,
