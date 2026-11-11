@@ -311,6 +311,15 @@ async function checkPosition({ driverId, driverName, lat, lng, speed, heading, s
                     });
                     if (!matchesRoad) continue;
                 }
+                if (typeof radar.minParallelLng === 'number' && Number.isFinite(radar.minParallelLng)) {
+                    let diffNorth = Math.abs(heading - 0) % 360;
+                    if (diffNorth > 180) diffNorth = 360 - diffNorth;
+                    let diffSouth = Math.abs(heading - 180) % 360;
+                    if (diffSouth > 180) diffSouth = 360 - diffSouth;
+                    if ((diffNorth <= 45 || diffSouth <= 45) && lng < radar.minParallelLng) {
+                        continue;
+                    }
+                }
                 const targetBearing = calculateBearing(lat, lng, radar.lat, radar.lng);
                 let angleDiff = Math.abs(heading - targetBearing) % 360;
                 if (angleDiff > 180) angleDiff = 360 - angleDiff;

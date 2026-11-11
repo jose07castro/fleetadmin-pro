@@ -632,6 +632,13 @@ const CopilotModule = (() => {
         "limit": 60,
         "desc": "Cruce en rojo",
         "address": "SORRENTO Y JUAN PABLO II",
+        "validHeadings": [
+            8,
+            88,
+            268
+        ],
+        "strictCorridor": true,
+        "minParallelLng": -60.7237,
         "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
     },
     {
@@ -875,21 +882,6 @@ const CopilotModule = (() => {
         "validHeadings": [
             45,
             225
-        ],
-        "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
-    },
-    {
-        "id": "radar_circ_1",
-        "name": "Av. Circunvalación y Av. Pellegrini",
-        "address": "Av. Circunvalación (RN A008) y Av. Pellegrini, Rosario",
-        "lat": -32.949277,
-        "lng": -60.722014,
-        "limit": 100,
-        "desc": "Radar de velocidad fija Circunvalación",
-        "type": "speed_camera",
-        "validHeadings": [
-            177,
-            357
         ],
         "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL"
     },
@@ -4147,10 +4139,17 @@ const CopilotModule = (() => {
         return [175, 355];
     }
 
+    function _isColectoraRadar(radar) {
+        if (!radar) return false;
+        if (radar.strictCorridor === true) return true;
+        const text = `${radar.name || ''} ${radar.desc || ''}`.toLowerCase();
+        return text.includes('colectora');
+    }
+
     function _isVehicleOnRadarStreet(carHeading, radar) {
         if (!radar || carHeading === null || isNaN(carHeading)) return true;
 
-        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí)
+        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí, Colectora Sorrento)
         if (Array.isArray(radar.validHeadings) && radar.validHeadings.length > 0) {
             return radar.validHeadings.some(h => {
                 let diff = Math.abs(carHeading - h) % 360;
@@ -4159,8 +4158,8 @@ const CopilotModule = (() => {
             });
         }
 
-        // B) Si el nombre o descripción menciona Circunvalación pero no tenía validHeadings explícito:
-        if (radar.name.includes('Circunvalación') || (radar.desc && radar.desc.includes('Circunvalación'))) {
+        // B) Si el nombre o descripción menciona Circunvalación (excluyendo colectoras) y no tenía validHeadings explícito:
+        if (!_isColectoraRadar(radar) && (radar.name.includes('Circunvalación') || (radar.desc && radar.desc.includes('Circunvalación')))) {
             const circHeadings = _getCircunvalacionHeadings(radar.lat, radar.lng);
             return circHeadings.some(h => {
                 let diff = Math.abs(carHeading - h) % 360;
@@ -4185,6 +4184,15 @@ const CopilotModule = (() => {
             return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
         }
 
+        // 1b. Exclusión de autopista paralela para radares en colectora (ej: Sorrento y Colectora vs Av. Circunvalación):
+        // Si el vehículo circula en el eje Norte-Sur paralelo pero al oeste de la colectora, viaja sobre la traza rápida.
+        if (radar && typeof radar.minParallelLng === 'number' && !isNaN(radar.minParallelLng)) {
+            const isParallelNorthSouth = _getAngleDifference(carHeading, 0) <= 45 || _getAngleDifference(carHeading, 180) <= 45;
+            if (isParallelNorthSouth && carLng < radar.minParallelLng) {
+                return { aligned: false, angleDiff: 180, crossTrack: 999, alongTrack: -999 };
+            }
+        }
+
         // b) Ángulo hacia la cámara (Bearing)
         const targetBearing = _calculateBearing(carLat, carLng, camLat, camLng);
         const angleDiff = _getAngleDifference(carHeading, targetBearing);
@@ -4199,10 +4207,12 @@ const CopilotModule = (() => {
         const rad = angleDiff * (Math.PI / 180);
 
         // c) Desviación lateral (Cross-Track Distance): perpendicular al vector de marcha.
-        // Estricto (<= 38m) en proximidad urbana (<= 180m) para descartar cuadras paralelas,
-        // y margen progresivo hasta 85m a 500m para tolerar curvas viales y ruido de brújula GPS (±9°).
+        // En colectora/corredor estricto el tope es 35m fijo para no disparar desde autopista paralela.
+        // Para el resto: <= 38m en proximidad urbana (<= 180m) y hasta 85m a 500m para curvas viales y ruido GPS.
         const crossTrack = distance * Math.abs(Math.sin(rad));
-        const maxCrossTrack = (distance <= 180) ? 38.0 : Math.min(85.0, 38.0 + (distance - 180) * 0.15);
+        const maxCrossTrack = _isColectoraRadar(radar)
+            ? 35.0
+            : ((distance <= 180) ? 38.0 : Math.min(85.0, 38.0 + (distance - 180) * 0.15));
         if (crossTrack > maxCrossTrack) {
             return { aligned: false, angleDiff, crossTrack, alongTrack: -999 };
         }
@@ -5097,14 +5107,15 @@ const CopilotModule = (() => {
 
             const dist = getDistanceInMeters(currentLat, currentLng, radar.lat, radar.lng);
             const speedLimit = Number(radar.speedLimit ?? radar.maxSpeed ?? radar.limit ?? 60);
-            const radioAlerta = (speedLimit >= 80 || speedKmh > 75) ? HIGHWAY_WARNING_METERS : WARNING_DISTANCE_METERS;
+            const isColectora = _isColectoraRadar(radar);
+            const radioAlerta = (!isColectora && (speedLimit >= 80 || speedKmh > 75)) ? HIGHWAY_WARNING_METERS : WARNING_DISTANCE_METERS;
 
             if (dist <= radioAlerta) {
                 let isValidApproach = false;
                 if (reliableBearing !== null) {
                     const cr = _evaluateCorridor(currentLat, currentLng, reliableBearing, radar.lat, radar.lng, dist, radar);
                     isValidApproach = cr.aligned && cr.alongTrack >= 12 && cr.alongTrack <= radioAlerta;
-                } else if (speedKmh >= 4 || customRadars !== null) {
+                } else if (!isColectora && (speedKmh >= 4 || customRadars !== null)) {
                     isValidApproach = true;
                 }
 

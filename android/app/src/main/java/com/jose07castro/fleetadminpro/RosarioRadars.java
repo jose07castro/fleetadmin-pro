@@ -9,7 +9,7 @@ import java.util.List;
  * - Rosario y Av. Circunvalación RN A008
  * - Corredores Nacionales y Provinciales: RN 9, AU 9, RN 1V09, RN 33, RN 34, RN 11, RN 174, RN A012, AP 01, RN 19, RN 8, RN 7, RN 12, RN 14, RN 168, RP 21
  * - Incluye clasificación jurisdiccional tipoHomologacion (OFICIAL_NACIONAL_PROVINCIAL / COMUNAL_CUESTIONADO)
- * Total: 255 puntos GPS (212 oficiales, 43 comunales cuestionados).
+ * Total: 254 puntos GPS (211 oficiales, 43 comunales cuestionados).
  * Sincronizado exactamente con data/static_radars.json y CopilotModule (copilot.js).
  */
 public class RosarioRadars {
@@ -28,16 +28,22 @@ public class RosarioRadars {
         public final String desc;
         public final int[] validHeadings;
         public final String tipoHomologacion;
+        public final boolean strictCorridor;
+        public final double minParallelLng;
 
         public StaticRadar(String id, String name, double lat, double lng, int limit, String desc) {
-            this(id, name, lat, lng, limit, desc, null, HOMOLOGACION_OFICIAL);
+            this(id, name, lat, lng, limit, desc, null, HOMOLOGACION_OFICIAL, false, Double.NaN);
         }
 
         public StaticRadar(String id, String name, double lat, double lng, int limit, String desc, int[] validHeadings) {
-            this(id, name, lat, lng, limit, desc, validHeadings, HOMOLOGACION_OFICIAL);
+            this(id, name, lat, lng, limit, desc, validHeadings, HOMOLOGACION_OFICIAL, false, Double.NaN);
         }
 
         public StaticRadar(String id, String name, double lat, double lng, int limit, String desc, int[] validHeadings, String tipoHomologacion) {
+            this(id, name, lat, lng, limit, desc, validHeadings, tipoHomologacion, false, Double.NaN);
+        }
+
+        public StaticRadar(String id, String name, double lat, double lng, int limit, String desc, int[] validHeadings, String tipoHomologacion, boolean strictCorridor, double minParallelLng) {
             this.id = id;
             this.name = name;
             this.lat = lat;
@@ -48,6 +54,8 @@ public class RosarioRadars {
             this.desc = desc;
             this.validHeadings = validHeadings;
             this.tipoHomologacion = tipoHomologacion != null ? tipoHomologacion : HOMOLOGACION_OFICIAL;
+            this.strictCorridor = strictCorridor;
+            this.minParallelLng = minParallelLng;
         }
     }
 
@@ -55,7 +63,7 @@ public class RosarioRadars {
     public static final java.util.Map<String, StaticRadar> BY_ID;
 
     static {
-        List<StaticRadar> list = new ArrayList<>(255);
+        List<StaticRadar> list = new ArrayList<>(254);
         list.add(new StaticRadar("radar_rosario_1", "España y San Lorenzo", -32.942635, -60.645948, 40, "Cruce en rojo / Senda peatonal", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_2", "Mendoza y Av. Provincias Unidas", -32.940218, -60.712617, 40, "Cruce en rojo / Senda peatonal", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_3", "Laprida 850", -32.947905, -60.634233, 40, "Cruce en rojo / Senda peatonal", null, HOMOLOGACION_OFICIAL));
@@ -105,7 +113,7 @@ public class RosarioRadars {
         list.add(new StaticRadar("radar_rosario_48", "ILLIA PTE. ARTURO U. 1402", -32.937028, -60.639938, 60, "Exceso de velocidad.", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_49", "Bv. Seguí 3820", -32.97219, -60.683506, 60, "Exceso de velocidad.", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_50", "Bv. Avellaneda 2951", -32.964331, -60.685223, 60, "Exceso de velocidad.", null, HOMOLOGACION_OFICIAL));
-        list.add(new StaticRadar("radar_rosario_51", "Sorrento y Circunvalación (Colectora)", -32.908234, -60.722652, 60, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
+        list.add(new StaticRadar("radar_rosario_51", "Sorrento y Circunvalación (Colectora)", -32.908234, -60.722652, 60, "Cruce en rojo", new int[]{8, 88, 268}, HOMOLOGACION_OFICIAL, true, -60.7237));
         list.add(new StaticRadar("radar_rosario_52", "Av. Ovidio Lagos y Av. Arijón", -33.003837, -60.676165, 60, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_53", "Av. 27 de Febrero y Av. Francia", -32.962699, -60.670855, 60, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_54", "Bv. Avellaneda y Av. Carballo", -32.921979, -60.674815, 60, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
@@ -130,7 +138,6 @@ public class RosarioRadars {
         list.add(new StaticRadar("radar_rosario_73", "Av. Pellegrini y Bv. Avellaneda", -32.949941, -60.68186, 60, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_74", "Bv. Oroño y Batlle y Ordóñez", -33.009436, -60.664703, 70, "Cruce en rojo", null, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_rosario_segui_francia", "Bv. Seguí entre Vera Mujica y Av. Francia", -32.97412, -60.67444, 60, "Control de velocidad / Cruce semafórico", new int[]{45, 225}, HOMOLOGACION_OFICIAL));
-        list.add(new StaticRadar("radar_circ_1", "Av. Circunvalación y Av. Pellegrini", -32.949277, -60.722014, 100, "Radar de velocidad fija Circunvalación", new int[]{177, 357}, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_circ_ovidio_lagos", "Av. Circunvalación y Av. Ovidio Lagos", -33.007862, -60.677186, 100, "Radar de velocidad fija Circunvalación", new int[]{124, 304}, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_circ_3", "Av. Circunvalación y Av. Uriburu", -32.992051, -60.701986, 100, "Radar de velocidad fija Circunvalación", new int[]{140, 320}, HOMOLOGACION_OFICIAL));
         list.add(new StaticRadar("radar_circ_5", "Av. Circunvalación y Baigorria", -32.889165, -60.716124, 100, "Radar de velocidad fija Circunvalación", new int[]{36, 216}, HOMOLOGACION_OFICIAL));

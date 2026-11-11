@@ -546,6 +546,13 @@
     "limit": 60,
     "desc": "Cruce en rojo",
     "address": "SORRENTO Y JUAN PABLO II",
+    "validHeadings": [
+      8,
+      88,
+      268
+    ],
+    "strictCorridor": true,
+    "minParallelLng": -60.7237,
     "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
     "maxSpeed": 60
   },
@@ -816,22 +823,6 @@
     ],
     "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
     "maxSpeed": 60
-  },
-  {
-    "id": "radar_circ_1",
-    "name": "Av. Circunvalación y Av. Pellegrini",
-    "address": "Av. Circunvalación (RN A008) y Av. Pellegrini, Rosario",
-    "lat": -32.949277,
-    "lng": -60.722014,
-    "limit": 100,
-    "desc": "Radar de velocidad fija Circunvalación",
-    "type": "speed_camera",
-    "validHeadings": [
-      177,
-      357
-    ],
-    "tipoHomologacion": "OFICIAL_NACIONAL_PROVINCIAL",
-    "maxSpeed": 100
   },
   {
     "id": "radar_circ_ovidio_lagos",

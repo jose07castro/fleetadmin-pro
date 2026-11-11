@@ -860,8 +860,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 recentLocations.removeFirst();
             }
 
-            // 1. Si el sensor o GPS nativo reporta bearing (> 0) y velocidad de marcha >= 8 km/h (2.2 m/s)
-            if (currentLocation.hasBearing() && currentLocation.getBearing() > 0.0f && currentLocation.getSpeed() >= 2.2f) {
+            // 1. Si el sensor o GPS nativo reporta bearing (>= 0, incluye Norte 0.0) y velocidad de marcha >= 8 km/h (2.2 m/s)
+            if (currentLocation.hasBearing() && currentLocation.getBearing() >= 0.0f && currentLocation.getSpeed() >= 2.2f) {
                 return currentLocation.getBearing();
             }
 
@@ -906,10 +906,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
      * e) Sentido de circulación: rechazo de mano contraria o perpendiculares
      */
 
+    private boolean isColectoraRadar(RosarioRadars.StaticRadar radar) {
+        if (radar == null) return false;
+        if (radar.strictCorridor) return true;
+        String nameLower = radar.name != null ? radar.name.toLowerCase(java.util.Locale.ROOT) : "";
+        String descLower = radar.desc != null ? radar.desc.toLowerCase(java.util.Locale.ROOT) : "";
+        return nameLower.contains("colectora") || descLower.contains("colectora");
+    }
+
     private boolean isVehicleOnRadarStreet(Location carLoc, Float carBearing, RosarioRadars.StaticRadar radar) {
         if (radar == null || carBearing == null) return true;
 
-        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí)
+        // A) Rumbos explícitos asignados al radar (ej: Circunvalación en Ovidio Lagos/Uriburu, Bv. Seguí, Colectora Sorrento)
         if (radar.validHeadings != null && radar.validHeadings.length > 0) {
             for (int h : radar.validHeadings) {
                 float diff = Math.abs(carBearing - h) % 360.0f;
@@ -922,7 +930,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
 
         // B) Si el nombre o descripción menciona Circunvalación pero no tenía validHeadings explícito:
-        if (radar.name.contains("Circunvalación") || (radar.desc != null && radar.desc.contains("Circunvalación"))) {
+        // No aplicar a cámaras de colectora/lateral para no confundirlas con la calzada central de Circunvalación.
+        if (!isColectoraRadar(radar) && (radar.name.contains("Circunvalación") || (radar.desc != null && radar.desc.contains("Circunvalación")))) {
             int[] circHeadings = getCircunvalacionHeadings(radar.lat, radar.lng);
             for (int h : circHeadings) {
                 float diff = Math.abs(carBearing - h) % 360.0f;
@@ -979,6 +988,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         // Descarta totalmente a vehículos en calles transversales como Ovidio Lagos o Uriburu.
         if (radar != null && !isVehicleOnRadarStreet(carLoc, reliableBearing, radar)) {
             return new CorridorResult(false, 180f, 999.0, -999.0);
+        }
+
+        // 1b. Exclusión de calzada central paralela (ej: cámara en Colectora Este vs Av. Circunvalación).
+        // Si el vehículo circula paralelo en sentido N/S al oeste del límite de colectora, descartar.
+        if (radar != null && !Double.isNaN(radar.minParallelLng)) {
+            float diffNorth = Math.abs(reliableBearing - 0.0f) % 360.0f;
+            if (diffNorth > 180.0f) diffNorth = 360.0f - diffNorth;
+            float diffSouth = Math.abs(reliableBearing - 180.0f) % 360.0f;
+            if (diffSouth > 180.0f) diffSouth = 360.0f - diffSouth;
+            if ((diffNorth <= 45.0f || diffSouth <= 45.0f) && carLoc.getLongitude() < radar.minParallelLng) {
+                return new CorridorResult(false, 180f, 999.0, -999.0);
+            }
         }
 
         Location targetLoc = new Location("");
@@ -1301,14 +1322,15 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
 
                 float dist = (float) getDistanceInMeters(
                         myLocation.getLatitude(), myLocation.getLongitude(), radar.lat, radar.lng);
-                int detectionRadius = (radar.speedLimit >= 80 || speedKmh > 75) ? 500 : 300;
+                boolean isColectora = isColectoraRadar(radar);
+                int detectionRadius = (!isColectora && (radar.speedLimit >= 80 || speedKmh > 75)) ? 500 : 300;
 
                 if (dist <= detectionRadius) {
                     boolean validApproach = false;
                     if (reliableBearing != null) {
                         CorridorResult cr = evaluateCorridor(myLocation, reliableBearing, radar, dist);
                         validApproach = cr.aligned && cr.alongTrack >= 12.0 && cr.alongTrack <= detectionRadius;
-                    } else if (speedKmh >= 4) {
+                    } else if (!isColectora && speedKmh >= 4) {
                         validApproach = true;
                     }
 
