@@ -361,6 +361,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                         updateFirebaseGpsStatus(eventType, isGpsEnabled);
                         // Send alert to server
                         sendEventToServer(eventType);
+                        if (!isGpsEnabled) {
+                            postUrgentAlertNotification(
+                                "🚨 GPS DESACTIVADO EN TURNO",
+                                "Encendé la ubicación del teléfono inmediatamente. Tu desconexión quedó registrada en la base."
+                            );
+                            speakMandatory("Atención. Se desactivó el GPS del teléfono con un turno activo. Encendé la ubicación inmediatamente.");
+                        }
                     }
                 }
             }
@@ -474,6 +481,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         // Iniciar pings periódicos
         startHeartbeatTimer();
 
+        if (isShiftActive) {
+            scheduleKeepAliveAlarmStatic(this, 90000L);
+        }
+
         return START_STICKY; // El sistema lo reinicia si muere
     }
 
@@ -582,6 +593,26 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 serviceThread.quitSafely();
             }
         } catch (Exception ignored) {}
+
+        // 🛡️ BLINDAJE ANTI-MUERTE EN TURNO: Si el turno sigue activo cuando el sistema o el usuario
+        // intenta matar el servicio, programar resurrección inmediata en 3 segundos vía AlarmManager
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            boolean shiftStillActive = isShiftActive || prefs.getBoolean("is_shift_active", false);
+            String savedUserId = (userId != null && !userId.isEmpty()) ? userId : prefs.getString("userId", null);
+            if (shiftStillActive && savedUserId != null && !savedUserId.isEmpty()) {
+                Log.w(TAG, "🛡️ [KEEPALIVE] Servicio destruido con turno activo! Programando resurrección en 3s...");
+                scheduleKeepAliveAlarmStatic(this, 3000L);
+                if (dbRef != null) {
+                    Map<String, Object> stopData = new HashMap<>();
+                    stopData.put("last_service_stop_ms", System.currentTimeMillis());
+                    stopData.put("last_service_stop_reason", "service_destroyed_in_shift");
+                    dbRef.child(savedUserId).updateChildren(stopData);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error en resurrección de onDestroy: " + e.getMessage());
+        }
 
         super.onDestroy();
     }
@@ -1907,6 +1938,54 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         }
     }
 
+    public static void scheduleKeepAliveAlarmStatic(Context ctx, long delayMs) {
+        if (ctx == null) return;
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            Intent intent = new Intent(ctx, ShiftKeepAliveReceiver.class);
+            intent.setAction(ShiftKeepAliveReceiver.ACTION_KEEPALIVE_SHIFT);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, 7788, intent, flags);
+            long triggerAt = System.currentTimeMillis() + Math.max(2500L, delayMs);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                } catch (SecurityException se) {
+                    am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                }
+            } else {
+                am.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error programando alarma keep-alive: " + e.getMessage());
+        }
+    }
+
+    public static void cancelKeepAliveAlarmStatic(Context ctx) {
+        if (ctx == null) return;
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            Intent intent = new Intent(ctx, ShiftKeepAliveReceiver.class);
+            intent.setAction(ShiftKeepAliveReceiver.ACTION_KEEPALIVE_SHIFT);
+            int flags = PendingIntent.FLAG_NO_CREATE;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, 7788, intent, flags);
+            if (pi != null) {
+                am.cancel(pi);
+                pi.cancel();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error cancelando alarma keep-alive: " + e.getMessage());
+        }
+    }
+
     public static void setShiftActive(boolean active, Context context) {
         boolean changed = (isShiftActive != active);
         isShiftActive = active;
@@ -1917,6 +1996,11 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             prefs.edit().putBoolean("is_shift_active", active).apply();
             savedRole = prefs.getString("userRole", "driver");
+            if (active) {
+                scheduleKeepAliveAlarmStatic(ctx, 60000L);
+            } else {
+                cancelKeepAliveAlarmStatic(ctx);
+            }
         }
         if (instance != null) {
             instance.updateStatusNotification();
@@ -2497,7 +2581,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 boolean isIgnoringBatt = true;
                 if (pm != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        isIgnoringBatt = pm.isIgnoringBatteryOptimizations(getPackageName());
+                        boolean pmIgnoring = pm.isIgnoringBatteryOptimizations(getPackageName());
+                        boolean prefConfigured = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("battery_exemption_configured", false);
+                        isIgnoringBatt = pmIgnoring || prefConfigured;
                     }
                 }
 
@@ -2644,6 +2730,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 // 2.5 Re-afirmar la notificación ONGOING si el turno sigue activo (protege contra descarte en Android 14+)
                 if (isShiftActive) {
                     updateStatusNotification();
+                    scheduleKeepAliveAlarmStatic(LocationTrackingService.this, 90000L);
                 }
 
                 long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
@@ -2903,6 +2990,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         heartbeatHandler.postDelayed(heartbeatRunnable, 60000);
     }
 
+    private Boolean lastBgLocationOk = null;
+    private Boolean lastBatteryOptOk = null;
+    private long lastPermissionWarningMs = 0L;
+
     private void checkAndReportPermissions() {
         if (userId == null || userId.isEmpty()) return;
 
@@ -2916,18 +3007,22 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         boolean isIgnoringBattery = true;
         if (pm != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                isIgnoringBattery = pm.isIgnoringBatteryOptimizations(getPackageName());
+                boolean pmIgnoring = pm.isIgnoringBatteryOptimizations(getPackageName());
+                boolean prefConfigured = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("battery_exemption_configured", false);
+                isIgnoringBattery = pmIgnoring || prefConfigured;
             }
         }
 
         // El Foreground Service requiere FINE_LOCATION. Si FINE_LOCATION está activo, el servicio funciona.
         boolean currentPermissionsOk = hasFineLoc;
+        boolean anyChanged = (currentPermissionsOk != lastPermissionsOk)
+            || (lastBgLocationOk == null || hasBgLocation != lastBgLocationOk)
+            || (lastBatteryOptOk == null || isIgnoringBattery != lastBatteryOptOk);
 
-        // Si cambia el estado de los permisos (eliminada la condición redundante que causaba reportes cada 1 minuto)
-        if (currentPermissionsOk != lastPermissionsOk) {
-            Log.w(TAG, "🔒 [PERMISSIONS] Check: bgLocation=" + hasBgLocation + " | batteryIgnoring=" + isIgnoringBattery);
+        // Si cambia el estado de cualquiera de los permisos o batería, sincronizar en Firebase RTDB
+        if (anyChanged) {
+            Log.w(TAG, "🔒 [PERMISSIONS] Check: fine=" + hasFineLoc + " | bgLocation=" + hasBgLocation + " | batteryIgnoring=" + isIgnoringBattery);
             
-            // Actualizar Firebase RTDB
             if (dbRef != null) {
                 Map<String, Object> updates = new HashMap<>();
                 updates.put("permissions_ok", currentPermissionsOk);
@@ -2942,7 +3037,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 dbRef.child(userId).updateChildren(updates);
             }
 
-            // Enviar evento al servidor via HTTP POST
+            // Enviar evento al servidor via HTTP POST si cayó el permiso principal
             if (!currentPermissionsOk && lastPermissionsOk) {
                 sendEventToServer("permissions_disabled");
             } else if (currentPermissionsOk && !lastPermissionsOk) {
@@ -2950,6 +3045,21 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
             
             lastPermissionsOk = currentPermissionsOk;
+            lastBgLocationOk = hasBgLocation;
+            lastBatteryOptOk = isIgnoringBattery;
+        }
+
+        // Si tiene turno activo y desactivó ubicación o "Permitir todo el tiempo", advertir al chofer con notificación y voz
+        if (isShiftActive && (!hasFineLoc || !hasBgLocation)) {
+            long now = System.currentTimeMillis();
+            if (now - lastPermissionWarningMs > 180000L) { // cada 3 min máx
+                lastPermissionWarningMs = now;
+                postUrgentAlertNotification(
+                    "🚨 PERMISO DE UBICACIÓN DESACTIVADO",
+                    "Tenés un turno activo. Activá 'Permitir todo el tiempo' en Permisos de Ubicación inmediatamente."
+                );
+                speakMandatory("Atención. Se desactivó el permiso de ubicación todo el tiempo con un turno activo. Volvé a activarlo inmediatamente.");
+            }
         }
     }
 

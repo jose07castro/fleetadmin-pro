@@ -247,11 +247,84 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private static final int REQ_IGNORE_BATTERY = 7003;
+    private long batteryRequestStartMs = 0L;
+    private boolean pendingBatterySettingsCheck = false;
+
+    private void markBatteryExemptionConfigured() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit().putBoolean("battery_exemption_configured", true).apply();
+            Log.i(TAG, "✅ [BATTERY] battery_exemption_configured guardado en SharedPreferences");
+        } catch (Exception e) {
+            Log.w(TAG, "Error guardando battery_exemption_configured: " + e.getMessage());
+        }
+        try {
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                this.bridge.getWebView().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (webView != null) {
+                            webView.evaluateJavascript(
+                                "try { " +
+                                "localStorage.setItem('battery_exemption_granted', 'true'); " +
+                                "localStorage.setItem('battery_banner_dismissed', 'true'); " +
+                                "if (typeof ShiftsModule !== 'undefined' && typeof ShiftsModule.dismissBatteryBanner === 'function') { ShiftsModule.dismissBatteryBanner(); } " +
+                                "} catch(_e){}", null);
+                        }
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error sincronizando battery_exemption_granted a WebView: " + e.getMessage());
+        }
+    }
+
+    private void openAppBatteryDetailsFallback() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                pendingBatterySettingsCheck = true;
+                batteryRequestStartMs = System.currentTimeMillis();
+                try {
+                    Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intentAppDetails);
+                    Log.i(TAG, "✅ Ajustes de la aplicación abiertos (App Info para 'Sin restricciones')");
+                    return;
+                } catch (Exception e2) {
+                    Log.w(TAG, "⚠️ ACTION_APPLICATION_DETAILS_SETTINGS falló, intentando lista de optimización...", e2);
+                }
+                try {
+                    Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    startActivity(intentList);
+                    Log.i(TAG, "✅ Lista de optimización de batería abierta");
+                } catch (Exception e3) {
+                    Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
+                }
+            }
+        });
+    }
+
     @Override
     public void onResume() {
         super.onResume();
         LocationTrackingService.isAppInForeground = true;
         LocationTrackingService.hideFloatingOverlay();
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            boolean isIgnoringNow = (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(getPackageName()));
+            if (isIgnoringNow) {
+                pendingBatterySettingsCheck = false;
+                markBatteryExemptionConfigured();
+            } else if (pendingBatterySettingsCheck && (System.currentTimeMillis() - batteryRequestStartMs >= 1500L)) {
+                // El usuario estuvo en la pantalla de Ajustes de la app configurando Batería ("Sin ahorro" / "Sin restricciones" OEM)
+                pendingBatterySettingsCheck = false;
+                markBatteryExemptionConfigured();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error verificando batería en onResume: " + e.getMessage());
+        }
         try {
             if (this.bridge != null && this.bridge.getWebView() != null) {
                 if (webView == null) {
@@ -362,6 +435,21 @@ public class MainActivity extends BridgeActivity {
             } else {
                 Log.i(TAG, "In-app update flow completed successfully.");
             }
+        } else if (requestCode == REQ_IGNORE_BATTERY) {
+            try {
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                boolean isIgnoring = (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(getPackageName()));
+                if (isIgnoring) {
+                    pendingBatterySettingsCheck = false;
+                    markBatteryExemptionConfigured();
+                } else if (System.currentTimeMillis() - batteryRequestStartMs < 700L) {
+                    // El sistema OEM bloqueó/cerró instantáneamente el popup de ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                    Log.w(TAG, "⚠️ Diálogo directo de batería fue ignorado por el sistema OEM, abriendo Ajustes de la App...");
+                    openAppBatteryDetailsFallback();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error en onActivityResult(REQ_IGNORE_BATTERY): " + e.getMessage());
+            }
         }
     }
 
@@ -431,70 +519,75 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void stopTracking() {
             Log.i(TAG, "📱 JS → stopTracking()");
+            LocationTrackingService.cancelKeepAliveAlarmStatic(MainActivity.this);
             Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
             stopService(serviceIntent);
             
-            // Limpiar SharedPreferences
+            // Limpiar sesión de rastreo preservando flags de configuración (ej. battery_exemption_configured)
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            prefs.edit().clear().apply();
+            prefs.edit()
+                .remove("userId")
+                .putBoolean("is_shift_active", false)
+                .apply();
         }
 
         @JavascriptInterface
         public void requestBatteryExemption() {
             Log.i(TAG, "📱 JS → requestBatteryExemption()");
-            try {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                boolean isIgnoring = (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(getPackageName()));
-
-                // Intento 1: Si no tiene la exención básica de Doze, solicitar diálogo nativo del sistema
-                if (!isIgnoring && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            MainActivity.this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
                     try {
-                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                        intent.setData(Uri.parse("package:" + getPackageName()));
-                        startActivity(intent);
-                        Log.i(TAG, "✅ Diálogo directo de exención de batería abierto");
-                        return;
-                    } catch (Exception e1) {
-                        Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, intentando App Info...", e1);
+                        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                        boolean isIgnoring = (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm.isIgnoringBatteryOptimizations(getPackageName()));
+
+                        // Intento 1: Si no tiene la exención básica de Doze, solicitar diálogo nativo del sistema
+                        if (!isIgnoring && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            try {
+                                batteryRequestStartMs = System.currentTimeMillis();
+                                pendingBatterySettingsCheck = true;
+                                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                                intent.setData(Uri.parse("package:" + getPackageName()));
+                                startActivityForResult(intent, REQ_IGNORE_BATTERY);
+                                Log.i(TAG, "✅ Diálogo directo de exención de batería solicitado (startActivityForResult)");
+                                return;
+                            } catch (Exception e1) {
+                                Log.w(TAG, "⚠️ ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS falló, abriendo App Info...", e1);
+                            }
+                        } else if (isIgnoring) {
+                            markBatteryExemptionConfigured();
+                        }
+
+                        // Intento 2 y 3: Abrir Ajustes de la aplicación (App Info) o lista de optimización
+                        openAppBatteryDetailsFallback();
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ Error general en requestBatteryExemption:", e);
+                        openAppBatteryDetailsFallback();
                     }
                 }
-
-                // Intento 2: Ajustes de la aplicación (App Info) — VITAL para Samsung One UI
-                // donde el usuario debe seleccionar Batería -> "Sin restricciones"
-                try {
-                    Intent intentAppDetails = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                    intentAppDetails.setData(Uri.parse("package:" + getPackageName()));
-                    intentAppDetails.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intentAppDetails);
-                    Log.i(TAG, "✅ Ajustes de la aplicación abiertos (App Info para Samsung 'Sin restricciones')");
-                    return;
-                } catch (Exception e2) {
-                    Log.w(TAG, "⚠️ ACTION_APPLICATION_DETAILS_SETTINGS falló, intentando lista de optimización...", e2);
-                }
-
-                // Intento 3: Pantalla con la lista de aplicaciones optimizadas (Xiaomi, OnePlus, etc.)
-                try {
-                    Intent intentList = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                    intentList.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intentList);
-                    Log.i(TAG, "✅ Lista de optimización de batería abierta");
-                } catch (Exception e3) {
-                    Log.e(TAG, "❌ No se pudo abrir ninguna pantalla de configuración de batería", e3);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Error general en requestBatteryExemption:", e);
-            }
+            });
         }
 
         @JavascriptInterface
         public boolean isBatteryOptimized() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                if (pm != null) {
-                    // Retorna true si la optimización está ACTIVA (es decir, la app NO ignora las optimizaciones)
-                    // Retorna false si la app ya está exenta (ignora las optimizaciones)
-                    return !pm.isIgnoringBatteryOptimizations(getPackageName());
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                boolean configuredInPrefs = prefs.getBoolean("battery_exemption_configured", false);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                    if (pm != null) {
+                        boolean isIgnoring = pm.isIgnoringBatteryOptimizations(getPackageName());
+                        if (isIgnoring && !configuredInPrefs) {
+                            prefs.edit().putBoolean("battery_exemption_configured", true).apply();
+                        }
+                        if (isIgnoring || configuredInPrefs) {
+                            return false;
+                        }
+                        return true;
+                    }
                 }
+            } catch (Exception e) {
+                Log.w(TAG, "Error en isBatteryOptimized: " + e.getMessage());
             }
             return false;
         }
@@ -505,6 +598,12 @@ public class MainActivity extends BridgeActivity {
                 return checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
             }
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean isForegroundLocationGranted() {
+            return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         }
 
         @JavascriptInterface

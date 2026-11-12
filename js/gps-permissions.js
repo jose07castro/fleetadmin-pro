@@ -15,6 +15,17 @@ const GPSPermissions = (() => {
     async function checkPermission() {
         if (_permissionState === 'granted') return 'granted';
 
+        // Si el permiso nativo Android (FINE o COARSE) ya fue otorgado, el servicio Foreground nativo ya tiene GPS
+        try {
+            if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isForegroundLocationGranted === 'function') {
+                if (window.NativeServiceBridge.isForegroundLocationGranted()) {
+                    _permissionState = 'granted';
+                    if (_retryInterval) { clearInterval(_retryInterval); _retryInterval = null; }
+                    return 'granted';
+                }
+            }
+        } catch (e) {}
+
         try {
             if ('permissions' in navigator) {
                 const result = await navigator.permissions.query({ name: 'geolocation' });
@@ -550,11 +561,13 @@ const GPSPermissions = (() => {
         // v162: Copiloto universal de radares para TODOS los roles
         _startUniversalCopilot();
 
-        // v122: Chequear si falta el permiso nativo "Permitir todo el tiempo" en Android
-        if (typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
+        // v122: Chequear si falta el permiso nativo "Permitir todo el tiempo" en Android (solo para choferes)
+        if ((typeof Auth === 'undefined' || !Auth.isOwner()) && typeof window !== 'undefined' && window.NativeServiceBridge && typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
             try {
                 const hasBg = window.NativeServiceBridge.isBackgroundLocationGranted();
-                if (!hasBg) {
+                if (hasBg) {
+                    localStorage.setItem('bg_location_perm_granted', 'true');
+                } else if (localStorage.getItem('bg_location_perm_granted') !== 'true') {
                     console.log('📍 GPSPerms: Falta background location! Gatillando diálogo...');
                     setTimeout(() => {
                         showBackgroundLocationRequestDialog();

@@ -35,9 +35,10 @@ const AndroidServices = (() => {
 
     function isNativeAndroid() {
         return (
-            typeof Capacitor !== 'undefined' &&
+            _hasNativeBridge() ||
+            (typeof Capacitor !== 'undefined' &&
             Capacitor.isNativePlatform() &&
-            Capacitor.getPlatform() === 'android'
+            Capacitor.getPlatform() === 'android')
         );
     }
 
@@ -280,6 +281,11 @@ const AndroidServices = (() => {
     async function requestBatteryExemption() {
         console.log('📱 AndroidServices: requestBatteryExemption() llamado');
 
+        try {
+            localStorage.setItem('battery_exemption_granted', 'true');
+            localStorage.setItem('battery_banner_dismissed', 'true');
+        } catch (e) {}
+
         if (!isNativeAndroid()) {
             console.log('📱 AndroidServices: No es Android nativo, saltando battery exemption');
             return;
@@ -288,18 +294,29 @@ const AndroidServices = (() => {
         // ── RUTA A: Bridge nativo directo (más confiable) ──
         if (_hasNativeBridge()) {
             try {
-                window.NativeServiceBridge.requestBatteryExemption();
-                console.log('📱 AndroidServices: ✅ Diálogo nativo de batería mostrado');
-                return;
+                if (typeof window.NativeServiceBridge.requestBatteryExemption === 'function') {
+                    window.NativeServiceBridge.requestBatteryExemption();
+                    console.log('📱 AndroidServices: ✅ Diálogo nativo de batería mostrado');
+                    return;
+                }
+                if (typeof window.NativeServiceBridge.openAppSettings === 'function') {
+                    window.NativeServiceBridge.openAppSettings();
+                    console.log('📱 AndroidServices: ✅ Ajustes de aplicación abiertos via openAppSettings');
+                    return;
+                }
             } catch (e) {
                 console.warn('📱 AndroidServices: Bridge battery exemption falló:', e);
+                try {
+                    if (typeof window.NativeServiceBridge.openAppSettings === 'function') {
+                        window.NativeServiceBridge.openAppSettings();
+                        return;
+                    }
+                } catch (_e2) {}
             }
         }
 
-        // ── RUTA B: Fallback manual ──
-
-        // ── RUTA C: Fallback manual ──
-        if (Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
+        // ── RUTA B / C: Fallback manual ──
+        if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
             if (typeof Components !== 'undefined') {
                 Components.showToast(
                     '⚡ Andá a "Batería" → "Sin restricciones" para que el GPS funcione con la pantalla apagada',
@@ -339,16 +356,25 @@ const AndroidServices = (() => {
         if (!isNativeAndroid()) return true;
 
         try {
-            // v10: NativeServiceBridge.requestBackgroundLocation()
-            // Llama al Intent nativo de Android 10+ (Allow all the time)
-            if (_hasNativeBridge() && window.NativeServiceBridge.requestBackgroundLocation) {
-                console.log('📱 AndroidServices: Solicitando permiso Background Location via Bridge');
-                window.NativeServiceBridge.requestBackgroundLocation();
-                return true;
+            if (_hasNativeBridge()) {
+                if (typeof window.NativeServiceBridge.requestBackgroundLocationPermission === 'function') {
+                    console.log('📱 AndroidServices: Solicitando permiso Background Location via Bridge (requestBackgroundLocationPermission)');
+                    window.NativeServiceBridge.requestBackgroundLocationPermission();
+                    return true;
+                }
+                if (typeof window.NativeServiceBridge.requestBackgroundLocation === 'function') {
+                    console.log('📱 AndroidServices: Solicitando permiso Background Location via Bridge (requestBackgroundLocation)');
+                    window.NativeServiceBridge.requestBackgroundLocation();
+                    return true;
+                }
+                if (typeof window.NativeServiceBridge.openAppSettings === 'function') {
+                    window.NativeServiceBridge.openAppSettings();
+                    return true;
+                }
             }
             
             // Fallback: abrir configuración de la app
-            if (Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
+            if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.App && Capacitor.Plugins.App.openAppSettings) {
                 await Capacitor.Plugins.App.openAppSettings();
                 return true;
             }
@@ -437,12 +463,20 @@ const AndroidServices = (() => {
         if (!isNativeAndroid()) return;
         if (typeof Components === 'undefined') return;
 
-        // Si la exención de batería ya fue otorgada y no es forzada, omitir el diálogo automático
-        if (!force && _hasNativeBridge() && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+        // Si la exención de batería ya fue otorgada o guardada y no es forzada, omitir el diálogo automático
+        if (!force) {
             try {
-                if (!window.NativeServiceBridge.isBatteryOptimized()) {
-                    console.log('📱 AndroidServices: ✅ Exención de batería ya otorgada — omitiendo diálogo automático');
+                if (localStorage.getItem('battery_exemption_granted') === 'true') {
+                    console.log('📱 AndroidServices: ✅ Exención de batería ya guardada en localStorage — omitiendo diálogo automático');
                     return;
+                }
+                if (_hasNativeBridge() && typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
+                    if (!window.NativeServiceBridge.isBatteryOptimized()) {
+                        localStorage.setItem('battery_exemption_granted', 'true');
+                        localStorage.setItem('battery_banner_dismissed', 'true');
+                        console.log('📱 AndroidServices: ✅ Exención de batería ya otorgada — omitiendo diálogo automático');
+                        return;
+                    }
                 }
             } catch (e) {
                 console.warn('Error verificando exención de batería:', e);
