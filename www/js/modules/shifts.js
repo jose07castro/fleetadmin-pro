@@ -11,6 +11,7 @@ const ShiftsModule = (() => {
     let _activeShiftId = null;
     let _activeVehicleId = null;
     let _activeVehicleName = '';
+    let _lastActiveShiftsQueryFailed = false;
 
     function selectShiftType(type) {
         selectedShiftType = type;
@@ -45,6 +46,7 @@ const ShiftsModule = (() => {
     // --- Limpieza de Clones (Race Condition) ---
     async function cleanupDuplicateShifts(driverId) {
         const activeShifts = await DB.getActiveShifts();
+        _lastActiveShiftsQueryFailed = Boolean(activeShifts && activeShifts._isErrorFallback);
         const driverActiveShifts = activeShifts.filter(s => String(s.driverId) === String(driverId));
 
         if (driverActiveShifts.length > 1) {
@@ -61,7 +63,24 @@ const ShiftsModule = (() => {
             }
             return keepShift;
         }
-        return driverActiveShifts[0]; // Retorna el único activo, o undefined
+
+        if (driverActiveShifts.length === 1) {
+            return driverActiveShifts[0];
+        }
+
+        // Fallback directo de 1 solo nodo si existe active_shift_id en caché local
+        const cachedShiftId = localStorage.getItem('active_shift_id');
+        if (cachedShiftId) {
+            try {
+                const directShift = await DB.get('shifts', cachedShiftId);
+                if (directShift && String(directShift.driverId) === String(driverId) && directShift.status === 'active') {
+                    return directShift;
+                }
+            } catch (e) {
+                console.warn('Error verificando cachedShiftId directo:', e);
+            }
+        }
+        return undefined;
     }
 
     // --- Vista del Chofer ---
@@ -134,17 +153,60 @@ const ShiftsModule = (() => {
             }
 
             // 1. Limpiar duplicados automáticamente (ahora rápido, sin cargar todo)
-            const activeShift = await cleanupDuplicateShifts(driverId);
+            let activeShift = await cleanupDuplicateShifts(driverId);
             const cachedShiftId = localStorage.getItem('active_shift_id');
 
             const container = document.getElementById('shiftsContent');
             if (!container) return; // El usuario cambió de pantalla
+
+            // Verificación puntual directa antes de declarar cierre remoto
+            if (!activeShift && cachedShiftId) {
+                let verifyShift = undefined;
+                let directFetchFailed = false;
+                try {
+                    verifyShift = await DB.get('shifts', cachedShiftId);
+                } catch (e) {
+                    directFetchFailed = true;
+                }
+
+                if (verifyShift && verifyShift.status === 'active') {
+                    activeShift = verifyShift;
+                } else {
+                    const confirmedClosed =
+                        (verifyShift && (verifyShift.status === 'completed' || verifyShift.shiftState === 'FINALIZADO_TURNO')) ||
+                        (verifyShift === undefined && !directFetchFailed && !_lastActiveShiftsQueryFailed && navigator.onLine !== false);
+
+                    if (confirmedClosed) {
+                        console.log('🔄 Turno confirmado como finalizado en servidor. Limpiando localStorage.');
+                        localStorage.removeItem('active_shift_id');
+                        localStorage.removeItem('active_shift_state');
+                        localStorage.setItem('active_shift_status', 'FINALIZADO_TURNO');
+                        if (typeof App !== 'undefined' && typeof App.stopShiftHeartbeat === 'function') {
+                            App.stopShiftHeartbeat();
+                        }
+                        if (typeof AndroidServices !== 'undefined') {
+                            AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                            if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
+                        }
+                        if (typeof Components !== 'undefined') {
+                            Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
+                        }
+                    } else {
+                        console.warn('⚠️ Timeout/offline verificando turno activo; se preserva active_shift_id localmente.');
+                        if (typeof Components !== 'undefined') {
+                            Components.showToast('⚠️ Conexión lenta al verificar turno. Reintentando en segundo plano...', 'warning');
+                        }
+                    }
+                }
+            }
 
             if (activeShift) {
                 // Sincronización silenciosa (mantener localStorage actualizado si venía de otro lado)
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
                 localStorage.setItem('active_shift_status', 'IN_PROGRESS');
+                // Guardar caché puntual del turno activo para resiliencia offline
+                try { localStorage.setItem(`fleetadmin_cache_shifts_${activeShift.id}`, JSON.stringify(activeShift)); } catch (ce) { /* quota */ }
                 // Sincronizar estado turno activo en AndroidServices y bloqueo/heartbeat Web
                 if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setShiftActive === 'function') { AndroidServices.setShiftActive(true); }
                 if (typeof App !== 'undefined') {
@@ -154,24 +216,6 @@ const ShiftsModule = (() => {
 
                 container.innerHTML = batteryBannerHTML + renderActiveShift(activeShift, vehicles);
                 return;
-            }
-
-            // Sync silenciosa de limpieza (ej. fue cerrado remotamente por el Admin)
-            if (cachedShiftId && !activeShift) {
-                console.log('🔄 Turno cerrado remotamente. Limpiando localStorage.');
-                localStorage.removeItem('active_shift_id');
-                localStorage.removeItem('active_shift_state');
-                localStorage.setItem('active_shift_status', 'FINALIZADO_TURNO');
-                if (typeof App !== 'undefined' && typeof App.stopShiftHeartbeat === 'function') {
-                    App.stopShiftHeartbeat();
-                }
-                if (typeof AndroidServices !== 'undefined') {
-                    AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
-                    if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
-                }
-                if (typeof Components !== 'undefined') {
-                    Components.showToast('Tu turno fue finalizado por el administrador.', 'info');
-                }
             }
 
             // Detectar vehículos ocupados por CUALQUIER turno activo
@@ -217,6 +261,9 @@ const ShiftsModule = (() => {
                         </span>
                         <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
                             💡 Sugerencia Desarrollador
+                        </button>
+                        <button type="button" class="btn btn-outline" onclick="Router.navigate('invoicing')" style="padding: 6px 10px; font-size: 11px; font-weight: 800; border-color: rgba(56, 189, 248, 0.5); background: rgba(30, 58, 138, 0.35); color: #38bdf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                            🧾 Facturar Viaje (Factura C)
                         </button>
                     </div>
                     <button type="button" class="copilot-mic-circle-btn" onclick="VoiceAlertModule.showRecordModal()" title="Reportar control policial u operativo de tránsito por voz" aria-label="Reportar Alerta por Voz">
@@ -350,6 +397,9 @@ const ShiftsModule = (() => {
                     <button class="btn btn-outline" onclick="ShiftsModule.extendActiveShift('${shift.id}')" style="padding:var(--space-2) var(--space-3); font-size:var(--font-size-sm); display:inline-flex; align-items:center; gap:6px; border-color:rgba(16,185,129,0.4); color:#10b981; font-weight:600; min-height:unset; height:auto;">
                         ➕ Extender 2hs
                     </button>
+                    <button class="btn btn-outline" onclick="Router.navigate('invoicing')" style="padding:var(--space-2) var(--space-3); font-size:var(--font-size-sm); display:inline-flex; align-items:center; gap:6px; border-color:rgba(56,189,248,0.5); background:rgba(30,58,138,0.3); color:#38bdf8; font-weight:700; min-height:unset; height:auto;">
+                        🧾 Emitir Factura C
+                    </button>
                 </div>
             </div>
 
@@ -374,6 +424,9 @@ const ShiftsModule = (() => {
                         </span>
                         <button type="button" class="btn btn-outline" onclick="Components.showSuggestionModal()" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border-color: rgba(99, 102, 241, 0.45); background: rgba(99, 102, 241, 0.12); color: #818cf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
                             💡 Sugerencia Desarrollador
+                        </button>
+                        <button type="button" class="btn btn-outline" onclick="Router.navigate('invoicing')" style="padding: 6px 10px; font-size: 11px; font-weight: 800; border-color: rgba(56, 189, 248, 0.5); background: rgba(30, 58, 138, 0.35); color: #38bdf8; border-radius: 8px; white-space: nowrap; cursor: pointer;">
+                            🧾 Facturar Viaje (Factura C)
                         </button>
                     </div>
                     <button type="button" class="copilot-mic-circle-btn" onclick="VoiceAlertModule.showRecordModal()" title="Reportar control policial u operativo de tránsito por voz" aria-label="Reportar Alerta de Control">
@@ -438,19 +491,62 @@ const ShiftsModule = (() => {
 
             // Detectar si hay conductores con múltiples turnos activos y corregirlos silenciosamente
             const activeDrivers = new Set();
+            let hadDuplicates = false;
             for (const s of activeShifts) {
                 if (activeDrivers.has(s.driverId)) {
-                    // Duplicado encontrado globalmente: aplicar limpieza
+                    hadDuplicates = true;
                     await cleanupDuplicateShifts(s.driverId);
                 } else {
                     activeDrivers.add(s.driverId);
                 }
             }
 
-            // Refetch after possible cleanup
-            const cleanActiveShifts = await DB.getActiveShifts();
+            // Solo reconsultar si realmente se limpiaron duplicados
+            let cleanActiveShifts = hadDuplicates ? await DB.getActiveShifts() : [...activeShifts];
 
-            // Cargar solo los últimos 20 completados usando la nueva función optimizada
+            // Obtener versiones y posiciones en tiempo real desde driver_positions (una sola vez)
+            let positionsMap = {};
+            try {
+                if (typeof firebase !== 'undefined' && firebase.database) {
+                    const posSnap = await firebase.database().ref('driver_positions').once('value');
+                    positionsMap = posSnap.val() || {};
+                }
+            } catch (e) {
+                console.warn('No se pudieron obtener driver_positions para conciliación:', e);
+            }
+
+            // Conciliar choferes que reportan IN_PROGRESS en driver_positions vs turnos activos reales
+            const nowMs = Date.now();
+            const currentFleet = (typeof Auth !== 'undefined' && Auth.getFleetId()) || (typeof DB.getFleet === 'function' ? DB.getFleet() : '');
+            const cleanFleetId = String(currentFleet || '').replace(/^fleets\//, '');
+            const activeDriverIds = new Set(cleanActiveShifts.map(s => String(s.driverId)));
+
+            for (const [driverKey, pos] of Object.entries(positionsMap)) {
+                if (!pos || typeof pos !== 'object') continue;
+                if (cleanFleetId && pos.fleetId && String(pos.fleetId) !== cleanFleetId) continue;
+
+                const hb = pos.last_heartbeat ? Number(pos.last_heartbeat) : (pos.updated_at ? new Date(pos.updated_at).getTime() : 0);
+                const isRecent = hb && (nowMs - hb <= 15 * 60 * 1000);
+                if (!isRecent) continue;
+
+                if (pos.shift_status === 'IN_PROGRESS' && pos.status === 'active' && !activeDriverIds.has(String(driverKey))) {
+                    if (pos.shiftId) {
+                        const refShift = await DB.get('shifts', pos.shiftId);
+                        if (refShift && (refShift.status === 'active' || refShift.shiftState === 'IN_PROGRESS')) {
+                            cleanActiveShifts.push({ ...refShift, id: refShift.id || pos.shiftId });
+                            activeDriverIds.add(String(driverKey));
+                        } else if (refShift && (refShift.status === 'completed' || refShift.shiftState === 'FINALIZADO_TURNO')) {
+                            // Auto-sanear shiftId obsoleto en driver_positions para eliminar desincronización mapa/turnos
+                            firebase.database().ref(`driver_positions/${driverKey}`).update({
+                                shiftId: null,
+                                shift_status: 'IDLE'
+                            }).catch(() => {});
+                        }
+                    }
+                }
+            }
+
+            // Cargar solo los últimos 20 completados usando la función optimizada
             const completed = await DB.getRecentCompletedShifts(20);
             completed.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
@@ -458,7 +554,7 @@ const ShiftsModule = (() => {
             if (!container) return;
 
             const tableHtml = completed.length > 0 ? await renderShiftTable(completed) : `<p style="color:var(--text-tertiary);">${I18n.t('shift_no_history')}</p>`;
-            const cardsHtml = await renderActiveShiftsCards(cleanActiveShifts);
+            const cardsHtml = await renderActiveShiftsCards(cleanActiveShifts, positionsMap);
 
             container.innerHTML = `
                 <!-- Turnos activos -->
@@ -486,18 +582,20 @@ const ShiftsModule = (() => {
         }
     }
 
-    async function renderActiveShiftsCards(shifts) {
+    async function renderActiveShiftsCards(shifts, preloadedPositionsMap = null) {
         let html = '<div class="content-grid">';
         
-        // Obtener versiones de app en tiempo real desde driver_positions
-        let positionsMap = {};
-        try {
-            if (typeof firebase !== 'undefined' && firebase.database) {
-                const posSnap = await firebase.database().ref('driver_positions').once('value');
-                positionsMap = posSnap.val() || {};
+        // Obtener versiones de app en tiempo real desde driver_positions (reusar mapa si ya se cargó)
+        let positionsMap = preloadedPositionsMap || {};
+        if (!preloadedPositionsMap) {
+            try {
+                if (typeof firebase !== 'undefined' && firebase.database) {
+                    const posSnap = await firebase.database().ref('driver_positions').once('value');
+                    positionsMap = posSnap.val() || {};
+                }
+            } catch (e) {
+                console.warn('No se pudieron obtener driver_positions para versiones:', e);
             }
-        } catch (e) {
-            console.warn('No se pudieron obtener driver_positions para versiones:', e);
         }
 
         for (const s of shifts) {
@@ -677,6 +775,7 @@ const ShiftsModule = (() => {
             const shiftStartTime = new Date(activeShiftOnVehicle.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
             Components.showToast(`🚨 Auto en uso por ${driverName} (desde las ${shiftStartTime}). Asegurate de que el turno anterior haya finalizado.`, 'danger');
+            restoreBtn();
             return;
         }
 
@@ -686,39 +785,29 @@ const ShiftsModule = (() => {
             const licenseStatus = Alerts.getLicenseStatus(currentDriver);
             if (licenseStatus.level === 'danger') {
                 Components.showToast('🚫 LICENCIA VENCIDA — No podés iniciar turno. Actualizá tu documentación en Configuración → Legajo.', 'danger');
+                restoreBtn();
                 return;
             }
         }
 
-        // 🛡️ Validación 4 (BLINDAJE ANTI-DESCONEXIÓN): Exigir Ubicación "Permitir todo el tiempo" y Batería "Sin restricciones" antes de iniciar turno
+        // 🛡️ Validación 4: Avisos no bloqueantes de ubicación en segundo plano y batería (nunca congela ni impide iniciar turno)
         if (typeof window !== 'undefined' && window.NativeServiceBridge) {
             try {
                 if (typeof window.NativeServiceBridge.isBackgroundLocationGranted === 'function') {
                     const hasBgLoc = window.NativeServiceBridge.isBackgroundLocationGranted();
                     if (!hasBgLoc) {
-                        Components.showToast('🚫 Para iniciar turno debés activar Ubicación en "Permitir todo el tiempo".', 'danger');
-                        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.showBackgroundLocationDialog === 'function') {
-                            AndroidServices.showBackgroundLocationDialog();
-                        } else if (typeof window.NativeServiceBridge.requestBackgroundLocationPermission === 'function') {
-                            window.NativeServiceBridge.requestBackgroundLocationPermission();
-                        }
-                        return;
+                        Components.showToast('⚠️ Recordá habilitar Ubicación en "Permitir todo el tiempo" para mayor estabilidad.', 'warning');
                     }
                 }
                 if (typeof window.NativeServiceBridge.isBatteryOptimized === 'function') {
                     const isBattOpt = window.NativeServiceBridge.isBatteryOptimized() && localStorage.getItem('battery_exemption_granted') !== 'true';
                     if (isBattOpt) {
-                        Components.showToast('🚫 Para iniciar turno debés configurar la Batería en "Sin restricciones" / "Sin ahorro".', 'danger');
-                        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.showBatteryExemptionDialog === 'function') {
-                            AndroidServices.showBatteryExemptionDialog(true);
-                        } else if (typeof window.NativeServiceBridge.requestBatteryExemption === 'function') {
-                            window.NativeServiceBridge.requestBatteryExemption();
-                        }
-                        return;
+                        localStorage.setItem('battery_exemption_granted', 'true');
+                        Components.showToast('⚠️ Sugerencia: configurá Batería en "Sin restricciones" para evitar cortes.', 'warning');
                     }
                 }
             } catch (permErr) {
-                console.warn('Error validando blindaje de permisos en startShift:', permErr);
+                console.warn('Error verificando permisos no bloqueantes en startShift:', permErr);
             }
         }
 
@@ -749,6 +838,18 @@ const ShiftsModule = (() => {
                 localStorage.setItem('active_shift_id', shiftIdRef);
                 localStorage.setItem('active_shift_state', 'true');
                 localStorage.setItem('active_shift_status', 'IN_PROGRESS');
+                localStorage.setItem(`fleetadmin_cache_shifts_${shiftIdRef}`, JSON.stringify({
+                    id: shiftIdRef,
+                    vehicleId,
+                    vehicleName,
+                    driverId,
+                    driverName: Auth.getUserName(),
+                    shiftType: selectedShiftType,
+                    startTime: new Date().toISOString(),
+                    startOdometer: odometerKm,
+                    status: 'active',
+                    shiftState: 'IN_PROGRESS'
+                }));
             } catch (lsErr) { console.warn('No se pudo guardar persistencia local', lsErr); }
 
             // Registrar estado inicial IN_PROGRESS + primer heartbeat en Firebase RTDB
@@ -778,7 +879,10 @@ const ShiftsModule = (() => {
             // Guardar foto separada
             if (photo) {
                 try {
-                    firebase.database().ref(DB.getFleet() + '/shift_photos/' + shiftIdRef + '/startOdometerPhoto').set(photo);
+                    const cleanFleetStart = String(DB.getFleet() || '').replace(/^fleets\//, '');
+                    if (cleanFleetStart) {
+                        firebase.database().ref(`fleets/${cleanFleetStart}/shift_photos/${shiftIdRef}/startOdometerPhoto`).set(photo);
+                    }
                 } catch (e) { console.warn('No se pudo guardar la foto de inicio', e); }
             }
 
@@ -983,6 +1087,7 @@ const ShiftsModule = (() => {
                     await firebase.database().ref(`driver_positions/${endedDriverId}`).update({
                         status: 'FINALIZADO_TURNO',
                         shift_status: 'FINALIZADO_TURNO',
+                        shiftId: null,
                         gps_status: 'inactive',
                         last_heartbeat: endNowMs,
                         last_heartbeat_gap: null,
@@ -1006,9 +1111,12 @@ const ShiftsModule = (() => {
             // Guardar fotos separadas para que no alenten el Login
             if (odoPhoto || earningsPhoto) {
                 try {
-                    const photosNode = firebase.database().ref(DB.getFleet() + '/shift_photos/' + shift.id);
-                    if (odoPhoto) photosNode.child('endOdometerPhoto').set(odoPhoto);
-                    if (earningsPhoto) photosNode.child('earningsPhoto').set(earningsPhoto);
+                    const cleanFleetEnd = String(DB.getFleet() || '').replace(/^fleets\//, '');
+                    if (cleanFleetEnd) {
+                        const photosNode = firebase.database().ref(`fleets/${cleanFleetEnd}/shift_photos/${shift.id}`);
+                        if (odoPhoto) photosNode.child('endOdometerPhoto').set(odoPhoto);
+                        if (earningsPhoto) photosNode.child('earningsPhoto').set(earningsPhoto);
+                    }
                 } catch (e) { console.warn('Error guardando fotos en background', e); }
             }
 

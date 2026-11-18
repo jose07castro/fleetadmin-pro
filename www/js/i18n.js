@@ -61,6 +61,7 @@ const I18n = (() => {
             nav_gps: 'Mapa & Alertas',
             nav_settings: 'Configuración',
             nav_community: 'Comunidad',
+            nav_invoicing: 'Facturación ARCA',
             nav_balances: 'Balances & Finanzas',
             nav_vehicle_costs: 'Costos x Km',
             nav_logout: 'Cerrar Sesión',

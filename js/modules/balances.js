@@ -126,6 +126,9 @@ const BalancesModule = (() => {
                         <button class="btn btn-sm btn-primary" style="font-weight:700; border-radius:20px; padding:6px 16px;">
                             💰 Movimientos & WhatsApp
                         </button>
+                        <button class="btn btn-sm btn-secondary" onclick="Router.navigate('invoicing')" style="font-weight:700; border-radius:20px; padding:6px 16px; background:rgba(37,99,235,0.18); color:#60a5fa; border:1px solid rgba(59,130,246,0.4);">
+                            🧾 Facturación ARCA (Punto Remis - Factura C)
+                        </button>
                         <button class="btn btn-sm btn-secondary" onclick="Router.navigate('vehicle-costs')" style="font-weight:700; border-radius:20px; padding:6px 16px; background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color);">
                             🚗 Costos Fijos x Km (GNC, Eléctricos, Neumáticos)
                         </button>
@@ -356,13 +359,18 @@ const BalancesModule = (() => {
                 : '<span class="badge badge-danger" style="font-weight:700;">🔴 Egreso</span>';
 
             const amountFormatted = (isIngreso ? '+' : '-') + '$' + _formatCurrency(m.amount || m.monto || 0);
-            const sourceBadge = (m.source === 'whatsapp' || m.origen === 'whatsapp')
-                ? '<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-size:11px;">📲 WhatsApp Bot</span>'
-                : '<span class="badge" style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); font-size:11px;">👤 Manual</span>';
+            const isArcaInvoice = (m.source === 'arca_factura_c' || Boolean(m.invoiceId));
+            const sourceBadge = isArcaInvoice
+                ? '<span class="badge" style="background:rgba(37,99,235,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); font-size:11px;">🧾 Factura C ARCA</span>'
+                : ((m.source === 'whatsapp' || m.origen === 'whatsapp')
+                    ? '<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-size:11px;">📲 WhatsApp Bot</span>'
+                    : '<span class="badge" style="background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3); font-size:11px;">👤 Manual</span>');
 
-            const receiptBtn = (m.receiptUrl || m.comprobanteUrl)
-                ? `<button class="btn btn-ghost btn-sm" onclick="BalancesModule.viewReceipt('${m.receiptUrl || m.comprobanteUrl}')" title="Ver comprobante original">👁️ Ver</button>`
-                : '<span style="color:var(--text-tertiary); font-size:12px;">-</span>';
+            const receiptBtn = m.invoiceId
+                ? `<button class="btn btn-ghost btn-sm" onclick="Router.loadModule('invoicing').then(() => InvoicingModule.openInvoiceDetail('${m.invoiceId}'))" title="Ver Factura C y QR ARCA" style="color:#60a5fa; font-weight:700;">🧾 Factura PDF</button>`
+                : ((m.receiptUrl || m.comprobanteUrl)
+                    ? `<button class="btn btn-ghost btn-sm" onclick="BalancesModule.viewReceipt('${m.receiptUrl || m.comprobanteUrl}')" title="Ver comprobante original">👁️ Ver</button>`
+                    : '<span style="color:var(--text-tertiary); font-size:12px;">-</span>');
 
             rows += `
                 <tr>
@@ -518,6 +526,14 @@ const BalancesModule = (() => {
 
     function viewReceipt(url) {
         if (!url) return;
+        if (String(url).includes('/api/arca/invoice-pdf/') || String(url).toLowerCase().endsWith('.pdf')) {
+            const origin = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'https://fleetadmin-web-nueva.onrender.com'
+                : window.location.origin;
+            const fullUrl = String(url).startsWith('http') ? url : `${origin}${url}`;
+            window.open(fullUrl, '_blank');
+            return;
+        }
         Components.showModal(
             '🖼️ Comprobante de Transferencia',
             `

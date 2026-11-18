@@ -20,7 +20,8 @@ const Router = (() => {
         community: 'js/modules/community.js',
         applicants: 'js/modules/applicants.js',
         balances: 'js/modules/balances.js',
-        'vehicle-costs': 'js/modules/vehicle-costs.js'
+        'vehicle-costs': 'js/modules/vehicle-costs.js',
+        invoicing: 'js/modules/invoicing.js'
     };
 
     // Función auxiliar para importar scripts de forma asíncrona
@@ -31,7 +32,7 @@ const Router = (() => {
                 existingScript.remove(); // Remover el script viejo inyectado para forzar la recarga del archivo actualizado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=193_${Date.now()}`;
+            script.src = `${path}?v=244_${Date.now()}`;
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
@@ -50,6 +51,7 @@ const Router = (() => {
         community: async () => { await _loadModuleScript(modulePaths.community); return CommunityModule.render() },
         balances: async () => { await _loadModuleScript(modulePaths.balances); return BalancesModule.render() },
         'vehicle-costs': async () => { await _loadModuleScript(modulePaths['vehicle-costs']); return VehicleCostsModule.render() },
+        invoicing: async () => { await _loadModuleScript(modulePaths.invoicing); return InvoicingModule.render() },
         'complete-profile': async () => { await _loadModuleScript(modulePaths.settings); return SettingsModule.renderCompleteProfile() },
         apply: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderApply() },
         applicants: async () => { await _loadModuleScript(modulePaths.applicants); return ApplicantsModule.renderAdmin() },

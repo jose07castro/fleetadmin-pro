@@ -130,6 +130,7 @@ const Components = (() => {
         const items = {
             owner: [
                 { icon: '📊', label: 'nav_dashboard', route: 'dashboard', section: 'ops' },
+                { icon: '🧾', label: 'nav_invoicing', route: 'invoicing', section: 'ops' },
                 { icon: '💰', label: 'nav_balances', route: 'balances', section: 'ops' },
                 { icon: '📈', label: 'nav_vehicle_costs', route: 'vehicle-costs', section: 'ops' },
                 { icon: '🚗', label: 'nav_vehicles', route: 'vehicles', section: 'ops' },
@@ -143,6 +144,7 @@ const Components = (() => {
             driver: [
                 { icon: '🗺️', label: 'nav_gps', route: 'gps', section: 'ops' },
                 { icon: '⏱️', label: 'nav_shifts', route: 'shifts', section: 'ops' },
+                { icon: '🧾', label: 'nav_invoicing', route: 'invoicing', section: 'ops' },
                 { icon: '🛢️', label: 'nav_oil', route: 'oil', section: 'ops' },
                 { icon: '🤝', label: 'nav_community', route: 'community', section: 'ops' },
                 { icon: '🪪', label: 'app_apply_btn', route: 'apply', section: 'ops' },
@@ -168,6 +170,7 @@ const Components = (() => {
         const mobileItems = {
             owner: [
                 { icon: '📊', label: 'Panel', route: 'dashboard' },
+                { icon: '🧾', label: 'Facturar', route: 'invoicing' },
                 { icon: '💰', label: 'Balances', route: 'balances' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
                 { icon: '🗺️', label: 'Mapa', route: 'gps' },
@@ -176,6 +179,7 @@ const Components = (() => {
             driver: [
                 { icon: '🗺️', label: 'Mapa', route: 'gps' },
                 { icon: '⏱️', label: 'Turnos', route: 'shifts' },
+                { icon: '🧾', label: 'Facturar', route: 'invoicing' },
                 { icon: '🛢️', label: 'Aceite', route: 'oil' },
                 { icon: '🤝', label: 'Comunidad', route: 'community' },
                 { icon: '🚪', label: 'Salir', route: '__logout__' }
@@ -235,6 +239,7 @@ const Components = (() => {
     function renderHeader(activeRoute) {
         const titles = {
             dashboard: 'nav_dashboard',
+            invoicing: 'nav_invoicing',
             balances: 'nav_balances',
             'vehicle-costs': 'nav_vehicle_costs',
             vehicles: 'nav_vehicles',

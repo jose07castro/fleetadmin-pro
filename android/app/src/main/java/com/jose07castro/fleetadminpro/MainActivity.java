@@ -607,6 +607,92 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean shareInvoicePdf(final String base64Pdf, final String fileName, final String messageText, final String targetApp, final String targetContact) {
+            try {
+                if (base64Pdf == null || base64Pdf.isEmpty()) return false;
+                String cleanB64 = base64Pdf;
+                int commaIdx = cleanB64.indexOf(',');
+                if (commaIdx >= 0) {
+                    cleanB64 = cleanB64.substring(commaIdx + 1);
+                }
+                final byte[] pdfBytes = android.util.Base64.decode(cleanB64, android.util.Base64.DEFAULT);
+                String safeName = (fileName != null && !fileName.trim().isEmpty())
+                    ? fileName.replaceAll("[^a-zA-Z0-9._-]", "_")
+                    : "Factura_C_Punto_Remis.pdf";
+                if (!safeName.toLowerCase().endsWith(".pdf")) {
+                    safeName += ".pdf";
+                }
+                final java.io.File pdfFile = new java.io.File(getCacheDir(), safeName);
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(pdfFile);
+                fos.write(pdfBytes);
+                fos.flush();
+                fos.close();
+
+                final Uri contentUri = androidx.core.content.FileProvider.getUriForFile(
+                    MainActivity.this,
+                    getPackageName() + ".fileprovider",
+                    pdfFile
+                );
+                final String finalSafeName = safeName;
+
+                MainActivity.this.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                            shareIntent.setType("application/pdf");
+                            shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
+                            if (messageText != null && !messageText.isEmpty()) {
+                                shareIntent.putExtra(Intent.EXTRA_TEXT, messageText);
+                            }
+                            shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Factura C — Punto Remis (" + finalSafeName.replace(".pdf", "") + ")");
+                            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                            if ("whatsapp".equalsIgnoreCase(targetApp)) {
+                                if (targetContact != null && !targetContact.trim().isEmpty()) {
+                                    String cleanPhone = targetContact.replaceAll("[^0-9]", "");
+                                    if (!cleanPhone.isEmpty()) {
+                                        if (!cleanPhone.startsWith("54") && cleanPhone.length() == 10) {
+                                            cleanPhone = "549" + cleanPhone;
+                                        }
+                                        shareIntent.putExtra("jid", cleanPhone + "@s.whatsapp.net");
+                                    }
+                                }
+                                try {
+                                    Intent waIntent = new Intent(shareIntent);
+                                    waIntent.setPackage("com.whatsapp");
+                                    startActivity(waIntent);
+                                    return;
+                                } catch (Exception eWa) {
+                                    try {
+                                        Intent waBizIntent = new Intent(shareIntent);
+                                        waBizIntent.setPackage("com.whatsapp.w4b");
+                                        startActivity(waBizIntent);
+                                        return;
+                                    } catch (Exception ignored) {}
+                                }
+                            } else if ("email".equalsIgnoreCase(targetApp)) {
+                                if (targetContact != null && !targetContact.trim().isEmpty()) {
+                                    shareIntent.putExtra(Intent.EXTRA_EMAIL, new String[]{ targetContact.trim() });
+                                }
+                            }
+
+                            Intent chooser = Intent.createChooser(shareIntent, "Enviar Factura C — Punto Remis");
+                            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            startActivity(chooser);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error lanzando Intent shareInvoicePdf: " + e.getMessage());
+                        }
+                    }
+                });
+                return true;
+            } catch (Exception e) {
+                Log.e(TAG, "Error en shareInvoicePdf: " + e.getMessage());
+                return false;
+            }
+        }
+
+        @JavascriptInterface
         public void requestLocationPermissions() {
             Log.i(TAG, "📱 JS → requestLocationPermissions()");
             MainActivity.this.runOnUiThread(new Runnable() {

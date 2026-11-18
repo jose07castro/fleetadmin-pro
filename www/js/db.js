@@ -8,7 +8,7 @@ const DB = (() => {
     const db = firebaseDB; // Definido en firebase-config.js
 
     // Stores válidos (dentro de cada flota)
-    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents', 'preferencias_usuario'];
+    const VALID_STORES = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges', 'gpsEvents', 'preferencias_usuario', 'invoices', 'movements', 'arca_clients'];
     const CACHE_PREFIX = 'fleetadmin_cache_';
 
     // --- Fleet ID actual ---
@@ -137,11 +137,26 @@ const DB = (() => {
         return res;
     }
 
+    // Al persistir usuarios en Firebase, evitar triplicar fotos pesadas en 6 campos
+    function _prepareUserForWrite(u) {
+        if (!u || typeof u !== 'object') return u;
+        const res = _normalizeUser(u);
+        if (res.licenseFrontPhoto) {
+            delete res.licencia_frente;
+            delete res.foto_frente;
+        }
+        if (res.licenseBackPhoto) {
+            delete res.licencia_dorso;
+            delete res.foto_dorso;
+        }
+        return res;
+    }
+
     // --- Operaciones CRUD genéricas (dentro de la flota activa) ---
     async function add(storeName, data) {
         const ref = db.ref(fleetPath(storeName)).push();
         let sanitized = _sanitizeForFirebase(data);
-        if (storeName === 'users') sanitized = _normalizeUser(sanitized);
+        if (storeName === 'users') sanitized = _prepareUserForWrite(sanitized);
         const newItem = {
             ...sanitized,
             id: ref.key,
@@ -165,7 +180,7 @@ const DB = (() => {
     async function put(storeName, data) {
         if (!data.id) throw new Error('put() requiere un ID');
         let sanitized = _sanitizeForFirebase(data);
-        if (storeName === 'users') sanitized = _normalizeUser(sanitized);
+        if (storeName === 'users') sanitized = _prepareUserForWrite(sanitized);
         const updated = {
             ...sanitized,
             updatedAt: new Date().toISOString()
@@ -342,25 +357,67 @@ const DB = (() => {
         return ref.key;
     }
 
+    function _mapSnapshotEntries(val) {
+        if (!val || typeof val !== 'object') return [];
+        return Object.entries(val).map(([key, item]) => {
+            if (item && typeof item === 'object') {
+                return { ...item, id: item.id || key };
+            }
+            return item;
+        }).filter(Boolean);
+    }
+
     // --- Consultas Optimizadas para evitar descargas masivas (Anti-Lag de Base64) ---
     async function getActiveShifts() {
         try {
             const ref = db.ref(fleetPath('shifts')).orderByChild('status').equalTo('active');
-            const snap = await fetchWithTimeout(ref, 7000);
-            const val = snap.val();
-            return val ? Object.values(val) : [];
-        } catch(e) { console.warn('getActiveShifts error:', e); return []; }
+            const snap = await fetchWithTimeout(ref, 15000);
+            const list = _mapSnapshotEntries(snap.val());
+            try { localStorage.setItem(`${CACHE_PREFIX}active_shifts`, JSON.stringify(list)); } catch (ce) { /* quota */ }
+            return list;
+        } catch (e) {
+            console.warn('getActiveShifts error/timeout, usando fallback seguro:', e);
+            let fallback = _safeJsonParse(localStorage.getItem(`${CACHE_PREFIX}active_shifts`), []);
+            if (!Array.isArray(fallback)) fallback = [];
+            try {
+                const cachedShiftId = localStorage.getItem('active_shift_id');
+                if (cachedShiftId && !fallback.some(s => String(s.id) === String(cachedShiftId))) {
+                    const directSnap = await fetchWithTimeout(db.ref(`${fleetPath('shifts')}/${cachedShiftId}`), 6000).catch(() => null);
+                    const directVal = directSnap ? directSnap.val() : null;
+                    if (directVal && directVal.status === 'active') {
+                        fallback.push({ ...directVal, id: directVal.id || cachedShiftId });
+                    }
+                }
+            } catch (directErr) { /* ignore */ }
+            fallback._isErrorFallback = true;
+            return fallback;
+        }
     }
 
     async function getRecentCompletedShifts(limit = 20) {
         try {
             // Como no podemos ordenar por 2 campos, traemos los últimos N registros y filtramos
-            const ref = db.ref(fleetPath('shifts')).limitToLast(limit * 3); 
-            const snap = await fetchWithTimeout(ref, 7000);
-            const val = snap.val();
-            if (!val) return [];
-            return Object.values(val).filter(s => s.status === 'completed');
-        } catch(e) { console.warn('getRecentCompletedShifts error:', e); return []; }
+            const ref = db.ref(fleetPath('shifts')).limitToLast(limit * 3);
+            const snap = await fetchWithTimeout(ref, 12000);
+            return _mapSnapshotEntries(snap.val()).filter(s => s.status === 'completed');
+        } catch (e) {
+            console.warn('getRecentCompletedShifts error:', e);
+            return [];
+        }
+    }
+
+    async function getRecentShifts(limit = 60) {
+        try {
+            const ref = db.ref(fleetPath('shifts')).limitToLast(limit);
+            const snap = await fetchWithTimeout(ref, 12000);
+            const list = _mapSnapshotEntries(snap.val());
+            try { localStorage.setItem(`${CACHE_PREFIX}recent_shifts`, JSON.stringify(list)); } catch (ce) { /* quota */ }
+            return list;
+        } catch (e) {
+            console.warn('getRecentShifts error, usando caché reciente:', e);
+            const cached = _safeJsonParse(localStorage.getItem(`${CACHE_PREFIX}recent_shifts`), []);
+            return Array.isArray(cached) ? cached : [];
+        }
     }
 
     // --- ☠️ v107: migrateShiftPhotos() ELIMINADA PERMANENTEMENTE ---
@@ -650,17 +707,34 @@ const DB = (() => {
     }
 
     // --- Sincronización en tiempo real (dentro de la flota) ---
+    const _activeChangeRefs = {};
+
     function onChanges(storeName, callback) {
         const path = fleetPath(storeName);
-        db.ref(path).on('value', (snap) => {
-            const val = snap.val();
-            const items = val ? Object.values(val) : [];
-            localStorage.setItem(`${CACHE_PREFIX}${storeName}_all`, JSON.stringify(items));
+        offChanges(storeName);
+        // Para shifts, escuchar solo los últimos 30 registros para no saturar WebSocket ni localStorage
+        const ref = storeName === 'shifts' ? db.ref(path).limitToLast(30) : db.ref(path);
+        const handler = (snap) => {
+            let items = _mapSnapshotEntries(snap.val());
+            if (storeName === 'users') items = items.map(_normalizeUser);
+            try {
+                const cacheKey = storeName === 'shifts' ? `${CACHE_PREFIX}recent_shifts` : `${CACHE_PREFIX}${storeName}_all`;
+                localStorage.setItem(cacheKey, JSON.stringify(items));
+            } catch (ce) {
+                /* localStorage quota exceeded — ignorar silenciosamente sin romper sync */
+            }
             callback(items);
-        });
+        };
+        ref.on('value', handler);
+        _activeChangeRefs[storeName] = { ref, handler, rawPath: path };
     }
 
     function offChanges(storeName) {
+        const entry = _activeChangeRefs[storeName];
+        if (entry && entry.ref && entry.handler) {
+            entry.ref.off('value', entry.handler);
+            delete _activeChangeRefs[storeName];
+        }
         const path = fleetPath(storeName);
         db.ref(path).off('value');
     }
@@ -721,7 +795,7 @@ const DB = (() => {
         open, add, put, get, getAll, getAllByIndex, remove, clearStore,
         getSetting, setSetting, getUserPreferences, saveUserPreferences, seed, exportAll, importAll, resetAll,
         onChanges, offChanges, notifyAdmins,
-        getActiveShifts, getRecentCompletedShifts, getShiftPhoto,
+        getActiveShifts, getRecentCompletedShifts, getRecentShifts, getShiftPhoto,
         // Multi-tenencia
         setFleet, getFleet, createFleetId,
         addGlobalUser, findGlobalUser, getGlobalUsersByFleet, hasGlobalUsers, getAllGlobalUsers,

@@ -13,6 +13,9 @@ const geminiAgent = require('./services/geminiAgent');
 // Importar Servicio de Fotomultas e Infracciones de Velocidad
 const SpeedInfractions = require('./services/speedInfractions');
 
+// Importar Servicio de Facturación Electrónica ARCA (Punto Remis - Factura C)
+const ArcaInvoicing = require('./services/arcaInvoicing');
+
 // Habilitar CORS para todas las peticiones (requerido para clientes Capacitor/móviles)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -3101,6 +3104,276 @@ app.post('/api/gps/webhook', async (req, res) => {
         res.json({ ok: true });
     } catch (e) {
         console.error('❌ Error en /api/gps/webhook:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// ============================================
+// MÓDULO DE FACTURACIÓN ELECTRÓNICA ARCA (PUNTO REMIS — FACTURA C)
+// ============================================
+
+// 1. Consulta rápida de CUIT en padrón de clientes frecuentes de la flota
+app.get('/api/arca/cuit-lookup/:cuit', async (req, res) => {
+    try {
+        const cleanCuit = String(req.params.cuit || '').replace(/[^0-9]/g, '');
+        const fleetId = req.query.fleetId || '-OnPd8HaV1VZWBnYQQX7';
+        if (cleanCuit.length !== 11) {
+            return res.status(400).json({ ok: false, error: 'El CUIT debe tener 11 dígitos' });
+        }
+        const db = WhatsappBot.getDb();
+        if (db) {
+            const snap = await db.ref(`fleets/${fleetId}/arca_clients/${cleanCuit}`).once('value');
+            const saved = snap.val();
+            if (saved && saved.razonSocial) {
+                return res.json({ ok: true, found: true, client: saved });
+            }
+        }
+        res.json({ ok: true, found: false });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// 2. Emitir Factura C (WSFEv1 / Homologación ARCA) + Registrar en Balances del Administrador
+app.post('/api/arca/emit', async (req, res) => {
+    try {
+        const body = req.body || {};
+        const fleetId = body.fleetId || '-OnPd8HaV1VZWBnYQQX7';
+        const cleanCuit = String(body.receptorCuit || '').replace(/[^0-9]/g, '');
+        if (cleanCuit.length !== 11) {
+            return res.status(400).json({ ok: false, error: 'El CUIT de la empresa receptora debe tener exactamente 11 dígitos.' });
+        }
+        const importeTotal = parseFloat(body.importeTotal || 0);
+        if (isNaN(importeTotal) || importeTotal <= 0) {
+            return res.status(400).json({ ok: false, error: 'El importe total debe ser mayor a $0.' });
+        }
+        const recorridoRaw = String(body.recorrido || '').trim();
+        if (!recorridoRaw) {
+            return res.status(400).json({ ok: false, error: 'Debe ingresar el recorrido del servicio de traslado.' });
+        }
+
+        const db = WhatsappBot.getDb();
+        const authResult = await ArcaInvoicing.authorizeInvoiceWSFEv1(db, fleetId, {
+            ptoVta: body.ptoVta || 1,
+            receptorCuit: cleanCuit,
+            receptorCondicionIvaId: Number(body.receptorCondicionIvaId || 1),
+            importeTotal,
+            fechaEmision: body.fechaEmision
+        });
+
+        const recorridoFormatted = recorridoRaw.toLowerCase().startsWith('servicio de traslado')
+            ? recorridoRaw
+            : `Servicio de traslado: ${recorridoRaw}`;
+
+        const driverName = String(body.driverName || 'Chofer').trim();
+        const driverDni = String(body.driverDni || '-').trim();
+        const vehicleModel = String(body.vehicleModel || 'Vehículo Asignado').trim();
+        const vehiclePlate = String(body.vehiclePlate || '-').trim();
+        const receptorRazonSocial = String(body.receptorRazonSocial || 'EMPRESA CLIENTE').trim();
+        const receptorCondicionIvaId = Number(body.receptorCondicionIvaId || 1);
+        const receptorCondicionIva = ArcaInvoicing.CONDICIONES_IVA_RECEPTOR[receptorCondicionIvaId] || 'IVA Responsable Inscripto';
+
+        const descripcionImpresa = `${recorridoFormatted} | Chofer: ${driverName} (DNI: ${driverDni}) | Vehículo: ${vehicleModel} - Patente: ${vehiclePlate}`;
+
+        const invoiceRecord = {
+            fantasyName: ArcaInvoicing.ARCA_ISSUER.fantasyName,
+            issuerName: ArcaInvoicing.ARCA_ISSUER.razonSocial,
+            issuerCuit: ArcaInvoicing.ARCA_ISSUER.cuit,
+            issuerCuitFormatted: ArcaInvoicing.ARCA_ISSUER.cuitFormatted,
+            issuerCondicionIva: ArcaInvoicing.ARCA_ISSUER.condicionIva,
+            cbteTipo: 11,
+            cbteLetra: 'C',
+            ptoVta: authResult.ptoVta,
+            cbteNro: authResult.cbteNro,
+            invoiceNumber: authResult.invoiceNumber,
+            fechaEmision: authResult.fechaEmision,
+            cae: authResult.cae,
+            caeVto: authResult.caeVto,
+            arcaMode: authResult.mode,
+            receptorCuit: cleanCuit,
+            receptorCuitFormatted: ArcaInvoicing.formatCuit(cleanCuit),
+            receptorRazonSocial,
+            receptorCondicionIvaId,
+            receptorCondicionIva,
+            receptorDomicilio: String(body.receptorDomicilio || '').trim(),
+            condicionVenta: String(body.condicionVenta || 'Contado / Transferencia').trim(),
+            recorrido: recorridoFormatted,
+            descripcionImpresa,
+            driverId: body.driverId || null,
+            driverName,
+            driverDni,
+            vehicleId: body.vehicleId || null,
+            vehicleModel,
+            vehiclePlate,
+            importeTotal,
+            clientWhatsapp: String(body.clientWhatsapp || '').trim(),
+            clientEmail: String(body.clientEmail || '').trim(),
+            createdBy: body.createdBy || driverName,
+            createdByRole: body.createdByRole || 'driver',
+            createdAt: new Date().toISOString(),
+            timestamp: Date.now()
+        };
+
+        const qrInfo = ArcaInvoicing.buildArcaOfficialQr(invoiceRecord);
+        invoiceRecord.qrUrl = qrInfo.qrUrl;
+        invoiceRecord.qrBase64 = qrInfo.qrBase64;
+
+        let invoiceId = 'inv_' + Date.now();
+        if (db) {
+            const invRef = db.ref(`fleets/${fleetId}/invoices`).push();
+            invoiceId = invRef.key;
+            invoiceRecord.id = invoiceId;
+            invoiceRecord.pdfUrl = `/api/arca/invoice-pdf/${fleetId}/${invoiceId}`;
+            await invRef.set(invoiceRecord);
+
+            // Guardar cliente frecuente para autocompletar en próximas facturas
+            await db.ref(`fleets/${fleetId}/arca_clients/${cleanCuit}`).set({
+                cuit: cleanCuit,
+                razonSocial: receptorRazonSocial,
+                condicionIvaId: receptorCondicionIvaId,
+                condicionIva: receptorCondicionIva,
+                domicilio: invoiceRecord.receptorDomicilio || '',
+                whatsapp: invoiceRecord.clientWhatsapp || '',
+                email: invoiceRecord.clientEmail || '',
+                updatedAt: Date.now()
+            }).catch(() => {});
+
+            // Registrar copia automática en el Panel de Balances del Administrador
+            const movRef = db.ref(`fleets/${fleetId}/movements`).push();
+            const movementData = {
+                id: movRef.key,
+                type: 'Ingreso',
+                amount: importeTotal,
+                concept: `🧾 Factura C ${invoiceRecord.invoiceNumber} — ${recorridoFormatted}`,
+                party: `${receptorRazonSocial} (CUIT ${invoiceRecord.receptorCuitFormatted}) • Chofer: ${driverName} (${vehiclePlate})`,
+                date: invoiceRecord.createdAt,
+                source: 'arca_factura_c',
+                createdBy: invoiceRecord.createdBy,
+                invoiceId: invoiceId,
+                invoiceNumber: invoiceRecord.invoiceNumber,
+                cae: invoiceRecord.cae,
+                receiptUrl: `/api/arca/invoice-pdf/${fleetId}/${invoiceId}`,
+                createdAt: invoiceRecord.createdAt
+            };
+            await movRef.set(movementData);
+
+            // Sincronizar con Google Sheets si está configurada
+            if (typeof WhatsappBot.syncMovementToSheet === 'function') {
+                WhatsappBot.syncMovementToSheet(fleetId, movementData).catch(() => {});
+            }
+        } else {
+            invoiceRecord.id = invoiceId;
+            invoiceRecord.pdfUrl = `/api/arca/invoice-pdf/${fleetId}/${invoiceId}`;
+        }
+
+        const pdfBuffer = ArcaInvoicing.generateFacturaCPdfBuffer(invoiceRecord);
+
+        res.json({
+            ok: true,
+            invoice: invoiceRecord,
+            pdfBase64: pdfBuffer.toString('base64'),
+            fileName: `Factura_C_Punto_Remis_${invoiceRecord.invoiceNumber}.pdf`
+        });
+    } catch (e) {
+        console.error('❌ [ARCA-EMIT] Error emitiendo Factura C:', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// 3. Descargar / Visualizar PDF oficial de una Factura C
+app.get('/api/arca/invoice-pdf/:fleetId/:invoiceId', async (req, res) => {
+    try {
+        const { fleetId, invoiceId } = req.params;
+        const db = WhatsappBot.getDb();
+        if (!db) {
+            return res.status(503).send('Base de datos no disponible');
+        }
+        const snap = await db.ref(`fleets/${fleetId}/invoices/${invoiceId}`).once('value');
+        const inv = snap.val();
+        if (!inv) {
+            return res.status(404).send('Factura no encontrada');
+        }
+        const pdfBuffer = ArcaInvoicing.generateFacturaCPdfBuffer(inv);
+        const fileName = `Factura_C_Punto_Remis_${inv.invoiceNumber || invoiceId}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+        res.send(pdfBuffer);
+    } catch (e) {
+        console.error('❌ [ARCA-PDF] Error generando PDF:', e.message);
+        res.status(500).send('Error generando PDF: ' + e.message);
+    }
+});
+
+// 4. Enviar PDF de Factura C directamente por WhatsApp (vía Bot y/o link directo)
+app.post('/api/arca/send-whatsapp', async (req, res) => {
+    try {
+        const { fleetId = '-OnPd8HaV1VZWBnYQQX7', invoiceId, phone, invoiceData } = req.body || {};
+        const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone) {
+            return res.status(400).json({ ok: false, error: 'Ingrese un número de WhatsApp válido.' });
+        }
+
+        const db = WhatsappBot.getDb();
+        let inv = invoiceData || null;
+        if (!inv && db && invoiceId) {
+            const snap = await db.ref(`fleets/${fleetId}/invoices/${invoiceId}`).once('value');
+            inv = snap.val();
+        }
+        if (!inv) {
+            return res.status(404).json({ ok: false, error: 'No se encontraron los datos de la factura.' });
+        }
+
+        const pdfBuffer = ArcaInvoicing.generateFacturaCPdfBuffer(inv);
+        const fileName = `Factura_C_Punto_Remis_${inv.invoiceNumber || '00001'}.pdf`;
+        const caption = `🧾 *PUNTO REMIS — FACTURA C N° ${inv.invoiceNumber}*\n` +
+            `👤 *Emisor:* JOSE ALBERTO CASTRO (CUIT 20-22209365-2)\n` +
+            `🏢 *Receptor:* ${inv.receptorRazonSocial} (CUIT ${inv.receptorCuitFormatted || inv.receptorCuit})\n` +
+            `🛣️ *Detalle:* ${inv.recorrido}\n` +
+            `🚘 *Chofer:* ${inv.driverName} (DNI ${inv.driverDni}) | *Vehículo:* ${inv.vehicleModel} (${inv.vehiclePlate})\n` +
+            `💰 *Importe Total:* $${ArcaInvoicing.formatCurrencyARS(inv.importeTotal)} ARS\n` +
+            `🔐 *CAE:* ${inv.cae} (Vto: ${ArcaInvoicing.formatDateAR(inv.caeVto)})`;
+
+        let botResult = { success: false };
+        if (typeof WhatsappBot.sendDocumentMessage === 'function') {
+            botResult = await WhatsappBot.sendDocumentMessage(cleanPhone, pdfBuffer, fileName, caption, 'application/pdf');
+        }
+
+        if (db && invoiceId) {
+            await db.ref(`fleets/${fleetId}/invoices/${invoiceId}`).update({
+                clientWhatsapp: cleanPhone,
+                whatsappSentAt: new Date().toISOString(),
+                whatsappSentByBot: Boolean(botResult && botResult.success)
+            }).catch(() => {});
+        }
+
+        res.json({
+            ok: true,
+            sentByBot: Boolean(botResult && botResult.success),
+            botMessageId: botResult?.messageId || null,
+            reason: botResult?.reason || botResult?.error || null
+        });
+    } catch (e) {
+        console.error('❌ [ARCA-WA] Error enviando factura por WhatsApp:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// 5. Registrar envío por Email
+app.post('/api/arca/send-email', async (req, res) => {
+    try {
+        const { fleetId = '-OnPd8HaV1VZWBnYQQX7', invoiceId, email } = req.body || {};
+        if (!email || !String(email).includes('@')) {
+            return res.status(400).json({ ok: false, error: 'Ingrese un correo electrónico válido.' });
+        }
+        const db = WhatsappBot.getDb();
+        if (db && invoiceId) {
+            await db.ref(`fleets/${fleetId}/invoices/${invoiceId}`).update({
+                clientEmail: String(email).trim(),
+                emailSentAt: new Date().toISOString()
+            }).catch(() => {});
+        }
+        res.json({ ok: true, email: String(email).trim() });
+    } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
 });

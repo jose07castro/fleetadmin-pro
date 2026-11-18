@@ -5593,6 +5593,51 @@ Si no hay movimientos financieros detectados, respondé: []`;
         }
     }
 
+    async function sendDocumentMessage(targetPhone, buffer, fileName, caption = '', mimeType = 'application/pdf') {
+        if (!sock || !_isConnectedState) {
+            console.warn('⚠️ [SEND-DOC] Bot no conectado para enviar documento a', targetPhone);
+            return { success: false, reason: 'bot_disconnected' };
+        }
+        try {
+            let cleanNum = String(targetPhone || '').replace(/[^0-9]/g, '');
+            if (!cleanNum) return { success: false, reason: 'invalid_phone' };
+            if (!cleanNum.startsWith('54') && cleanNum.length === 10) {
+                cleanNum = '549' + cleanNum;
+            }
+            let targetJid = `${cleanNum}@s.whatsapp.net`;
+            try {
+                const candidates = [cleanNum];
+                if (cleanNum.startsWith('549')) {
+                    candidates.push('54' + cleanNum.slice(3));
+                } else if (cleanNum.startsWith('54')) {
+                    candidates.push('549' + cleanNum.slice(2));
+                }
+                const onWa = await sock.onWhatsApp(...candidates);
+                const found = onWa?.find(w => w.exists);
+                if (found?.jid) {
+                    targetJid = found.jid;
+                }
+            } catch (waErr) {
+                console.warn('⚠️ [SEND-DOC] Falló validación JID, usando directo:', waErr.message);
+            }
+
+            const sentMsg = await sock.sendMessage(targetJid, {
+                document: buffer,
+                mimetype: mimeType || 'application/pdf',
+                fileName: fileName || 'Factura_C_Punto_Remis.pdf',
+                caption: caption || ''
+            });
+            if (sentMsg?.key && sentMsg?.message) {
+                storeMessage(sentMsg.key, sentMsg.message);
+            }
+            console.log(`📄 [SEND-DOC] PDF enviado exitosamente a ${targetJid} (${fileName})`);
+            return { success: true, messageId: sentMsg?.key?.id, targetJid };
+        } catch (err) {
+            console.error('❌ [SEND-DOC] Error enviando documento por WhatsApp:', err.message);
+            return { success: false, error: err.message };
+        }
+    }
+
     return { 
         init, 
         resetSession,
@@ -5617,6 +5662,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
         getLastQr: () => _lastQrCode,
         getGroupCache: () => groupNameCache,
         sendTextMessage,
+        sendDocumentMessage,
         emitMockMessage: (msg, type = 'notify') => {
             if (sock && sock.ev) {
                 try {
