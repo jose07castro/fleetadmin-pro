@@ -1916,6 +1916,40 @@ app.post('/api/bot/set-admin-pin', async (req, res) => {
     }
 });
 
+app.post('/api/bot/send-document', async (req, res) => {
+    try {
+        const db = (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') ? WhatsappBot.getDb() : null;
+        const { pin, pinToken, phone, fileBase64, fileName, caption, mimeType } = req.body || {};
+        const check = await _validateControlAdminPin({ pin, pinToken, db });
+        if (!check.valid) {
+            return res.status(401).json({ ok: false, error: 'PIN de administrador inválido' });
+        }
+        const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone || !fileBase64) {
+            return res.status(400).json({ ok: false, error: 'phone y fileBase64 son obligatorios' });
+        }
+        const cleanB64 = String(fileBase64).includes(',') ? String(fileBase64).split(',')[1] : String(fileBase64);
+        const fileBuffer = Buffer.from(cleanB64, 'base64');
+        if (typeof WhatsappBot.sendDocumentMessage !== 'function') {
+            return res.status(503).json({ ok: false, error: 'Bot no disponible' });
+        }
+        const botRes = await WhatsappBot.sendDocumentMessage(
+            cleanPhone,
+            fileBuffer,
+            fileName || 'FleetAdmin_Control_v1.0.0.apk',
+            caption || '',
+            mimeType || 'application/vnd.android.package-archive'
+        );
+        if (!botRes || !botRes.success) {
+            return res.status(502).json({ ok: false, error: botRes?.reason || botRes?.error || 'No se pudo enviar por WhatsApp' });
+        }
+        res.json({ ok: true, targetJid: botRes.targetJid, messageId: botRes.messageId });
+    } catch (e) {
+        console.error('❌ [SEND-DOC-API] Error:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
 // ============================================
 // ENDPOINTS GESTIÓN COMPLETA DE GRUPOS (CRUD & WHITELIST)
 // ============================================
