@@ -216,7 +216,7 @@ app.get('/qr', async (req, res) => {
 
         let qrUrl = diag.lastQr || null;
         let versionControl = {
-            min_version_web: '1.2.245',
+            min_version_web: '1.2.246',
             min_version_android: '1.2.245',
             update_message: 'Mejoras críticas de rendimiento, rastreo GPS en tiempo real y estabilidad general.',
             android_update_url: 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
@@ -1913,6 +1913,14 @@ app.get('/api/version-check', async (req, res) => {
                 if (vc.update_message) updateMessage = vc.update_message;
                 if (typeof vc.force_update === 'boolean') forceUpdate = vc.force_update;
             }
+            if (!forceUpdate) {
+                minVersionCode = 53;
+            } else {
+                const patchNum = parseInt(String(minVersionAndroid || '').split('.')[2] || '0', 10);
+                if (patchNum >= 240) {
+                    minVersionCode = Math.max(minVersionCode, patchNum - 76);
+                }
+            }
         }
         res.json({
             min_required_version_code: minVersionCode,
@@ -1966,8 +1974,12 @@ app.post('/api/admin/version-control', async (req, res) => {
             updated_by: body.updated_by || 'admin_panel'
         };
 
+        const patchNum = parseInt(minVersionAndroid.split('.')[2] || '0', 10);
+        const inferredCode = (forceUpdate && patchNum >= 240) ? (patchNum - 76) : 53;
+
         await db.ref('app_config/version_control').set(payload);
         await db.ref('global_settings/min_version').update({
+            minVersionCode: inferredCode,
             minVersionName: minVersionAndroid,
             playStoreUrl: androidUpdateUrl,
             updatedAt: payload.updated_at

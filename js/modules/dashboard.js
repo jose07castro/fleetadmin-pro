@@ -1272,8 +1272,11 @@ window.DashboardModule = (() => {
             };
             await firebaseDB.ref('app_config/version_control').set(payload);
 
-            // Mantener sincronizado también global_settings/min_version por compatibilidad
+            // Mantener sincronizado también global_settings/min_version por compatibilidad con v1.2.244 o anteriores
+            const patchNum = parseInt(minAndroid.split('.')[2] || '0', 10);
+            const inferredCode = (forceUpdate && patchNum >= 240) ? (patchNum - 76) : 53;
             await firebaseDB.ref('global_settings/min_version').update({
+                minVersionCode: inferredCode,
                 minVersionName: minAndroid,
                 playStoreUrl: androidUrl,
                 updatedAt: new Date().toISOString()
