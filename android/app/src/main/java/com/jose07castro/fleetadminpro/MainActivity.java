@@ -2,6 +2,8 @@ package com.jose07castro.fleetadminpro;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -38,6 +40,7 @@ public class MainActivity extends BridgeActivity {
 
     // Referencia estática para que el Service inyecte JS (respaldo UI).
     public static WebView webView = null;
+    public static volatile boolean isForceUpdateLocked = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -102,6 +105,10 @@ public class MainActivity extends BridgeActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (isForceUpdateLocked) {
+                    Log.i(TAG, "🔒 [FORCE-UPDATE] Botón físico Atrás bloqueado por Actualización Obligatoria.");
+                    return;
+                }
                 if (LocationTrackingService.isAppInForeground && isDriverShiftExitLocked()) {
                     Log.i(TAG, "🔒 [BACK-LOCK] Retroceso interceptado en FleetAdmin: Turno activo en curso.");
                     showActiveShiftLockModalInWebView();
@@ -1005,6 +1012,84 @@ public class MainActivity extends BridgeActivity {
             } catch (Exception e) {
                 Log.e(TAG, "Error in hideOverlayAlert bridge:", e);
             }
+        }
+
+        @JavascriptInterface
+        public void restartGpsEngine() {
+            Log.i(TAG, "📱 JS → restartGpsEngine()");
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                String savedUserId = prefs.getString("userId", null);
+                String savedDriverName = prefs.getString("driverName", "Chofer");
+                String savedFleetId = prefs.getString("fleetId", null);
+                String savedServerUrl = prefs.getString("serverUrl", "https://fleetadmin-web-nueva.onrender.com");
+                boolean activeShift = prefs.getBoolean("is_shift_active", LocationTrackingService.isShiftActive);
+
+                Intent serviceIntent = new Intent(MainActivity.this, LocationTrackingService.class);
+                if (savedUserId != null) serviceIntent.putExtra("userId", savedUserId);
+                serviceIntent.putExtra("driverName", savedDriverName);
+                if (savedFleetId != null) serviceIntent.putExtra("fleetId", savedFleetId);
+                serviceIntent.putExtra("serverUrl", savedServerUrl);
+                serviceIntent.putExtra("isShiftActive", activeShift);
+                androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
+
+                if (LocationTrackingService.instance != null) {
+                    LocationTrackingService.instance.requestImmediateGpsFix();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error en restartGpsEngine bridge:", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void setForceUpdateLocked(boolean locked, String message, String updateUrl) {
+            isForceUpdateLocked = locked;
+            Log.i(TAG, "🚀 [FORCE-UPDATE] Native lock=" + locked);
+            if (locked) {
+                new Thread(() -> {
+                    ToneGenerator tg = null;
+                    try {
+                        tg = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+                        tg.startTone(ToneGenerator.TONE_PROP_BEEP2, 220);
+                        Thread.sleep(280);
+                        tg.startTone(ToneGenerator.TONE_PROP_PROMPT, 260);
+                        Thread.sleep(300);
+                    } catch (Exception e) {
+                        Log.w(TAG, "⚠️ Error reproduciendo ToneGenerator de actualización:", e);
+                    } finally {
+                        if (tg != null) {
+                            try { tg.release(); } catch (Exception ignored) {}
+                        }
+                    }
+                }).start();
+
+                try {
+                    LocationTrackingService.speakMandatoryText(
+                        "Atención. Actualización obligatoria disponible. Presioná Actualizar Ahora para continuar.",
+                        false,
+                        MainActivity.this
+                    );
+                } catch (Exception e) {
+                    Log.w(TAG, "⚠️ Error en TTS de Force Update:", e);
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void openForceUpdateUrl(String url) {
+            final String targetUrl = (url != null && !url.trim().isEmpty())
+                ? url.trim()
+                : "https://play.google.com/store/apps/details?id=com.fleetadminpro.app";
+            isForceUpdateLocked = true;
+            runOnUiThread(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "❌ Error abriendo URL de actualización obligatoria:", e);
+                }
+            });
         }
 
     }

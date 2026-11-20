@@ -150,8 +150,13 @@ const GPSModule = (() => {
     let _hasReceivedFirebasePosition = false;
     let _fleetDriversRef = null;
     let _fleetUsersRef = null;
+    let _fleetShiftsRef = null;
     let _fleetDriverMarkers = {};
     let _fleetDriverInfo = {};
+    let _activeShiftDrivers = new Set();
+    let _activeShiftIds = new Set();
+    let _hasActiveShiftsLoaded = false;
+    let _lastPositionsSnapshot = null;
     let _cameraMarkers = [];
 
     // JSON STYLES PARA GOOGLE MAPS API
@@ -311,6 +316,11 @@ const GPSModule = (() => {
         if (_ownPositionRef) { _ownPositionRef.off(); _ownPositionRef = null; }
         if (_fleetDriversRef) { _fleetDriversRef.off(); _fleetDriversRef = null; }
         if (_fleetUsersRef) { _fleetUsersRef.off(); _fleetUsersRef = null; }
+        if (_fleetShiftsRef) { _fleetShiftsRef.off(); _fleetShiftsRef = null; }
+        _activeShiftDrivers = new Set();
+        _activeShiftIds = new Set();
+        _hasActiveShiftsLoaded = false;
+        _lastPositionsSnapshot = null;
         for (const k in _fleetDriverMarkers) {
             try { _fleetDriverMarkers[k].setMap(null); } catch (e) {}
         }
@@ -622,10 +632,31 @@ const GPSModule = (() => {
             }
         });
 
+        if (_fleetShiftsRef) _fleetShiftsRef.off();
+        _fleetShiftsRef = firebase.database().ref(`fleets/${fleetId}/shifts`).orderByChild('status').equalTo('active');
+        _fleetShiftsRef.on('value', (snap) => {
+            const val = snap.val() || {};
+            const nextDrivers = new Set();
+            const nextIds = new Set();
+            for (const [sid, s] of Object.entries(val)) {
+                if (!s || typeof s !== 'object') continue;
+                nextIds.add(sid);
+                if (s.id) nextIds.add(String(s.id));
+                if (s.driverId) nextDrivers.add(String(s.driverId));
+            }
+            _activeShiftDrivers = nextDrivers;
+            _activeShiftIds = nextIds;
+            _hasActiveShiftsLoaded = true;
+            if (_lastPositionsSnapshot) {
+                _updateFleetDriverMarkers(_lastPositionsSnapshot, fleetId);
+            }
+        });
+
         if (_fleetDriversRef) _fleetDriversRef.off();
         _fleetDriversRef = firebase.database().ref('driver_positions');
         _fleetDriversRef.on('value', (snap) => {
             const positions = snap.val() || {};
+            _lastPositionsSnapshot = positions;
             _updateFleetDriverMarkers(positions, fleetId);
         }, (err) => {
             console.error('[GPS] Error escuchando driver_positions:', err);
@@ -689,9 +720,16 @@ const GPSModule = (() => {
                 continue;
             }
 
+            const matchesActiveShift = _activeShiftDrivers.has(String(driverKey)) ||
+                (data.driverId && _activeShiftDrivers.has(String(data.driverId))) ||
+                (data.shiftId && _activeShiftIds.has(String(data.shiftId)));
+            const isInRealShift = _hasActiveShiftsLoaded
+                ? matchesActiveShift
+                : (data.shift_status === 'IN_PROGRESS');
+
             const isOwnerView = typeof Auth !== 'undefined' && Auth.isOwner();
             const isIrregular = data.status === 'DESCONEXION_IRREGULAR' ||
-                (data.shift_status === 'IN_PROGRESS' && updateTime > 0 && (now - updateTime > 3 * 60 * 1000));
+                (isInRealShift && data.shift_status === 'IN_PROGRESS' && updateTime > 0 && (now - updateTime > 3 * 60 * 1000));
             if (isOwnerView && isIrregular && data.status !== 'DESCONEXION_IRREGULAR' && typeof firebase !== 'undefined' && firebase.database) {
                 firebase.database().ref(`driver_positions/${driverKey}`).update({
                     status: 'DESCONEXION_IRREGULAR',
@@ -705,17 +743,21 @@ const GPSModule = (() => {
             const latlng = new google.maps.LatLng(lat, lng);
             const heading = data.heading || 0;
             const speed = isIrregular ? 0 : (parseFloat(data.speed) || 0);
-            const speedText = isIrregular ? '🚨 DESC. IRREGULAR' : (speed > 3 ? `${Math.round(speed)} km/h` : 'Detenido');
+            const speedText = isIrregular
+                ? '🚨 DESC. IRREGULAR'
+                : (isInRealShift
+                    ? (speed > 3 ? `EN TURNO · ${Math.round(speed)} km/h` : 'EN TURNO')
+                    : (speed > 3 ? `COPILOTO · ${Math.round(speed)} km/h` : 'COPILOTO'));
             const firstName = driverName ? driverName.split(' ')[0] : 'Chofer';
             const hours = new Date().getHours();
             const isNight = hours >= 19 || hours < 7;
             const safeKey = driverKey.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 16);
-            const borderCol = isIrregular ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.8)';
+            const borderCol = isIrregular ? 'rgba(239, 68, 68, 0.95)' : (isInRealShift ? 'rgba(16, 185, 129, 0.85)' : 'rgba(56, 189, 248, 0.85)');
             const bgCol = isIrregular ? 'rgba(153, 27, 27, 0.96)' : 'rgba(15, 23, 42, 0.92)';
-            const dotCol = isIrregular ? '#ef4444' : '#10b981';
-            const subCol = isIrregular ? '#fecaca' : '#6ee7b7';
-            const carStopA = isIrregular ? '#991b1b' : '#047857';
-            const carStopB = isIrregular ? '#ef4444' : '#10b981';
+            const dotCol = isIrregular ? '#ef4444' : (isInRealShift ? '#10b981' : '#38bdf8');
+            const subCol = isIrregular ? '#fecaca' : (isInRealShift ? '#6ee7b7' : '#7dd3fc');
+            const carStopA = isIrregular ? '#991b1b' : (isInRealShift ? '#047857' : '#0369a1');
+            const carStopB = isIrregular ? '#ef4444' : (isInRealShift ? '#10b981' : '#38bdf8');
 
             const html = `
                 <div style="position: relative; width: 22px; height: 40px; box-sizing: border-box; cursor: pointer;">
@@ -773,7 +815,7 @@ const GPSModule = (() => {
                         <span style="font-size: 1.4rem;">🚗</span>
                         <div>
                             <div style="font-weight: 800; font-size: 14px; color: #0f172a;">${driverName || 'Compañero'}</div>
-                            <div style="font-size: 11px; color: #059669; font-weight: 700;">🤝 Chofer de tu flota</div>
+                            <div style="font-size: 11px; color: ${isInRealShift ? '#059669' : '#0284c7'}; font-weight: 700;">${isInRealShift ? '🟢 En Turno Activo' : '🛡️ Modo Copiloto (Sin turno iniciado)'}</div>
                         </div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; padding-top: 6px; border-top: 1px solid #e2e8f0;">
@@ -782,7 +824,7 @@ const GPSModule = (() => {
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
                         <span style="color: #64748b;">Estado:</span>
-                        <span style="font-weight: 700; color: ${isIrregular ? '#dc2626' : (speed > 3 ? '#10b981' : '#f59e0b')};">${isIrregular ? '🚨 Desconexión Irregular (>3 min)' : (speed > 3 ? 'En viaje' : 'Detenido')}</span>
+                        <span style="font-weight: 700; color: ${isIrregular ? '#dc2626' : (isInRealShift ? '#10b981' : '#0284c7')};">${isIrregular ? '🚨 Desconexión Irregular (>3 min)' : (isInRealShift ? (speed > 3 ? '🟢 En Turno (En viaje)' : '🟢 En Turno (Detenido)') : '🛡️ Modo Copiloto (Sin turno iniciado)')}</span>
                     </div>
                     ${data.battery ? `
                     <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
@@ -1191,6 +1233,11 @@ const GPSModule = (() => {
         if (_ownPositionRef) { _ownPositionRef.off(); _ownPositionRef = null; }
         if (_fleetDriversRef) { _fleetDriversRef.off(); _fleetDriversRef = null; }
         if (_fleetUsersRef) { _fleetUsersRef.off(); _fleetUsersRef = null; }
+        if (_fleetShiftsRef) { _fleetShiftsRef.off(); _fleetShiftsRef = null; }
+        _activeShiftDrivers = new Set();
+        _activeShiftIds = new Set();
+        _hasActiveShiftsLoaded = false;
+        _lastPositionsSnapshot = null;
         for (const k in _fleetDriverMarkers) {
             try { _fleetDriverMarkers[k].setMap(null); } catch (e) {}
         }

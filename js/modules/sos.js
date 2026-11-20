@@ -708,7 +708,7 @@ const SOSModule = (() => {
                 (err) => {
                     console.warn('🚨 SOS POSITION: watchPosition error:', err.message);
                 },
-                { enableHighAccuracy: false, timeout: 10000, maximumAge: 30000 }
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
             );
         } catch (e) {
             console.warn('🚨 SOS POSITION: watchPosition no disponible:', e);
@@ -721,22 +721,13 @@ const SOSModule = (() => {
                 navigator.geolocation.getCurrentPosition(
                     (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
                     (e) => reject(e),
-                    { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
                 );
             });
             _myLastPosition = pos;
-            await window.sendLocationToServer(
-                pos.lat,
-                pos.lng,
-                0,
-                0,
-                null,
-                'sos_tracker',
-                false // snap = false para conservar coordenadas crudas en SOS
-            );
-            console.log('🚨 SOS POSITION: ✅ Guardada:', pos.lat.toFixed(4), pos.lng.toFixed(4));
+            console.log('🚨 SOS POSITION: ✅ Actualizada en memoria:', pos.lat.toFixed(4), pos.lng.toFixed(4));
         } catch (e) {
-            console.warn('🚨 SOS POSITION: Error guardando posición:', e.message || e);
+            console.warn('🚨 SOS POSITION: Error obteniendo posición:', e.message || e);
         }
     }
 

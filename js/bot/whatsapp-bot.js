@@ -2984,6 +2984,9 @@ const WhatsappBot = (() => {
                         for (const histMsg of messages) {
                             const jid = histMsg.key?.remoteJid;
                             const msgSec = Number(histMsg.messageTimestamp) || 0;
+                            const hRaw = histMsg?.message;
+                            const isImgOrSticker = !!(_recursiveFindImage(hRaw, 0) || hRaw?.imageMessage || hRaw?.stickerMessage || hRaw?.ephemeralMessage?.message?.stickerMessage);
+                            if (isImgOrSticker) continue;
                             if (jid && jid.endsWith('@g.us') && !histMsg.key?.fromMe && !_isGroupDeleted(jid) && msgSec > 0 && (nowSec - msgSec) <= 9000) {
                                 const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
                                 const groupConf = _groupSettings[safeKey] || _groupSettings[jid];
@@ -3063,6 +3066,15 @@ const WhatsappBot = (() => {
                     // Almacenar en caché de reintentos para re-cifrado E2EE
                     if (msg.key?.id && msg.message) {
                         storeMessage(msg.key, msg.message);
+                    }
+
+                    // 4. Ignorar imágenes y stickers por completo: solo se procesan texto y audio
+                    const mRawEarly = msg.message;
+                    const resolvedImageMsgEarly = _recursiveFindImage(mRawEarly, 0) || mRawEarly?.imageMessage || null;
+                    const isStickerEarly = !!(mRawEarly?.stickerMessage || mRawEarly?.ephemeralMessage?.message?.stickerMessage);
+                    if (resolvedImageMsgEarly || isStickerEarly) {
+                        console.log(`⏭️ [SKIP-IMAGE] Imagen/sticker ignorado en "${nombreGrupo}" (solo se procesan mensajes de texto y audio).`);
+                        continue;
                     }
 
                     // Guardar en cola si es candidato a comprobante
@@ -3161,7 +3173,6 @@ const WhatsappBot = (() => {
                     if (m) {
                         text = m.conversation ||
                                m.extendedTextMessage?.text ||
-                               m.imageMessage?.caption ||
                                m.videoMessage?.caption ||
                                m.documentMessage?.caption ||
                                m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
@@ -3170,8 +3181,6 @@ const WhatsappBot = (() => {
                                m.listResponseMessage?.title ||
                                m.ephemeralMessage?.message?.conversation ||
                                m.ephemeralMessage?.message?.extendedTextMessage?.text ||
-                               m.viewOnceMessage?.message?.imageMessage?.caption ||
-                               m.viewOnceMessageV2?.message?.imageMessage?.caption ||
                                m.editedMessage?.message?.protocolMessage?.editedMessage?.conversation ||
                                m.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
                                m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson ||
@@ -3721,8 +3730,9 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // --- 2. PROCESAR IMAGEN DE COMPROBANTE DE COMPRA/TRANSFERENCIA / ALERTA ---
-                    if (isImage && getGeminiKey()) {
+                    // --- 2. PROCESAMIENTO DE IMÁGENES DESACTIVADO PARA GRUPOS ---
+                    // Solo se procesan alertas viales por texto y audio de voz.
+                    if (false && isImage && getGeminiKey()) {
                         try {
                             console.log(`📸 [IMAGE] Descargando imagen para análisis multimodal (Comprobantes / Tránsito)...`);
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');

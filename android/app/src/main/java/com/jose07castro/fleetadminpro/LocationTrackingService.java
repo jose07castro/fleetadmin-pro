@@ -235,6 +235,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private DatabaseReference dbRef;
     private DatabaseReference alertsRef;
     private DatabaseReference globalAlertsRef;
+    private DatabaseReference remoteRestartRef;
     private String userId;
     private String driverName;
     private String fleetId;
@@ -468,9 +469,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         acquireWakeLock();
 
         instance = this;
-        if (!isTracking) {
+        long gpsAgeMs = (lastGPSTimestamp > 0) ? (System.currentTimeMillis() - lastGPSTimestamp) : Long.MAX_VALUE;
+        if (!isTracking || lastGPSTimestamp == 0 || gpsAgeMs > 15000L) {
+            stopLocationUpdates();
             startLocationUpdates();
             isTracking = true;
+            requestImmediateGpsFix();
         }
 
         // Siempre escuchar alertas globales de tránsito (con o sin flota)
@@ -584,6 +588,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
             if (alertsRef != null && fleetAlertsListener != null) {
                 alertsRef.removeEventListener(fleetAlertsListener);
+            }
+            if (remoteRestartRef != null) {
+                remoteRestartRef.removeEventListener(remoteRestartListener);
             }
         } catch (Exception ignored) {}
 
@@ -715,6 +722,36 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             Log.e(TAG, "❌ Permisos denegados para LocationManager nativo");
         } catch (Exception e) {
             Log.e(TAG, "⚠️ Error registrando LocationManager nativo:", e);
+        }
+    }
+
+    public void requestImmediateGpsFix() {
+        try {
+            if (fusedLocationClient == null) {
+                fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+            }
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener(location -> {
+                    if (location != null) {
+                        Log.i(TAG, "🎯 [IMMEDIATE-FIX] Coordenada fresca recibida: " + location.getLatitude() + ", " + location.getLongitude());
+                        processNewLocation(location);
+                    }
+                });
+            if (lastGPSTimestamp == 0) {
+                fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(location -> {
+                        if (location != null && lastGPSTimestamp == 0) {
+                            Log.i(TAG, "📍 [LAST-FIX] Semilla inicial de última ubicación conocida: " + location.getLatitude() + ", " + location.getLongitude());
+                            processNewLocation(location);
+                        }
+                    });
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error solicitando fix GPS inmediato: " + e.getMessage());
         }
     }
 
@@ -1761,7 +1798,62 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 Log.e(TAG, "❌ Error escuchando fleet traffic_alerts:", e);
             }
         }
+
+        // Listener de reinicio / actualización remota desde panel Administrador (/qr)
+        try {
+            if (remoteRestartRef != null) {
+                remoteRestartRef.removeEventListener(remoteRestartListener);
+            }
+            remoteRestartRef = FirebaseDatabase.getInstance().getReference("system_commands/restart_apps");
+            remoteRestartRef.addValueEventListener(remoteRestartListener);
+            Log.i(TAG, "🔄 [REMOTE-RESTART] Escuchando comandos remotos del Administrador");
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Error registrando listener remoteRestartRef: " + e.getMessage());
+        }
     }
+
+    private final ValueEventListener remoteRestartListener = new ValueEventListener() {
+        @Override
+        public void onDataChange(@NonNull DataSnapshot snapshot) {
+            try {
+                Object tsObj = snapshot.child("timestamp").getValue();
+                if (tsObj == null) return;
+                long cmdTs = Long.parseLong(String.valueOf(tsObj));
+                if (cmdTs <= serviceStartTime) return;
+
+                String targetId = snapshot.child("targetDriverId").getValue(String.class);
+                if (targetId != null && !"all".equalsIgnoreCase(targetId) && userId != null && !targetId.equals(userId)) {
+                    return;
+                }
+
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                long lastHandled = prefs.getLong("last_remote_restart_ts", 0L);
+                if (cmdTs <= lastHandled) return;
+                prefs.edit().putLong("last_remote_restart_ts", cmdTs).apply();
+
+                Log.i(TAG, "🔄 [REMOTE-RESTART] Reiniciando motores GPS nativos y actualizando WebView...");
+                stopLocationUpdates();
+                startLocationUpdates();
+                requestImmediateGpsFix();
+
+                if (MainActivity.webView != null) {
+                    MainActivity.webView.post(() -> {
+                        try {
+                            if (MainActivity.webView != null) {
+                                MainActivity.webView.clearCache(true);
+                                MainActivity.webView.reload();
+                            }
+                        } catch (Exception ignored) {}
+                    });
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "⚠️ Error procesando remoteRestartListener: " + e.getMessage());
+            }
+        }
+
+        @Override
+        public void onCancelled(@NonNull DatabaseError error) {}
+    };
 
     // ================================================================
     // AUDIO FOCUS MANAGEMENT (Ducking de Uber, DiDi, Spotify y radio)
@@ -2005,6 +2097,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (instance != null) {
             instance.updateStatusNotification();
             if (active) {
+                instance.stopLocationUpdates();
+                instance.startLocationUpdates();
+                instance.isTracking = true;
+                instance.requestImmediateGpsFix();
                 instance.sendSilentHeartbeat();
             } else {
                 instance.restoreAlertVolumeNow();
@@ -2018,6 +2114,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                             Map<String, Object> endMap = new HashMap<>();
                             endMap.put("status", "FINALIZADO_TURNO");
                             endMap.put("shift_status", "FINALIZADO_TURNO");
+                            endMap.put("shiftId", null);
                             endMap.put("gps_status", "inactive");
                             endMap.put("last_heartbeat", nowMs);
                             endMap.put("last_heartbeat_gap", null);
@@ -2597,7 +2694,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 } else {
                     data.put("status", "permissions_disabled");
                 }
-                data.put("shift_status", isShiftActive ? "IN_PROGRESS" : "FINALIZADO_TURNO");
+                data.put("shift_status", isShiftActive ? "IN_PROGRESS" : "IDLE");
+                if (!isShiftActive) {
+                    data.put("shiftId", null);
+                }
                 data.put("last_heartbeat_gap", null);
                 data.put("gps_status", "active");
                 data.put("appVersion", appVersion);
@@ -2733,7 +2833,8 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     scheduleKeepAliveAlarmStatic(LocationTrackingService.this, 90000L);
                 }
 
-                long silenceMs = System.currentTimeMillis() - lastGPSTimestamp;
+                long refTs = (lastGPSTimestamp > 0) ? lastGPSTimestamp : serviceStartTime;
+                long silenceMs = System.currentTimeMillis() - refTs;
                 
                 // Si el GPS no se ha movido o no ha reportado en 30s, forzar velocidad a 0
                 if (lastGPSTimestamp > 0 && silenceMs > 30000) {
@@ -2749,11 +2850,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     }
                 }
 
-                // Si el GPS no ha reportado en 45s, reforzamos el binding de ambos motores
-                if (lastGPSTimestamp > 0 && silenceMs > 45000) {
-                    Log.w(TAG, "⚠️ Vigilante: GPS inactivo por " + (silenceMs / 1000) + "s. Reforzando motor...");
+                // Si el GPS nunca entregó un primer fix o lleva > 25s en silencio, reiniciar motores y forzar fix inmediato
+                if (silenceMs > 25000) {
+                    Log.w(TAG, "⚠️ Vigilante: GPS sin reporte hace " + (silenceMs / 1000) + "s (lastGPS=" + lastGPSTimestamp + "). Reiniciando motores GPS y solicitando fix inmediato...");
                     stopLocationUpdates();
                     startLocationUpdates();
+                    requestImmediateGpsFix();
                 }
                 watchdogHandler.postDelayed(this, 25000); // Revisar cada 25s para mantener socket Doze activo
             }
@@ -3067,7 +3169,12 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
         if (!isShiftActive || userId == null || userId.isEmpty() || dbRef == null) return;
 
         long now = System.currentTimeMillis();
-        long silenceMs = (lastGPSTimestamp > 0) ? (now - lastGPSTimestamp) : 0;
+        long refTs = (lastGPSTimestamp > 0) ? lastGPSTimestamp : serviceStartTime;
+        long silenceMs = now - refTs;
+
+        if (silenceMs > 20000) {
+            requestImmediateGpsFix();
+        }
 
         serviceHandler.post(() -> {
             try {
@@ -3312,32 +3419,33 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 float density = getResources().getDisplayMetrics().density;
                 activeOverlayDensity = density;
                 int dp2 = Math.max(1, (int) (2 * density));
+                int dp3 = Math.max(1, (int) (3 * density));
                 int dp4 = (int) (4 * density);
-                int dp5 = (int) (5 * density);
                 int dp6 = (int) (6 * density);
-                int dp7 = (int) (7 * density);
                 int dp8 = (int) (8 * density);
-                int dp26 = (int) (26 * density);
+                int dp10 = (int) (10 * density);
+                int dp12 = (int) (12 * density);
                 int dp36 = (int) (36 * density);
-                int maxTitleWidthPx = (int) (165 * density);
+                int dp56 = (int) (56 * density);
+                int maxTitleWidthPx = (int) (260 * density);
 
                 boolean isCuestionado = "radar_cuestionado".equalsIgnoreCase(type);
                 boolean isRadar = isCuestionado || "radar".equalsIgnoreCase(type) || limit > 0;
                 boolean isSpeeding = isRadar && limit > 0 && currentSpeed > limit;
 
-                // Píldora flotante minimalista y semi-transparente: rgba(0, 0, 0, 0.20)
+                // Píldora flotante prominente y semi-transparente para máxima legibilidad al volante
                 LinearLayout card = new LinearLayout(this);
                 card.setOrientation(LinearLayout.HORIZONTAL);
                 card.setGravity(Gravity.CENTER_VERTICAL);
-                card.setPadding(dp5, dp4, dp8, dp4);
+                card.setPadding(dp8, dp6, dp12, dp6);
 
                 GradientDrawable cardBg = new GradientDrawable();
                 int cardStrokePx = Math.max(1, (int) (1.5f * density));
                 if (isSpeeding) {
-                    cardBg.setColor(Color.argb(64, 220, 38, 38));
+                    cardBg.setColor(Color.argb(76, 220, 38, 38));
                     cardBg.setStroke(cardStrokePx, Color.argb(235, 239, 68, 68));
                 } else {
-                    cardBg.setColor(Color.argb(51, 0, 0, 0)); // rgba(0, 0, 0, 0.20)
+                    cardBg.setColor(Color.argb(56, 0, 0, 0)); // Fondo transparente oscuro
                     cardBg.setStroke(cardStrokePx, isCuestionado
                             ? Color.argb(140, 245, 158, 11)
                             : Color.argb(72, 255, 255, 255));
@@ -3346,10 +3454,10 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 card.setBackground(cardBg);
                 activeOverlayCardBg = cardBg;
 
-                // 1. SEÑAL COMPACTA DE VELOCIDAD MÁXIMA (36dp x 36dp)
+                // 1. SEÑAL PROMINENTE DE VELOCIDAD MÁXIMA (56dp x 56dp)
                 FrameLayout signFrame = new FrameLayout(this);
-                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp36, dp36);
-                signParams.setMargins(0, 0, dp8, 0);
+                LinearLayout.LayoutParams signParams = new LinearLayout.LayoutParams(dp56, dp56);
+                signParams.setMargins(0, 0, dp10, 0);
                 signFrame.setLayoutParams(signParams);
 
                 if (isRadar && limit > 0) {
@@ -3357,13 +3465,13 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
                     signBg.setColor(isCuestionado ? Color.parseColor("#FEF3C7") : Color.WHITE);
-                    signBg.setStroke(Math.max(2, (int) (3.5f * density)), signStrokeCol);
+                    signBg.setStroke(Math.max(2, (int) (4.0f * density)), signStrokeCol);
                     signFrame.setBackground(signBg);
 
                     TextView numText = new TextView(this);
                     numText.setText(String.valueOf(limit));
                     numText.setTextColor(Color.parseColor(isCuestionado ? "#78350F" : "#0F172A"));
-                    numText.setTextSize(limit >= 100 ? 12.5f : 14.5f);
+                    numText.setTextSize(limit >= 100 ? 18.5f : 23f);
                     numText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                     numText.setGravity(Gravity.CENTER);
                     numText.setIncludeFontPadding(false);
@@ -3375,7 +3483,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                     GradientDrawable signBg = new GradientDrawable();
                     signBg.setShape(GradientDrawable.OVAL);
                     signBg.setColor(Color.argb(190, 15, 23, 42));
-                    signBg.setStroke(Math.max(2, (int) (2.5f * density)), trafficBorderCol);
+                    signBg.setStroke(Math.max(2, (int) (3.0f * density)), trafficBorderCol);
                     signFrame.setBackground(signBg);
 
                     TextView iconText = new TextView(this);
@@ -3383,7 +3491,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                                  "checkpoint".equalsIgnoreCase(type) ? "🚧" :
                                  "municipal".equalsIgnoreCase(type) ? "🦊" : "⚠️";
                     iconText.setText(icon);
-                    iconText.setTextSize(16);
+                    iconText.setTextSize(24);
                     iconText.setGravity(Gravity.CENTER);
                     iconText.setLayoutParams(new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -3399,7 +3507,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 });
                 card.addView(signFrame);
 
-                // 2. COLUMNA COMPACTA CENTRAL: Metros restantes + Badge velocidad + Calle truncada 1 línea
+                // 2. COLUMNA CENTRAL: Metros restantes + Badge velocidad + Calle legible
                 LinearLayout centerCol = new LinearLayout(this);
                 centerCol.setOrientation(LinearLayout.VERTICAL);
                 centerCol.setGravity(Gravity.CENTER_VERTICAL);
@@ -3415,23 +3523,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 TextView distView = new TextView(this);
                 distView.setText((!isRadar && distMeters <= 18) ? "En zona" : (distMeters + " m"));
                 distView.setTextColor(Color.WHITE);
-                distView.setTextSize(15);
+                distView.setTextSize(22);
                 distView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 distView.setIncludeFontPadding(false);
-                distView.setShadowLayer(6f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
+                distView.setShadowLayer(8f, 0f, 2f, Color.argb(250, 0, 0, 0));
                 topRow.addView(distView);
                 activeOverlayDistView = distView;
 
                 TextView speedGauge = new TextView(this);
                 LinearLayout.LayoutParams speedParams = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                speedParams.setMargins(dp6, 0, 0, 0);
+                speedParams.setMargins(dp8, 0, 0, 0);
                 speedGauge.setLayoutParams(speedParams);
-                speedGauge.setPadding(dp7, dp2, dp7, dp2);
-                speedGauge.setTextSize(11.5f);
+                speedGauge.setPadding(dp10, dp3, dp10, dp3);
+                speedGauge.setTextSize(14.5f);
                 speedGauge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 speedGauge.setIncludeFontPadding(false);
-                speedGauge.setShadowLayer(4f, 0f, 1f, Color.argb(230, 0, 0, 0));
+                speedGauge.setShadowLayer(5f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
 
                 GradientDrawable speedBg = new GradientDrawable();
                 speedBg.setCornerRadius(999 * density);
@@ -3445,14 +3553,18 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 TextView titleView = new TextView(this);
                 titleView.setText(title != null ? title : "Control de velocidad");
                 titleView.setTextColor(Color.argb(242, 248, 250, 252));
-                titleView.setTextSize(10.5f);
+                titleView.setTextSize(14f);
                 titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 titleView.setSingleLine(true);
                 titleView.setMaxLines(1);
                 titleView.setMaxWidth(maxTitleWidthPx);
                 titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 titleView.setIncludeFontPadding(false);
-                titleView.setShadowLayer(5f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
+                titleView.setShadowLayer(6f, 0f, 1.5f, Color.argb(240, 0, 0, 0));
+                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                titleParams.setMargins(0, dp2, 0, 0);
+                titleView.setLayoutParams(titleParams);
                 centerCol.addView(titleView);
 
                 // Tocar el texto central abre Punto Alertas si el chofer lo desea
@@ -3472,23 +3584,23 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 // Aplicar colores y textos iniciales de velocidad/distancia
                 updateOverlayLiveViews(limit, currentSpeed, distMeters, null);
 
-                // 3. BOTÓN COMPACTO CERRAR 'X' (26dp x 26dp)
+                // 3. BOTÓN CERRAR 'X' (36dp x 36dp)
                 TextView closeBtn = new TextView(this);
-                LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp26, dp26);
-                closeParams.setMargins(dp6, 0, 0, 0);
+                LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp36, dp36);
+                closeParams.setMargins(dp8, 0, 0, 0);
                 closeBtn.setLayoutParams(closeParams);
                 closeBtn.setText("✕");
                 closeBtn.setTextColor(Color.WHITE);
-                closeBtn.setTextSize(12.5f);
+                closeBtn.setTextSize(16f);
                 closeBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 closeBtn.setGravity(Gravity.CENTER);
                 closeBtn.setIncludeFontPadding(false);
-                closeBtn.setShadowLayer(4f, 0f, 1f, Color.argb(220, 0, 0, 0));
+                closeBtn.setShadowLayer(5f, 0f, 1f, Color.argb(230, 0, 0, 0));
 
                 GradientDrawable closeBg = new GradientDrawable();
                 closeBg.setShape(GradientDrawable.OVAL);
                 closeBg.setColor(Color.argb(72, 0, 0, 0));
-                closeBg.setStroke(Math.max(1, (int) (1.0f * density)), Color.argb(85, 255, 255, 255));
+                closeBg.setStroke(Math.max(1, (int) (1.2f * density)), Color.argb(85, 255, 255, 255));
                 closeBtn.setBackground(closeBg);
 
                 final String finalResolvedId = resolvedId;

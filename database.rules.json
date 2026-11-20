@@ -14,7 +14,10 @@
     "fleets": {
       "$fleetId": {
         ".read": true,
-        ".write": true
+        ".write": true,
+        "shifts": {
+          ".indexOn": ["startTime", "status", "driverId"]
+        }
       }
     },
 

@@ -1593,12 +1593,16 @@ const WhatsappBot = (() => {
             const motorIcon = v.motorType === 'electric' ? '⚡' : (v.motorType === 'hybrid' ? '🔋' : (v.motorType === 'nafta' ? '🛢️' : '⛽'));
             if (filterOnlyToday) {
                 totalKm += v.todayKm;
-                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                const vIcon = v.vehicleType === 'moto' ? '🏍️' : '🚘';
+                const vSub = (v.vehicleType === 'moto' && v.motoSubType) ? ` [${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}]` : '';
+                body += `${vIcon} *${v.name}* [${v.plate || '-'}]${vSub} ${motorIcon}\n`;
                 body += `   • Hoy: *${v.todayKm > 0 ? `${v.todayKm} km` : 'Sin turnos hoy'}* (${v.todayShiftsCount} turno${v.todayShiftsCount === 1 ? '' : 's'})\n`;
                 body += `   • Acumulado mes: *${_formatNumber(v.monthKm)} km*\n\n`;
             } else {
                 totalKm += v.monthKm;
-                body += `🚘 *${v.name}* [${v.plate || '-'}] ${motorIcon}\n`;
+                const vIcon = v.vehicleType === 'moto' ? '🏍️' : '🚘';
+                const vSub = (v.vehicleType === 'moto' && v.motoSubType) ? ` [${v.motoSubType === 'cadete' ? 'Cadete' : 'Remis'}]` : '';
+                body += `${vIcon} *${v.name}* [${v.plate || '-'}]${vSub} ${motorIcon}\n`;
                 body += `   • Hoy: *${v.todayKm} km* | Mes: *${_formatNumber(v.monthKm)} km* (${v.monthShiftsCount} turnos)\n`;
                 body += `   • Promedio: *~${v.avgDailyKm} km/día* (Proy: ${_formatNumber(v.projectedMonthKm)} km)\n`;
                 body += `   • Costo: *$${v.costoTotalKm.toFixed(2)}/km* | Gasto mes: *$${_formatNumber(v.gastoRealMes)}*\n\n`;
@@ -2980,6 +2984,9 @@ const WhatsappBot = (() => {
                         for (const histMsg of messages) {
                             const jid = histMsg.key?.remoteJid;
                             const msgSec = Number(histMsg.messageTimestamp) || 0;
+                            const hRaw = histMsg?.message;
+                            const isImgOrSticker = !!(_recursiveFindImage(hRaw, 0) || hRaw?.imageMessage || hRaw?.stickerMessage || hRaw?.ephemeralMessage?.message?.stickerMessage);
+                            if (isImgOrSticker) continue;
                             if (jid && jid.endsWith('@g.us') && !histMsg.key?.fromMe && !_isGroupDeleted(jid) && msgSec > 0 && (nowSec - msgSec) <= 9000) {
                                 const safeKey = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
                                 const groupConf = _groupSettings[safeKey] || _groupSettings[jid];
@@ -3059,6 +3066,15 @@ const WhatsappBot = (() => {
                     // Almacenar en caché de reintentos para re-cifrado E2EE
                     if (msg.key?.id && msg.message) {
                         storeMessage(msg.key, msg.message);
+                    }
+
+                    // 4. Ignorar imágenes y stickers por completo: solo se procesan texto y audio
+                    const mRawEarly = msg.message;
+                    const resolvedImageMsgEarly = _recursiveFindImage(mRawEarly, 0) || mRawEarly?.imageMessage || null;
+                    const isStickerEarly = !!(mRawEarly?.stickerMessage || mRawEarly?.ephemeralMessage?.message?.stickerMessage);
+                    if (resolvedImageMsgEarly || isStickerEarly) {
+                        console.log(`⏭️ [SKIP-IMAGE] Imagen/sticker ignorado en "${nombreGrupo}" (solo se procesan mensajes de texto y audio).`);
+                        continue;
                     }
 
                     // Guardar en cola si es candidato a comprobante
@@ -3157,7 +3173,6 @@ const WhatsappBot = (() => {
                     if (m) {
                         text = m.conversation ||
                                m.extendedTextMessage?.text ||
-                               m.imageMessage?.caption ||
                                m.videoMessage?.caption ||
                                m.documentMessage?.caption ||
                                m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
@@ -3166,8 +3181,6 @@ const WhatsappBot = (() => {
                                m.listResponseMessage?.title ||
                                m.ephemeralMessage?.message?.conversation ||
                                m.ephemeralMessage?.message?.extendedTextMessage?.text ||
-                               m.viewOnceMessage?.message?.imageMessage?.caption ||
-                               m.viewOnceMessageV2?.message?.imageMessage?.caption ||
                                m.editedMessage?.message?.protocolMessage?.editedMessage?.conversation ||
                                m.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ||
                                m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson ||
@@ -3717,8 +3730,9 @@ const WhatsappBot = (() => {
                         }
                     }
 
-                    // --- 2. PROCESAR IMAGEN DE COMPROBANTE DE COMPRA/TRANSFERENCIA / ALERTA ---
-                    if (isImage && getGeminiKey()) {
+                    // --- 2. PROCESAMIENTO DE IMÁGENES DESACTIVADO PARA GRUPOS ---
+                    // Solo se procesan alertas viales por texto y audio de voz.
+                    if (false && isImage && getGeminiKey()) {
                         try {
                             console.log(`📸 [IMAGE] Descargando imagen para análisis multimodal (Comprobantes / Tránsito)...`);
                             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
@@ -5589,6 +5603,51 @@ Si no hay movimientos financieros detectados, respondé: []`;
         }
     }
 
+    async function sendDocumentMessage(targetPhone, buffer, fileName, caption = '', mimeType = 'application/pdf') {
+        if (!sock || !_isConnectedState) {
+            console.warn('⚠️ [SEND-DOC] Bot no conectado para enviar documento a', targetPhone);
+            return { success: false, reason: 'bot_disconnected' };
+        }
+        try {
+            let cleanNum = String(targetPhone || '').replace(/[^0-9]/g, '');
+            if (!cleanNum) return { success: false, reason: 'invalid_phone' };
+            if (!cleanNum.startsWith('54') && cleanNum.length === 10) {
+                cleanNum = '549' + cleanNum;
+            }
+            let targetJid = `${cleanNum}@s.whatsapp.net`;
+            try {
+                const candidates = [cleanNum];
+                if (cleanNum.startsWith('549')) {
+                    candidates.push('54' + cleanNum.slice(3));
+                } else if (cleanNum.startsWith('54')) {
+                    candidates.push('549' + cleanNum.slice(2));
+                }
+                const onWa = await sock.onWhatsApp(...candidates);
+                const found = onWa?.find(w => w.exists);
+                if (found?.jid) {
+                    targetJid = found.jid;
+                }
+            } catch (waErr) {
+                console.warn('⚠️ [SEND-DOC] Falló validación JID, usando directo:', waErr.message);
+            }
+
+            const sentMsg = await sock.sendMessage(targetJid, {
+                document: buffer,
+                mimetype: mimeType || 'application/pdf',
+                fileName: fileName || 'Factura_C_Punto_Remis.pdf',
+                caption: caption || ''
+            });
+            if (sentMsg?.key && sentMsg?.message) {
+                storeMessage(sentMsg.key, sentMsg.message);
+            }
+            console.log(`📄 [SEND-DOC] PDF enviado exitosamente a ${targetJid} (${fileName})`);
+            return { success: true, messageId: sentMsg?.key?.id, targetJid };
+        } catch (err) {
+            console.error('❌ [SEND-DOC] Error enviando documento por WhatsApp:', err.message);
+            return { success: false, error: err.message };
+        }
+    }
+
     return { 
         init, 
         resetSession,
@@ -5613,6 +5672,7 @@ Si no hay movimientos financieros detectados, respondé: []`;
         getLastQr: () => _lastQrCode,
         getGroupCache: () => groupNameCache,
         sendTextMessage,
+        sendDocumentMessage,
         emitMockMessage: (msg, type = 'notify') => {
             if (sock && sock.ev) {
                 try {

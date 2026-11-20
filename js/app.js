@@ -256,6 +256,9 @@ if (window.location.hostname === 'localhost' ||
    ============================================ */
 
 const App = (() => {
+    const LOCAL_APP_VERSION = '1.2.245';
+    window.APP_VERSION = LOCAL_APP_VERSION;
+
     let _lastResumeTime = 0; // Top-level App IIFE
 
     // Listener refs para limpieza
@@ -263,6 +266,17 @@ const App = (() => {
     let _shiftHeartbeatInterval = null;
     let _lastShiftLockModalTs = 0;
     let _popstateGuardRegistered = false;
+
+    // Force Update (Control de Versión Remoto en Tiempo Real)
+    let _versionControlListenerActive = false;
+    let _latestVersionControlData = null;
+    let _pendingUpdateWatcher = null;
+    let _forcedUpdateActive = false;
+    let _lastUpdateSoundKey = '';
+    let _forcedUpdateTargetUrl = 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+    let _forcedUpdateMinVersion = LOCAL_APP_VERSION;
+    let _forcedUpdateIsPreview = false;
+    let _forcedUpdateGuardsInstalled = false;
 
     // ============================================================
     // BLOQUEO DE SALIDA Y HEARTBEAT DE TURNO ACTIVO ('IN_PROGRESS')
@@ -369,7 +383,7 @@ const App = (() => {
             } catch (_) {}
         }
 
-        let appVersion = 'v1.2.44';
+        let appVersion = 'v' + LOCAL_APP_VERSION;
         try {
             if (typeof window.NativeServiceBridge !== 'undefined' && window.NativeServiceBridge.getAppVersionName) {
                 appVersion = 'v' + window.NativeServiceBridge.getAppVersionName();
@@ -392,16 +406,50 @@ const App = (() => {
         if (shiftId) hbPayload.shiftId = shiftId;
         if (batteryLevel !== null) hbPayload.battery = batteryLevel;
 
-        // En Web/PWA (no nativo Android), adjuntar coordenadas frescas si están disponibles en caché
+        // En Web/PWA o en Android cuando el servicio nativo lleve >15s sin reportar GPS, adjuntar coordenadas frescas
         const isNative = typeof AndroidServices !== 'undefined' && AndroidServices.isNativeAndroid();
-        if (!isNative && window._cachedGpsPosition && window._cachedGpsPosition.lat && window._cachedGpsPosition.lng) {
-            const fixAge = now - (window._cachedGpsPosition.time || 0);
-            if (fixAge < 120000) {
-                hbPayload.lat = window._cachedGpsPosition.lat;
-                hbPayload.lng = window._cachedGpsPosition.lng;
-                hbPayload.speed = Math.round(Number(window._cachedGpsPosition.speed) || 0);
-                hbPayload.heading = window._cachedGpsPosition.heading || 0;
+        const isNativeGpsAlive = typeof AndroidServices !== 'undefined' && typeof AndroidServices.isNativeGPSAlive === 'function' && AndroidServices.isNativeGPSAlive();
+        if (!isNative || !isNativeGpsAlive) {
+            let cachedPos = window._cachedGpsPosition;
+            let fixAge = cachedPos ? (now - (cachedPos.time || 0)) : Infinity;
+
+            // Si no hay fix reciente (< 20s), solicitar uno fresco de alta precisión antes de enviar el latido
+            if ((!cachedPos || !cachedPos.lat || !cachedPos.lng || fixAge >= 20000) && typeof navigator !== 'undefined' && navigator.geolocation) {
+                try {
+                    const freshCoords = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(
+                            (p) => resolve(p.coords),
+                            (err) => reject(err),
+                            { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+                        );
+                    });
+                    if (freshCoords && freshCoords.latitude && freshCoords.longitude) {
+                        const spdKmh = (typeof freshCoords.speed === 'number' && !isNaN(freshCoords.speed) && freshCoords.speed >= 0)
+                            ? Math.round(freshCoords.speed * 3.6)
+                            : 0;
+                        window._cachedGpsPosition = {
+                            lat: freshCoords.latitude,
+                            lng: freshCoords.longitude,
+                            speed: spdKmh,
+                            heading: (typeof freshCoords.heading === 'number' && !isNaN(freshCoords.heading)) ? freshCoords.heading : 0,
+                            accuracy: freshCoords.accuracy,
+                            time: Date.now()
+                        };
+                        cachedPos = window._cachedGpsPosition;
+                        fixAge = 0;
+                    }
+                } catch (_geoErr) {}
+            }
+
+            if (cachedPos && cachedPos.lat && cachedPos.lng && fixAge < 120000) {
+                hbPayload.lat = cachedPos.lat;
+                hbPayload.lng = cachedPos.lng;
+                hbPayload.lat_raw = cachedPos.lat;
+                hbPayload.lng_raw = cachedPos.lng;
+                hbPayload.speed = Math.round(Number(cachedPos.speed) || 0);
+                hbPayload.heading = (typeof cachedPos.heading === 'number' && !isNaN(cachedPos.heading)) ? cachedPos.heading : 0;
                 hbPayload.gps_status = 'active';
+                hbPayload._source = 'shift_heartbeat_gps';
             }
         }
 
@@ -451,6 +499,58 @@ const App = (() => {
         setInterval(heartbeat, 5 * 60 * 1000); // cada 5 minutos
     }
 
+    let _remoteRestartListenerInstalled = false;
+    function _initRemoteRestartListener() {
+        if (_remoteRestartListenerInstalled || typeof firebaseDB === 'undefined') return;
+        _remoteRestartListenerInstalled = true;
+        const _bootTimestamp = Date.now();
+        try {
+            firebaseDB.ref('system_commands/restart_apps').on('value', async (snap) => {
+                const cmd = snap.val();
+                if (!cmd || !cmd.timestamp) return;
+                const cmdTs = Number(cmd.timestamp);
+                const lastHandled = parseInt(localStorage.getItem('last_remote_restart_ts') || '0', 10);
+                if (cmdTs <= _bootTimestamp || cmdTs <= lastHandled) return;
+
+                const myId = (typeof Auth !== 'undefined') ? Auth.getUserId() : null;
+                if (cmd.targetDriverId && cmd.targetDriverId !== 'all' && myId && String(cmd.targetDriverId) !== String(myId)) {
+                    return;
+                }
+
+                try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}
+                console.log('🔄 [REMOTE-RESTART] Comando remoto recibido del administrador. Reiniciando GPS y recargando app...');
+
+                try {
+                    if (typeof syncActiveShiftGPS === 'function') {
+                        await syncActiveShiftGPS();
+                    }
+                } catch (_) {}
+
+                try {
+                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.restartGpsEngine === 'function') {
+                        window.NativeServiceBridge.restartGpsEngine();
+                    }
+                } catch (_) {}
+
+                try {
+                    if ('caches' in window) {
+                        const names = await caches.keys();
+                        await Promise.all(names.map(n => caches.delete(n)));
+                    }
+                } catch (_) {}
+
+                if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+                    Components.showToast('🔄 Actualizando sistema por orden del Administrador...', 'info');
+                }
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 400);
+            });
+        } catch (e) {
+            console.warn('⚠️ [REMOTE-RESTART] Error instalando listener:', e);
+        }
+    }
+
     // Inicializar la aplicación
     async function init() {
         try {
@@ -483,6 +583,9 @@ const App = (() => {
                 if (typeof TrafficAlerts !== 'undefined') {
                     TrafficAlerts.init();
                 }
+                // 2.6 Activar receptor de reinicio/actualización remota de apps y Force Update en tiempo real
+                _initRemoteRestartListener();
+                _initVersionControlListener();
             } catch (dbErr) {
                 console.warn('⚠️ Firebase open() falló, continuando:', dbErr);
             }
@@ -653,11 +756,52 @@ const App = (() => {
     }
 
     // --- Sincronización en tiempo real ---
+    let syncRefreshTimer = null;
+
+    function _isUserEditingForm() {
+        const ae = document.activeElement;
+        if (ae && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName)) return true;
+
+        // Modal genérico abierto (carga de reparación, correas, neumáticos, aceite modal, editar turno, comprobante emitido, etc.)
+        if (document.getElementById('activeModal') || document.querySelector('.modal-overlay.active, #modalOverlay.active')) {
+            return true;
+        }
+
+        // Formulario de turno, facturación ARCA o mantenimiento con datos cargados sin guardar
+        const draftInputIds = [
+            'shiftOdometerStart', 'shiftOdometerEnd', 'shiftEarnings', 'editShiftEarnings',
+            'invReceptorCuit', 'invReceptorRazonSocial', 'invRecorrido', 'invImporteTotal',
+            'oilOdometer', 'oilType', 'oilNextChangeKm',
+            'repairOdometer', 'repairLaborCost', 'repairDescription', 'repairPartsCost',
+            'beltOdometer', 'tireOdometer'
+        ];
+        for (const id of draftInputIds) {
+            const el = document.getElementById(id);
+            if (el && el.value && String(el.value).trim() !== '') return true;
+        }
+
+        // Fotos capturadas en inicio o cierre de turno
+        if (typeof Components !== 'undefined' && typeof Components.getPhotoData === 'function') {
+            if (Components.getPhotoData('shiftOdoStart') || Components.getPhotoData('shiftOdoEnd') || Components.getPhotoData('shiftEarningsPhoto')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function _isActiveOperationInProgress() {
+        return _isUserEditingForm();
+    }
+
     function startRealtimeSync() {
         if (realtimeListenersActive) return;
         realtimeListenersActive = true;
 
-        const stores = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
+        const isDriverRole = typeof Auth !== 'undefined' && Auth.isDriver();
+        const stores = isDriverRole
+            ? ['vehicles', 'shifts']
+            : ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
         let initialLoad = {};
 
         stores.forEach(store => {
@@ -676,11 +820,27 @@ const App = (() => {
                     syncActiveShiftGPS();
                 }
 
-                // Refrescar la vista actual si hay cambios
+                // Refrescar la vista actual con debounce y sin destruir mapa GPS ni formularios activos
                 const currentRoute = Router.getCurrentRoute();
-                if (currentRoute && currentRoute !== 'login') {
-                    Router.navigate(currentRoute);
+                if (!currentRoute || currentRoute === 'login' || currentRoute === 'gps') {
+                    return;
                 }
+                if (isDriverRole && store !== 'shifts' && currentRoute === 'shifts') {
+                    return;
+                }
+                if (_isUserEditingForm()) {
+                    return;
+                }
+
+                if (syncRefreshTimer) clearTimeout(syncRefreshTimer);
+                syncRefreshTimer = setTimeout(() => {
+                    syncRefreshTimer = null;
+                    const routeNow = Router.getCurrentRoute();
+                    if (!routeNow || routeNow === 'login' || routeNow === 'gps' || _isUserEditingForm()) {
+                        return;
+                    }
+                    Router.navigate(routeNow);
+                }, 800);
             });
         });
 
@@ -692,6 +852,10 @@ const App = (() => {
 
     // --- Detener sincronización ---
     function stopRealtimeSync() {
+        if (syncRefreshTimer) {
+            clearTimeout(syncRefreshTimer);
+            syncRefreshTimer = null;
+        }
         if (!realtimeListenersActive) return;
 
         const stores = ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
@@ -1176,98 +1340,510 @@ const App = (() => {
         });
     }
 
-    // --- In-App Updates System (Actualizaciones Forzadas) ---
-    async function checkAppVersion() {
-        if (typeof window.NativeServiceBridge === 'undefined') {
-            console.log('🌐 Ejecutándose en modo Web/PWA. Omitiendo verificación de actualización de Play Store.');
-            return true; // Continuar normalmente
+    // --- In-App Updates System (Actualizaciones Obligatorias en Tiempo Real — Web & Android) ---
+    function _compareSemver(v1, v2) {
+        const parse = (v) => String(v || '0.0.0').replace(/^v/i, '').trim().split('.').map(n => parseInt(n, 10) || 0);
+        const a = parse(v1);
+        const b = parse(v2);
+        const len = Math.max(a.length, b.length, 3);
+        for (let i = 0; i < len; i++) {
+            const na = a[i] || 0;
+            const nb = b[i] || 0;
+            if (na < nb) return -1;
+            if (na > nb) return 1;
         }
+        return 0;
+    }
 
+    function _isNativeAndroidEnv() {
+        return typeof window.NativeServiceBridge !== 'undefined';
+    }
+
+    function _getLocalAppVersion() {
+        if (_isNativeAndroidEnv()) {
+            try {
+                const nativeVer = window.NativeServiceBridge.getAppVersionName();
+                if (nativeVer && String(nativeVer).trim()) {
+                    return String(nativeVer).replace(/^v/i, '').trim();
+                }
+            } catch (_) {}
+        }
+        return LOCAL_APP_VERSION;
+    }
+
+    function _saveVersionControlCache(vcData) {
+        if (!vcData || typeof vcData !== 'object') return;
         try {
-            const currentVersionCode = window.NativeServiceBridge.getAppVersionCode();
-            const currentVersionName = window.NativeServiceBridge.getAppVersionName();
+            localStorage.setItem('app_config_version_control', JSON.stringify(vcData));
+            if (vcData.min_version_android) localStorage.setItem('min_required_version_name', String(vcData.min_version_android));
+            if (vcData.android_update_url) localStorage.setItem('play_store_url', String(vcData.android_update_url));
+        } catch (_) {}
+    }
 
-            // Leer caché por si no hay conexión
-            let cachedMinCode = parseInt(localStorage.getItem('min_required_version_code') || '0');
-            let cachedMinName = localStorage.getItem('min_required_version_name') || '1.2.44';
-            let cachedPlayStoreUrl = localStorage.getItem('play_store_url') || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+    function _readVersionControlCache() {
+        try {
+            const raw = localStorage.getItem('app_config_version_control');
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
 
-            // Si la caché nos dice que ya estamos desactualizados, bloquear de inmediato
-            if (cachedMinCode > 0 && currentVersionCode < cachedMinCode) {
-                showForcedUpdateScreen(currentVersionName, cachedMinName, cachedPlayStoreUrl);
-                return false; // Detener inicio de la app
-            }
+    function _playForceUpdateSound(updateMessage, targetUrl, isPreview = false) {
+        // 1. Alerta sonora Web Audio API (funciona en Web/PWA y WebView)
+        try {
+            const AudioClass = window.AudioContext || window.webkitAudioContext;
+            if (AudioClass) {
+                if (!window._sharedAudioContext) {
+                    window._sharedAudioContext = new AudioClass();
+                }
+                const ctx = window._sharedAudioContext;
+                const playSequence = () => {
+                    const base = ctx.currentTime + 0.03;
+                    const freqs = [587.33, 783.99, 1046.50, 587.33, 783.99, 1046.50];
+                    freqs.forEach((freq, idx) => {
+                        const start = base + idx * 0.14;
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, start);
+                        gain.gain.setValueAtTime(0.001, start);
+                        gain.gain.linearRampToValueAtTime(0.32, start + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + 0.13);
+                    });
+                };
 
-            // Consultar al servidor
-            const serverUrl = (window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' ||
-                               window.location.protocol === 'file:') 
-                               ? 'https://fleetadmin-web-nueva.onrender.com' 
-                               : window.location.origin;
-
-            const response = await fetch(`${serverUrl}/api/version-check`);
-            if (response.ok) {
-                const data = await response.json();
-                const minCode = data.min_required_version_code;
-                const minName = data.min_required_version_name;
-                const playStoreUrl = data.play_store_url;
-
-                // Guardar en caché para futuras ejecuciones offline
-                localStorage.setItem('min_required_version_code', String(minCode));
-                localStorage.setItem('min_required_version_name', minName);
-                localStorage.setItem('play_store_url', playStoreUrl);
-
-                if (currentVersionCode < minCode) {
-                    showForcedUpdateScreen(currentVersionName, minName, playStoreUrl);
-                    return false; // Bloquear inicio
+                if (ctx.state === 'suspended') {
+                    ctx.resume().then(playSequence).catch(() => {
+                        const oncePlay = () => {
+                            try { ctx.resume().then(playSequence).catch(() => {}); } catch (_) {}
+                            document.removeEventListener('pointerdown', oncePlay, true);
+                        };
+                        document.addEventListener('pointerdown', oncePlay, true);
+                    });
+                } else {
+                    playSequence();
                 }
             }
         } catch (e) {
-            console.warn('⚠️ Error al verificar versión de la app (continuando con caché):', e);
+            console.warn('🔊 [FORCE-UPDATE] Error en Web Audio API:', e);
+        }
+
+        // 2. Vibración táctil si el dispositivo la soporta
+        try {
+            if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+                navigator.vibrate([400, 150, 400, 150, 600]);
+            }
+        } catch (_) {}
+
+        // 3. Tono y locución nativa en Android + bloqueo del botón físico Atrás
+        if (!isPreview && _isNativeAndroidEnv() && typeof window.NativeServiceBridge.setForceUpdateLocked === 'function') {
+            try {
+                window.NativeServiceBridge.setForceUpdateLocked(true, String(updateMessage || ''), String(targetUrl || ''));
+            } catch (e) {
+                console.warn('🔊 [FORCE-UPDATE] Error llamando NativeServiceBridge.setForceUpdateLocked:', e);
+            }
+        }
+    }
+
+    function _showPendingUpdateBanner(minVersion) {
+        if (typeof document === 'undefined' || !document.body) return;
+        let bar = document.getElementById('pending-update-top-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'pending-update-top-bar';
+            bar.setAttribute('role', 'status');
+            bar.style.cssText = [
+                'position:fixed',
+                'top:0',
+                'left:0',
+                'right:0',
+                'z-index:2147483000',
+                'background:linear-gradient(90deg, #facc15, #eab308)',
+                'color:#1e293b',
+                'padding:10px 16px',
+                'font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                'font-size:13px',
+                'font-weight:800',
+                'text-align:center',
+                'box-shadow:0 4px 14px rgba(234,179,8,0.45)',
+                'border-bottom:2px solid #a16207',
+                'display:flex',
+                'align-items:center',
+                'justify-content:center',
+                'gap:8px',
+                'pointer-events:none'
+            ].join(';');
+            document.body.appendChild(bar);
+        }
+        bar.innerHTML = `<span>⚠️ Actualización disponible (v${minVersion}): se aplicará automáticamente al finalizar este registro</span>`;
+
+        // Watcher para activar el bloqueo inmediatamente apenas se guarde o cierre el registro activo
+        if (!_pendingUpdateWatcher) {
+            _pendingUpdateWatcher = setInterval(() => {
+                checkPendingUpdateAfterSave();
+            }, 1000);
+        }
+    }
+
+    function _removePendingUpdateBanner() {
+        const bar = document.getElementById('pending-update-top-bar');
+        if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+        if (_pendingUpdateWatcher) {
+            clearInterval(_pendingUpdateWatcher);
+            _pendingUpdateWatcher = null;
+        }
+    }
+
+    function _removeForcedUpdateOverlay() {
+        const overlay = document.getElementById('forced-update-overlay');
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        _forcedUpdateActive = false;
+        _forcedUpdateIsPreview = false;
+        _lastUpdateSoundKey = '';
+        if (_isNativeAndroidEnv() && typeof window.NativeServiceBridge.setForceUpdateLocked === 'function') {
+            try { window.NativeServiceBridge.setForceUpdateLocked(false, '', ''); } catch (_) {}
+        }
+    }
+
+    function _installForcedUpdateGuards() {
+        if (_forcedUpdateGuardsInstalled || typeof window === 'undefined') return;
+        _forcedUpdateGuardsInstalled = true;
+
+        window.addEventListener('popstate', () => {
+            if (_forcedUpdateActive && !_forcedUpdateIsPreview) {
+                try { window.history.pushState({ fleetForceUpdateLock: true }, '', window.location.href); } catch (_) {}
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (_forcedUpdateActive && !_forcedUpdateIsPreview && e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
+
+        // Reevaluar operaciones pendientes al salir de inputs o navegar entre vistas
+        document.addEventListener('focusout', () => {
+            if (_latestVersionControlData) {
+                setTimeout(() => checkPendingUpdateAfterSave(), 250);
+            }
+        }, true);
+        window.addEventListener('hashchange', () => {
+            if (_latestVersionControlData) {
+                setTimeout(() => checkPendingUpdateAfterSave(), 250);
+            }
+        });
+    }
+
+    function _evaluateVersionControl(vcData) {
+        if (!vcData || typeof vcData !== 'object') return false;
+        _latestVersionControlData = vcData;
+        _saveVersionControlCache(vcData);
+
+        if (vcData.force_update === false) {
+            _removePendingUpdateBanner();
+            if (!_forcedUpdateIsPreview) {
+                _removeForcedUpdateOverlay();
+            }
+            return false;
+        }
+
+        const isNative = _isNativeAndroidEnv();
+        const localVer = _getLocalAppVersion();
+        const targetMinVer = String(
+            (isNative ? (vcData.min_version_android || vcData.minVersionName) : (vcData.min_version_web || vcData.minVersionName)) || ''
+        ).replace(/^v/i, '').trim();
+
+        if (!targetMinVer) return false;
+
+        const targetUrl = String(
+            vcData.android_update_url || vcData.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app'
+        ).trim();
+        const updateMsg = String(
+            vcData.update_message || 'Hay una nueva versión obligatoria con mejoras importantes de rendimiento y GPS. Actualizá ahora para continuar trabajando.'
+        ).trim();
+
+        const needsUpdate = _compareSemver(localVer, targetMinVer) < 0;
+        if (!needsUpdate) {
+            _removePendingUpdateBanner();
+            if (!_forcedUpdateIsPreview) {
+                _removeForcedUpdateOverlay();
+            }
+            return false;
+        }
+
+        // Protección de operación/viaje/cobro en curso: NO interrumpir al chofer mientras carga datos
+        if (_isActiveOperationInProgress() && !_forcedUpdateActive) {
+            _showPendingUpdateBanner(targetMinVer);
+            return true; // Requiere update pero diferido hasta finalizar la carga actual
+        }
+
+        // Sin operación en curso (o acaba de guardar): activar pantalla bloqueante + alerta sonora de inmediato
+        _removePendingUpdateBanner();
+        showForcedUpdateScreen(localVer, targetMinVer, targetUrl, updateMsg, vcData, false);
+        return true;
+    }
+
+    function checkPendingUpdateAfterSave() {
+        if (_latestVersionControlData && document.getElementById('pending-update-top-bar')) {
+            if (!_isActiveOperationInProgress()) {
+                _evaluateVersionControl(_latestVersionControlData);
+            }
+        }
+    }
+
+    function _initVersionControlListener() {
+        _installForcedUpdateGuards();
+        if (_versionControlListenerActive || typeof firebaseDB === 'undefined') return;
+        _versionControlListenerActive = true;
+
+        // Evaluar caché local primero si existe
+        const cached = _readVersionControlCache();
+        if (cached) {
+            _evaluateVersionControl(cached);
+        }
+
+        try {
+            firebaseDB.ref('app_config/version_control').on('value', (snap) => {
+                const val = snap.val();
+                if (val) {
+                    _evaluateVersionControl(val);
+                } else if (_latestVersionControlData) {
+                    _latestVersionControlData = null;
+                    _removePendingUpdateBanner();
+                    if (!_forcedUpdateIsPreview) _removeForcedUpdateOverlay();
+                }
+            }, (err) => {
+                console.warn('⚠️ [FORCE-UPDATE] Error en listener Firebase:', err?.message || err);
+            });
+        } catch (e) {
+            console.warn('⚠️ [FORCE-UPDATE] No se pudo registrar listener en tiempo real:', e);
+        }
+    }
+
+    async function checkAppVersion() {
+        _installForcedUpdateGuards();
+        try {
+            const cached = _readVersionControlCache();
+            if (cached && cached.force_update !== false) {
+                const isNative = _isNativeAndroidEnv();
+                const localVer = _getLocalAppVersion();
+                const minVer = isNative ? cached.min_version_android : cached.min_version_web;
+                if (minVer && _compareSemver(localVer, minVer) < 0) {
+                    _evaluateVersionControl(cached);
+                    return false;
+                }
+            }
+
+            const serverUrl = (window.location.hostname === 'localhost' ||
+                               window.location.hostname === '127.0.0.1' ||
+                               window.location.protocol === 'file:')
+                               ? 'https://fleetadmin-web-nueva.onrender.com'
+                               : window.location.origin;
+
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+            const response = await fetch(`${serverUrl}/api/version-check`, controller ? { signal: controller.signal } : undefined);
+            if (timer) clearTimeout(timer);
+
+            if (response.ok) {
+                const data = await response.json();
+                const vcData = {
+                    min_version_web: data.min_version_web || data.min_required_version_name || LOCAL_APP_VERSION,
+                    min_version_android: data.min_version_android || data.min_required_version_name || LOCAL_APP_VERSION,
+                    update_message: data.update_message || 'Actualización obligatoria requerida para continuar trabajando.',
+                    android_update_url: data.android_update_url || data.play_store_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
+                    force_update: data.force_update !== false
+                };
+
+                _saveVersionControlCache(vcData);
+                const isNative = _isNativeAndroidEnv();
+                const localVer = _getLocalAppVersion();
+                const minTarget = isNative ? vcData.min_version_android : vcData.min_version_web;
+                if (vcData.force_update && minTarget && _compareSemver(localVer, minTarget) < 0) {
+                    _evaluateVersionControl(vcData);
+                    return false;
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ Error al verificar versión al iniciar (continuando con listener en vivo):', e?.message || e);
         }
         return true;
     }
 
-    function showForcedUpdateScreen(currentVersion, minVersion, playStoreUrl) {
+    function showForcedUpdateScreen(currentVersion, minVersion, playStoreUrl, updateMessage, vcData, isPreview = false) {
         _hideSplash();
+        _installForcedUpdateGuards();
+        _removePendingUpdateBanner();
 
-        // Limpiar todo el cuerpo de la página e inyectar el bloqueo
-        const appEl = document.getElementById('app');
-        if (!appEl) return;
+        if (!document.body) return;
 
-        // Inyectar estilos para animación
+        _forcedUpdateActive = true;
+        _forcedUpdateIsPreview = !!isPreview;
+        _forcedUpdateTargetUrl = String(playStoreUrl || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app');
+        _forcedUpdateMinVersion = String(minVersion || LOCAL_APP_VERSION);
+
+        const safeMsg = (updateMessage || 'Hay una nueva versión obligatoria disponible con mejoras importantes para la flota.')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
         const styleId = 'forced-update-styles';
         if (!document.getElementById(styleId)) {
             const style = document.createElement('style');
             style.id = styleId;
             style.textContent = `
-                @keyframes scaleIn {
-                    from { opacity: 0; transform: scale(0.9); }
+                @keyframes fuScaleIn {
+                    from { opacity: 0; transform: scale(0.92); }
                     to { opacity: 1; transform: scale(1); }
                 }
-                @keyframes float {
+                @keyframes fuPulseBtn {
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.55), 0 14px 28px rgba(0, 0, 0, 0.45); transform: scale(1); }
+                    50% { box-shadow: 0 0 0 12px rgba(250, 204, 21, 0), 0 18px 34px rgba(0, 0, 0, 0.55); transform: scale(1.02); }
+                }
+                @keyframes fuFloat {
                     0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-10px); }
+                    50% { transform: translateY(-8px); }
                 }
             `;
             document.head.appendChild(style);
         }
 
-        appEl.innerHTML = `
-            <div id="forced-update-overlay" style="position:fixed; inset:0; z-index:9999999; background:linear-gradient(135deg, #0f172a, #1e293b); display:flex; align-items:center; justify-content:center; padding: 24px; font-family:'Inter',sans-serif; color: #f1f5f9;">
-                <div style="max-width:400px; width:100%; text-align:center; padding: 40px 32px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); backdrop-filter: blur(16px); transform: scale(1); animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
-                    <div style="font-size: 64px; margin-bottom: 24px; animation: float 3s ease-in-out infinite; display: inline-block;">🚀</div>
-                    <h2 style="font-size: 24px; font-weight: 800; margin-bottom: 12px; background: linear-gradient(135deg, #a5b4fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Actualización Obligatoria</h2>
-                    <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin-bottom: 32px;">Actualización obligatoria requerida para salir a trabajar. Por favor, instala la versión más reciente desde Google Play Store para continuar.</p>
-                    <a href="${playStoreUrl}" target="_blank" rel="noopener noreferrer" style="display: block; width: 100%; padding: 16px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #ffffff; text-decoration: none; border-radius: 14px; font-weight: 700; font-size: 16px; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4); text-align: center; border: none; outline: none; cursor: pointer; transition: transform 0.2s;">
-                        ⚡ Actualizar en Play Store
-                    </a>
-                    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
-                        Versión actual: ${currentVersion} | Mínima requerida: ${minVersion}
-                    </div>
+        if (!isPreview) {
+            try { window.history.pushState({ fleetForceUpdateLock: true }, '', window.location.href); } catch (_) {}
+        }
+
+        const isOwnerUser = (typeof Auth !== 'undefined' && typeof Auth.isOwner === 'function' && Auth.isOwner());
+        const isNative = _isNativeAndroidEnv();
+
+        let overlay = document.getElementById('forced-update-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'forced-update-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483647; background:rgba(2, 6, 23, 0.97); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; padding:20px; font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:#f8fafc; overflow-y:auto;';
+
+        overlay.innerHTML = `
+            <div role="dialog" aria-modal="true" style="max-width:440px; width:100%; text-align:center; padding:34px 26px; background:linear-gradient(160deg, #0f172a 0%, #1e1b4b 100%); border:2px solid #facc15; border-radius:24px; box-shadow:0 28px 60px rgba(0,0,0,0.85), 0 0 40px rgba(250,204,21,0.22); animation:fuScaleIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);">
+                <div style="font-size:60px; margin-bottom:14px; animation:fuFloat 2.8s ease-in-out infinite; display:inline-block;">🚨</div>
+                <div style="display:inline-block; background:#facc15; color:#0f172a; font-size:11px; font-weight:900; letter-spacing:1.2px; padding:4px 12px; border-radius:999px; text-transform:uppercase; margin-bottom:14px;">
+                    ${isNative ? 'ANDROID • ACTUALIZACIÓN REQUERIDA' : 'WEB / PWA • ACTUALIZACIÓN REQUERIDA'}
                 </div>
+                <h2 style="font-size:25px; font-weight:900; margin:0 0 12px 0; color:#ffffff; letter-spacing:-0.4px;">Actualización Obligatoria</h2>
+                <div style="background:rgba(15, 23, 42, 0.85); border:1px solid rgba(250, 204, 21, 0.35); border-radius:14px; padding:14px 16px; margin-bottom:22px; text-align:left;">
+                    <div style="font-size:12px; font-weight:800; color:#fde047; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">📋 Novedades de esta versión:</div>
+                    <div style="font-size:14.5px; line-height:1.55; color:#f1f5f9; font-weight:500;">${safeMsg}</div>
+                </div>
+                <div style="display:flex; justify-content:center; gap:10px; margin-bottom:24px; font-size:12.5px; font-weight:700;">
+                    <span style="background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); padding:6px 12px; border-radius:10px;">Tu versión: v${currentVersion}</span>
+                    <span style="background:rgba(34,197,94,0.18); color:#86efac; border:1px solid rgba(34,197,94,0.4); padding:6px 12px; border-radius:10px;">Requerida: v${minVersion}</span>
+                </div>
+                <button id="btnForceUpdateNow" type="button" onclick="App.executeForcedUpdate()" style="display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:18px 20px; background:linear-gradient(135deg, #facc15 0%, #f59e0b 100%); color:#0f172a; border-radius:16px; font-weight:900; font-size:17px; letter-spacing:0.4px; border:none; outline:none; cursor:pointer; animation:fuPulseBtn 2s infinite;">
+                    🚀 ACTUALIZAR AHORA
+                </button>
+                <div id="forceUpdateProgressNote" style="margin-top:14px; font-size:12px; color:#cbd5e1; line-height:1.45;">
+                    ${isNative
+                        ? 'Tocá "ACTUALIZAR AHORA" para abrir la descarga oficial e instalar la última versión. La pantalla permanecerá bloqueada hasta ingresar actualizado.'
+                        : 'Tocá "ACTUALIZAR AHORA" para limpiar la caché y descargar la nueva versión al instante.'}
+                </div>
+                ${isPreview ? `
+                    <button type="button" onclick="if(typeof App!=='undefined'&&App.dismissPreviewForceUpdateModal)App.dismissPreviewForceUpdateModal();" style="margin-top:16px; background:rgba(255,255,255,0.12); color:#e2e8f0; border:1px solid rgba(255,255,255,0.25); border-radius:10px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
+                        👁️ Cerrar Vista Previa (Solo Prueba)
+                    </button>
+                ` : (isOwnerUser ? `
+                    <div style="margin-top:16px;">
+                        <button type="button" onclick="if(typeof firebaseDB!=='undefined' && confirm('¿Desactivar Force Update en Firebase desde tu sesión de Administrador?')){ firebaseDB.ref('app_config/version_control/force_update').set(false); }" style="background:none; border:none; color:#64748b; font-size:11px; text-decoration:underline; cursor:pointer;">
+                            ⚙️ Admin: Pausar Force Update en Firebase
+                        </button>
+                    </div>
+                ` : '')}
             </div>
         `;
+
+        const soundKey = `${minVersion}|${isPreview ? 'prev' : 'live'}`;
+        if (_lastUpdateSoundKey !== soundKey || isPreview) {
+            _lastUpdateSoundKey = soundKey;
+            _playForceUpdateSound(updateMessage, _forcedUpdateTargetUrl, isPreview);
+        }
+    }
+
+    async function executeForcedUpdate() {
+        if (_forcedUpdateIsPreview) {
+            const ov = document.getElementById('forced-update-overlay');
+            if (ov) ov.remove();
+            _forcedUpdateActive = false;
+            _forcedUpdateIsPreview = false;
+            if (typeof Components !== 'undefined') Components.showToast('✅ Simulación de botón ACTUALIZAR AHORA ejecutada', 'info');
+            return;
+        }
+
+        const btn = document.getElementById('btnForceUpdateNow');
+        const note = document.getElementById('forceUpdateProgressNote');
+
+        if (_isNativeAndroidEnv()) {
+            const url = _forcedUpdateTargetUrl || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+            if (note) note.textContent = '📲 Abriendo enlace oficial de actualización... El bloqueo seguirá activo hasta instalar la nueva versión.';
+            if (typeof window.NativeServiceBridge.openForceUpdateUrl === 'function') {
+                window.NativeServiceBridge.openForceUpdateUrl(url);
+            } else {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+
+        // Web / PWA: desregistrar todos los Service Workers, vaciar caches y recargar desde red
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Limpiando caché y actualizando...';
+        }
+        if (note) note.textContent = '🔄 Desregistrando Service Workers y borrando cachés antiguas...';
+
+        try {
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+            }
+        } catch (swErr) {
+            console.warn('⚠️ Error desregistrando Service Workers:', swErr);
+        }
+
+        try {
+            if ('caches' in window) {
+                const cacheKeys = await caches.keys();
+                await Promise.all(cacheKeys.map(k => caches.delete(k)));
+            }
+        } catch (cacheErr) {
+            console.warn('⚠️ Error borrando caches:', cacheErr);
+        }
+
+        try {
+            window.location.reload(true);
+        } catch (_) {
+            window.location.reload();
+        }
+    }
+
+    function previewForceUpdateModal(opts = {}) {
+        const localVer = _getLocalAppVersion();
+        const sampleMin = opts.minVersion || _bumpSemverPatch(localVer);
+        const sampleMsg = opts.message || 'Vista previa del cartel obligatorio: incluye sonido de alerta, bloqueo total de pantalla y protección si el chofer está cargando un viaje o cobro.';
+        const sampleUrl = opts.url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+        showForcedUpdateScreen(localVer, sampleMin, sampleUrl, sampleMsg, null, true);
+    }
+
+    function dismissPreviewForceUpdateModal() {
+        if (!_forcedUpdateIsPreview) return;
+        _removeForcedUpdateOverlay();
+    }
+
+    function _bumpSemverPatch(v) {
+        const parts = String(v || LOCAL_APP_VERSION).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+        return `${parts[0] || 1}.${parts[1] || 2}.${(parts[2] || 0) + 1}`;
     }
 
     async function syncActiveShiftGPS() {
@@ -1281,13 +1857,38 @@ const App = (() => {
             }
 
             const wasLocked = localStorage.getItem('active_shift_state') === 'true';
-            const activeShifts = await DB.getActiveShifts();
-            const activeShift = activeShifts.find(s => String(s.driverId) === String(userId));
+            const cachedShiftId = localStorage.getItem('active_shift_id');
+
+            // Lectura directa puntual (<100ms) si ya conocemos active_shift_id
+            let activeShift = null;
+            let directShift = null;
+            if (cachedShiftId) {
+                directShift = await DB.get('shifts', cachedShiftId);
+                if (directShift && String(directShift.driverId) === String(userId) && directShift.status === 'active') {
+                    activeShift = directShift;
+                }
+            }
+
+            if (!activeShift) {
+                const activeShifts = await DB.getActiveShifts();
+                activeShift = activeShifts.find(s => String(s.driverId) === String(userId)) || null;
+
+                // NUNCA cerrar turno ni borrar active_shift_id por timeout de red o modo offline
+                if (!activeShift && (activeShifts?._isErrorFallback || navigator.onLine === false) && (wasLocked || cachedShiftId)) {
+                    console.warn('⚠️ [GPS] Timeout/offline en syncActiveShiftGPS — se preserva el turno activo local.');
+                    return;
+                }
+                // Si la consulta de activos no encontró nada pero tampoco confirmó cierre de cachedShiftId por error de red
+                if (!activeShift && cachedShiftId && directShift === undefined && navigator.onLine === false) {
+                    return;
+                }
+            }
 
             if (activeShift) {
                 localStorage.setItem('active_shift_id', activeShift.id);
                 localStorage.setItem('active_shift_state', 'true');
                 localStorage.setItem('active_shift_status', 'IN_PROGRESS');
+                try { localStorage.setItem(`fleetadmin_cache_shifts_${activeShift.id}`, JSON.stringify(activeShift)); } catch (ce) { /* quota */ }
                 console.log('✅ [GPS] Sincronización: Turno activo detectado (IN_PROGRESS) → GPS + Heartbeat 60s activados:', activeShift.id);
 
                 armShiftBackLock();
@@ -1336,9 +1937,14 @@ const App = (() => {
         const user = Auth.getUser();
         if (!user || user.role !== 'driver') return; // Reportar específicamente para conductores
 
-        let version = 'v1.2.44'; // default
+        let version = 'v' + LOCAL_APP_VERSION; // default
         if (typeof window.NativeServiceBridge !== 'undefined') {
             version = 'v' + window.NativeServiceBridge.getAppVersionName();
+        }
+
+        const versionKey = `${user.id}:${version}`;
+        if (localStorage.getItem('last_reported_app_version') === versionKey) {
+            return;
         }
 
         try {
@@ -1348,7 +1954,7 @@ const App = (() => {
                                ? 'https://fleetadmin-web-nueva.onrender.com' 
                                : window.location.origin;
 
-            await fetch(`${serverUrl}/api/driver/report-version`, {
+            const resp = await fetch(`${serverUrl}/api/driver/report-version`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1357,6 +1963,9 @@ const App = (() => {
                     version: version
                 })
             });
+            if (resp && resp.ok) {
+                try { localStorage.setItem('last_reported_app_version', versionKey); } catch (e) {}
+            }
             console.log(`📱 App version reported to server: ${version}`);
         } catch (e) {
             console.warn('⚠️ Error al reportar versión al servidor:', e);
@@ -1415,7 +2024,12 @@ const App = (() => {
         armShiftBackLock,
         startShiftHeartbeat,
         stopShiftHeartbeat,
-        sendShiftHeartbeat
+        sendShiftHeartbeat,
+        executeForcedUpdate,
+        previewForceUpdateModal,
+        dismissPreviewForceUpdateModal,
+        showForcedUpdateScreen,
+        checkPendingUpdateAfterSave
     };
 })();
 

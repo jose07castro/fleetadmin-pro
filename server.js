@@ -215,28 +215,48 @@ app.get('/qr', async (req, res) => {
         }
 
         let qrUrl = diag.lastQr || null;
-        if (!isConnected && !qrUrl && typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') {
+        let versionControl = {
+            min_version_web: '1.2.245',
+            min_version_android: '1.2.245',
+            update_message: 'Mejoras críticas de rendimiento, rastreo GPS en tiempo real y estabilidad general.',
+            android_update_url: 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
+            force_update: true
+        };
+
+        if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') {
             try {
                 const db = WhatsappBot.getDb();
                 if (db) {
-                    const stSnap = await db.ref('bot_status').once('value');
-                    const stVal = stSnap.val() || {};
-                    if (stVal.qrUrl) qrUrl = stVal.qrUrl;
-                    if (stVal.connected) isConnected = true;
-                    if (stVal.phone && !diag.botNumber) diag.botNumber = stVal.phone;
+                    if (!isConnected && !qrUrl) {
+                        const stSnap = await db.ref('bot_status').once('value');
+                        const stVal = stSnap.val() || {};
+                        if (stVal.qrUrl) qrUrl = stVal.qrUrl;
+                        if (stVal.connected) isConnected = true;
+                        if (stVal.phone && !diag.botNumber) diag.botNumber = stVal.phone;
 
-                    const cfgSnap = await db.ref('bot_config').once('value');
-                    const cVal = cfgSnap.val();
-                    if (cVal) {
-                        if (typeof cVal.sentinel_enabled === 'boolean') botConfig.sentinel_enabled = cVal.sentinel_enabled;
-                        if (typeof cVal.max_alert_repeats === 'number') botConfig.max_alert_repeats = cVal.max_alert_repeats;
-                        if (Array.isArray(cVal.traffic_keywords)) botConfig.traffic_keywords = cVal.traffic_keywords;
-                        if (Array.isArray(cVal.forbidden_words)) botConfig.forbidden_words = cVal.forbidden_words;
-                        if (cVal.group_settings) botConfig.group_settings = { ...botConfig.group_settings, ...cVal.group_settings };
+                        const cfgSnap = await db.ref('bot_config').once('value');
+                        const cVal = cfgSnap.val();
+                        if (cVal) {
+                            if (typeof cVal.sentinel_enabled === 'boolean') botConfig.sentinel_enabled = cVal.sentinel_enabled;
+                            if (typeof cVal.max_alert_repeats === 'number') botConfig.max_alert_repeats = cVal.max_alert_repeats;
+                            if (Array.isArray(cVal.traffic_keywords)) botConfig.traffic_keywords = cVal.traffic_keywords;
+                            if (Array.isArray(cVal.forbidden_words)) botConfig.forbidden_words = cVal.forbidden_words;
+                            if (cVal.group_settings) botConfig.group_settings = { ...botConfig.group_settings, ...cVal.group_settings };
+                        }
+                    }
+                    const vcSnap = await db.ref('app_config/version_control').once('value');
+                    if (vcSnap.val()) {
+                        versionControl = { ...versionControl, ...vcSnap.val() };
                     }
                 }
             } catch(dbErr) {}
         }
+
+        const vcMinWebSafe = String(versionControl.min_version_web || '1.2.245').replace(/"/g, '&quot;');
+        const vcMinAndroidSafe = String(versionControl.min_version_android || '1.2.245').replace(/"/g, '&quot;');
+        const vcUrlSafe = String(versionControl.android_update_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app').replace(/"/g, '&quot;');
+        const vcMsgSafe = String(versionControl.update_message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const vcForceEnabled = versionControl.force_update !== false;
 
         const isSentinelActive = botConfig.sentinel_enabled !== false;
         const maxRepeats = botConfig.max_alert_repeats || 2;
@@ -615,6 +635,9 @@ app.get('/qr', async (req, res) => {
                 <button class="btn btn-rose" onclick="clearAlertsAndSilence()">
                     🔇 Silenciar Voz y Limpiar Alertas Repetidas
                 </button>
+                <button id="btnRestartDriverApps" class="btn btn-blue" onclick="restartDriverApps()">
+                    🔄 Reiniciar y Actualizar Apps de Choferes
+                </button>
             </div>
 
             <div class="form-group" style="max-width:320px;">
@@ -625,6 +648,46 @@ app.get('/qr', async (req, res) => {
                     <option value="2" ${maxRepeats === 2 ? 'selected' : ''}>2 veces (Recomendado por defecto)</option>
                     <option value="3" ${maxRepeats === 3 ? 'selected' : ''}>3 veces</option>
                 </select>
+            </div>
+        </div>
+
+        <!-- 2B. ACTUALIZACIÓN OBLIGATORIA (FORCE UPDATE WEB & ANDROID) -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🚀 Publicar Actualización Obligatoria (Web & Android)</span>
+                <span class="badge ${vcForceEnabled ? 'badge-wait' : 'badge-paused'}">
+                    ${vcForceEnabled ? '🔒 FORCE UPDATE ACTIVO' : '⚫ PAUSADO'}
+                </span>
+            </div>
+            <p style="text-align:left; color:#94a3b8; font-size:13px; margin-bottom:14px; line-height:1.5;">
+                Dispará un aviso visual bloqueante y sonoro en tiempo real para Web y Android. Si un chofer está cargando un viaje, turno o factura, la app espera con barra amarilla hasta que guarde.
+            </p>
+            <div class="grid-2" style="margin-bottom:12px;">
+                <div class="form-group">
+                    <label class="form-label">Versión mínima Web / PWA:</label>
+                    <input type="text" id="qrVcMinWeb" class="form-control" value="${vcMinWebSafe}" placeholder="1.2.245" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Versión mínima Android:</label>
+                    <input type="text" id="qrVcMinAndroid" class="form-control" value="${vcMinAndroidSafe}" placeholder="1.2.245" />
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">URL de actualización Android (Play Store / APK):</label>
+                <input type="text" id="qrVcAndroidUrl" class="form-control" value="${vcUrlSafe}" />
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Mensaje de novedades para el chofer:</label>
+                <textarea id="qrVcMessage" class="form-control" rows="2">${vcMsgSafe}</textarea>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:#cbd5e1;">
+                    <input type="checkbox" id="qrVcForce" ${vcForceEnabled ? 'checked' : ''} style="width:18px; height:18px; accent-color:#f59e0b;" />
+                    Activar bloqueo obligatorio (force_update)
+                </label>
+                <button id="btnPublishVcQr" class="btn btn-amber" onclick="publishVersionControlQr()">
+                    🚀 Publicar Actualización Obligatoria
+                </button>
             </div>
         </div>
 
@@ -760,6 +823,68 @@ app.get('/qr', async (req, res) => {
                 }
             } catch(e) {
                 showToast('Error de conexión', true);
+            }
+        }
+
+        async function restartDriverApps() {
+            if (!confirm('¿Enviar orden de reinicio y actualización en vivo a todas las apps de los choferes (GPS + Caché)?')) return;
+            const btn = document.getElementById('btnRestartDriverApps');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Reiniciando apps...'; }
+            try {
+                const res = await fetch('/api/bot/restart-driver-apps', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ driverId: 'all' })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('✅ Comando enviado: ' + (data.refreshedShifts || 0) + ' turnos resincronizados y apps reiniciándose');
+                } else {
+                    showToast('Error: ' + (data.error || 'Desconocido'), true);
+                }
+            } catch(e) {
+                showToast('Error de conexión al enviar comando', true);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Reiniciar y Actualizar Apps de Choferes'; }
+            }
+        }
+
+        async function publishVersionControlQr() {
+            const min_version_web = (document.getElementById('qrVcMinWeb')?.value || '').replace(/^v/i, '').trim();
+            const min_version_android = (document.getElementById('qrVcMinAndroid')?.value || '').replace(/^v/i, '').trim();
+            const android_update_url = (document.getElementById('qrVcAndroidUrl')?.value || '').trim();
+            const update_message = (document.getElementById('qrVcMessage')?.value || '').trim();
+            const force_update = !!document.getElementById('qrVcForce')?.checked;
+
+            if (!min_version_web || !min_version_android) {
+                showToast('Ingresá versiones válidas para Web y Android', true);
+                return;
+            }
+            const btn = document.getElementById('btnPublishVcQr');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Publicando...'; }
+            try {
+                const res = await fetch('/api/admin/version-control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        min_version_web,
+                        min_version_android,
+                        android_update_url,
+                        update_message,
+                        force_update
+                    })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('🚀 Control de versión publicado en Firebase en tiempo real');
+                    setTimeout(() => location.reload(), 700);
+                } else {
+                    showToast('Error: ' + (data.error || 'Desconocido'), true);
+                }
+            } catch(e) {
+                showToast('Error de conexión al publicar versión', true);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🚀 Publicar Actualización Obligatoria'; }
             }
         }
 
@@ -1064,6 +1189,54 @@ app.post('/api/bot/clear-alerts', async (req, res) => {
         }
         res.status(503).json({ ok: false, error: 'Bot no inicializado' });
     } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/restart-driver-apps', async (req, res) => {
+    try {
+        const db = (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function')
+            ? WhatsappBot.getDb()
+            : null;
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Base de datos no disponible' });
+        }
+
+        const now = Date.now();
+        const targetDriverId = (req.body && req.body.driverId) ? String(req.body.driverId) : 'all';
+        const fleetId = (req.body && req.body.fleetId) || '-OnPd8HaV1VZWBnYQQX7';
+
+        // 1. Comando global para Web, PWA y Android nativo v1.2.245+
+        await db.ref('system_commands/restart_apps').set({
+            timestamp: now,
+            targetDriverId,
+            clearCache: true,
+            requestedBy: 'admin_qr_panel'
+        });
+
+        // 2. Retrocompatibilidad inmediata con apps en turno activo (v1.2.244 o anterior):
+        // Al tocar 'remoteRefreshTs' en cada turno activo, DB.onChanges('shifts') ejecuta syncActiveShiftGPS() + enableForegroundService()
+        let refreshedShifts = 0;
+        const shiftsSnap = await db.ref(`fleets/${fleetId}/shifts`).orderByChild('status').equalTo('active').once('value');
+        const activeShifts = shiftsSnap.val() || {};
+        const updates = [];
+        for (const [shiftId, shift] of Object.entries(activeShifts)) {
+            if (!shift) continue;
+            if (targetDriverId === 'all' || String(shift.driverId) === targetDriverId) {
+                updates.push(
+                    db.ref(`fleets/${fleetId}/shifts/${shiftId}`).update({ remoteRefreshTs: now })
+                );
+                refreshedShifts++;
+            }
+        }
+        if (updates.length > 0) {
+            await Promise.all(updates);
+        }
+
+        console.log(`🔄 [REMOTE-RESTART] Orden enviada (target=${targetDriverId}, refreshedShifts=${refreshedShifts})`);
+        res.json({ ok: true, timestamp: now, targetDriverId, refreshedShifts });
+    } catch (e) {
+        console.error('❌ Error en /api/bot/restart-driver-apps:', e);
         res.status(500).json({ ok: false, error: e.message });
     }
 });
@@ -1564,35 +1737,109 @@ app.post('/api/bot/pending-payments/reject', async (req, res) => {
 // In-App Update: Version Control Endpoints
 // ============================================
 
-// Check minimum required version code/name
+// Check minimum required versions & live Force Update config
 app.get('/api/version-check', async (req, res) => {
     try {
         const db = WhatsappBot.getDb();
-        let minVersionCode = 53; // default fallback
-        let minVersionName = "1.2.44";
+        let minVersionCode = 53;
+        let minVersionName = "1.2.245";
+        let minVersionWeb = "1.2.245";
+        let minVersionAndroid = "1.2.245";
         let playStoreUrl = "https://play.google.com/store/apps/details?id=com.fleetadminpro.app";
+        let updateMessage = "Actualización obligatoria requerida para continuar trabajando.";
+        let forceUpdate = true;
 
         if (db) {
-            const snap = await db.ref('global_settings/min_version').once('value');
-            const val = snap.val();
-            if (val) {
-                if (val.minVersionCode) minVersionCode = parseInt(val.minVersionCode);
-                if (val.minVersionName) minVersionName = val.minVersionName;
-                if (val.playStoreUrl) playStoreUrl = val.playStoreUrl;
+            const [legacySnap, vcSnap] = await Promise.all([
+                db.ref('global_settings/min_version').once('value'),
+                db.ref('app_config/version_control').once('value')
+            ]);
+            const legacy = legacySnap.val();
+            if (legacy) {
+                if (legacy.minVersionCode) minVersionCode = parseInt(legacy.minVersionCode);
+                if (legacy.minVersionName) {
+                    minVersionName = legacy.minVersionName;
+                    minVersionAndroid = legacy.minVersionName;
+                    minVersionWeb = legacy.minVersionName;
+                }
+                if (legacy.playStoreUrl) playStoreUrl = legacy.playStoreUrl;
+            }
+            const vc = vcSnap.val();
+            if (vc) {
+                if (vc.min_version_web) minVersionWeb = vc.min_version_web;
+                if (vc.min_version_android) {
+                    minVersionAndroid = vc.min_version_android;
+                    minVersionName = vc.min_version_android;
+                }
+                if (vc.android_update_url) playStoreUrl = vc.android_update_url;
+                if (vc.update_message) updateMessage = vc.update_message;
+                if (typeof vc.force_update === 'boolean') forceUpdate = vc.force_update;
             }
         }
         res.json({
             min_required_version_code: minVersionCode,
             min_required_version_name: minVersionName,
-            play_store_url: playStoreUrl
+            play_store_url: playStoreUrl,
+            min_version_web: minVersionWeb,
+            min_version_android: minVersionAndroid,
+            android_update_url: playStoreUrl,
+            update_message: updateMessage,
+            force_update: forceUpdate
         });
     } catch (e) {
         console.error('⚠️ Error checking version from DB:', e.message);
         res.json({
             min_required_version_code: 53,
-            min_required_version_name: "1.2.44",
-            play_store_url: "https://play.google.com/store/apps/details?id=com.fleetadminpro.app"
+            min_required_version_name: "1.2.245",
+            play_store_url: "https://play.google.com/store/apps/details?id=com.fleetadminpro.app",
+            min_version_web: "1.2.245",
+            min_version_android: "1.2.245",
+            android_update_url: "https://play.google.com/store/apps/details?id=com.fleetadminpro.app",
+            update_message: "Actualización obligatoria requerida para continuar trabajando.",
+            force_update: true
         });
+    }
+});
+
+// Publish or update Force Update configuration in Firebase RTDB (app_config/version_control)
+app.post('/api/admin/version-control', async (req, res) => {
+    try {
+        const db = (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function')
+            ? WhatsappBot.getDb()
+            : null;
+        if (!db) {
+            return res.status(503).json({ ok: false, error: 'Base de datos no disponible' });
+        }
+
+        const body = req.body || {};
+        const minVersionWeb = String(body.min_version_web || '1.2.245').replace(/^v/i, '').trim();
+        const minVersionAndroid = String(body.min_version_android || '1.2.245').replace(/^v/i, '').trim();
+        const androidUpdateUrl = String(body.android_update_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app').trim();
+        const updateMessage = String(body.update_message || 'Mejoras críticas de rendimiento y rastreo GPS.').trim();
+        const forceUpdate = body.force_update !== false;
+
+        const payload = {
+            min_version_web: minVersionWeb,
+            min_version_android: minVersionAndroid,
+            update_message: updateMessage,
+            android_update_url: androidUpdateUrl,
+            force_update: forceUpdate,
+            updated_at: new Date().toISOString(),
+            updated_by: body.updated_by || 'admin_panel'
+        };
+
+        await db.ref('app_config/version_control').set(payload);
+        await db.ref('global_settings/min_version').update({
+            minVersionName: minVersionAndroid,
+            playStoreUrl: androidUpdateUrl,
+            updatedAt: payload.updated_at
+        }).catch(() => {});
+
+        console.log(`🚀 [FORCE-UPDATE] Publicado por admin: web=${minVersionWeb}, android=${minVersionAndroid}, force=${forceUpdate}`);
+        res.json({ ok: true, config: payload });
+    } catch (e) {
+        console.error('❌ Error en /api/admin/version-control:', e.message);
+        res.status(500).json({ ok: false, error: e.message });
     }
 });
 

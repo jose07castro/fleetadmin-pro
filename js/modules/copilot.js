@@ -4416,23 +4416,23 @@ const CopilotModule = (() => {
             .copilot-hud-card {
                 pointer-events: auto;
                 position: relative;
-                background: rgba(0, 0, 0, 0.2);
+                background: rgba(0, 0, 0, 0.22);
                 border: 1.5px solid rgba(255, 255, 255, 0.28);
                 border-radius: 999px;
-                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-                backdrop-filter: blur(4px);
-                -webkit-backdrop-filter: blur(4px);
-                padding: 4px 8px 4px 5px;
+                box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                padding: 6px 12px 6px 8px;
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
                 color: #ffffff;
                 box-sizing: border-box;
                 max-width: calc(100vw - 16px);
             }
             .copilot-hud-card.hud-speeding {
-                background: rgba(220, 38, 38, 0.25);
-                border-color: rgba(239, 68, 68, 0.9);
+                background: rgba(220, 38, 38, 0.3);
+                border-color: rgba(239, 68, 68, 0.95);
                 animation: copilotBorderPulse 0.95s infinite alternate;
             }
             @keyframes copilotBorderPulse {
@@ -4441,20 +4441,20 @@ const CopilotModule = (() => {
             }
             .copilot-traffic-sign {
                 flex-shrink: 0;
-                width: 36px;
-                height: 36px;
+                width: 56px;
+                height: 56px;
                 border-radius: 50%;
                 background: #ffffff;
-                border: 3.5px solid #dc2626;
+                border: 4px solid #dc2626;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
                 box-sizing: border-box;
             }
             .copilot-traffic-sign .speed-num {
-                font-size: 15px;
+                font-size: 23px;
                 font-weight: 900;
                 line-height: 1;
                 color: #0f172a;
@@ -4463,10 +4463,10 @@ const CopilotModule = (() => {
             }
             .copilot-traffic-sign.is-traffic {
                 background: rgba(15, 23, 42, 0.75);
-                border-width: 2.5px;
+                border-width: 3px;
             }
             .copilot-traffic-sign.is-traffic .traffic-icon {
-                font-size: 18px;
+                font-size: 26px;
                 line-height: 1;
             }
             .copilot-hud-main {
@@ -4474,17 +4474,17 @@ const CopilotModule = (() => {
                 flex-direction: column;
                 justify-content: center;
                 min-width: 0;
-                gap: 1px;
+                gap: 2px;
             }
             .copilot-hud-pill-row {
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: 8px;
                 white-space: nowrap;
             }
             .copilot-hud-pill-dist {
                 color: #ffffff;
-                font-size: 15px;
+                font-size: 22px;
                 font-weight: 900;
                 line-height: 1.1;
                 letter-spacing: -0.2px;
@@ -4493,11 +4493,11 @@ const CopilotModule = (() => {
             .copilot-hud-speed-gauge {
                 display: inline-flex;
                 align-items: center;
-                gap: 3px;
-                font-size: 12px;
+                gap: 4px;
+                font-size: 14.5px;
                 font-weight: 800;
                 line-height: 1.1;
-                padding: 2px 7px;
+                padding: 3px 10px;
                 border-radius: 999px;
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
             }
@@ -4518,11 +4518,11 @@ const CopilotModule = (() => {
                 border: 1px solid rgba(255, 255, 255, 0.2);
             }
             .copilot-hud-name {
-                font-size: 10.5px;
+                font-size: 14px;
                 font-weight: 700;
                 color: rgba(248, 250, 252, 0.95);
-                line-height: 1.15;
-                max-width: 165px;
+                line-height: 1.2;
+                max-width: 260px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -4530,8 +4530,8 @@ const CopilotModule = (() => {
             }
             .copilot-close-btn {
                 flex-shrink: 0;
-                width: 26px;
-                height: 26px;
+                width: 36px;
+                height: 36px;
                 border-radius: 50%;
                 background: rgba(0, 0, 0, 0.28);
                 border: 1px solid rgba(255, 255, 255, 0.32);
@@ -4541,8 +4541,8 @@ const CopilotModule = (() => {
                 justify-content: center;
                 cursor: pointer;
                 padding: 0;
-                margin-left: 2px;
-                font-size: 13px;
+                margin-left: 4px;
+                font-size: 16px;
                 font-weight: 900;
                 line-height: 1;
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);

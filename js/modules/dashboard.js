@@ -7,14 +7,21 @@ window.DashboardModule = (() => {
     // --- RENDER TRADICIONAL: fetch datos, devolver HTML completo ---
     async function render() {
         try {
-            const [vehicles, shifts, repairs, alerts, users, location] = await Promise.all([
+            const [vehicles, activeShiftList, recentCompletedList, repairs, alerts, users, location] = await Promise.all([
                 DB.getAll('vehicles'),
-                DB.getAll('shifts'),
+                DB.getActiveShifts(),
+                DB.getRecentCompletedShifts(40),
                 DB.getAll('repairs'),
                 Alerts.getAllAlerts(),
                 DB.getAll('users'),
                 DB.getSetting('location')
             ]);
+
+            const shiftMap = new Map();
+            [...(activeShiftList || []), ...(recentCompletedList || [])].forEach(s => {
+                if (s && s.id) shiftMap.set(s.id, s);
+            });
+            const shifts = Array.from(shiftMap.values());
 
             const activeShifts = shifts.filter(s => s.status === 'active');
             const completedShifts = shifts.filter(s => s.status === 'completed');
@@ -99,13 +106,25 @@ window.DashboardModule = (() => {
                 communityBadgeCount = c > 99 ? '99+' : String(c);
             } catch (e) { communityBadgeCount = '0'; }
 
-            let annData = null, annOwnerData = null;
+            let annData = null, annOwnerData = null, vcData = null;
             try { annData = await DB.getSetting('announcement'); } catch(e) {}
             try { annOwnerData = await DB.getSetting('announcement_owner'); } catch(e) {}
+            if (Auth.isOwner() && typeof firebaseDB !== 'undefined') {
+                try {
+                    const vcSnap = await firebaseDB.ref('app_config/version_control').once('value');
+                    vcData = vcSnap.val();
+                } catch(e) {}
+            }
             const annText = annData?.bannerText || '';
             const annActive = !!annData?.bannerActive;
             const annOwnerText = annOwnerData?.bannerText || '';
             const annOwnerActive = !!annOwnerData?.bannerActive;
+            const currentAppVer = window.APP_VERSION || '1.2.245';
+            const vcMinWeb = vcData?.min_version_web || currentAppVer;
+            const vcMinAndroid = vcData?.min_version_android || currentAppVer;
+            const vcUpdateMsg = vcData?.update_message || 'Mejoras críticas de rendimiento, rastreo GPS en tiempo real y estabilidad general.';
+            const vcAndroidUrl = vcData?.android_update_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+            const vcForceActive = vcData ? (vcData.force_update !== false) : true;
 
             // Wiring de toggles después del mount
             setTimeout(() => _wireAnnouncementToggles(), 100);
@@ -252,6 +271,54 @@ window.DashboardModule = (() => {
                             </div>
                         </div>
                     </div>
+                    ${Auth.isOwner() ? `
+                    <div class="dashboard-section" id="versionControlAdminCard" style="margin-bottom:var(--space-6);">
+                        <div class="dashboard-section-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                            <span>🚀 Publicar Actualización Obligatoria</span>
+                            <span style="font-size:0.75rem; font-weight:700; color:#facc15; background:rgba(250,204,21,0.12); border:1px solid rgba(250,204,21,0.35); padding:3px 10px; border-radius:999px;">App actual: v${currentAppVer}</span>
+                        </div>
+                        <div class="card" style="padding:var(--space-5); border-left:4px solid #facc15;">
+                            <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:var(--space-4); line-height:1.45;">
+                                Dispará en tiempo real un bloqueo visual y alerta sonora en Web y Android para toda la flota. Si un chofer está cargando un viaje, turno o factura, se mostrará una barra amarilla hasta que guarde.
+                            </p>
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:var(--space-3); margin-bottom:var(--space-3);">
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label class="form-label">Versión mínima Web / PWA</label>
+                                    <div style="display:flex; gap:6px;">
+                                        <input type="text" class="form-input" id="vcMinWeb" value="${vcMinWeb.replace(/"/g, '&quot;')}" placeholder="Ej: 1.2.246" style="font-weight:700;">
+                                        <button type="button" class="btn btn-sm" style="background:var(--bg-tertiary); border:1px solid var(--border-color);" onclick="DashboardModule.bumpVersionInput('vcMinWeb')" title="Subir versión +1">+1</button>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label class="form-label">Versión mínima Android</label>
+                                    <div style="display:flex; gap:6px;">
+                                        <input type="text" class="form-input" id="vcMinAndroid" value="${vcMinAndroid.replace(/"/g, '&quot;')}" placeholder="Ej: 1.2.246" style="font-weight:700;">
+                                        <button type="button" class="btn btn-sm" style="background:var(--bg-tertiary); border:1px solid var(--border-color);" onclick="DashboardModule.bumpVersionInput('vcMinAndroid')" title="Subir versión +1">+1</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom:var(--space-3);">
+                                <label class="form-label">Enlace de actualización Android (Play Store o APK)</label>
+                                <input type="url" class="form-input" id="vcAndroidUrl" value="${vcAndroidUrl.replace(/"/g, '&quot;')}" placeholder="https://play.google.com/store/apps/details?id=com.fleetadminpro.app">
+                            </div>
+                            <div class="form-group" style="margin-bottom:var(--space-3);">
+                                <label class="form-label">Nota de cambios (Aviso al chofer)</label>
+                                <textarea class="form-input" id="vcUpdateMessage" rows="2" maxlength="300" placeholder="Ej: Mejoras en el rastreo GPS en tiempo real y botón de Factura C...">${vcUpdateMsg.replace(/</g, '&lt;')}</textarea>
+                            </div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap; margin-top:var(--space-2);">
+                                <label class="toggle-label" for="vcForceUpdate">
+                                    <input type="checkbox" id="vcForceUpdate" class="toggle-input" ${vcForceActive ? 'checked' : ''} onchange="const lbl=document.getElementById('vcForceStatusLabel'); if(lbl) lbl.textContent=this.checked?'🔒 Bloqueo Activo':'⚫ Bloqueo Pausado';">
+                                    <div class="toggle-switch"><div class="toggle-knob"></div></div>
+                                    <span id="vcForceStatusLabel" class="toggle-status">${vcForceActive ? '🔒 Bloqueo Activo' : '⚫ Bloqueo Pausado'}</span>
+                                </label>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-sm" style="background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color);" onclick="DashboardModule.previewForceUpdate()">👁️ Vista Previa</button>
+                                    <button type="button" id="btnPublishVersionControl" class="btn btn-sm" style="background:linear-gradient(135deg,#facc15,#eab308); color:#0f172a; font-weight:800;" onclick="DashboardModule.publishVersionControl()">🚀 Disparar Actualización</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
                 <div class="dashboard-section">
                     <div class="dashboard-section-title">📢 Centro de Comunidad Fleet</div>
@@ -1111,6 +1178,88 @@ window.DashboardModule = (() => {
         }
     }
 
+    function bumpVersionInput(inputId) {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        const parts = String(el.value || window.APP_VERSION || '1.2.245').replace(/^v/i, '').trim().split('.').map(n => parseInt(n, 10) || 0);
+        el.value = `${parts[0] || 1}.${parts[1] || 2}.${(parts[2] || 0) + 1}`;
+    }
+
+    function previewForceUpdate() {
+        const minWeb = document.getElementById('vcMinWeb')?.value?.trim() || '';
+        const minAndroid = document.getElementById('vcMinAndroid')?.value?.trim() || '';
+        const msg = document.getElementById('vcUpdateMessage')?.value?.trim() || '';
+        const url = document.getElementById('vcAndroidUrl')?.value?.trim() || '';
+        const isNative = typeof window.NativeServiceBridge !== 'undefined';
+        if (typeof App !== 'undefined' && typeof App.previewForceUpdateModal === 'function') {
+            App.previewForceUpdateModal({
+                minVersion: isNative ? minAndroid : minWeb,
+                message: msg,
+                url: url
+            });
+        }
+    }
+
+    async function publishVersionControl() {
+        if (!Auth.isOwner()) {
+            Components.showToast('Solo el Administrador puede publicar actualizaciones.', 'danger');
+            return;
+        }
+        const minWeb = (document.getElementById('vcMinWeb')?.value || '').replace(/^v/i, '').trim();
+        const minAndroid = (document.getElementById('vcMinAndroid')?.value || '').replace(/^v/i, '').trim();
+        const androidUrl = (document.getElementById('vcAndroidUrl')?.value || '').trim() || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+        const updateMsg = (document.getElementById('vcUpdateMessage')?.value || '').trim();
+        const forceEl = document.getElementById('vcForceUpdate');
+        const forceUpdate = forceEl ? !!forceEl.checked : true;
+
+        const semverRegex = /^\d+\.\d+\.\d+$/;
+        if (!semverRegex.test(minWeb) || !semverRegex.test(minAndroid)) {
+            Components.showToast('⚠️ Usá formato de versión válido X.Y.Z (ej: 1.2.246)', 'warning');
+            return;
+        }
+        if (forceUpdate && !updateMsg) {
+            Components.showToast('⚠️ Escribí una breve nota de cambios para los choferes', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btnPublishVersionControl');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Publicando...'; }
+
+        try {
+            if (typeof firebaseDB === 'undefined') {
+                throw new Error('Firebase no conectado');
+            }
+            const payload = {
+                min_version_web: minWeb,
+                min_version_android: minAndroid,
+                update_message: updateMsg,
+                android_update_url: androidUrl,
+                force_update: forceUpdate,
+                updated_at: new Date().toISOString(),
+                updated_by: Auth.getUserName() || 'OwnerAdmin'
+            };
+            await firebaseDB.ref('app_config/version_control').set(payload);
+
+            // Mantener sincronizado también global_settings/min_version por compatibilidad
+            await firebaseDB.ref('global_settings/min_version').update({
+                minVersionName: minAndroid,
+                playStoreUrl: androidUrl,
+                updatedAt: new Date().toISOString()
+            }).catch(() => {});
+
+            Components.showToast(
+                forceUpdate
+                    ? `🚀 Actualización Obligatoria v${minWeb} / v${minAndroid} disparada a toda la flota`
+                    : '💾 Configuración de versión guardada (Force Update pausado)',
+                forceUpdate ? 'success' : 'info'
+            );
+        } catch (e) {
+            Components.showToast('❌ Error publicando actualización: ' + e.message, 'danger');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🚀 Disparar Actualización'; }
+        }
+    }
+
     async function showGlobalUsers(roleFilter) {
         if (Auth.getRole() !== 'owner') {
             Components.showToast('Acceso denegado. Solo administradores.', 'danger');
@@ -1316,5 +1465,5 @@ window.DashboardModule = (() => {
         reader.readAsDataURL(file);
     }
 
-    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList, handleLicensePhoto };
+    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, bumpVersionInput, previewForceUpdate, publishVersionControl, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList, handleLicensePhoto };
 })();
