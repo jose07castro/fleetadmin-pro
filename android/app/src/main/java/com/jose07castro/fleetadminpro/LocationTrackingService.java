@@ -236,6 +236,7 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
     private DatabaseReference alertsRef;
     private DatabaseReference globalAlertsRef;
     private DatabaseReference remoteRestartRef;
+    private DatabaseReference remoteRestartAllRef;
     private String userId;
     private String driverName;
     private String fleetId;
@@ -591,6 +592,9 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
             if (remoteRestartRef != null) {
                 remoteRestartRef.removeEventListener(remoteRestartListener);
+            }
+            if (remoteRestartAllRef != null) {
+                remoteRestartAllRef.removeEventListener(remoteRestartListener);
             }
         } catch (Exception ignored) {}
 
@@ -1799,14 +1803,31 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
             }
         }
 
-        // Listener de reinicio / actualización remota desde panel Administrador (/qr)
+        // Listener de reinicio / actualización remota AISLADO por usuario (system_commands/restart_by_user/{userId})
         try {
             if (remoteRestartRef != null) {
                 remoteRestartRef.removeEventListener(remoteRestartListener);
+                remoteRestartRef = null;
             }
-            remoteRestartRef = FirebaseDatabase.getInstance().getReference("system_commands/restart_apps");
-            remoteRestartRef.addValueEventListener(remoteRestartListener);
-            Log.i(TAG, "🔄 [REMOTE-RESTART] Escuchando comandos remotos del Administrador");
+            if (remoteRestartAllRef != null) {
+                remoteRestartAllRef.removeEventListener(remoteRestartListener);
+                remoteRestartAllRef = null;
+            }
+            SharedPreferences rolePrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String savedRole = rolePrefs.getString("userRole", "");
+            boolean isAdminRole = "owner".equalsIgnoreCase(savedRole) || "titular".equalsIgnoreCase(savedRole);
+
+            if (userId != null && !userId.trim().isEmpty()) {
+                remoteRestartRef = FirebaseDatabase.getInstance().getReference("system_commands/restart_by_user").child(userId.trim());
+                remoteRestartRef.addValueEventListener(remoteRestartListener);
+                if (!isAdminRole) {
+                    remoteRestartAllRef = FirebaseDatabase.getInstance().getReference("system_commands/restart_by_user").child("all");
+                    remoteRestartAllRef.addValueEventListener(remoteRestartListener);
+                }
+                Log.i(TAG, "🔄 [REMOTE-RESTART] Escuchando nodo aislado restart_by_user/" + userId.trim() + " (adminRole=" + isAdminRole + ")");
+            } else {
+                Log.i(TAG, "ℹ️ [REMOTE-RESTART] userId vacío en LocationTrackingService; sin suscripción remota.");
+            }
         } catch (Exception e) {
             Log.w(TAG, "⚠️ Error registrando listener remoteRestartRef: " + e.getMessage());
         }
@@ -1821,18 +1842,24 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 long cmdTs = Long.parseLong(String.valueOf(tsObj));
                 if (cmdTs <= serviceStartTime) return;
 
+                if (userId == null || userId.trim().isEmpty()) return;
+
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                String roleCheck = prefs.getString("userRole", "");
+                boolean isAdminRole = "owner".equalsIgnoreCase(roleCheck) || "titular".equalsIgnoreCase(roleCheck);
+
                 String targetId = snapshot.child("targetDriverId").getValue(String.class);
                 String targetFleetUserId = snapshot.child("targetFleetUserId").getValue(String.class);
                 String targetName = snapshot.child("targetDriverName").getValue(String.class);
-                if (targetId != null && !"all".equalsIgnoreCase(targetId.trim())) {
-                    boolean idMatched = (userId != null) && (targetId.equals(userId) || (targetFleetUserId != null && targetFleetUserId.equals(userId)));
+                if (targetId == null || targetId.trim().isEmpty()) return;
+                if ("all".equalsIgnoreCase(targetId.trim()) && isAdminRole) return;
+                if (!"all".equalsIgnoreCase(targetId.trim())) {
+                    boolean idMatched = targetId.equals(userId) || (targetFleetUserId != null && targetFleetUserId.equals(userId));
                     boolean nameMatched = (driverName != null && targetName != null && driverName.trim().equalsIgnoreCase(targetName.trim()));
                     if (!idMatched && !nameMatched) {
                         return;
                     }
                 }
-
-                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                 long lastHandled = prefs.getLong("last_remote_restart_ts", 0L);
                 if (cmdTs <= lastHandled) return;
                 prefs.edit().putLong("last_remote_restart_ts", cmdTs).apply();

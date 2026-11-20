@@ -1319,15 +1319,31 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
             } catch (_) {}
         }
 
-        // 1. Comando global para Web, PWA y Android nativo v1.2.245+
-        await db.ref('system_commands/restart_apps').set({
+        // 1. Comando aislado por nodo de usuario (Web, PWA y Android nativo v1.2.245+)
+        // NUNCA escribir en nodo global compartido para evitar reiniciar al Administrador u otros usuarios.
+        const cmdPayload = {
             timestamp: now,
             targetDriverId,
             targetFleetUserId,
             targetDriverName,
             clearCache: true,
             requestedBy: (req.body && req.body.requestedBy) || 'admin_qr_panel'
-        });
+        };
+
+        if (targetDriverId === 'all') {
+            await db.ref('system_commands/restart_by_user/all').set(cmdPayload);
+        } else {
+            const writeOps = [];
+            if (targetDriverId) {
+                writeOps.push(db.ref(`system_commands/restart_by_user/${targetDriverId}`).set(cmdPayload));
+            }
+            if (targetFleetUserId && targetFleetUserId !== targetDriverId) {
+                writeOps.push(db.ref(`system_commands/restart_by_user/${targetFleetUserId}`).set(cmdPayload));
+            }
+            await Promise.all(writeOps);
+        }
+        // Limpiar cualquier remanente del antiguo nodo compartido
+        await db.ref('system_commands/restart_apps').remove().catch(() => {});
 
         // 2. Retrocompatibilidad inmediata con apps en turno activo (v1.2.244 o anterior):
         // Al tocar 'remoteRefreshTs' SOLO en el turno del usuario elegido (o todos si targetDriverId === 'all'),

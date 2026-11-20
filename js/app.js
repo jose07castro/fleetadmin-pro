@@ -499,65 +499,78 @@ const App = (() => {
         setInterval(heartbeat, 5 * 60 * 1000); // cada 5 minutos
     }
 
-    let _remoteRestartListenerInstalled = false;
+    let _remoteRestartSubscribedKeys = new Set();
+    let _remoteRestartBootTs = Date.now();
     function _initRemoteRestartListener() {
-        if (_remoteRestartListenerInstalled || typeof firebaseDB === 'undefined') return;
-        _remoteRestartListenerInstalled = true;
-        const _bootTimestamp = Date.now();
+        if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
+        const currentUser = (typeof Auth.getUser === 'function') ? Auth.getUser() : null;
+        const myId = (typeof Auth.getUserId === 'function') ? Auth.getUserId() : null;
+        const isOwnerUser = (typeof Auth.isOwner === 'function') && Auth.isOwner();
+        const myIds = Array.from(new Set([myId, currentUser?.id, currentUser?.globalId].filter(Boolean).map(String)));
+        if (myIds.length === 0) return; // No escuchar si aún no hay sesión identificada
+
+        const handleRestartSnapshot = async (snap) => {
+            const cmd = snap.val();
+            if (!cmd || !cmd.timestamp) return;
+            const cmdTs = Number(cmd.timestamp);
+            const lastHandled = parseInt(localStorage.getItem('last_remote_restart_ts') || '0', 10);
+            if (cmdTs <= _remoteRestartBootTs || cmdTs <= lastHandled) return;
+
+            const rawTarget = cmd.targetDriverId ? String(cmd.targetDriverId).trim() : '';
+            if (!rawTarget) return;
+            if (rawTarget === 'all' && isOwnerUser) return; // Nunca reiniciar al Administrador por comando grupal
+            if (rawTarget !== 'all') {
+                const myIdSet = new Set(myIds);
+                const cmdTargets = [cmd.targetDriverId, cmd.targetFleetUserId].filter(Boolean).map(String);
+                const myName = ((currentUser?.name || (typeof Auth.getUserName === 'function' ? Auth.getUserName() : '')) || '').trim().toLowerCase();
+                const targetName = (cmd.targetDriverName || '').trim().toLowerCase();
+                const idMatched = cmdTargets.some(tid => myIdSet.has(tid));
+                const nameMatched = Boolean(myName && targetName && myName === targetName);
+                if (!idMatched && !nameMatched) return;
+            }
+
+            try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}
+            console.log('🔄 [REMOTE-RESTART] Comando remoto dirigido a este usuario. Reiniciando GPS y recargando app...');
+
+            try {
+                if (typeof syncActiveShiftGPS === 'function') {
+                    await syncActiveShiftGPS();
+                }
+            } catch (_) {}
+
+            try {
+                if (window.NativeServiceBridge && typeof window.NativeServiceBridge.restartGpsEngine === 'function') {
+                    window.NativeServiceBridge.restartGpsEngine();
+                }
+            } catch (_) {}
+
+            try {
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(n => caches.delete(n)));
+                }
+            } catch (_) {}
+
+            if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+                Components.showToast('🔄 Actualizando sistema por orden del Administrador...', 'info');
+            }
+            setTimeout(() => {
+                window.location.reload(true);
+            }, 400);
+        };
+
         try {
-            firebaseDB.ref('system_commands/restart_apps').on('value', async (snap) => {
-                const cmd = snap.val();
-                if (!cmd || !cmd.timestamp) return;
-                const cmdTs = Number(cmd.timestamp);
-                const lastHandled = parseInt(localStorage.getItem('last_remote_restart_ts') || '0', 10);
-                if (cmdTs <= _bootTimestamp || cmdTs <= lastHandled) return;
-
-                const rawTarget = cmd.targetDriverId ? String(cmd.targetDriverId).trim() : 'all';
-                if (rawTarget && rawTarget !== 'all') {
-                    const currentUser = (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function') ? Auth.getUser() : null;
-                    const myId = (typeof Auth !== 'undefined' && typeof Auth.getUserId === 'function') ? Auth.getUserId() : null;
-                    const myIds = new Set([myId, currentUser?.id, currentUser?.globalId].filter(Boolean).map(String));
-                    const cmdTargets = [cmd.targetDriverId, cmd.targetFleetUserId].filter(Boolean).map(String);
-                    const myName = ((currentUser?.name || (typeof Auth !== 'undefined' && Auth.getUserName ? Auth.getUserName() : '')) || '').trim().toLowerCase();
-                    const targetName = (cmd.targetDriverName || '').trim().toLowerCase();
-                    const idMatched = cmdTargets.some(tid => myIds.has(tid));
-                    const nameMatched = Boolean(myName && targetName && myName === targetName);
-                    if (!idMatched && !nameMatched) {
-                        return;
-                    }
-                }
-
-                try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}
-                console.log('🔄 [REMOTE-RESTART] Comando remoto recibido del administrador. Reiniciando GPS y recargando app...');
-
-                try {
-                    if (typeof syncActiveShiftGPS === 'function') {
-                        await syncActiveShiftGPS();
-                    }
-                } catch (_) {}
-
-                try {
-                    if (window.NativeServiceBridge && typeof window.NativeServiceBridge.restartGpsEngine === 'function') {
-                        window.NativeServiceBridge.restartGpsEngine();
-                    }
-                } catch (_) {}
-
-                try {
-                    if ('caches' in window) {
-                        const names = await caches.keys();
-                        await Promise.all(names.map(n => caches.delete(n)));
-                    }
-                } catch (_) {}
-
-                if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
-                    Components.showToast('🔄 Actualizando sistema por orden del Administrador...', 'info');
-                }
-                setTimeout(() => {
-                    window.location.reload(true);
-                }, 400);
+            const keysToListen = [...myIds];
+            if (!isOwnerUser) {
+                keysToListen.push('all');
+            }
+            keysToListen.forEach((key) => {
+                if (_remoteRestartSubscribedKeys.has(key)) return;
+                _remoteRestartSubscribedKeys.add(key);
+                firebaseDB.ref(`system_commands/restart_by_user/${key}`).on('value', handleRestartSnapshot);
             });
         } catch (e) {
-            console.warn('⚠️ [REMOTE-RESTART] Error instalando listener:', e);
+            console.warn('⚠️ [REMOTE-RESTART] Error instalando listener aislado:', e);
         }
     }
 
@@ -639,6 +652,7 @@ const App = (() => {
                         if (currentUserId) {
                             await applyUserTheme(currentUserId);
                         }
+                        _initRemoteRestartListener();
 
                         // Reportar versión al servidor al recuperar sesión
                         reportAppVersionToServer();
@@ -813,6 +827,7 @@ const App = (() => {
             ? ['vehicles', 'shifts']
             : ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
         let initialLoad = {};
+        let lastShiftsWithoutPulse = null;
 
         stores.forEach(store => {
             initialLoad[store] = true;
@@ -820,7 +835,23 @@ const App = (() => {
                 // Ignorar la primera carga (ya se renderizó)
                 if (initialLoad[store]) {
                     initialLoad[store] = false;
+                    if (store === 'shifts' && Array.isArray(items)) {
+                        try {
+                            lastShiftsWithoutPulse = JSON.stringify(items.map(s => { const c = { ...s }; delete c.remoteRefreshTs; return c; }));
+                        } catch (_) {}
+                    }
                     return;
+                }
+
+                // Ignorar cambios que únicamente modificaron remoteRefreshTs en turnos (evita refrescar la UI del Administrador)
+                if (store === 'shifts' && !isDriverRole && Array.isArray(items)) {
+                    try {
+                        const strippedNow = JSON.stringify(items.map(s => { const c = { ...s }; delete c.remoteRefreshTs; return c; }));
+                        if (lastShiftsWithoutPulse !== null && strippedNow === lastShiftsWithoutPulse) {
+                            return;
+                        }
+                        lastShiftsWithoutPulse = strippedNow;
+                    } catch (_) {}
                 }
 
                 console.log(`🔄 Sync: ${store} actualizado (${items.length} items)`);

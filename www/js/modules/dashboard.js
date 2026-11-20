@@ -1319,14 +1319,26 @@ window.DashboardModule = (() => {
             const now = Date.now();
             const fleetId = Auth.getFleetId();
 
-            await firebaseDB.ref('system_commands/restart_apps').set({
+            const cmdPayload = {
                 timestamp: now,
                 targetDriverId: targetId,
                 targetFleetUserId: targetId === 'all' ? null : targetFleetUserId,
                 targetDriverName: targetId === 'all' ? 'Todos' : targetName,
                 clearCache: true,
                 requestedBy: Auth.getUserName() || 'dashboard_owner'
-            });
+            };
+
+            // Aislar comando en el nodo exclusivo del usuario elegido (o /all para choferes)
+            if (targetId === 'all') {
+                await firebaseDB.ref('system_commands/restart_by_user/all').set(cmdPayload);
+            } else {
+                const ops = [firebaseDB.ref(`system_commands/restart_by_user/${targetId}`).set(cmdPayload)];
+                if (targetFleetUserId && targetFleetUserId !== targetId) {
+                    ops.push(firebaseDB.ref(`system_commands/restart_by_user/${targetFleetUserId}`).set(cmdPayload));
+                }
+                await Promise.all(ops);
+            }
+            firebaseDB.ref('system_commands/restart_apps').remove().catch(() => {});
 
             // También refrescar únicamente el turno activo correspondiente (si existe)
             let refreshedCount = 0;
