@@ -32,7 +32,7 @@ const Router = (() => {
                 existingScript.remove(); // Remover el script viejo inyectado para forzar la recarga del archivo actualizado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=246_${Date.now()}`;
+            script.src = `${path}?v=247_${Date.now()}`;
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
@@ -86,7 +86,7 @@ const Router = (() => {
         // Bloqueo/Desbloqueo inteligente de perfil para conductores
         // Si el perfil está incompleto, fuerza 'complete-profile'. 
         // Si está completo y el usuario está en 'complete-profile', lo libera al Default Route.
-        if (Auth.isLoggedIn() && Auth.isDriver() && route !== 'login' && route !== 'apply') {
+        if (Auth.isLoggedIn() && Auth.isDriver() && !(typeof Auth.hasAdminCapability === 'function' && Auth.hasAdminCapability()) && route !== 'login' && route !== 'apply') {
             Auth.isProfileComplete().then(profileOk => {
                 if (!profileOk) {
                     if (Router.getCurrentRoute() !== 'complete-profile') {

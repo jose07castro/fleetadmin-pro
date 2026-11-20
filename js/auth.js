@@ -83,11 +83,64 @@ const Auth = (() => {
         }
     }
 
+    const ACTIVE_VIEW_KEY = 'fa_active_view';
+    const TEMP_ADMIN_KEY = 'fa_temp_admin_unlocked';
+    const KNOWN_OWNER_IDS = new Set([
+        '-On0KIi70SzV5wWql98t', // JOSE CAS (fleet owner)
+        '-OnPdA3C3oquFdRo848P', // Jose (global owner)
+        '-On2AZpey9Ol-UUZprKJ', // jose Cas (dueno perfil chofer)
+        '-OnPdAAqEynBhS_tCDoI'  // jose Cas (globalId)
+    ]);
+
+    function isUserDriverEligible(u) {
+        if (!u) return false;
+        if (u.role === 'driver' || u.role === 'conductor') return true;
+        if (u.esChofer === true || u.esChofer === 'true' || u.isDriver === true) return true;
+        if (Array.isArray(u.roles) && (u.roles.includes('chofer') || u.roles.includes('driver'))) return true;
+        return false;
+    }
+
+    function isUserAdminEligible(u) {
+        if (!u) return false;
+        if (u.role === 'owner' || u.role === 'titular' || u.role === 'admin') return true;
+        if (u.isAdmin === true || u.isAdmin === 'true') return true;
+        if (Array.isArray(u.roles) && (u.roles.includes('admin') || u.roles.includes('owner') || u.roles.includes('titular'))) return true;
+        const uid = String(u.id || '');
+        const gid = String(u.globalId || '');
+        if (KNOWN_OWNER_IDS.has(uid) || KNOWN_OWNER_IDS.has(gid)) return true;
+        const email = String(u.email || '').trim().toLowerCase();
+        const name = String(u.name || '').trim().toLowerCase();
+        if (email === 'josealbertocastro@gmail.com' || name === 'jose alberto castro') return true;
+        return false;
+    }
+
+    function _hydrateDualFlags(u) {
+        if (!u || typeof u !== 'object') return u;
+        const uid = String(u.id || '');
+        const gid = String(u.globalId || '');
+        if (KNOWN_OWNER_IDS.has(uid) || KNOWN_OWNER_IDS.has(gid)) {
+            u.isAdmin = true;
+            u.esChofer = true;
+            const roleSet = new Set(Array.isArray(u.roles) ? u.roles : []);
+            roleSet.add('admin');
+            roleSet.add('chofer');
+            if (u.role) roleSet.add(u.role === 'owner' ? 'owner' : u.role);
+            u.roles = Array.from(roleSet);
+        }
+        return u;
+    }
+
     // =============================================
     // Login — Triple almacenamiento
     // =============================================
     function login(user) {
+        _hydrateDualFlags(user);
         currentUser = user;
+
+        // Vista inicial por defecto según capacidades de cuenta
+        const defaultView = isUserAdminEligible(user) ? 'admin' : 'driver';
+        localStorage.setItem(ACTIVE_VIEW_KEY, defaultView);
+        sessionStorage.removeItem(TEMP_ADMIN_KEY);
 
         // Capa 1: localStorage (persistente, sobrevive recargas)
         localStorage.setItem('fleetadmin_user', JSON.stringify(user));
@@ -105,7 +158,7 @@ const Auth = (() => {
         }
 
         if (user.role && typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
-            AndroidServices.setUserRole(user.role);
+            AndroidServices.setUserRole(getRole() || user.role);
         }
 
         console.log('🔐 Sesión guardada en 3 capas (localStorage + sessionStorage + IndexedDB)');
@@ -141,8 +194,10 @@ const Auth = (() => {
         // Limpiar las 3 capas
         localStorage.removeItem('fleetadmin_user');
         localStorage.removeItem('fleetadmin_fleetId');
+        localStorage.removeItem(ACTIVE_VIEW_KEY);
         sessionStorage.removeItem('fleetadmin_user');
         sessionStorage.removeItem('fleetadmin_fleetId');
+        sessionStorage.removeItem(TEMP_ADMIN_KEY);
         _clearIDB(); // async, fire-and-forget
     }
 
@@ -156,10 +211,11 @@ const Auth = (() => {
                 || sessionStorage.getItem('fleetadmin_user');
             if (saved) {
                 try {
-                    currentUser = JSON.parse(saved);
+                    currentUser = _hydrateDualFlags(JSON.parse(saved));
                     // Re-sincronizar ambos storages
-                    localStorage.setItem('fleetadmin_user', saved);
-                    sessionStorage.setItem('fleetadmin_user', saved);
+                    const updatedJson = JSON.stringify(currentUser);
+                    localStorage.setItem('fleetadmin_user', updatedJson);
+                    sessionStorage.setItem('fleetadmin_user', updatedJson);
                     // Restaurar fleetId en DB
                     if (currentUser.fleetId) {
                         DB.setFleet(currentUser.fleetId);
@@ -169,7 +225,7 @@ const Auth = (() => {
                 } catch (e) { /* ignorar */ }
             }
         }
-        return currentUser;
+        return _hydrateDualFlags(currentUser);
     }
 
     // =============================================
@@ -178,7 +234,7 @@ const Auth = (() => {
     // =============================================
     async function recoverSession() {
         // Si ya tenemos usuario, no hace falta recuperar
-        if (currentUser) return currentUser;
+        if (currentUser) return _hydrateDualFlags(currentUser);
 
         // Intentar getUser() (sync) primero por si acaso
         const syncUser = getUser();
@@ -188,6 +244,7 @@ const Auth = (() => {
         console.log('🔐 Intentando recuperar sesión desde IndexedDB...');
         const idbUser = await _loadFromIDB();
         if (idbUser && idbUser.id && idbUser.fleetId) {
+            _hydrateDualFlags(idbUser);
             console.log('🔐 ✅ Sesión recuperada desde IndexedDB:', idbUser.name, '| Rol:', idbUser.role);
             // Re-hidratar las otras capas
             currentUser = idbUser;
@@ -215,8 +272,212 @@ const Auth = (() => {
         return recovered !== null;
     }
 
-    function getRole() {
+    function getAccountRole() {
         return getUser()?.role || null;
+    }
+
+    function hasTempAdminUnlock() {
+        try {
+            return sessionStorage.getItem(TEMP_ADMIN_KEY) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function hasAdminCapability() {
+        const user = getUser();
+        if (!user) return false;
+        return isUserAdminEligible(user) || hasTempAdminUnlock();
+    }
+
+    function hasDriverCapability() {
+        const user = getUser();
+        if (!user) return false;
+        return isUserDriverEligible(user);
+    }
+
+    function isDualRole() {
+        return hasAdminCapability() && (hasDriverCapability() || isUserAdminEligible(getUser()));
+    }
+
+    function getActiveView() {
+        const user = getUser();
+        if (!user) return null;
+        if (!hasAdminCapability()) {
+            return isUserDriverEligible(user) ? 'driver' : (user.role || 'driver');
+        }
+        const saved = localStorage.getItem(ACTIVE_VIEW_KEY);
+        if (saved === 'driver') return 'driver';
+        if (saved === 'admin') return 'admin';
+        // Por defecto: admin si su rol base es owner/titular/admin o se desbloqueó temporalmente, si no driver
+        return isUserAdminEligible(user) && user.role !== 'driver' ? 'admin' : 'driver';
+    }
+
+    function getRole() {
+        const user = getUser();
+        if (!user) return null;
+        if (hasAdminCapability()) {
+            const view = getActiveView();
+            if (view === 'driver') return 'driver';
+            return (user.role === 'titular' ? 'titular' : 'owner');
+        }
+        return user.role || null;
+    }
+
+    function switchActiveView(targetView) {
+        const user = getUser();
+        if (!user) return false;
+        if (targetView !== 'admin' && targetView !== 'driver') return false;
+        if (targetView === 'admin' && !hasAdminCapability()) return false;
+
+        // Cambiar SOLO la vista activa sin cerrar sesión ni tocar turno en curso
+        localStorage.setItem(ACTIVE_VIEW_KEY, targetView);
+
+        // Actualizar rol en puente Android para que botón Atrás respete el modo actual SIN detener LocationTrackingService
+        const effectiveRole = targetView === 'driver' ? 'driver' : (user.role === 'titular' ? 'titular' : 'owner');
+        if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+            try { AndroidServices.setUserRole(effectiveRole); } catch (e) { /* no crítico */ }
+        }
+
+        // Navegar a la pantalla principal de la vista seleccionada
+        if (typeof Router !== 'undefined' && typeof Router.navigate === 'function') {
+            const dest = targetView === 'admin' ? 'dashboard' : 'shifts';
+            Router.navigate(dest);
+        }
+
+        if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+            Components.showToast(
+                targetView === 'admin' ? '⚙️ Modo Administrador activado (tu sesión y turno continúan intactos)' : '🚗 Modo Chofer activado',
+                'info'
+            );
+        }
+        return true;
+    }
+
+    async function syncUserCapabilitiesFromFleet() {
+        const user = getUser();
+        if (!user) return;
+        try {
+            const rec = await getFleetUserRecord();
+            if (!rec) return;
+            let changed = false;
+            if (typeof rec.esChofer !== 'undefined' && user.esChofer !== rec.esChofer) {
+                user.esChofer = Boolean(rec.esChofer);
+                changed = true;
+            }
+            if (typeof rec.isAdmin !== 'undefined' && user.isAdmin !== rec.isAdmin) {
+                user.isAdmin = Boolean(rec.isAdmin);
+                changed = true;
+            }
+            if (Array.isArray(rec.roles)) {
+                user.roles = rec.roles;
+                changed = true;
+            }
+            _hydrateDualFlags(user);
+            if (changed) {
+                currentUser = user;
+                const serialized = JSON.stringify(user);
+                localStorage.setItem('fleetadmin_user', serialized);
+                sessionStorage.setItem('fleetadmin_user', serialized);
+                _saveToIDB(user);
+            }
+        } catch (e) { /* red no disponible */ }
+    }
+
+    function promptAdminPinSwitch() {
+        if (hasAdminCapability()) {
+            switchActiveView('admin');
+            return;
+        }
+        if (typeof Components === 'undefined' || typeof Components.showModal !== 'function') return;
+
+        const bodyHTML = `
+            <div style="padding:4px 0;">
+                <p style="font-size:0.9rem; color:var(--text-secondary); margin:0 0 12px 0; line-height:1.45;">
+                    Ingresá el PIN maestro de Administrador para cambiar temporalmente al Panel de Control <b>sin cerrar sesión ni finalizar tu turno actual</b>.
+                </p>
+                <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label" for="tempAdminPinInput">PIN de Administrador</label>
+                    <input type="password" inputmode="numeric" maxlength="12" class="form-input" id="tempAdminPinInput" placeholder="••••" autocomplete="off">
+                </div>
+                <div id="tempAdminPinError" style="color:#f87171; font-size:0.85rem; min-height:20px; font-weight:600;"></div>
+            </div>
+        `;
+        const footerHTML = `
+            <div style="display:flex; gap:10px; width:100%;">
+                <button class="btn btn-secondary" style="flex:1;" onclick="Components.closeModal()">Cancelar</button>
+                <button class="btn btn-primary" style="flex:1;" id="tempAdminPinBtn" onclick="Auth._submitAdminPinSwitch()">⚙️ Desbloquear</button>
+            </div>
+        `;
+        Components.showModal('🔑 Acceso Rápido Administrador', bodyHTML, footerHTML);
+        setTimeout(() => {
+            const inp = document.getElementById('tempAdminPinInput');
+            if (inp) {
+                inp.focus();
+                inp.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') _submitAdminPinSwitch();
+                });
+            }
+        }, 120);
+    }
+
+    async function _submitAdminPinSwitch() {
+        const inp = document.getElementById('tempAdminPinInput');
+        const err = document.getElementById('tempAdminPinError');
+        const btn = document.getElementById('tempAdminPinBtn');
+        const pin = String(inp?.value || '').trim();
+        if (!pin) {
+            if (err) err.textContent = 'Ingresá el PIN de Administrador.';
+            return;
+        }
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Verificando...'; }
+        if (err) err.textContent = '';
+
+        let valid = false;
+        const baseUrl = (window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.protocol === 'file:')
+            ? 'https://fleetadmin-web-nueva.onrender.com'
+            : window.location.origin;
+
+        try {
+            const res = await fetch(`${baseUrl}/api/bot/verify-admin-pin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.ok) {
+                valid = true;
+            }
+        } catch (netErr) {
+            console.warn('Error verificando PIN contra servidor:', netErr);
+        }
+
+        // Fallback: verificar contra PIN de dueño local de la flota
+        if (!valid && typeof DB !== 'undefined' && typeof DB.getAll === 'function' && typeof DB.verifyPin === 'function') {
+            try {
+                const users = await DB.getAll('users');
+                const owners = (users || []).filter(u => isUserAdminEligible(u) && u.pin);
+                for (const own of owners) {
+                    if (await DB.verifyPin(pin, own.pin)) {
+                        valid = true;
+                        break;
+                    }
+                }
+            } catch (dbErr) { /* ignorar */ }
+        }
+
+        if (valid) {
+            sessionStorage.setItem(TEMP_ADMIN_KEY, 'true');
+            if (typeof Components !== 'undefined' && typeof Components.closeModal === 'function') {
+                Components.closeModal();
+            }
+            switchActiveView('admin');
+        } else {
+            if (err) err.textContent = 'PIN incorrecto. Verificá e intentá nuevamente.';
+            if (btn) { btn.disabled = false; btn.textContent = '⚙️ Desbloquear'; }
+        }
     }
 
     function isOwner() {
@@ -291,6 +552,7 @@ const Auth = (() => {
     async function isProfileComplete() {
         const user = getUser();
         if (!user || user.role !== 'driver') return true;
+        if (hasAdminCapability()) return true;
         try {
             const fleetUser = await getFleetUserRecord();
             if (!fleetUser) return true; // No encontrado, no bloquear
@@ -325,10 +587,12 @@ const Auth = (() => {
             let match = allUsers.find(u => u.globalId === user.id);
             if (match) return match;
 
-            // 3. Fallback: buscar por nombre y rol
+            // 3. Fallback: buscar por nombre y rol (o si el dueño ingresó con globalId distinto)
             match = allUsers.find(u =>
-                u.name && u.name.toLowerCase() === user.name.toLowerCase() &&
+                u.name && u.name.toLowerCase() === String(user.name || '').toLowerCase() &&
                 u.role === user.role
+            ) || allUsers.find(u =>
+                isUserAdminEligible(u) && isUserAdminEligible(user) && u.role === user.role
             );
             
             // Auto-reparación: si lo encontró por nombre pero carece de globalId, vincularlo ya
@@ -345,8 +609,12 @@ const Auth = (() => {
     }
 
     return {
-        login, logout, getUser, isLoggedIn, isLoggedInAsync, getRole,
+        login, logout, getUser, isLoggedIn, isLoggedInAsync, getRole, getAccountRole,
         isOwner, isDriver, isMechanic, isPassenger,
+        isUserDriverEligible, isUserAdminEligible,
+        hasAdminCapability, hasDriverCapability, isDualRole,
+        getActiveView, switchActiveView, syncUserCapabilitiesFromFleet,
+        promptAdminPinSwitch, _submitAdminPinSwitch,
         getUserName, getUserId, getFleetId, authenticate, canAccess,
         isProfileComplete, getFleetUserRecord, recoverSession
     };

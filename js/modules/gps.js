@@ -121,6 +121,8 @@ const GPSModule = (() => {
                     <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); z-index: 1000;" id="map-loader">
                         <div class="loader-spinner"></div>
                     </div>
+                    <!-- Botón flotante para cambiar entre Modo Chofer y Modo Admin (cuando tiene rol dual) -->
+                    ${typeof Components !== 'undefined' && typeof Components.renderViewSwitchButton === 'function' ? Components.renderViewSwitchButton('gps-floating-view-switch') : ''}
                     <!-- Botón flotante para alternar estilo de mapa -->
                     <button id="gpsMapStyleBtn" onclick="GPSModule.toggleMapStyle()" title="Cambiar Vista del Mapa" 
                         style="position:absolute; bottom: 20px; right: 12px; z-index: 1000; background: white; color: #333; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; width: 42px; height: 42px; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,0.4); font-weight: bold;">
@@ -622,7 +624,10 @@ const GPSModule = (() => {
             _fleetDriverInfo = {};
             for (const uid in users) {
                 const u = users[uid];
-                if (u && (u.role === 'driver' || u.role === 'conductor')) {
+                const isEligible = (typeof Auth !== 'undefined' && typeof Auth.isUserDriverEligible === 'function')
+                    ? Auth.isUserDriverEligible(u)
+                    : (u && (u.role === 'driver' || u.role === 'conductor'));
+                if (u && isEligible) {
                     _fleetDriverInfo[uid] = u;
                     const normName = (u.name || '').trim().toLowerCase();
                     if (normName) _fleetDriverInfo[normName] = u;

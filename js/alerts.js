@@ -169,7 +169,7 @@ const Alerts = (() => {
     // Calcular alertas de vencimiento de licencia
     async function getLicenseAlerts() {
         const users = await DB.getAll('users');
-        const drivers = users.filter(u => u.role === 'driver' && u.licenseExpiryDate);
+        const drivers = users.filter(u => (typeof Auth !== 'undefined' && Auth.isUserDriverEligible ? Auth.isUserDriverEligible(u) : u.role === 'driver') && u.licenseExpiryDate);
         const alerts = [];
         const today = new Date();
         today.setHours(0, 0, 0, 0);

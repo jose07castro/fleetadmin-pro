@@ -256,7 +256,7 @@ if (window.location.hostname === 'localhost' ||
    ============================================ */
 
 const App = (() => {
-    const LOCAL_APP_VERSION = '1.2.246';
+    const LOCAL_APP_VERSION = '1.2.247';
     window.APP_VERSION = LOCAL_APP_VERSION;
 
     let _lastResumeTime = 0; // Top-level App IIFE
@@ -283,7 +283,9 @@ const App = (() => {
     // ============================================================
     function isDriverShiftLocked() {
         try {
-            if (typeof Auth === 'undefined' || !Auth.isLoggedIn() || !Auth.isDriver()) return false;
+            if (typeof Auth === 'undefined' || !Auth.isLoggedIn()) return false;
+            const canDrive = Auth.isDriver() || (typeof Auth.hasDriverCapability === 'function' && Auth.hasDriverCapability());
+            if (!canDrive) return false;
             return localStorage.getItem('active_shift_state') === 'true' || Boolean(localStorage.getItem('active_shift_id'));
         } catch (e) {
             return false;
@@ -647,10 +649,13 @@ const App = (() => {
                             AndroidServices.setUserRole(Auth.getRole());
                         }
                         
-                        // 4.5 Cargar tema del usuario
+                        // 4.5 Cargar tema del usuario y sincronizar capacidades duales
                         const currentUserId = Auth.getUserId();
                         if (currentUserId) {
                             await applyUserTheme(currentUserId);
+                        }
+                        if (typeof Auth.syncUserCapabilitiesFromFleet === 'function') {
+                            Auth.syncUserCapabilitiesFromFleet().catch(() => {});
                         }
                         _initRemoteRestartListener();
 
@@ -663,8 +668,8 @@ const App = (() => {
                             trackAppInstallation(currentUserId, currentUser);
                         }
 
-                        // Bloqueo de perfil incompleto al restaurar sesión
-                        if (Auth.isDriver()) {
+                        // Bloqueo de perfil incompleto al restaurar sesión (no bloquear al admin/dual-role)
+                        if (Auth.isDriver() && !(typeof Auth.hasAdminCapability === 'function' && Auth.hasAdminCapability())) {
                             try {
                                 const profileOk = await Auth.isProfileComplete();
                                 if (!profileOk) {
@@ -679,8 +684,8 @@ const App = (() => {
                             }
                         }
                         
-                        // Sincronizar turno activo/GPS al iniciar la app o apagar si no es driver
-                        if (Auth.isDriver()) {
+                        // Sincronizar turno activo/GPS al iniciar la app (incluye Admin con esChofer: true)
+                        if (Auth.isDriver() || (typeof Auth.hasDriverCapability === 'function' && Auth.hasDriverCapability())) {
                             await syncActiveShiftGPS();
                         } else {
                             if (typeof AndroidServices !== 'undefined') {
@@ -822,7 +827,7 @@ const App = (() => {
         if (realtimeListenersActive) return;
         realtimeListenersActive = true;
 
-        const isDriverRole = typeof Auth !== 'undefined' && Auth.isDriver();
+        const isDriverRole = typeof Auth !== 'undefined' && Auth.isDriver() && !(typeof Auth.hasAdminCapability === 'function' && Auth.hasAdminCapability());
         const stores = isDriverRole
             ? ['vehicles', 'shifts']
             : ['users', 'vehicles', 'shifts', 'oilLogs', 'repairs', 'beltChanges'];
@@ -857,7 +862,7 @@ const App = (() => {
                 console.log(`🔄 Sync: ${store} actualizado (${items.length} items)`);
 
                 // Sincronizar turno activo/GPS si cambian los turnos
-                if (store === 'shifts' && typeof Auth !== 'undefined' && Auth.isDriver()) {
+                if (store === 'shifts' && typeof Auth !== 'undefined' && (Auth.isDriver() || (typeof Auth.hasDriverCapability === 'function' && Auth.hasDriverCapability()))) {
                     syncActiveShiftGPS();
                 }
 
@@ -1888,13 +1893,14 @@ const App = (() => {
     }
 
     async function syncActiveShiftGPS() {
-        if (typeof Auth === 'undefined' || !Auth.isDriver()) return;
+        const canActAsDriver = typeof Auth !== 'undefined' && (Auth.isDriver() || (typeof Auth.hasDriverCapability === 'function' && Auth.hasDriverCapability()));
+        if (!canActAsDriver) return;
         try {
             const userId = Auth.getUserId();
             if (!userId) return;
 
             if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
-                AndroidServices.setUserRole('driver');
+                AndroidServices.setUserRole(Auth.getRole() || 'driver');
             }
 
             const wasLocked = localStorage.getItem('active_shift_state') === 'true';
@@ -1954,7 +1960,8 @@ const App = (() => {
                 // MANTENEMOS EL FOREGROUND SERVICE VIVO para las alertas en segundo plano
                 if (typeof AndroidServices !== 'undefined') {
                     try {
-                        AndroidServices.enableForegroundService(null, 'Modo Copiloto (Alertas activas)');
+                        const fgLabel = Auth.isOwner() ? 'Modo Administrador (Alertas activas)' : 'Modo Copiloto (Alertas activas)';
+                        AndroidServices.enableForegroundService(null, fgLabel);
                         if (typeof AndroidServices.setShiftActive === 'function') AndroidServices.setShiftActive(false);
                     } catch (e) {
                         console.warn('Error updating foreground service:', e);
@@ -1976,7 +1983,8 @@ const App = (() => {
 
     async function reportAppVersionToServer() {
         const user = Auth.getUser();
-        if (!user || user.role !== 'driver') return; // Reportar específicamente para conductores
+        const isEligible = user && (typeof Auth.isUserDriverEligible === 'function' ? Auth.isUserDriverEligible(user) : user.role === 'driver');
+        if (!isEligible) return; // Reportar para conductores y admins con esChofer
 
         let version = 'v' + LOCAL_APP_VERSION; // default
         if (typeof window.NativeServiceBridge !== 'undefined') {

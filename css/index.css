@@ -850,4 +850,148 @@ button {
     .dashboard-community-grid {
         grid-template-columns: 1fr;
     }
+
+    .app-header {
+        padding: 0 var(--space-3);
+        gap: var(--space-2);
+    }
+
+    .header-left {
+        min-width: 0;
+        flex: 1;
+        gap: var(--space-2);
+    }
+
+    .header-title {
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .header-right {
+        flex-shrink: 0;
+        gap: 6px;
+    }
+
+    .header-right .toggle-group .toggle-option {
+        padding: 3px 6px;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 440px) {
+    .header-right .toggle-group:last-of-type {
+        display: none;
+    }
+}
+
+/* --- Botón fijo cambio Chofer <-> Admin (Rol Dual) --- */
+.view-switch-pill {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease, filter 0.15s ease;
+    white-space: nowrap;
+    z-index: 60;
+}
+
+.view-switch-pill:active {
+    transform: scale(0.95);
+}
+
+.view-switch-to-admin {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #ffffff;
+    border-color: rgba(196, 181, 253, 0.45);
+}
+
+.view-switch-to-driver {
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: #ffffff;
+    border-color: rgba(167, 243, 208, 0.45);
+}
+
+/* --- Banner fijo en Vista Admin cuando hay un turno de chofer abierto --- */
+.active-shift-admin-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 16px;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.18));
+    border-bottom: 1px solid rgba(16, 185, 129, 0.45);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    position: sticky;
+    top: var(--header-height);
+    z-index: 45;
+    backdrop-filter: blur(8px);
+}
+
+.active-shift-admin-banner-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.active-shift-pulse-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    animation: shiftPulseDot 1.6s infinite;
+    flex-shrink: 0;
+}
+
+@keyframes shiftPulseDot {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.active-shift-return-btn {
+    background: #10b981;
+    color: #06281e;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.gps-floating-view-switch {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .app-layout.route-gps .gps-floating-view-switch {
+        display: inline-flex !important;
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 1005;
+    }
+
+    .active-shift-admin-banner {
+        padding: 8px 12px;
+    }
+
+    .active-shift-banner-sub {
+        display: none;
+    }
 }

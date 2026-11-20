@@ -161,7 +161,7 @@ const InvoicingModule = (() => {
             const currentDriver = await _getLoggedDriverRecord();
 
             // Determinar chofer seleccionado inicialmente
-            const driverList = _drivers.filter(u => u.role === 'driver');
+            const driverList = _drivers.filter(u => (typeof Auth !== 'undefined' && Auth.isUserDriverEligible ? Auth.isUserDriverEligible(u) : u.role === 'driver'));
             const initialDriver = isDriver
                 ? (currentDriver || driverList[0] || {})
                 : (driverList[0] || currentDriver || {});

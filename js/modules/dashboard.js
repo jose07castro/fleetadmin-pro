@@ -158,7 +158,7 @@ window.DashboardModule = (() => {
                 try {
                     const allGlobal = await DB.getAllGlobalUsers();
                     const globalOwners = allGlobal.filter(u => u.role === 'owner').length;
-                    const globalDrivers = allGlobal.filter(u => u.role === 'driver').length;
+                    const globalDrivers = allGlobal.filter(u => (typeof Auth !== 'undefined' && Auth.isUserDriverEligible ? Auth.isUserDriverEligible(u) : u.role === 'driver')).length;
                     
                     globalStatsHTML = `
                     <div class="dashboard-section" style="margin-bottom: var(--space-6);">
@@ -726,11 +726,16 @@ window.DashboardModule = (() => {
                 <div style="flex:1;">
                     <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
                         ${safeName}
-                        ${u.role === 'driver' && typeof Components !== 'undefined' && Components.getVersionBadge ? Components.getVersionBadge(userVer) : ''}
+                        ${(u.role === 'driver' || u.esChofer) && typeof Components !== 'undefined' && Components.getVersionBadge ? Components.getVersionBadge(userVer) : ''}
                     </div>
-                    <span class="badge badge-${u.role === 'owner' ? 'primary' : u.role === 'driver' ? 'success' : 'warning'}">
-                        ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
-                    </span>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                        <span class="badge badge-${u.role === 'owner' ? 'primary' : u.role === 'driver' ? 'success' : 'warning'}">
+                            ${u.role === 'owner' ? '👑' : u.role === 'driver' ? '🚗' : '🔧'} ${I18n.t('role_' + (u.role || 'driver'))}
+                        </span>
+                        ${u.role !== 'driver' && (u.esChofer || (Array.isArray(u.roles) && (u.roles.includes('chofer') || u.roles.includes('driver')))) ? `
+                            <span class="badge badge-success">🚗 Rol Dual: Chofer</span>
+                        ` : ''}
+                    </div>
                 </div>
                 <div style="display:flex; gap:var(--space-2); align-items:center;">
                     <button class="btn btn-ghost btn-sm" onclick="DashboardModule.editUser('${u.id}')">✏️</button>
@@ -773,11 +778,18 @@ window.DashboardModule = (() => {
                 </div>
                 <div class="form-group">
                     <label class="form-label">Rol</label>
-                    <select class="form-select" id="newUserRole">
+                    <select class="form-select" id="newUserRole" onchange="document.getElementById('newUserDualGroup').style.display = this.value === 'owner' ? 'block' : 'none'">
                         <option value="owner">${I18n.t('role_owner')}</option>
                         <option value="driver">${I18n.t('role_driver')}</option>
                         <option value="mechanic">${I18n.t('role_mechanic')}</option>
                     </select>
+                </div>
+                <div class="form-group" id="newUserDualGroup" style="display:block; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:var(--radius-md); padding:10px 12px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600; font-size:0.9rem;">
+                        <input type="checkbox" id="newUserEsChofer" style="width:18px; height:18px;">
+                        <span>🚗 También opera como Chofer (Rol Dual)</span>
+                    </label>
+                    <small style="display:block; color:var(--text-tertiary); margin-top:4px;">Permite iniciar turnos, aparecer en planillas/facturas y cambiar rápido entre Modo Admin y Modo Chofer.</small>
                 </div>
                 ${Components.renderPhotoCapture('newUserPhoto', I18n.t('user_photo') + ' (' + I18n.t('optional') + ')')}
             `,
@@ -792,6 +804,7 @@ window.DashboardModule = (() => {
         const name = document.getElementById('newUserName')?.value.trim();
         const pin = document.getElementById('newUserPin')?.value.trim();
         const role = document.getElementById('newUserRole')?.value;
+        const esChofer = role === 'owner' ? Boolean(document.getElementById('newUserEsChofer')?.checked) : (role === 'driver');
         const photo = Components.getPhotoData('newUserPhoto');
 
         if (!name || !pin || pin.length < 4) {
@@ -808,13 +821,14 @@ window.DashboardModule = (() => {
         }
 
         const fleetId = Auth.getFleetId();
+        const isAdmin = role === 'owner' || role === 'titular';
+        const roles = isAdmin ? (esChofer ? ['admin', 'owner', 'chofer'] : ['admin', 'owner']) : [role];
 
         // Crear en globalUsers para que pueda loguearse
-        const globalId = await DB.addGlobalUser({
-            name, pin: hashedPin, role, fleetId
-        });
+        const globalPayload = { name, pin: hashedPin, role, fleetId, isAdmin, esChofer, roles };
+        const globalId = await DB.addGlobalUser(globalPayload);
 
-        await DB.add('users', { name, pin: hashedPin, role, profilePhoto: photo, globalId });
+        await DB.add('users', { name, pin: hashedPin, role, isAdmin, esChofer, roles, profilePhoto: photo, globalId });
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');
         showUsers();
@@ -829,6 +843,8 @@ window.DashboardModule = (() => {
         alert('🔍 DEBUG editUser\nID: ' + userId + '\nNombre: ' + (user.name || 'NULL') + '\nDomicilio: ' + (user.address || 'NULL') + '\nWhatsApp: ' + (user.whatsapp || 'NULL') + '\n¿Foto frente?: ' + !!user.licenseFrontPhoto + '\n¿Foto dorso?: ' + !!user.licenseBackPhoto);
 
         const isDriver = user.role === 'driver';
+        const isAdminAccount = user.role === 'owner' || user.role === 'titular';
+        const hasEsChofer = isDriver || Boolean(user.esChofer) || (Array.isArray(user.roles) && (user.roles.includes('chofer') || user.roles.includes('driver')));
         // Proteger contra null/undefined en campos de foto
         const hasFront = !!(user.licenseFrontPhoto && typeof user.licenseFrontPhoto === 'string' && user.licenseFrontPhoto.length > 0);
         const hasBack = !!(user.licenseBackPhoto && typeof user.licenseBackPhoto === 'string' && user.licenseBackPhoto.length > 0);
@@ -871,7 +887,17 @@ window.DashboardModule = (() => {
                 </div>
                 ${Components.renderPhotoCapture('editUserPhoto', I18n.t('user_change_photo'))}
 
-                ${isDriver ? `
+                ${isAdminAccount ? `
+                <div class="form-group" style="margin-top:var(--space-3); background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.35); border-radius:var(--radius-md); padding:10px 12px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:700; font-size:0.95rem;">
+                        <input type="checkbox" id="editUserEsChofer" ${hasEsChofer ? 'checked' : ''} onchange="const sec = document.getElementById('editDriverLegajoSection'); if(sec) sec.style.display = this.checked ? 'block' : 'none';" style="width:18px; height:18px;">
+                        <span>🚗 También opera como Chofer (Rol Dual)</span>
+                    </label>
+                    <small style="display:block; color:var(--text-secondary); margin-top:4px;">Habilita turnos, cobros, facturación y botón rápido Modo Chofer ↔ Modo Admin con la misma cuenta.</small>
+                </div>
+                ` : ''}
+
+                <div id="editDriverLegajoSection" style="display:${hasEsChofer ? 'block' : 'none'};">
                 <!-- ====== LEGAJO DIGITAL DEL CONDUCTOR ====== -->
                 <div style="border-top:2px solid var(--color-primary); padding-top:var(--space-4); margin-top:var(--space-4);">
                     <div style="font-weight:700; margin-bottom:var(--space-3); color:var(--color-primary); font-size:var(--font-size-lg);">
@@ -947,7 +973,7 @@ window.DashboardModule = (() => {
                         <input type="hidden" id="editLicenseBackData" value="">
                     </div>
                 </div>
-                ` : ''}
+                </div>
             `,
             `
                 <button class="btn btn-secondary" onclick="Components.closeModal(); DashboardModule.showUsers()">${I18n.t('cancel')}</button>
@@ -998,8 +1024,19 @@ window.DashboardModule = (() => {
             user.profilePhoto = photo;
         }
 
-        // Si es conductor, capturar campos del legajo
-        if (user.role === 'driver') {
+        // Rol Dual: si es owner/titular, guardar flag esChofer + isAdmin + roles
+        const isAdminAccount = user.role === 'owner' || user.role === 'titular';
+        if (isAdminAccount) {
+            const dualCheckbox = document.getElementById('editUserEsChofer');
+            if (dualCheckbox) {
+                user.esChofer = Boolean(dualCheckbox.checked);
+            }
+            user.isAdmin = true;
+            user.roles = user.esChofer ? ['admin', 'owner', 'chofer'] : ['admin', 'owner'];
+        }
+
+        // Si es conductor o titular con rol dual, capturar campos del legajo
+        if (user.role === 'driver' || user.esChofer) {
             const address = document.getElementById('editDriverAddress')?.value.trim();
             const whatsapp = document.getElementById('editDriverWhatsApp')?.value.trim();
             const licenseNumber = document.getElementById('editLicenseNumber')?.value.trim();
@@ -1029,6 +1066,9 @@ window.DashboardModule = (() => {
         if (user.globalId) {
             try {
                 const globalUpdate = { name: user.name, pin: user.pin };
+                if (typeof user.esChofer !== 'undefined') globalUpdate.esChofer = Boolean(user.esChofer);
+                if (typeof user.isAdmin !== 'undefined') globalUpdate.isAdmin = Boolean(user.isAdmin);
+                if (Array.isArray(user.roles)) globalUpdate.roles = user.roles;
                 if (user.profilePhoto) {
                     globalUpdate.profilePhoto = user.profilePhoto;
                 }
@@ -1044,6 +1084,9 @@ window.DashboardModule = (() => {
 
         // Guardar localmente en la flota
         await DB.put('users', user);
+        if (typeof Auth !== 'undefined' && typeof Auth.syncUserCapabilitiesFromFleet === 'function') {
+            await Auth.syncUserCapabilitiesFromFleet().catch(() => {});
+        }
 
         Components.closeModal();
         Components.showToast(I18n.t('success') + ' ✅', 'success');

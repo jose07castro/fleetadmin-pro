@@ -22,6 +22,7 @@ const Components = (() => {
                 <div class="sidebar-overlay" id="sidebarOverlay"></div>
                 <div class="app-main">
                     ${renderHeader(activeRoute)}
+                    ${renderActiveShiftAdminBanner()}
                     <div id="announcement-banner"></div>
                     <div class="app-content" id="pageContent">
                         ${content}
@@ -32,8 +33,28 @@ const Components = (() => {
         `;
     }
 
+    function renderActiveShiftAdminBanner() {
+        if (typeof Auth === 'undefined' || !Auth.isLoggedIn() || !Auth.hasAdminCapability()) return '';
+        if (Auth.getActiveView() !== 'admin') return '';
+        const hasShift = localStorage.getItem('active_shift_state') === 'true' || Boolean(localStorage.getItem('active_shift_id'));
+        if (!hasShift) return '';
+
+        return `
+            <div class="active-shift-admin-banner" id="activeShiftAdminBanner">
+                <div class="active-shift-admin-banner-info">
+                    <span class="active-shift-pulse-dot"></span>
+                    <span><strong>Turno activo en curso</strong> <span class="active-shift-banner-sub">— Cronómetro y GPS corriendo en segundo plano</span></span>
+                </div>
+                <button class="active-shift-return-btn" onclick="Auth.switchActiveView('driver')">
+                    🚗 Volver a mi Turno
+                </button>
+            </div>
+        `;
+    }
+
     function _isDriverShiftExitLocked(role) {
-        if (role !== 'driver') return false;
+        const isDriverOrDual = role === 'driver' || (typeof Auth !== 'undefined' && typeof Auth.hasDriverCapability === 'function' && Auth.hasDriverCapability());
+        if (!isDriverOrDual) return false;
         if (typeof App !== 'undefined' && typeof App.isDriverShiftLocked === 'function') {
             return App.isDriverShiftLocked();
         }
@@ -44,16 +65,25 @@ const Components = (() => {
     function renderSidebar(activeRoute, user, role) {
         const navItems = getNavItems(role);
         const shiftExitLocked = _isDriverShiftExitLocked(role);
+        const canSwitchDual = typeof Auth !== 'undefined' && Auth.hasAdminCapability() && Auth.isDualRole();
+        const currentView = typeof Auth !== 'undefined' ? Auth.getActiveView() : role;
+        const canPinUnlock = typeof Auth !== 'undefined' && !Auth.hasAdminCapability() && Auth.isUserDriverEligible(user);
 
         return `
             <aside class="app-sidebar" id="sidebar">
                 <div class="sidebar-header">
-                    <div class="sidebar-logo">
+                    <div class="sidebar-logo" ${canPinUnlock ? 'onclick="Auth.promptAdminPinSwitch()" title="Acceso Administrador (PIN)" style="cursor:pointer;"' : ''}>
                         <img src="assets/sidebar-banner.png" class="sidebar-logo-img" alt="Punto Alertas Branding">
                     </div>
                 </div>
                 <div class="sidebar-scrollable" id="sidebarScrollable">
                     <nav class="sidebar-nav">
+                        ${canSwitchDual ? `
+                            <div class="nav-item view-switch-sidebar-btn" onclick="document.getElementById('sidebar')?.classList.remove('open'); document.getElementById('sidebarOverlay')?.classList.remove('active'); Auth.switchActiveView('${currentView === 'admin' ? 'driver' : 'admin'}')" style="margin-bottom: var(--space-3); background: ${currentView === 'admin' ? 'rgba(16, 185, 129, 0.14)' : 'rgba(99, 102, 241, 0.16)'}; border: 1px solid ${currentView === 'admin' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(99, 102, 241, 0.45)'}; color: ${currentView === 'admin' ? '#34d399' : '#a5b4fc'}; font-weight: 700; border-radius: var(--radius-md);">
+                                <span class="nav-icon">${currentView === 'admin' ? '🚗' : '⚙️'}</span>
+                                <span>${currentView === 'admin' ? 'Cambiar a Modo Chofer' : 'Cambiar a Modo Admin'}</span>
+                            </div>
+                        ` : ''}
                         <div class="nav-section-title">${I18n.t('nav_operations')}</div>
                         ${navItems.filter(n => n.section === 'ops').map(item => {
                             if (item.route === 'apply') {
@@ -235,6 +265,29 @@ const Components = (() => {
         `;
     }
 
+    // --- Botón fijo de cambio Chofer ↔ Administrador (Rol Dual) ---
+    function renderViewSwitchButton(extraClass = '') {
+        if (typeof Auth === 'undefined' || !Auth.isLoggedIn() || !Auth.hasAdminCapability()) return '';
+        if (!Auth.isDualRole()) return '';
+        const view = Auth.getActiveView();
+        if (view === 'driver') {
+            return `
+                <button class="view-switch-pill view-switch-to-admin ${extraClass}"
+                    onclick="Auth.switchActiveView('admin')"
+                    title="Ir al Panel de Administrador sin cerrar sesión ni finalizar tu turno">
+                    ⚙️ <span class="view-switch-label">Modo Admin</span>
+                </button>
+            `;
+        }
+        return `
+            <button class="view-switch-pill view-switch-to-driver ${extraClass}"
+                onclick="Auth.switchActiveView('driver')"
+                title="Pasar a Vista Chofer sin cerrar sesión">
+                🚗 <span class="view-switch-label">Modo Chofer</span>
+            </button>
+        `;
+    }
+
     // --- Header ---
     function renderHeader(activeRoute) {
         const titles = {
@@ -259,6 +312,7 @@ const Components = (() => {
                     <h1 class="header-title">${I18n.t(titles[activeRoute] || 'app_name')}</h1>
                 </div>
                 <div class="header-right">
+                    ${renderViewSwitchButton()}
                     ${renderUnitToggles()}
                 </div>
             </header>
@@ -683,6 +737,7 @@ const Components = (() => {
 
     return {
         renderLayout, renderSidebar, renderHeader, renderUnitToggles,
+        renderViewSwitchButton, renderActiveShiftAdminBanner,
         renderLanguageSelector, showModal, closeModal, showToast,
         renderPhotoCapture, handlePhoto, removePhoto, getPhotoData,
         renderEmptyState, confirm, escapeHTML, showDonationModal,

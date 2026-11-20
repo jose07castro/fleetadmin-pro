@@ -846,7 +846,7 @@ const SettingsModule = (() => {
             let licenseBadge = '';
             let editBtn = '';
             let deleteBtn = '';
-            if (u.role === 'driver') {
+            if (typeof Auth !== 'undefined' && Auth.isUserDriverEligible ? Auth.isUserDriverEligible(u) : u.role === 'driver') {
                 try {
                     const status = Alerts.getLicenseStatus(u);
                     if (status.level === 'danger') {
@@ -1281,7 +1281,7 @@ const SettingsModule = (() => {
         try {
             // Cargar lista de conductores de la flota para el select
             const allUsers = await DB.getAll('users');
-            const drivers = (allUsers || []).filter(u => u.role === 'driver');
+            const drivers = (allUsers || []).filter(u => (typeof Auth !== 'undefined' && Auth.isUserDriverEligible ? Auth.isUserDriverEligible(u) : u.role === 'driver'));
             const esc = Components.escapeHTML;
 
             const driverOptions = drivers.map(d => {
