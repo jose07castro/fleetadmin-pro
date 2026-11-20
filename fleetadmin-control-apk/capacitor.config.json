@@ -1,0 +1,18 @@
+{
+  "appId": "com.fleetadminpro.control",
+  "appName": "FleetAdmin Control",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://fleetadmin-web-nueva.onrender.com/qr",
+    "cleartext": true,
+    "errorPath": "index.html",
+    "allowNavigation": [
+      "fleetadmin-web-nueva.onrender.com",
+      "*.onrender.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

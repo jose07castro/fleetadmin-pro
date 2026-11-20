@@ -373,7 +373,7 @@ app.get('/qr', async (req, res) => {
                     </div>
                     <span class="group-jid">${jid}</span>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
+                <div class="group-row-actions" style="display:flex; align-items:center; gap:8px;">
                     <span id="badge-${safeKey}" class="badge ${isGroupActive ? 'badge-ok' : 'badge-paused'}">${isGroupActive ? 'Activo' : 'Silenciado'}</span>
                     <button class="btn btn-sm ${isGroupActive ? 'btn-toggle-on' : 'btn-toggle-off'}" 
                             data-active="${isGroupActive}" 
@@ -396,8 +396,9 @@ app.get('/qr', async (req, res) => {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FleetAdmin Pro — Panel de Control Bot & Centinela IA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#090d16">
+    <title>FleetAdmin Control — Panel Bot & Centinela IA</title>
     <style>
         :root {
             --bg-main: #090d16;
@@ -411,11 +412,17 @@ app.get('/qr', async (req, res) => {
             --text-muted: #94a3b8;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-main);
             color: var(--text-main);
-            padding: 24px 16px;
+            padding: 16px 12px 36px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -425,14 +432,47 @@ app.get('/qr', async (req, res) => {
             max-width: 860px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 16px;
+        }
+        .control-topbar {
+            position: sticky;
+            top: 8px;
+            z-index: 1200;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            background: rgba(19, 27, 46, 0.94);
+            backdrop-filter: blur(10px);
+            border: 1px solid #334155;
+            border-radius: 14px;
+            padding: 10px 14px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+        }
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 800;
+            font-size: 15px;
+            color: #f8fafc;
+        }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
         .card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 16px;
-            padding: 22px;
+            padding: 20px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
         }
         .card-header {
             display: flex;
@@ -445,11 +485,12 @@ app.get('/qr', async (req, res) => {
             gap: 10px;
         }
         .card-title {
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             font-weight: 700;
             display: flex;
             align-items: center;
             gap: 8px;
+            line-height: 1.3;
         }
         .badge {
             display: inline-flex;
@@ -459,6 +500,7 @@ app.get('/qr', async (req, res) => {
             border-radius: 9999px;
             font-weight: 700;
             font-size: 12px;
+            white-space: nowrap;
         }
         .badge-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
         .badge-paused { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
@@ -468,14 +510,15 @@ app.get('/qr', async (req, res) => {
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 9px 16px;
-            border-radius: 10px;
+            padding: 11px 16px;
+            border-radius: 11px;
             border: none;
             font-weight: 600;
-            font-size: 13px;
+            font-size: 13.5px;
             cursor: pointer;
             transition: all 0.2s ease;
             text-decoration: none;
+            min-height: 42px;
         }
         .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
         .btn:active { transform: translateY(0); }
@@ -484,24 +527,43 @@ app.get('/qr', async (req, res) => {
         .btn-amber { background: #d97706; color: white; }
         .btn-rose { background: #e11d48; color: white; }
         .btn-secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
-        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+        .btn-sm { padding: 7px 12px; font-size: 12px; border-radius: 9px; min-height: 36px; }
         .btn-toggle-on { background: #059669; color: white; }
         .btn-toggle-off { background: #334155; color: #94a3b8; }
+        .mobile-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .restart-box {
+            background: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
 
-        .qr-box { background: white; padding: 14px; border-radius: 12px; display: inline-block; margin: 15px auto; }
+        .qr-box { background: white; padding: 14px; border-radius: 14px; display: inline-block; margin: 12px auto; max-width: 100%; }
+        .qr-box img { width: 240px; max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        .qr-share-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin: 8px 0 6px;
+        }
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 16px;
-        }
-        @media (max-width: 680px) {
-            .grid-2 { grid-template-columns: 1fr; }
         }
         .form-group {
             display: flex;
             flex-direction: column;
             gap: 6px;
             text-align: left;
+            width: 100%;
         }
         .form-label {
             font-size: 13px;
@@ -516,12 +578,13 @@ app.get('/qr', async (req, res) => {
         }
         textarea.form-control, input.form-control, select.form-control {
             width: 100%;
+            max-width: 100%;
             background: #090d16;
             border: 1px solid #1e293b;
             border-radius: 10px;
             color: #f8fafc;
-            padding: 10px 12px;
-            font-size: 13px;
+            padding: 11px 12px;
+            font-size: 14px;
             font-family: inherit;
             outline: none;
             transition: border 0.2s;
@@ -541,7 +604,7 @@ app.get('/qr', async (req, res) => {
             flex-wrap: wrap;
         }
         .group-list-box {
-            max-height: 340px;
+            max-height: 360px;
             overflow-y: auto;
             border: 1px solid #1e293b;
             border-radius: 12px;
@@ -552,7 +615,7 @@ app.get('/qr', async (req, res) => {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 9px 12px;
+            padding: 10px 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
             gap: 10px;
         }
@@ -564,6 +627,7 @@ app.get('/qr', async (req, res) => {
             text-align: left;
             overflow: hidden;
             flex: 1;
+            min-width: 0;
         }
         .group-name {
             font-weight: 600;
@@ -577,24 +641,30 @@ app.get('/qr', async (req, res) => {
             font-size: 11px;
             color: var(--text-muted);
             font-family: monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .toast {
             position: fixed;
-            bottom: 24px;
-            right: 24px;
+            bottom: 20px;
+            right: 16px;
+            left: 16px;
+            max-width: 460px;
+            margin: 0 auto;
             background: #065f46;
             color: #34d399;
             border: 1px solid #059669;
-            padding: 12px 20px;
-            border-radius: 10px;
+            padding: 12px 18px;
+            border-radius: 12px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             font-weight: 600;
             font-size: 14px;
             opacity: 0;
             transform: translateY(20px);
             transition: all 0.3s ease;
-            z-index: 9999;
+            z-index: 25000;
             pointer-events: none;
+            text-align: center;
         }
         .toast.show {
             opacity: 1;
@@ -603,12 +673,12 @@ app.get('/qr', async (req, res) => {
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(4px);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(6px);
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 10000;
+            z-index: 15000;
             padding: 16px;
         }
         .modal-box {
@@ -616,7 +686,7 @@ app.get('/qr', async (req, res) => {
             border: 1px solid #1e293b;
             border-radius: 16px;
             width: 100%;
-            max-width: 460px;
+            max-width: 440px;
             padding: 22px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
         }
@@ -637,43 +707,143 @@ app.get('/qr', async (req, res) => {
             line-height: 1;
         }
         .modal-close-btn:hover { color: #f8fafc; }
+        #adminPinGateOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 20000;
+            background: rgba(5, 8, 16, 0.98);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+        .pin-card {
+            width: 100%;
+            max-width: 390px;
+            background: linear-gradient(160deg, #0f172a, #1e293b);
+            border: 1px solid rgba(14, 165, 233, 0.4);
+            border-radius: 22px;
+            padding: 28px 22px;
+            text-align: center;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+        }
+        .pin-input {
+            width: 100%;
+            background: #090d16;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            color: #f8fafc;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            text-align: center;
+            padding: 14px 12px;
+            outline: none;
+            margin: 14px 0;
+        }
+        .pin-input:focus { border-color: #0ea5e9; }
+
+        @media (max-width: 680px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 640px) {
+            body { padding: 10px 8px 34px; }
+            .container { gap: 14px; }
+            .card { padding: 16px 14px; border-radius: 14px; }
+            .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .card-title { font-size: 1.02rem; }
+            .mobile-stack { flex-direction: column; align-items: stretch; width: 100%; }
+            .mobile-stack .btn,
+            .mobile-stack select.form-control,
+            .mobile-stack input.form-control {
+                width: 100% !important;
+                min-width: 0 !important;
+                min-height: 46px;
+                font-size: 14.5px;
+            }
+            .qr-share-actions { flex-direction: column; width: 100%; }
+            .qr-share-actions .btn { width: 100%; min-height: 46px; }
+            .group-header-actions { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px !important; }
+            .group-header-actions .btn { width: 100%; min-height: 40px; }
+            .group-row { flex-direction: column; align-items: stretch; }
+            .group-row-actions { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+            .vc-footer-stack { flex-direction: column; align-items: stretch !important; }
+            .vc-footer-stack .btn { width: 100%; min-height: 46px; }
+            textarea.form-control, input.form-control, select.form-control { font-size: 16px; }
+        }
     </style>
-    ${!isConnected ? '<meta http-equiv="refresh" content="5">' : ''}
 </head>
 <body>
+    <!-- BLOQUEO POR PIN RÁPIDO DE ADMINISTRADOR (Web & APK FleetAdmin Control) -->
+    <div id="adminPinGateOverlay">
+        <div class="pin-card">
+            <div style="font-size: 46px; margin-bottom: 10px;">🛡️</div>
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 6px;">FleetAdmin Control</h2>
+            <p style="font-size: 13px; color: #94a3b8; line-height: 1.45;">
+                Ingresá tu PIN de Administrador para gestionar el Bot de WhatsApp, el Centinela IA y el reinicio de flota.
+            </p>
+            <input id="adminPinInput" type="password" inputmode="numeric" maxlength="16" class="pin-input" placeholder="••••" onkeydown="if(event.key==='Enter') verifyAdminPin();" />
+            <label style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:12.5px; color:#cbd5e1; margin-bottom:14px; cursor:pointer;">
+                <input type="checkbox" id="rememberPinDevice" checked style="width:16px; height:16px; accent-color:#0ea5e9;" />
+                Recordar acceso en este dispositivo
+            </label>
+            <button id="btnUnlockControl" class="btn btn-blue" style="width:100%; min-height:48px; font-size:15px;" onclick="verifyAdminPin()">
+                🔓 Ingresar al Panel
+            </button>
+            <p id="pinErrorMsg" style="color:#fb7185; font-size:12.5px; margin-top:10px; min-height:18px;"></p>
+        </div>
+    </div>
+
     <div class="container">
+        <!-- BARRA SUPERIOR MÓVIL COMPACTA -->
+        <div class="control-topbar">
+            <div class="topbar-brand">
+                <span>🛰️ FleetAdmin Control</span>
+                <span id="waTopStatusPill" class="badge ${isConnected ? 'badge-ok' : 'badge-wait'}">
+                    ${isConnected ? '🟢 Bot OK' : '📱 QR'}
+                </span>
+            </div>
+            <div class="topbar-actions">
+                <button class="btn btn-sm btn-secondary" onclick="pollBotQrStatus(true)" title="Actualizar estado">🔄</button>
+                <button class="btn btn-sm btn-secondary" onclick="openChangePinModal()" title="Cambiar PIN de acceso">🔑 PIN</button>
+                <button class="btn btn-sm btn-rose" onclick="lockAdminPanel()" title="Bloquear panel">🔒</button>
+            </div>
+        </div>
+
         <!-- 1. ESTADO WHATSAPP -->
         <div class="card">
             <div class="card-header">
                 <span class="card-title">🚗 FleetAdmin Pro — Bot de WhatsApp</span>
-                <span class="badge ${isConnected ? 'badge-ok' : 'badge-wait'}">
+                <span id="waStatusBadge" class="badge ${isConnected ? 'badge-ok' : 'badge-wait'}">
                     ${isConnected ? '✅ CONECTADO Y ACTIVO' : '📱 ESPERANDO QR'}
                 </span>
             </div>
             
-            <div style="margin: 10px 0; text-align:center;">
+            <div id="waQrBoxWrapper" style="margin: 8px 0; text-align:center;">
                 ${isConnected 
                     ? '<p style="font-size:15px; color:#cbd5e1;">Número Vinculado: <b style="color:#38bdf8;">+' + (diag.botNumber || 'Activo') + '</b></p>' 
-                    : '<p style="color:#94a3b8; font-size:13px;">Abrí WhatsApp en tu teléfono > Dispositivos vinculados > Vincular un dispositivo</p>'}
+                    : '<p style="color:#94a3b8; font-size:13px; margin-bottom:10px;">Abrí WhatsApp en tu teléfono &gt; Dispositivos vinculados &gt; Vincular un dispositivo</p>'
+                }
+                ${!isConnected && qrUrl ? `
+                    <div class="qr-box">
+                        <img id="qrCodeImage" src="${qrUrl}" alt="Código QR WhatsApp" />
+                    </div>
+                    <div class="qr-share-actions">
+                        <button type="button" class="btn btn-emerald" onclick="shareQrImage()">📤 Guardar / Compartir QR</button>
+                        <button type="button" class="btn btn-secondary" onclick="downloadQrImage()">📥 Descargar PNG</button>
+                    </div>
+                    <p style="color:#94a3b8;font-size:12px;">Se actualiza automáticamente cada 5 segundos sin recargar tus datos.</p>
+                ` : ''}
+                ${!isConnected && !qrUrl ? `
+                    <p style="color:#fbbf24;padding:12px;text-align:center;font-size:14px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR".</p>
+                ` : ''}
             </div>
 
-            ${!isConnected && qrUrl ? `
-                <div style="text-align:center;">
-                    <div class="qr-box">
-                        <img src="${qrUrl}" alt="Código QR WhatsApp" style="width: 250px; height: 250px; display: block;" />
-                    </div>
-                    <p style="color:#94a3b8;font-size:12px;">Se actualiza automáticamente cada 5 segundos.</p>
-                </div>
-            ` : ''}
-
-            ${!isConnected && !qrUrl ? `
-                <p style="color:#fbbf24;padding:15px;text-align:center;font-size:14px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR".</p>
-            ` : ''}
-
-            <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:14px;">
+            <div class="mobile-stack" style="justify-content:center; margin-top:14px;">
                 <button class="btn btn-blue" onclick="fetch('/api/bot/test-alert', {method:'POST'}).then(r=>r.json()).then(d=>showToast('🚨 Alerta de prueba enviada al mapa'))">🚨 Enviar Alerta Prueba</button>
-                <button class="btn btn-amber" onclick="fetch('/api/bot/soft-reset', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>location.reload(), 800);})">🔧 Curar Sesión (Soft Reset)</button>
-                <button class="btn btn-rose" onclick="if(confirm('¿Desvincular WhatsApp y pedir QR nuevo?')) fetch('/api/bot/reset-session', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>location.reload(), 800);})">🔑 Generar Nuevo QR</button>
+                <button class="btn btn-amber" onclick="fetch('/api/bot/soft-reset', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>pollBotQrStatus(true), 800);})">🔧 Curar Sesión (Soft Reset)</button>
+                <button class="btn btn-rose" onclick="if(confirm('¿Desvincular WhatsApp y pedir QR nuevo?')) fetch('/api/bot/reset-session', {method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message); setTimeout(()=>pollBotQrStatus(true), 1200);})">🔑 Generar Nuevo QR</button>
             </div>
         </div>
 
@@ -690,7 +860,7 @@ app.get('/qr', async (req, res) => {
                 Desde acá podés pausar el Centinela en cualquier momento para evitar que hable o publique alertas. También podés configurar el límite estricto de repetición de voz y silenciar el sistema si ocurre una emergencia.
             </p>
 
-            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px;">
+            <div class="mobile-stack" style="margin-bottom:16px;">
                 <button id="btnToggleSentinel" 
                         class="btn ${isSentinelActive ? 'btn-rose' : 'btn-emerald'}" 
                         onclick="toggleSentinel()">
@@ -701,9 +871,9 @@ app.get('/qr', async (req, res) => {
                 </button>
             </div>
 
-            <div style="background:#090d16; border:1px solid #1e293b; border-radius:12px; padding:12px; margin-bottom:16px;">
+            <div class="restart-box">
                 <label class="form-label" style="display:block; margin-bottom:8px;">🔄 Reiniciar y Actualizar App de un Usuario Específico:</label>
-                <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                <div class="mobile-stack">
                     <select id="restartDriverSelect" class="form-control" style="flex:1; min-width:220px;">
                         <option value="">-- Elegí un usuario específico --</option>
                         ${driverOptionsHtml}
@@ -715,7 +885,7 @@ app.get('/qr', async (req, res) => {
                 </div>
             </div>
 
-            <div class="form-group" style="max-width:320px;">
+            <div class="form-group mobile-stack" style="max-width:360px; align-items:stretch;">
                 <label class="form-label">Límite de repetición de voz por alerta:</label>
                 <p class="form-hint">Máxima cantidad de veces que se reproduce por voz la misma ubicación (en 15 minutos).</p>
                 <select id="maxRepeatsSelect" class="form-control" onchange="saveMaxRepeats(this.value)">
@@ -740,7 +910,7 @@ app.get('/qr', async (req, res) => {
             <div class="grid-2" style="margin-bottom:12px;">
                 <div class="form-group">
                     <label class="form-label">Versión mínima Web / PWA:</label>
-                    <input type="text" id="qrVcMinWeb" class="form-control" value="${vcMinWebSafe}" placeholder="1.2.245" />
+                    <input type="text" id="qrVcMinWeb" class="form-control" value="${vcMinWebSafe}" placeholder="1.2.246" />
                 </div>
                 <div class="form-group">
                     <label class="form-label">Versión mínima Android:</label>
@@ -755,7 +925,7 @@ app.get('/qr', async (req, res) => {
                 <label class="form-label">Mensaje de novedades para el chofer:</label>
                 <textarea id="qrVcMessage" class="form-control" rows="2">${vcMsgSafe}</textarea>
             </div>
-            <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+            <div class="vc-footer-stack" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:#cbd5e1;">
                     <input type="checkbox" id="qrVcForce" ${vcForceEnabled ? 'checked' : ''} style="width:18px; height:18px; accent-color:#f59e0b;" />
                     Activar bloqueo obligatorio (force_update)
@@ -770,7 +940,7 @@ app.get('/qr', async (req, res) => {
         <div class="card">
             <div class="card-header">
                 <span class="card-title">👥 Administración de Grupos (<span id="totalGroupsCount">${totalGroupsCount}</span> Conectados)</span>
-                <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                <div class="group-header-actions" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                     <button class="btn btn-sm btn-blue" onclick="openAddGroupModal()">➕ Agregar Grupo</button>
                     <button id="btnToggleEditMode" class="btn btn-sm btn-secondary" onclick="toggleEditMode()">✏️ Editar Lista</button>
                     <button class="btn btn-sm btn-secondary" onclick="toggleAll(true)">✅ Activar Todos</button>
@@ -849,10 +1019,255 @@ app.get('/qr', async (req, res) => {
         </div>
     </div>
 
+    <!-- MODAL CAMBIAR PIN ADMINISTRADOR -->
+    <div id="modalChangePin" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span style="font-weight:700; font-size:16px;">🔑 Cambiar PIN de FleetAdmin Control</span>
+                <button class="modal-close-btn" onclick="closeChangePinModal()">&times;</button>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">PIN actual:</label>
+                <input type="password" inputmode="numeric" id="curAdminPin" class="form-control" placeholder="PIN actual" />
+            </div>
+            <div class="form-group" style="margin-bottom:16px;">
+                <label class="form-label">Nuevo PIN rápido (4 a 12 dígitos):</label>
+                <input type="password" inputmode="numeric" id="newAdminPin" class="form-control" placeholder="Ej: 1234" />
+            </div>
+            <div class="mobile-stack" style="justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeChangePinModal()">Cancelar</button>
+                <button id="btnSaveAdminPin" class="btn btn-emerald" onclick="submitChangeAdminPin()">💾 Guardar PIN</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION -->
     <div id="toast" class="toast">Acción completada</div>
 
     <script>
+        (function initPinGate() {
+            const savedToken = localStorage.getItem('fa_control_pin_token') || '';
+            if (!savedToken) {
+                setTimeout(() => {
+                    const el = document.getElementById('adminPinInput');
+                    if (el) el.focus();
+                }, 150);
+                return;
+            }
+            fetch('/api/bot/verify-admin-pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pinToken: savedToken })
+            }).then(r => r.json()).then(d => {
+                if (d && d.ok) {
+                    const gate = document.getElementById('adminPinGateOverlay');
+                    if (gate) gate.style.display = 'none';
+                } else {
+                    localStorage.removeItem('fa_control_pin_token');
+                }
+            }).catch(() => {});
+        })();
+
+        async function verifyAdminPin() {
+            const inputEl = document.getElementById('adminPinInput');
+            const errEl = document.getElementById('pinErrorMsg');
+            const btn = document.getElementById('btnUnlockControl');
+            const pin = inputEl ? inputEl.value.trim() : '';
+            if (!pin) {
+                if (errEl) errEl.textContent = 'Ingresá el PIN de Administrador.';
+                return;
+            }
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Verificando...'; }
+            if (errEl) errEl.textContent = '';
+            try {
+                const res = await fetch('/api/bot/verify-admin-pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pin })
+                });
+                const data = await res.json();
+                if (data && data.ok) {
+                    if (document.getElementById('rememberPinDevice')?.checked && data.pinToken) {
+                        localStorage.setItem('fa_control_pin_token', data.pinToken);
+                    }
+                    const gate = document.getElementById('adminPinGateOverlay');
+                    if (gate) gate.style.display = 'none';
+                    if (inputEl) inputEl.value = '';
+                    showToast('🔓 Acceso concedido a FleetAdmin Control');
+                } else {
+                    if (errEl) errEl.textContent = (data && data.error) || 'PIN incorrecto. Verificá e intentá nuevamente.';
+                }
+            } catch (e) {
+                if (errEl) errEl.textContent = 'Error de conexión con el servidor.';
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🔓 Ingresar al Panel'; }
+            }
+        }
+
+        function lockAdminPanel() {
+            localStorage.removeItem('fa_control_pin_token');
+            const gate = document.getElementById('adminPinGateOverlay');
+            if (gate) gate.style.display = 'flex';
+            const inputEl = document.getElementById('adminPinInput');
+            if (inputEl) { inputEl.value = ''; inputEl.focus(); }
+        }
+
+        function openChangePinModal() {
+            document.getElementById('curAdminPin').value = '';
+            document.getElementById('newAdminPin').value = '';
+            document.getElementById('modalChangePin').style.display = 'flex';
+        }
+
+        function closeChangePinModal() {
+            document.getElementById('modalChangePin').style.display = 'none';
+        }
+
+        async function submitChangeAdminPin() {
+            const currentPin = (document.getElementById('curAdminPin')?.value || '').trim();
+            const newPin = (document.getElementById('newAdminPin')?.value || '').trim();
+            if (newPin.length < 4) {
+                showToast('El nuevo PIN debe tener al menos 4 dígitos', true);
+                return;
+            }
+            const btn = document.getElementById('btnSaveAdminPin');
+            if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+            try {
+                const res = await fetch('/api/bot/set-admin-pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        currentPin: currentPin,
+                        pinToken: localStorage.getItem('fa_control_pin_token') || '',
+                        newPin: newPin
+                    })
+                });
+                const data = await res.json();
+                if (data && data.ok) {
+                    if (data.pinToken) localStorage.setItem('fa_control_pin_token', data.pinToken);
+                    closeChangePinModal();
+                    showToast('✅ Nuevo PIN de administrador guardado');
+                } else {
+                    showToast('Error: ' + ((data && data.error) || 'PIN actual inválido'), true);
+                }
+            } catch (e) {
+                showToast('Error de red al cambiar PIN', true);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar PIN'; }
+            }
+        }
+
+        async function _getQrDataUrl() {
+            const img = document.getElementById('qrCodeImage');
+            if (!img || !img.src) return null;
+            if (img.src.startsWith('data:image/')) return img.src;
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || 300;
+            canvas.height = img.naturalHeight || 300;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            return canvas.toDataURL('image/png');
+        }
+
+        async function downloadQrImage() {
+            try {
+                const dataUrl = await _getQrDataUrl();
+                if (!dataUrl) { showToast('No hay código QR visible todavía', true); return; }
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = 'whatsapp-qr-fleetadmin.png';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                showToast('📥 Código QR descargado como PNG');
+            } catch (e) {
+                showToast('No se pudo descargar el QR: ' + e.message, true);
+            }
+        }
+
+        async function shareQrImage() {
+            try {
+                const dataUrl = await _getQrDataUrl();
+                if (!dataUrl) { showToast('No hay código QR disponible para compartir', true); return; }
+
+                // 1. Puente nativo Android (APK FleetAdmin Control)
+                if (window.FleetControlBridge && typeof window.FleetControlBridge.shareQrBase64 === 'function') {
+                    const sharedOk = window.FleetControlBridge.shareQrBase64(dataUrl);
+                    if (sharedOk) {
+                        showToast('📤 Compartiendo QR hacia otro dispositivo...');
+                        return;
+                    }
+                }
+
+                // 2. Web Share API con archivo PNG (Chrome móvil / Android WebView)
+                if (navigator.share) {
+                    const resp = await fetch(dataUrl);
+                    const blob = await resp.blob();
+                    const file = new File([blob], 'whatsapp-qr-fleetadmin.png', { type: 'image/png' });
+                    if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            title: 'QR WhatsApp — FleetAdmin Pro',
+                            text: 'Escaneá este código desde WhatsApp > Dispositivos vinculados',
+                            files: [file]
+                        });
+                        showToast('📤 Código QR compartido');
+                        return;
+                    }
+                }
+
+                // 3. Fallback universal: descargar PNG
+                await downloadQrImage();
+            } catch (e) {
+                if (e && e.name === 'AbortError') return;
+                await downloadQrImage();
+            }
+        }
+
+        let _lastQrRenderedSignature = '';
+        async function pollBotQrStatus(manual = false) {
+            try {
+                const res = await fetch('/api/bot/qr-status', { cache: 'no-store' });
+                if (!res.ok) return;
+                const d = await res.json();
+                if (!d || !d.ok) return;
+
+                const waBadge = document.getElementById('waStatusBadge');
+                const waTopPill = document.getElementById('waTopStatusPill');
+                if (waBadge) {
+                    waBadge.className = 'badge ' + (d.connected ? 'badge-ok' : 'badge-wait');
+                    waBadge.textContent = d.connected ? '✅ CONECTADO Y ACTIVO' : '📱 ESPERANDO QR';
+                }
+                if (waTopPill) {
+                    waTopPill.className = 'badge ' + (d.connected ? 'badge-ok' : 'badge-wait');
+                    waTopPill.textContent = d.connected ? '🟢 Bot OK' : '📱 QR';
+                }
+
+                const sig = (d.connected ? '1' : '0') + '|' + (d.botNumber || '') + '|' + (d.qrUrl || '');
+                if (sig !== _lastQrRenderedSignature) {
+                    _lastQrRenderedSignature = sig;
+                    const wrap = document.getElementById('waQrBoxWrapper');
+                    if (wrap) {
+                        if (d.connected) {
+                            wrap.innerHTML = '<p style="font-size:15px; color:#cbd5e1;">Número Vinculado: <b style="color:#38bdf8;">+' + (d.botNumber || 'Activo') + '</b></p>';
+                        } else if (d.qrUrl) {
+                            wrap.innerHTML = '<p style="color:#94a3b8; font-size:13px; margin-bottom:10px;">Abrí WhatsApp en tu teléfono &gt; Dispositivos vinculados &gt; Vincular un dispositivo</p>'
+                                + '<div class="qr-box"><img id="qrCodeImage" src="' + d.qrUrl + '" alt="Código QR WhatsApp" /></div>'
+                                + '<div class="qr-share-actions">'
+                                + '<button type="button" class="btn btn-emerald" onclick="shareQrImage()">📤 Guardar / Compartir QR</button>'
+                                + '<button type="button" class="btn btn-secondary" onclick="downloadQrImage()">📥 Descargar PNG</button>'
+                                + '</div>'
+                                + '<p style="color:#94a3b8;font-size:12px;">Se actualiza automáticamente cada 5 segundos sin recargar tus datos.</p>';
+                        } else {
+                            wrap.innerHTML = '<p style="color:#fbbf24;padding:12px;text-align:center;font-size:14px;">⏳ Generando código QR o conectando... Si demora, tocá "Generar Nuevo QR".</p>';
+                        }
+                    }
+                }
+                if (manual) showToast('🔄 Estado actualizado');
+            } catch (e) {}
+        }
+        setInterval(() => pollBotQrStatus(false), 5000);
+
         function showToast(msg, isError = false) {
             const t = document.getElementById('toast');
             if (!t) return;
@@ -1375,6 +1790,128 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
         res.json({ ok: true, timestamp: now, targetDriverId, targetFleetUserId, targetDriverName, refreshedShifts });
     } catch (e) {
         console.error('❌ Error en /api/bot/restart-driver-apps:', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Estado en tiempo real de QR/WhatsApp para polling móvil sin recarga completa
+app.get('/api/bot/qr-status', async (req, res) => {
+    try {
+        let isConnected = false;
+        let diag = {};
+        let sentinelEnabled = true;
+
+        if (typeof WhatsappBot !== 'undefined') {
+            if (typeof WhatsappBot.isConnected === 'function') isConnected = WhatsappBot.isConnected();
+            if (typeof WhatsappBot.getDiagnostics === 'function') diag = WhatsappBot.getDiagnostics() || {};
+            if (typeof WhatsappBot.getBotConfig === 'function') {
+                const cfg = WhatsappBot.getBotConfig() || {};
+                sentinelEnabled = cfg.sentinel_enabled !== false;
+            }
+        }
+
+        let qrUrl = diag.lastQr || null;
+        if (!isConnected && !qrUrl && typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') {
+            const db = WhatsappBot.getDb();
+            if (db) {
+                const stSnap = await db.ref('bot_status').once('value').catch(() => null);
+                const stVal = stSnap ? (stSnap.val() || {}) : {};
+                if (stVal.qrUrl) qrUrl = stVal.qrUrl;
+                if (stVal.connected) isConnected = true;
+                if (stVal.phone && !diag.botNumber) diag.botNumber = stVal.phone;
+            }
+        }
+
+        res.json({
+            ok: true,
+            connected: Boolean(isConnected),
+            qrUrl: qrUrl || null,
+            botNumber: diag.botNumber || null,
+            sentinel_enabled: sentinelEnabled
+        });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+function _hashControlPin(pinStr) {
+    return crypto.createHash('sha256').update('FleetControl::' + String(pinStr || '').trim()).digest('hex');
+}
+
+async function _validateControlAdminPin({ pin, pinToken, db, fleetId = '-OnPd8HaV1VZWBnYQQX7' }) {
+    const cleanPin = pin ? String(pin).trim() : '';
+    const cleanToken = pinToken ? String(pinToken).trim() : '';
+
+    // 1. Verificar PIN guardado explícitamente en Firebase (bot_config/admin_pin_hash)
+    if (db) {
+        try {
+            const pinSnap = await db.ref('bot_config/admin_pin_hash').once('value');
+            const storedHash = pinSnap.val();
+            if (storedHash && typeof storedHash === 'string') {
+                if (cleanToken && cleanToken === storedHash) return { valid: true, token: storedHash };
+                if (cleanPin && _hashControlPin(cleanPin) === storedHash) return { valid: true, token: storedHash };
+                return { valid: false };
+            }
+        } catch (_) {}
+    }
+
+    // 2. Fallback antes de configurar PIN propio: variable de entorno, DNI del titular o PIN de usuario owner en Firebase
+    const validCandidates = new Set([process.env.CONTROL_ADMIN_PIN || '22209365', '22209365']);
+    if (db) {
+        try {
+            const usersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
+            const usersVal = usersSnap.val() || {};
+            for (const u of Object.values(usersVal)) {
+                if (!u || u.role !== 'owner') continue;
+                if (u.pin && !String(u.pin).startsWith('$2')) validCandidates.add(String(u.pin).trim());
+                if (u.licenseNumber) validCandidates.add(String(u.licenseNumber).trim());
+                if (u.dni) validCandidates.add(String(u.dni).trim());
+            }
+        } catch (_) {}
+    }
+
+    for (const candidate of validCandidates) {
+        const token = _hashControlPin(candidate);
+        if (cleanToken && cleanToken === token) return { valid: true, token };
+        if (cleanPin && cleanPin === candidate) return { valid: true, token };
+    }
+    return { valid: false };
+}
+
+app.post('/api/bot/verify-admin-pin', async (req, res) => {
+    try {
+        const db = (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') ? WhatsappBot.getDb() : null;
+        const { pin, pinToken } = req.body || {};
+        const check = await _validateControlAdminPin({ pin, pinToken, db });
+        if (!check.valid) {
+            return res.status(401).json({ ok: false, error: 'PIN incorrecto' });
+        }
+        res.json({ ok: true, pinToken: check.token });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/bot/set-admin-pin', async (req, res) => {
+    try {
+        const db = (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') ? WhatsappBot.getDb() : null;
+        if (!db) return res.status(503).json({ ok: false, error: 'Base de datos no disponible' });
+
+        const { currentPin, pinToken, newPin } = req.body || {};
+        const cleanNew = newPin ? String(newPin).trim() : '';
+        if (cleanNew.length < 4) {
+            return res.status(400).json({ ok: false, error: 'El nuevo PIN debe tener al menos 4 dígitos' });
+        }
+
+        const check = await _validateControlAdminPin({ pin: currentPin, pinToken, db });
+        if (!check.valid) {
+            return res.status(401).json({ ok: false, error: 'PIN actual incorrecto' });
+        }
+
+        const newHash = _hashControlPin(cleanNew);
+        await db.ref('bot_config/admin_pin_hash').set(newHash);
+        res.json({ ok: true, pinToken: newHash });
+    } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
 });

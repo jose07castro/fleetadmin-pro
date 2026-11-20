@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FleetAdmin Control — Conectando</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(160deg, #090d16 0%, #131b2e 100%);
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            text-align: center;
+        }
+        .box {
+            max-width: 380px;
+            width: 100%;
+            background: rgba(19, 27, 46, 0.9);
+            border: 1px solid #334155;
+            border-radius: 20px;
+            padding: 30px 22px;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+        }
+        .logo { font-size: 52px; margin-bottom: 12px; }
+        h1 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+        p { font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: #0284c7;
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="logo">🛰️</div>
+        <h1>FleetAdmin Control</h1>
+        <p id="statusMsg">Conectando con el servidor del Bot y Centinela IA en Render...</p>
+        <button class="btn" onclick="retryConnect()">🔄 Reintentar Conexión</button>
+    </div>
+    <script>
+        const TARGET = 'https://fleetadmin-web-nueva.onrender.com/qr';
+        function retryConnect() {
+            const msg = document.getElementById('statusMsg');
+            if (msg) msg.textContent = 'Intentando conectar con ' + TARGET + '...';
+            window.location.replace(TARGET);
+        }
+        setInterval(() => {
+            fetch('https://fleetadmin-web-nueva.onrender.com/api/health', { mode: 'no-cors' })
+                .then(() => window.location.replace(TARGET))
+                .catch(() => {});
+        }, 4000);
+    </script>
+</body>
+</html>

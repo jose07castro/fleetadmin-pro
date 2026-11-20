@@ -77,6 +77,9 @@ window.DashboardModule = (() => {
                     <button class="q-btn" onclick="Router.navigate('maintenance')" style="background:linear-gradient(135deg, #ef4444, #b91c1c); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(185,28,28,0.3); filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4)); cursor:pointer; transition:all 0.2s;">
                         <span style="font-size:1.5rem;">🔧</span> Reparaciones
                     </button>
+                    <button class="q-btn" onclick="window.open('https://fleetadmin-web-nueva.onrender.com/qr', '_blank', 'noopener,noreferrer')" style="background:linear-gradient(135deg, #0ea5e9, #0369a1); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(14,165,233,0.3); filter: drop-shadow(0 0 8px rgba(14, 165, 233, 0.4)); cursor:pointer; transition:all 0.2s;">
+                        <span style="font-size:1.5rem;">🎛️</span> Control Bot &amp; QR
+                    </button>
                     ` : ''}
                     
                     <button class="q-btn" onclick="Router.navigate('shifts')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:white; border:none; padding:14px 20px; border-radius:16px; display:flex; align-items:center; gap:10px; font-weight:700; flex-shrink:0; box-shadow:0 8px 16px rgba(59,130,246,0.3); filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4)); cursor:pointer; transition:all 0.2s;">
