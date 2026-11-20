@@ -316,6 +316,38 @@ window.DashboardModule = (() => {
                                     <button type="button" id="btnPublishVersionControl" class="btn btn-sm" style="background:linear-gradient(135deg,#facc15,#eab308); color:#0f172a; font-weight:800;" onclick="DashboardModule.publishVersionControl()">🚀 Disparar Actualización</button>
                                 </div>
                             </div>
+                            <div style="margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px dashed var(--border-color);">
+                                <label class="form-label" style="display:block; margin-bottom:6px; font-weight:700;">🔄 Reiniciar App / GPS de un Usuario Específico</label>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                    <select id="dashRestartDriverSelect" class="form-select" style="flex:1; min-width:200px;">
+                                        <option value="">-- Elegí un usuario específico --</option>
+                                        ${(() => {
+                                            const activeSet = new Set();
+                                            activeShifts.forEach(s => {
+                                                if (s?.driverId) activeSet.add(String(s.driverId));
+                                                if (s?.driverName) activeSet.add(String(s.driverName).trim().toLowerCase());
+                                            });
+                                            const dedup = new Map();
+                                            (users || []).forEach(u => {
+                                                if (!u || !u.name) return;
+                                                const cid = String(u.globalId || u.id || '');
+                                                const fid = String(u.id || '');
+                                                const norm = String(u.name).trim().toLowerCase();
+                                                const inShift = activeSet.has(cid) || activeSet.has(fid) || activeSet.has(norm);
+                                                if (!dedup.has(norm)) {
+                                                    dedup.set(norm, { id: cid || fid, fleetUserId: fid, name: u.name.trim(), role: u.role || 'driver', inShift });
+                                                }
+                                            });
+                                            return Array.from(dedup.values())
+                                                .sort((a, b) => (a.inShift !== b.inShift ? (a.inShift ? -1 : 1) : a.name.localeCompare(b.name, 'es')))
+                                                .map(u => `<option value="${Components.escapeHTML(u.id)}" data-fleet-uid="${Components.escapeHTML(u.fleetUserId)}" data-name="${Components.escapeHTML(u.name)}">${u.inShift ? '🟢' : '⚪'} ${Components.escapeHTML(u.name)} (${u.inShift ? 'En Turno' : (u.role === 'owner' ? 'Dueño' : u.role === 'mechanic' ? 'Mecánico' : 'Chofer')})</option>`)
+                                                .join('');
+                                        })()}
+                                        <option value="all">🌐 Todos los choferes de la flota</option>
+                                    </select>
+                                    <button type="button" id="btnDashRestartDriver" class="btn btn-primary btn-sm" onclick="DashboardModule.restartSpecificDriverApp()">🔄 Reiniciar App</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     ` : ''}
@@ -1260,6 +1292,68 @@ window.DashboardModule = (() => {
         }
     }
 
+    async function restartSpecificDriverApp() {
+        if (!Auth.isOwner()) {
+            Components.showToast('Solo el Administrador puede reiniciar apps de la flota.', 'danger');
+            return;
+        }
+        const sel = document.getElementById('dashRestartDriverSelect');
+        const targetId = sel ? sel.value : '';
+        if (!targetId) {
+            Components.showToast('⚠️ Elegí primero un usuario específico de la lista', 'warning');
+            return;
+        }
+        const opt = sel.options[sel.selectedIndex];
+        const targetFleetUserId = opt?.getAttribute('data-fleet-uid') || (targetId === 'all' ? null : targetId);
+        const targetName = opt?.getAttribute('data-name') || opt?.textContent || targetId;
+        const msg = targetId === 'all'
+            ? '¿Enviar orden de reinicio y actualización en vivo a TODA la flota (GPS + Caché)?'
+            : `¿Reiniciar y actualizar únicamente la app de "${targetName}"?`;
+        if (!confirm(msg)) return;
+
+        const btn = document.getElementById('btnDashRestartDriver');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+
+        try {
+            if (typeof firebaseDB === 'undefined') throw new Error('Firebase no conectado');
+            const now = Date.now();
+            const fleetId = Auth.getFleetId();
+
+            await firebaseDB.ref('system_commands/restart_apps').set({
+                timestamp: now,
+                targetDriverId: targetId,
+                targetFleetUserId: targetId === 'all' ? null : targetFleetUserId,
+                targetDriverName: targetId === 'all' ? 'Todos' : targetName,
+                clearCache: true,
+                requestedBy: Auth.getUserName() || 'dashboard_owner'
+            });
+
+            // También refrescar únicamente el turno activo correspondiente (si existe)
+            let refreshedCount = 0;
+            const activeShifts = await DB.getActiveShifts();
+            const normTarget = targetName.trim().toLowerCase();
+            for (const s of (activeShifts || [])) {
+                if (!s || !s.id) continue;
+                const sDid = String(s.driverId || '');
+                const sDname = String(s.driverName || '').trim().toLowerCase();
+                const isMatch = targetId === 'all' ||
+                    (sDid && (sDid === targetId || sDid === targetFleetUserId)) ||
+                    (normTarget && sDname === normTarget);
+                if (isMatch && fleetId) {
+                    await firebaseDB.ref(`fleets/${fleetId}/shifts/${s.id}`).update({ remoteRefreshTs: now });
+                    refreshedCount++;
+                }
+            }
+
+            const who = targetId === 'all' ? 'toda la flota' : targetName;
+            Components.showToast(`✅ Orden de reinicio enviada únicamente a "${who}" (${refreshedCount} turno activo resincronizado)`, 'success');
+        } catch (e) {
+            Components.showToast('❌ Error enviando orden de reinicio: ' + e.message, 'danger');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Reiniciar App'; }
+        }
+    }
+
     async function showGlobalUsers(roleFilter) {
         if (Auth.getRole() !== 'owner') {
             Components.showToast('Acceso denegado. Solo administradores.', 'danger');
@@ -1465,5 +1559,5 @@ window.DashboardModule = (() => {
         reader.readAsDataURL(file);
     }
 
-    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, bumpVersionInput, previewForceUpdate, publishVersionControl, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList, handleLicensePhoto };
+    return { render, showUsers, addUser, saveNewUser, editUser, saveEditUser, changeUserPhoto, saveUserPhoto, deleteUser, confirmDeleteUser, saveAnnouncement, saveAnnouncementOwner, bumpVersionInput, previewForceUpdate, publishVersionControl, restartSpecificDriverApp, showGlobalUsers, filterGlobalUsers, renderGlobalUsersList, handleLicensePhoto };
 })();

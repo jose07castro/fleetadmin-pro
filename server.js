@@ -222,6 +222,7 @@ app.get('/qr', async (req, res) => {
             android_update_url: 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
             force_update: true
         };
+        let restartDriversList = [];
 
         if (typeof WhatsappBot !== 'undefined' && typeof WhatsappBot.getDb === 'function') {
             try {
@@ -244,13 +245,76 @@ app.get('/qr', async (req, res) => {
                             if (cVal.group_settings) botConfig.group_settings = { ...botConfig.group_settings, ...cVal.group_settings };
                         }
                     }
-                    const vcSnap = await db.ref('app_config/version_control').once('value');
+                    const [vcSnap, usersSnap, posSnap, shiftsSnap] = await Promise.all([
+                        db.ref('app_config/version_control').once('value'),
+                        db.ref('fleets/-OnPd8HaV1VZWBnYQQX7/users').once('value'),
+                        db.ref('driver_positions').once('value'),
+                        db.ref('fleets/-OnPd8HaV1VZWBnYQQX7/shifts').orderByChild('status').equalTo('active').once('value')
+                    ]);
                     if (vcSnap.val()) {
                         versionControl = { ...versionControl, ...vcSnap.val() };
                     }
+
+                    const usersMap = usersSnap.val() || {};
+                    const posMap = posSnap.val() || {};
+                    const activeShiftsMap = shiftsSnap.val() || {};
+
+                    const activeDriverIds = new Set();
+                    const activeDriverNames = new Set();
+                    for (const s of Object.values(activeShiftsMap)) {
+                        if (!s) continue;
+                        if (s.driverId) activeDriverIds.add(String(s.driverId));
+                        if (s.driverName) activeDriverNames.add(String(s.driverName).trim().toLowerCase());
+                    }
+
+                    const mergedByKey = new Map();
+                    for (const [fleetUserId, u] of Object.entries(usersMap)) {
+                        if (!u || !u.name) continue;
+                        const canonicalId = String(u.globalId || u.id || fleetUserId);
+                        const pos = posMap[canonicalId] || posMap[fleetUserId] || null;
+                        const normName = String(u.name).trim().toLowerCase();
+                        const inShift = activeDriverIds.has(canonicalId) || activeDriverIds.has(String(fleetUserId)) || activeDriverNames.has(normName) || (pos && pos.shift_status === 'IN_PROGRESS');
+                        const appVersion = (pos && pos.appVersion) || u.appVersion || '';
+                        mergedByKey.set(normName, {
+                            id: canonicalId,
+                            fleetUserId: String(fleetUserId),
+                            name: String(u.name).trim(),
+                            role: u.role || 'driver',
+                            inShift: Boolean(inShift),
+                            appVersion: appVersion ? String(appVersion).replace(/^v/i, 'v') : ''
+                        });
+                    }
+                    for (const [posId, pos] of Object.entries(posMap)) {
+                        if (!pos || !pos.driverName || posId === 'Usuario Desconocido') continue;
+                        const normName = String(pos.driverName).trim().toLowerCase();
+                        if (!mergedByKey.has(normName)) {
+                            const inShift = activeDriverIds.has(String(posId)) || pos.shift_status === 'IN_PROGRESS';
+                            mergedByKey.set(normName, {
+                                id: String(posId),
+                                fleetUserId: String(posId),
+                                name: String(pos.driverName).trim(),
+                                role: 'driver',
+                                inShift: Boolean(inShift),
+                                appVersion: pos.appVersion ? String(pos.appVersion).replace(/^v/i, 'v') : ''
+                            });
+                        }
+                    }
+                    restartDriversList = Array.from(mergedByKey.values()).sort((a, b) => {
+                        if (a.inShift !== b.inShift) return a.inShift ? -1 : 1;
+                        return a.name.localeCompare(b.name, 'es');
+                    });
                 }
             } catch(dbErr) {}
         }
+
+        const driverOptionsHtml = restartDriversList.map(d => {
+            const safeId = d.id.replace(/"/g, '&quot;');
+            const safeName = d.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const roleLabel = d.role === 'owner' ? 'Dueño' : (d.role === 'mechanic' ? 'Mecánico' : 'Chofer');
+            const statusText = d.inShift ? 'En Turno' : roleLabel;
+            const verText = d.appVersion ? (' • ' + d.appVersion) : '';
+            return '<option value="' + safeId + '" data-name="' + safeName + '">' + (d.inShift ? '🟢 ' : '⚪ ') + safeName + ' (' + statusText + verText + ')</option>';
+        }).join('');
 
         const vcMinWebSafe = String(versionControl.min_version_web || '1.2.245').replace(/"/g, '&quot;');
         const vcMinAndroidSafe = String(versionControl.min_version_android || '1.2.245').replace(/"/g, '&quot;');
@@ -635,9 +699,20 @@ app.get('/qr', async (req, res) => {
                 <button class="btn btn-rose" onclick="clearAlertsAndSilence()">
                     🔇 Silenciar Voz y Limpiar Alertas Repetidas
                 </button>
-                <button id="btnRestartDriverApps" class="btn btn-blue" onclick="restartDriverApps()">
-                    🔄 Reiniciar y Actualizar Apps de Choferes
-                </button>
+            </div>
+
+            <div style="background:#090d16; border:1px solid #1e293b; border-radius:12px; padding:12px; margin-bottom:16px;">
+                <label class="form-label" style="display:block; margin-bottom:8px;">🔄 Reiniciar y Actualizar App de un Usuario Específico:</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                    <select id="restartDriverSelect" class="form-control" style="flex:1; min-width:220px;">
+                        <option value="">-- Elegí un usuario específico --</option>
+                        ${driverOptionsHtml}
+                        <option value="all">🌐 Todos los choferes de la flota</option>
+                    </select>
+                    <button id="btnRestartDriverApps" class="btn btn-blue" onclick="restartDriverApps()">
+                        🔄 Reiniciar App Seleccionada
+                    </button>
+                </div>
             </div>
 
             <div class="form-group" style="max-width:320px;">
@@ -827,25 +902,38 @@ app.get('/qr', async (req, res) => {
         }
 
         async function restartDriverApps() {
-            if (!confirm('¿Enviar orden de reinicio y actualización en vivo a todas las apps de los choferes (GPS + Caché)?')) return;
+            const sel = document.getElementById('restartDriverSelect');
+            const targetId = sel ? sel.value : '';
+            if (!targetId) {
+                showToast('⚠️ Elegí primero un usuario específico de la lista', true);
+                return;
+            }
+            const opt = sel.options[sel.selectedIndex];
+            const targetName = (opt && opt.getAttribute('data-name')) || (opt ? opt.textContent : targetId);
+            const confirmMsg = targetId === 'all'
+                ? '¿Enviar orden de reinicio y actualización en vivo a TODAS las apps de la flota (GPS + Caché)?'
+                : ('¿Enviar orden de reinicio y actualización en vivo únicamente a la app de "' + targetName + '" (GPS + Caché)?');
+            if (!confirm(confirmMsg)) return;
+
             const btn = document.getElementById('btnRestartDriverApps');
-            if (btn) { btn.disabled = true; btn.textContent = '⏳ Reiniciando apps...'; }
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando orden...'; }
             try {
                 const res = await fetch('/api/bot/restart-driver-apps', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ driverId: 'all' })
+                    body: JSON.stringify({ driverId: targetId, driverName: targetName })
                 });
                 const data = await res.json();
                 if (data.ok) {
-                    showToast('✅ Comando enviado: ' + (data.refreshedShifts || 0) + ' turnos resincronizados y apps reiniciándose');
+                    const whoLabel = targetId === 'all' ? 'Toda la flota' : (data.targetDriverName || targetName);
+                    showToast('✅ Orden enviada a "' + whoLabel + '" (' + (data.refreshedShifts || 0) + ' turno resincronizado)');
                 } else {
                     showToast('Error: ' + (data.error || 'Desconocido'), true);
                 }
             } catch(e) {
                 showToast('Error de conexión al enviar comando', true);
             } finally {
-                if (btn) { btn.disabled = false; btn.textContent = '🔄 Reiniciar y Actualizar Apps de Choferes'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Reiniciar App Seleccionada'; }
             }
         }
 
@@ -1203,26 +1291,60 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
         }
 
         const now = Date.now();
-        const targetDriverId = (req.body && req.body.driverId) ? String(req.body.driverId) : 'all';
+        const rawTargetId = (req.body && req.body.driverId) ? String(req.body.driverId).trim() : 'all';
+        const rawTargetName = (req.body && req.body.driverName) ? String(req.body.driverName).trim() : null;
         const fleetId = (req.body && req.body.fleetId) || '-OnPd8HaV1VZWBnYQQX7';
+
+        let targetDriverId = rawTargetId;
+        let targetFleetUserId = rawTargetId === 'all' ? null : rawTargetId;
+        let targetDriverName = rawTargetId === 'all' ? 'Todos' : rawTargetName;
+
+        // Resolver globalId, fleetUserId y nombre completo desde usuarios de la flota si es un usuario específico
+        if (rawTargetId && rawTargetId !== 'all') {
+            try {
+                const usersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
+                const usersVal = usersSnap.val() || {};
+                for (const [fUid, u] of Object.entries(usersVal)) {
+                    if (!u) continue;
+                    const matchByFleetId = String(fUid) === rawTargetId || String(u.id || '') === rawTargetId;
+                    const matchByGlobalId = u.globalId && String(u.globalId) === rawTargetId;
+                    const matchByName = rawTargetName && u.name && String(u.name).trim().toLowerCase() === rawTargetName.toLowerCase();
+                    if (matchByFleetId || matchByGlobalId || matchByName) {
+                        targetDriverId = String(u.globalId || u.id || fUid);
+                        targetFleetUserId = String(fUid);
+                        targetDriverName = u.name || rawTargetName;
+                        break;
+                    }
+                }
+            } catch (_) {}
+        }
 
         // 1. Comando global para Web, PWA y Android nativo v1.2.245+
         await db.ref('system_commands/restart_apps').set({
             timestamp: now,
             targetDriverId,
+            targetFleetUserId,
+            targetDriverName,
             clearCache: true,
-            requestedBy: 'admin_qr_panel'
+            requestedBy: (req.body && req.body.requestedBy) || 'admin_qr_panel'
         });
 
         // 2. Retrocompatibilidad inmediata con apps en turno activo (v1.2.244 o anterior):
-        // Al tocar 'remoteRefreshTs' en cada turno activo, DB.onChanges('shifts') ejecuta syncActiveShiftGPS() + enableForegroundService()
+        // Al tocar 'remoteRefreshTs' SOLO en el turno del usuario elegido (o todos si targetDriverId === 'all'),
+        // DB.onChanges('shifts') ejecuta syncActiveShiftGPS() + enableForegroundService()
         let refreshedShifts = 0;
         const shiftsSnap = await db.ref(`fleets/${fleetId}/shifts`).orderByChild('status').equalTo('active').once('value');
         const activeShifts = shiftsSnap.val() || {};
         const updates = [];
+        const normTargetName = targetDriverName ? targetDriverName.trim().toLowerCase() : '';
         for (const [shiftId, shift] of Object.entries(activeShifts)) {
             if (!shift) continue;
-            if (targetDriverId === 'all' || String(shift.driverId) === targetDriverId) {
+            const sDriverId = String(shift.driverId || '');
+            const sDriverName = String(shift.driverName || '').trim().toLowerCase();
+            const isMatch = targetDriverId === 'all' ||
+                (sDriverId && (sDriverId === targetDriverId || sDriverId === targetFleetUserId)) ||
+                (normTargetName && sDriverName === normTargetName);
+            if (isMatch) {
                 updates.push(
                     db.ref(`fleets/${fleetId}/shifts/${shiftId}`).update({ remoteRefreshTs: now })
                 );
@@ -1233,8 +1355,8 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
             await Promise.all(updates);
         }
 
-        console.log(`🔄 [REMOTE-RESTART] Orden enviada (target=${targetDriverId}, refreshedShifts=${refreshedShifts})`);
-        res.json({ ok: true, timestamp: now, targetDriverId, refreshedShifts });
+        console.log(`🔄 [REMOTE-RESTART] Orden enviada (target=${targetDriverId}, name=${targetDriverName}, refreshedShifts=${refreshedShifts})`);
+        res.json({ ok: true, timestamp: now, targetDriverId, targetFleetUserId, targetDriverName, refreshedShifts });
     } catch (e) {
         console.error('❌ Error en /api/bot/restart-driver-apps:', e);
         res.status(500).json({ ok: false, error: e.message });

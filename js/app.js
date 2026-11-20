@@ -512,9 +512,19 @@ const App = (() => {
                 const lastHandled = parseInt(localStorage.getItem('last_remote_restart_ts') || '0', 10);
                 if (cmdTs <= _bootTimestamp || cmdTs <= lastHandled) return;
 
-                const myId = (typeof Auth !== 'undefined') ? Auth.getUserId() : null;
-                if (cmd.targetDriverId && cmd.targetDriverId !== 'all' && myId && String(cmd.targetDriverId) !== String(myId)) {
-                    return;
+                const rawTarget = cmd.targetDriverId ? String(cmd.targetDriverId).trim() : 'all';
+                if (rawTarget && rawTarget !== 'all') {
+                    const currentUser = (typeof Auth !== 'undefined' && typeof Auth.getUser === 'function') ? Auth.getUser() : null;
+                    const myId = (typeof Auth !== 'undefined' && typeof Auth.getUserId === 'function') ? Auth.getUserId() : null;
+                    const myIds = new Set([myId, currentUser?.id, currentUser?.globalId].filter(Boolean).map(String));
+                    const cmdTargets = [cmd.targetDriverId, cmd.targetFleetUserId].filter(Boolean).map(String);
+                    const myName = ((currentUser?.name || (typeof Auth !== 'undefined' && Auth.getUserName ? Auth.getUserName() : '')) || '').trim().toLowerCase();
+                    const targetName = (cmd.targetDriverName || '').trim().toLowerCase();
+                    const idMatched = cmdTargets.some(tid => myIds.has(tid));
+                    const nameMatched = Boolean(myName && targetName && myName === targetName);
+                    if (!idMatched && !nameMatched) {
+                        return;
+                    }
                 }
 
                 try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}

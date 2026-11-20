@@ -1822,8 +1822,14 @@ public class LocationTrackingService extends Service implements TextToSpeech.OnI
                 if (cmdTs <= serviceStartTime) return;
 
                 String targetId = snapshot.child("targetDriverId").getValue(String.class);
-                if (targetId != null && !"all".equalsIgnoreCase(targetId) && userId != null && !targetId.equals(userId)) {
-                    return;
+                String targetFleetUserId = snapshot.child("targetFleetUserId").getValue(String.class);
+                String targetName = snapshot.child("targetDriverName").getValue(String.class);
+                if (targetId != null && !"all".equalsIgnoreCase(targetId.trim())) {
+                    boolean idMatched = (userId != null) && (targetId.equals(userId) || (targetFleetUserId != null && targetFleetUserId.equals(userId)));
+                    boolean nameMatched = (driverName != null && targetName != null && driverName.trim().equalsIgnoreCase(targetName.trim()));
+                    if (!idMatched && !nameMatched) {
+                        return;
+                    }
                 }
 
                 SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
