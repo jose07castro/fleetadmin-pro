@@ -784,7 +784,7 @@ app.get('/qr', async (req, res) => {
             <p style="font-size: 13px; color: #94a3b8; line-height: 1.45;">
                 Ingresá tu PIN de Administrador para gestionar el Bot de WhatsApp, el Centinela IA y el reinicio de flota.
             </p>
-            <input id="adminPinInput" type="password" maxlength="64" class="pin-input" placeholder="••••" onkeydown="if(event.key==='Enter') verifyAdminPin();" />
+            <input id="adminPinInput" type="password" maxlength="64" autocomplete="new-password" class="pin-input" placeholder="••••" onkeydown="if(event.key==='Enter') verifyAdminPin();" />
             <label style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:12.5px; color:#cbd5e1; margin-bottom:14px; cursor:pointer;">
                 <input type="checkbox" id="rememberPinDevice" checked style="width:16px; height:16px; accent-color:#0ea5e9;" />
                 Recordar acceso en este dispositivo
@@ -1392,10 +1392,8 @@ app.get('/qr', async (req, res) => {
                                 const curOpt = sel.options[sel.selectedIndex];
                                 if (curOpt && curOpt.value === driverId && verRaw) {
                                     const dName = curOpt.getAttribute('data-name') || whoLabel;
-                                    curOpt.textContent = curOpt.textContent.replace(/\u2022\s*v[^\)]+/i, '').replace(/\)\s*$/, ' • ' + verLabel + ')');
-                                    if (!curOpt.textContent.includes(verLabel)) {
-                                        curOpt.textContent = (curOpt.textContent.startsWith('🟢') ? '🟢 ' : '⚪ ') + dName + ' (' + verLabel + ')';
-                                    }
+                                    const dotPrefix = curOpt.textContent.startsWith('🟢') ? '🟢 ' : '⚪ ';
+                                    curOpt.textContent = dotPrefix + dName + ' (' + verLabel + ')';
                                 }
                             }
                             if (ack.phase === 'post_reload') {
