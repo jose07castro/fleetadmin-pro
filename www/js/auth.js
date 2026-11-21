@@ -526,6 +526,11 @@ const Auth = (() => {
         const globalUser = await DB.findGlobalUser(name, pin, role);
         if (globalUser) {
             login(globalUser);
+            const targetView = role === 'driver' ? 'driver' : (isUserAdminEligible(globalUser) ? 'admin' : 'driver');
+            localStorage.setItem(ACTIVE_VIEW_KEY, targetView);
+            if (typeof AndroidServices !== 'undefined' && typeof AndroidServices.setUserRole === 'function') {
+                AndroidServices.setUserRole(getRole() || globalUser.role);
+            }
             return true;
         }
         return false;

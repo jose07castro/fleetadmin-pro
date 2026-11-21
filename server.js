@@ -1,6 +1,7 @@
 try { require('dotenv').config(); } catch (e) { console.log('ℹ️ dotenv no está instalado, se usarán variables de entorno del sistema.'); }
 const express = require('express');
 const path = require('path');
+const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -216,7 +217,7 @@ app.get('/qr', async (req, res) => {
 
         let qrUrl = diag.lastQr || null;
         let versionControl = {
-            min_version_web: '1.2.249',
+            min_version_web: '1.2.250',
             min_version_android: '1.2.245',
             update_message: 'Mejoras críticas de rendimiento, rastreo GPS en tiempo real y estabilidad general.',
             android_update_url: 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
@@ -783,7 +784,7 @@ app.get('/qr', async (req, res) => {
             <p style="font-size: 13px; color: #94a3b8; line-height: 1.45;">
                 Ingresá tu PIN de Administrador para gestionar el Bot de WhatsApp, el Centinela IA y el reinicio de flota.
             </p>
-            <input id="adminPinInput" type="password" inputmode="numeric" maxlength="16" class="pin-input" placeholder="••••" onkeydown="if(event.key==='Enter') verifyAdminPin();" />
+            <input id="adminPinInput" type="password" maxlength="64" class="pin-input" placeholder="••••" onkeydown="if(event.key==='Enter') verifyAdminPin();" />
             <label style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:12.5px; color:#cbd5e1; margin-bottom:14px; cursor:pointer;">
                 <input type="checkbox" id="rememberPinDevice" checked style="width:16px; height:16px; accent-color:#0ea5e9;" />
                 Recordar acceso en este dispositivo
@@ -1047,6 +1048,20 @@ app.get('/qr', async (req, res) => {
 
     <script>
         (function initPinGate() {
+            // Desbloquear automáticamente si ya tiene sesión activa de Administrador en este navegador
+            try {
+                const rawFaUser = localStorage.getItem('fleetadmin_user') || sessionStorage.getItem('fleetadmin_user');
+                if (rawFaUser) {
+                    const faUser = JSON.parse(rawFaUser);
+                    const faRoles = Array.isArray(faUser?.roles) ? faUser.roles : [];
+                    if (faUser && (faUser.role === 'owner' || faUser.role === 'titular' || faUser.role === 'admin' || faUser.isAdmin === true || faRoles.includes('admin') || faRoles.includes('owner'))) {
+                        const gate = document.getElementById('adminPinGateOverlay');
+                        if (gate) gate.style.display = 'none';
+                        return;
+                    }
+                }
+            } catch (_) {}
+
             const savedToken = localStorage.getItem('fa_control_pin_token') || '';
             if (!savedToken) {
                 setTimeout(() => {
@@ -2003,7 +2018,7 @@ async function _validateControlAdminPin({ pin, pinToken, db, fleetId = '-OnPd8Ha
     const cleanPin = pin ? String(pin).trim() : '';
     const cleanToken = pinToken ? String(pinToken).trim() : '';
 
-    // 1. Verificar PIN guardado explícitamente en Firebase (bot_config/admin_pin_hash)
+    // 1. Verificar PIN personalizado guardado explícitamente en Firebase (bot_config/admin_pin_hash)
     if (db) {
         try {
             const pinSnap = await db.ref('bot_config/admin_pin_hash').once('value');
@@ -2011,31 +2026,68 @@ async function _validateControlAdminPin({ pin, pinToken, db, fleetId = '-OnPd8Ha
             if (storedHash && typeof storedHash === 'string') {
                 if (cleanToken && cleanToken === storedHash) return { valid: true, token: storedHash };
                 if (cleanPin && _hashControlPin(cleanPin) === storedHash) return { valid: true, token: storedHash };
-                return { valid: false };
             }
         } catch (_) {}
     }
 
-    // 2. Fallback antes de configurar PIN propio: variable de entorno, DNI del titular o PIN de usuario owner en Firebase
-    const validCandidates = new Set([process.env.CONTROL_ADMIN_PIN || '22209365', '22209365']);
+    // 2. Recopilar todos los PIN/hashes válidos de Administradores (texto plano, bcrypt $2..., DNI/Licencia)
+    const validPlainCandidates = new Set([process.env.CONTROL_ADMIN_PIN || '22209365', '22209365']);
+    const validBcryptHashes = new Set([
+        '$2a$10$JswHkEinG9FEWxQ29O1nR.KCTF2Wh.wxP6wtQae5twtcfagFp6NbG', // JOSE CAS (owner flota)
+        '$2a$10$M02ALoKj0UHo2f.wLCRtFOt8Xx..pCktLZ4332a0lEDj6BXBv5Sli', // Jose (owner globalUsers)
+        '$2a$10$hNkrRkYl563NXotNCn9Yre/hBX/48CaPEkIw7k4uBLlfhpasfNPKS'  // jose Cas (perfil chofer del dueño)
+    ]);
+
     if (db) {
         try {
-            const usersSnap = await db.ref(`fleets/${fleetId}/users`).once('value');
-            const usersVal = usersSnap.val() || {};
-            for (const u of Object.values(usersVal)) {
-                if (!u || u.role !== 'owner') continue;
-                if (u.pin && !String(u.pin).startsWith('$2')) validCandidates.add(String(u.pin).trim());
-                if (u.licenseNumber) validCandidates.add(String(u.licenseNumber).trim());
-                if (u.dni) validCandidates.add(String(u.dni).trim());
-            }
+            const [fleetUsersSnap, globalUsersSnap] = await Promise.all([
+                db.ref(`fleets/${fleetId}/users`).once('value'),
+                db.ref('globalUsers').once('value').catch(() => null)
+            ]);
+            const collectFromMap = (mapVal, requireFleetMatch) => {
+                if (!mapVal) return;
+                for (const u of Object.values(mapVal)) {
+                    if (!u) continue;
+                    if (requireFleetMatch && u.fleetId && String(u.fleetId) !== String(fleetId)) continue;
+                    const rolesArr = Array.isArray(u.roles) ? u.roles : [];
+                    const isAdminAccount = u.role === 'owner' || u.role === 'titular' || u.role === 'admin' ||
+                        u.isAdmin === true || rolesArr.includes('admin') || rolesArr.includes('owner');
+                    if (!isAdminAccount) continue;
+                    if (u.pin) {
+                        const pinStr = String(u.pin).trim();
+                        if (pinStr.startsWith('$2')) {
+                            validBcryptHashes.add(pinStr);
+                        } else if (pinStr) {
+                            validPlainCandidates.add(pinStr);
+                        }
+                    }
+                    if (u.licenseNumber) validPlainCandidates.add(String(u.licenseNumber).trim());
+                    if (u.dni) validPlainCandidates.add(String(u.dni).trim());
+                }
+            };
+            collectFromMap(fleetUsersSnap ? fleetUsersSnap.val() : null, false);
+            collectFromMap(globalUsersSnap ? globalUsersSnap.val() : null, true);
         } catch (_) {}
     }
 
-    for (const candidate of validCandidates) {
+    for (const candidate of validPlainCandidates) {
         const token = _hashControlPin(candidate);
         if (cleanToken && cleanToken === token) return { valid: true, token };
         if (cleanPin && cleanPin === candidate) return { valid: true, token };
     }
+
+    for (const bHash of validBcryptHashes) {
+        const token = _hashControlPin(bHash);
+        if (cleanToken && cleanToken === token) return { valid: true, token };
+        if (cleanPin) {
+            try {
+                if (bcrypt.compareSync(cleanPin, bHash)) {
+                    return { valid: true, token };
+                }
+            } catch (_) {}
+        }
+    }
+
     return { valid: false };
 }
 

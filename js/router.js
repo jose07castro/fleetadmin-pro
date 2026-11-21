@@ -32,7 +32,7 @@ const Router = (() => {
                 existingScript.remove(); // Remover el script viejo inyectado para forzar la recarga del archivo actualizado
             }
             const script = document.createElement('script');
-            script.src = `${path}?v=249_${Date.now()}`;
+            script.src = `${path}?v=250_${Date.now()}`;
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
