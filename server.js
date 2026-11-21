@@ -216,7 +216,7 @@ app.get('/qr', async (req, res) => {
 
         let qrUrl = diag.lastQr || null;
         let versionControl = {
-            min_version_web: '1.2.246',
+            min_version_web: '1.2.249',
             min_version_android: '1.2.245',
             update_message: 'Mejoras críticas de rendimiento, rastreo GPS en tiempo real y estabilidad general.',
             android_update_url: 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
@@ -883,6 +883,7 @@ app.get('/qr', async (req, res) => {
                         🔄 Reiniciar App Seleccionada
                     </button>
                 </div>
+                <div id="restartAckStatusBox" style="display:none; margin-top:10px; padding:10px 12px; border-radius:10px; font-size:13px; font-weight:700; border:1px solid #334155; background:#0f172a; color:#e2e8f0; line-height:1.45;"></div>
             </div>
 
             <div class="form-group mobile-stack" style="max-width:360px; align-items:stretch;">
@@ -1316,6 +1317,94 @@ app.get('/qr', async (req, res) => {
             }
         }
 
+        let _restartAckPollTimer = null;
+        function _setRestartAckBox(bg, border, color, html) {
+            const box = document.getElementById('restartAckStatusBox');
+            if (!box) return;
+            box.style.display = 'block';
+            box.style.background = bg;
+            box.style.borderColor = border;
+            box.style.color = color;
+            box.innerHTML = html;
+        }
+
+        function _startRestartAckPolling(driverId, fleetUserId, commandTimestamp, whoLabel) {
+            if (_restartAckPollTimer) {
+                clearInterval(_restartAckPollTimer);
+                _restartAckPollTimer = null;
+            }
+            const startedAt = Date.now();
+            _setRestartAckBox('#1e293b', '#38bdf8', '#bae6fd',
+                '⏳ Orden enviada a <b>' + whoLabel + '</b>. Esperando confirmación del teléfono...');
+
+            const pollOnce = async () => {
+                try {
+                    const qs = new URLSearchParams({
+                        driverId: driverId || '',
+                        fleetUserId: fleetUserId || '',
+                        commandTimestamp: String(commandTimestamp || 0)
+                    });
+                    const r = await fetch('/api/bot/restart-command-status?' + qs.toString(), { cache: 'no-store' });
+                    if (!r.ok) return;
+                    const st = await r.json();
+                    if (!st || !st.ok) return;
+
+                    const ack = st.ack;
+                    const verRaw = (ack && ack.appVersion) || st.liveAppVersion || '';
+                    const verLabel = verRaw ? ('v' + String(verRaw).replace(/^v/i, '')) : 'v?';
+
+                    if (ack && Number(ack.commandTimestamp || 0) >= Number(commandTimestamp || 0)) {
+                        if (ack.status === 'DEFERRED_SAVING') {
+                            _setRestartAckBox('rgba(245, 158, 11, 0.14)', '#f59e0b', '#fde68a',
+                                '🟡 Orden recibida por <b>' + whoLabel + '</b> (' + verLabel + ') — Esperando que guarde un formulario/cobro en curso...');
+                            return;
+                        }
+                        if (ack.status === 'PLAY_UPDATE_TRIGGERED') {
+                            const reqVer = ack.requiredAndroidVersion ? ('v' + String(ack.requiredAndroidVersion).replace(/^v/i, '')) : 'Google Play';
+                            _setRestartAckBox('rgba(16, 185, 129, 0.15)', '#10b981', '#6ee7b7',
+                                '✅ Orden ejecutada - ' + verLabel + ' • 📲 Google Play In-App Update activado (requerida ' + reqVer + ')');
+                            clearInterval(_restartAckPollTimer);
+                            _restartAckPollTimer = null;
+                            showToast('✅ Play Store Update activado en ' + whoLabel);
+                            return;
+                        }
+                        if (ack.status === 'EXECUTED') {
+                            const phaseNote = ack.phase === 'post_reload' ? ' • Caché limpiada y app recargada' : ' • Recargando...';
+                            _setRestartAckBox('rgba(16, 185, 129, 0.16)', '#10b981', '#6ee7b7',
+                                '✅ Orden ejecutada - ' + verLabel + phaseNote);
+                            const sel = document.getElementById('restartDriverSelect');
+                            if (sel && sel.selectedIndex > 0) {
+                                const curOpt = sel.options[sel.selectedIndex];
+                                if (curOpt && curOpt.value === driverId && verRaw) {
+                                    const dName = curOpt.getAttribute('data-name') || whoLabel;
+                                    curOpt.textContent = curOpt.textContent.replace(/\u2022\s*v[^\)]+/i, '').replace(/\)\s*$/, ' • ' + verLabel + ')');
+                                    if (!curOpt.textContent.includes(verLabel)) {
+                                        curOpt.textContent = (curOpt.textContent.startsWith('🟢') ? '🟢 ' : '⚪ ') + dName + ' (' + verLabel + ')';
+                                    }
+                                }
+                            }
+                            if (ack.phase === 'post_reload') {
+                                clearInterval(_restartAckPollTimer);
+                                _restartAckPollTimer = null;
+                                showToast('✅ Orden ejecutada en ' + whoLabel + ' - ' + verLabel);
+                            }
+                            return;
+                        }
+                    }
+
+                    if (Date.now() - startedAt > 45000) {
+                        clearInterval(_restartAckPollTimer);
+                        _restartAckPollTimer = null;
+                        _setRestartAckBox('rgba(148, 163, 184, 0.12)', '#64748b', '#cbd5e1',
+                            '📡 Orden en cola para <b>' + whoLabel + '</b>. Se ejecutará apenas el teléfono reconecte con internet o abra la app.');
+                    }
+                } catch (_) {}
+            };
+
+            pollOnce();
+            _restartAckPollTimer = setInterval(pollOnce, 1500);
+        }
+
         async function restartDriverApps() {
             const sel = document.getElementById('restartDriverSelect');
             const targetId = sel ? sel.value : '';
@@ -1342,6 +1431,7 @@ app.get('/qr', async (req, res) => {
                 if (data.ok) {
                     const whoLabel = targetId === 'all' ? 'Toda la flota' : (data.targetDriverName || targetName);
                     showToast('✅ Orden enviada a "' + whoLabel + '" (' + (data.refreshedShifts || 0) + ' turno resincronizado)');
+                    _startRestartAckPolling(data.targetDriverId || targetId, data.targetFleetUserId || '', data.timestamp, whoLabel);
                 } else {
                     showToast('Error: ' + (data.error || 'Desconocido'), true);
                 }
@@ -1734,25 +1824,54 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
             } catch (_) {}
         }
 
-        // 1. Comando aislado por nodo de usuario (Web, PWA y Android nativo v1.2.245+)
+        // Leer parámetros de versión actuales para incluirlos en la orden remota
+        let vcVal = {};
+        try {
+            const vcSnap = await db.ref('app_config/version_control').once('value');
+            if (vcSnap.val()) vcVal = vcSnap.val();
+        } catch (_) {}
+
+        // 1. Comando aislado por nodo de usuario (remote_commands/{userId}/force_reload + retrocompatibilidad system_commands)
         // NUNCA escribir en nodo global compartido para evitar reiniciar al Administrador u otros usuarios.
         const cmdPayload = {
+            commandId: `cmd_${now}`,
             timestamp: now,
             targetDriverId,
             targetFleetUserId,
             targetDriverName,
             clearCache: true,
+            forceUpdateCheck: true,
+            min_version_web: vcVal.min_version_web || '1.2.249',
+            min_version_android: vcVal.min_version_android || '1.2.245',
+            android_update_url: vcVal.android_update_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app',
+            update_message: vcVal.update_message || 'Actualización obligatoria enviada por el Administrador.',
             requestedBy: (req.body && req.body.requestedBy) || 'admin_qr_panel'
         };
 
+        const initAckPayload = {
+            commandId: cmdPayload.commandId,
+            commandTimestamp: now,
+            status: 'PENDING',
+            targetDriverName,
+            updatedAt: now
+        };
+
         if (targetDriverId === 'all') {
-            await db.ref('system_commands/restart_by_user/all').set(cmdPayload);
+            await Promise.all([
+                db.ref('remote_commands/all/force_reload').set(cmdPayload),
+                db.ref('remote_commands/all/ack').set(initAckPayload),
+                db.ref('system_commands/restart_by_user/all').set(cmdPayload)
+            ]);
         } else {
             const writeOps = [];
             if (targetDriverId) {
+                writeOps.push(db.ref(`remote_commands/${targetDriverId}/force_reload`).set(cmdPayload));
+                writeOps.push(db.ref(`remote_commands/${targetDriverId}/ack`).set(initAckPayload));
                 writeOps.push(db.ref(`system_commands/restart_by_user/${targetDriverId}`).set(cmdPayload));
             }
             if (targetFleetUserId && targetFleetUserId !== targetDriverId) {
+                writeOps.push(db.ref(`remote_commands/${targetFleetUserId}/force_reload`).set(cmdPayload));
+                writeOps.push(db.ref(`remote_commands/${targetFleetUserId}/ack`).set(initAckPayload));
                 writeOps.push(db.ref(`system_commands/restart_by_user/${targetFleetUserId}`).set(cmdPayload));
             }
             await Promise.all(writeOps);
@@ -1787,9 +1906,51 @@ app.post('/api/bot/restart-driver-apps', async (req, res) => {
         }
 
         console.log(`🔄 [REMOTE-RESTART] Orden enviada (target=${targetDriverId}, name=${targetDriverName}, refreshedShifts=${refreshedShifts})`);
-        res.json({ ok: true, timestamp: now, targetDriverId, targetFleetUserId, targetDriverName, refreshedShifts });
+        res.json({ ok: true, commandId: cmdPayload.commandId, timestamp: now, targetDriverId, targetFleetUserId, targetDriverName, refreshedShifts });
     } catch (e) {
         console.error('❌ Error en /api/bot/restart-driver-apps:', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+// Estado en tiempo real (ACK + versión) de orden remota de reinicio/actualización
+app.get('/api/bot/restart-command-status', async (req, res) => {
+    try {
+        const db = WhatsappBot.getDb();
+        if (!db) return res.status(500).json({ ok: false, error: 'Database not ready' });
+
+        const driverId = String(req.query.driverId || '').trim();
+        const fleetUserId = String(req.query.fleetUserId || '').trim();
+        const fleetId = String(req.query.fleetId || '-OnPd8HaV1VZWBnYQQX7').trim();
+
+        if (!driverId && !fleetUserId) {
+            return res.status(400).json({ ok: false, error: 'driverId required' });
+        }
+
+        const [ackPrimarySnap, ackFleetSnap, posSnap, posFleetSnap, userSnap] = await Promise.all([
+            driverId ? db.ref(`remote_commands/${driverId}/ack`).once('value').catch(() => null) : null,
+            (fleetUserId && fleetUserId !== driverId) ? db.ref(`remote_commands/${fleetUserId}/ack`).once('value').catch(() => null) : null,
+            driverId ? db.ref(`driver_positions/${driverId}`).once('value').catch(() => null) : null,
+            (fleetUserId && fleetUserId !== driverId) ? db.ref(`driver_positions/${fleetUserId}`).once('value').catch(() => null) : null,
+            (fleetUserId || driverId) ? db.ref(`fleets/${fleetId}/users/${fleetUserId || driverId}`).once('value').catch(() => null) : null
+        ]);
+
+        const ackA = ackPrimarySnap ? ackPrimarySnap.val() : null;
+        const ackB = ackFleetSnap ? ackFleetSnap.val() : null;
+        let ack = ackA || ackB || null;
+        if (ackA && ackB) {
+            const tA = Number(ackA.updatedAt || ackA.executedAt || 0);
+            const tB = Number(ackB.updatedAt || ackB.executedAt || 0);
+            ack = tB > tA ? ackB : ackA;
+        }
+
+        const posA = posSnap ? posSnap.val() : null;
+        const posB = posFleetSnap ? posFleetSnap.val() : null;
+        const usr = userSnap ? userSnap.val() : null;
+        const liveAppVersion = (posA && posA.appVersion) || (posB && posB.appVersion) || (usr && usr.appVersion) || (ack && ack.appVersion) || '';
+
+        res.json({ ok: true, ack, liveAppVersion });
+    } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
 });

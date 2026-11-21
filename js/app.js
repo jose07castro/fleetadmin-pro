@@ -256,7 +256,7 @@ if (window.location.hostname === 'localhost' ||
    ============================================ */
 
 const App = (() => {
-    const LOCAL_APP_VERSION = '1.2.248';
+    const LOCAL_APP_VERSION = '1.2.249';
     window.APP_VERSION = LOCAL_APP_VERSION;
 
     let _lastResumeTime = 0; // Top-level App IIFE
@@ -503,6 +503,147 @@ const App = (() => {
 
     let _remoteRestartSubscribedKeys = new Set();
     let _remoteRestartBootTs = Date.now();
+    let _activeRemoteCmdTs = 0;
+    let _deferredRemoteWatcher = null;
+
+    async function _writeRemoteAck(ackKeys, payload) {
+        if (typeof firebaseDB === 'undefined' || !Array.isArray(ackKeys) || ackKeys.length === 0) return;
+        try {
+            await Promise.all(ackKeys.map(k =>
+                firebaseDB.ref(`remote_commands/${k}/ack`).set(payload).catch(() => {})
+            ));
+        } catch (_) {}
+    }
+
+    async function _flushPostReloadRemoteAck() {
+        if (typeof firebaseDB === 'undefined') return;
+        let raw = null;
+        try { raw = localStorage.getItem('pending_remote_ack_payload'); } catch (_) {}
+        if (!raw) return;
+        try { localStorage.removeItem('pending_remote_ack_payload'); } catch (_) {}
+        try {
+            const info = JSON.parse(raw);
+            if (!info || !Array.isArray(info.ackKeys)) return;
+            const localVer = _getLocalAppVersion();
+            await _writeRemoteAck(info.ackKeys, {
+                commandId: info.commandId || '',
+                commandTimestamp: Number(info.commandTimestamp || 0),
+                status: 'EXECUTED',
+                phase: 'post_reload',
+                appVersion: localVer,
+                platform: _isNativeAndroidEnv() ? 'Android' : 'Web',
+                driverName: (typeof Auth !== 'undefined' && Auth.getUserName) ? Auth.getUserName() : '',
+                executedAt: Date.now(),
+                updatedAt: Date.now()
+            });
+            if (typeof reportAppVersionToServer === 'function') {
+                reportAppVersionToServer();
+            }
+        } catch (_) {}
+    }
+
+    async function _executeRemoteForceReload(cmd, ackKeys) {
+        const cmdTs = Number(cmd.timestamp || Date.now());
+        try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}
+        _removePendingUpdateBanner();
+        if (_deferredRemoteWatcher) {
+            clearInterval(_deferredRemoteWatcher);
+            _deferredRemoteWatcher = null;
+        }
+
+        console.log('🔄 [REMOTE-RESTART] Ejecutando orden remota de actualización/reinicio...');
+
+        try {
+            if (typeof syncActiveShiftGPS === 'function') {
+                await syncActiveShiftGPS();
+            }
+        } catch (_) {}
+
+        const localVer = _getLocalAppVersion();
+        const isNative = _isNativeAndroidEnv();
+        const minAndroid = String(cmd.min_version_android || _latestVersionControlData?.min_version_android || '').replace(/^v/i, '').trim();
+
+        // Caso Android nativo desactualizado respecto a Google Play (min_version_android)
+        if (isNative && minAndroid && _compareSemver(localVer, minAndroid) < 0) {
+            await _writeRemoteAck(ackKeys, {
+                commandId: cmd.commandId || ('cmd_' + cmdTs),
+                commandTimestamp: cmdTs,
+                status: 'PLAY_UPDATE_TRIGGERED',
+                appVersion: localVer,
+                requiredAndroidVersion: minAndroid,
+                platform: 'Android',
+                driverName: (typeof Auth !== 'undefined' && Auth.getUserName) ? Auth.getUserName() : '',
+                executedAt: Date.now(),
+                updatedAt: Date.now()
+            });
+            const playUrl = cmd.android_update_url || _latestVersionControlData?.android_update_url || 'https://play.google.com/store/apps/details?id=com.fleetadminpro.app';
+            const updateMsg = cmd.update_message || 'El Administrador envió una actualización obligatoria disponible en Google Play.';
+            showForcedUpdateScreen(localVer, minAndroid, playUrl, updateMsg, null, false);
+            if (window.NativeServiceBridge && typeof window.NativeServiceBridge.triggerImmediatePlayStoreUpdate === 'function') {
+                try { window.NativeServiceBridge.triggerImmediatePlayStoreUpdate(playUrl); } catch (_) {}
+            }
+            return;
+        }
+
+        // Guardar estado post-reload antes de limpiar caché y recargar
+        try {
+            localStorage.setItem('pending_remote_ack_payload', JSON.stringify({
+                ackKeys,
+                commandId: cmd.commandId || ('cmd_' + cmdTs),
+                commandTimestamp: cmdTs
+            }));
+        } catch (_) {}
+
+        await _writeRemoteAck(ackKeys, {
+            commandId: cmd.commandId || ('cmd_' + cmdTs),
+            commandTimestamp: cmdTs,
+            status: 'EXECUTED',
+            phase: 'reloading',
+            appVersion: localVer,
+            platform: isNative ? 'Android' : 'Web',
+            driverName: (typeof Auth !== 'undefined' && Auth.getUserName) ? Auth.getUserName() : '',
+            executedAt: Date.now(),
+            updatedAt: Date.now()
+        });
+
+        try {
+            if (window.NativeServiceBridge && typeof window.NativeServiceBridge.restartGpsEngine === 'function') {
+                window.NativeServiceBridge.restartGpsEngine();
+            }
+            if (isNative && window.NativeServiceBridge && typeof window.NativeServiceBridge.triggerImmediatePlayStoreUpdate === 'function') {
+                window.NativeServiceBridge.triggerImmediatePlayStoreUpdate('');
+            }
+        } catch (_) {}
+
+        try {
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(async (r) => {
+                    try { await r.update(); } catch (_) {}
+                    try { await r.unregister(); } catch (_) {}
+                }));
+            }
+        } catch (_) {}
+
+        try {
+            if ('caches' in window) {
+                const names = await caches.keys();
+                await Promise.all(names.map(n => caches.delete(n)));
+            }
+        } catch (_) {}
+
+        if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+            Components.showToast('🔄 Actualizando sistema por orden del Administrador...', 'info');
+        }
+        setTimeout(() => {
+            try {
+                window.location.reload(true);
+            } catch (_) {
+                window.location.reload();
+            }
+        }, 450);
+    }
+
     function _initRemoteRestartListener() {
         if (typeof firebaseDB === 'undefined' || typeof Auth === 'undefined') return;
         const currentUser = (typeof Auth.getUser === 'function') ? Auth.getUser() : null;
@@ -511,12 +652,18 @@ const App = (() => {
         const myIds = Array.from(new Set([myId, currentUser?.id, currentUser?.globalId].filter(Boolean).map(String)));
         if (myIds.length === 0) return; // No escuchar si aún no hay sesión identificada
 
+        // Si acabamos de recargar por una orden remota, reportar confirmación post_reload a /qr
+        _flushPostReloadRemoteAck();
+
         const handleRestartSnapshot = async (snap) => {
             const cmd = snap.val();
             if (!cmd || !cmd.timestamp) return;
             const cmdTs = Number(cmd.timestamp);
+            const now = Date.now();
             const lastHandled = parseInt(localStorage.getItem('last_remote_restart_ts') || '0', 10);
-            if (cmdTs <= _remoteRestartBootTs || cmdTs <= lastHandled) return;
+
+            if (cmdTs <= lastHandled || cmdTs <= _activeRemoteCmdTs) return;
+            if (now - cmdTs > 10 * 60 * 1000) return; // Ignorar órdenes viejas (>10 min)
 
             const rawTarget = cmd.targetDriverId ? String(cmd.targetDriverId).trim() : '';
             if (!rawTarget) return;
@@ -531,34 +678,33 @@ const App = (() => {
                 if (!idMatched && !nameMatched) return;
             }
 
-            try { localStorage.setItem('last_remote_restart_ts', String(cmdTs)); } catch (_) {}
-            console.log('🔄 [REMOTE-RESTART] Comando remoto dirigido a este usuario. Reiniciando GPS y recargando app...');
+            _activeRemoteCmdTs = cmdTs;
+            const ackKeys = rawTarget === 'all' ? ['all', myIds[0]].filter(Boolean) : Array.from(new Set(myIds));
 
-            try {
-                if (typeof syncActiveShiftGPS === 'function') {
-                    await syncActiveShiftGPS();
+            // Protección de formularios/cobros en curso: diferir recarga hasta que guarde o cierre el formulario
+            if (_isActiveOperationInProgress()) {
+                await _writeRemoteAck(ackKeys, {
+                    commandId: cmd.commandId || ('cmd_' + cmdTs),
+                    commandTimestamp: cmdTs,
+                    status: 'DEFERRED_SAVING',
+                    appVersion: _getLocalAppVersion(),
+                    driverName: (typeof Auth.getUserName === 'function') ? Auth.getUserName() : '',
+                    updatedAt: Date.now()
+                });
+                _showPendingUpdateBanner(cmd.min_version_web || _getLocalAppVersion());
+                if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
+                    Components.showToast('🔄 Actualización remota en espera: se aplicará apenas guardes el formulario actual.', 'warning');
                 }
-            } catch (_) {}
-
-            try {
-                if (window.NativeServiceBridge && typeof window.NativeServiceBridge.restartGpsEngine === 'function') {
-                    window.NativeServiceBridge.restartGpsEngine();
-                }
-            } catch (_) {}
-
-            try {
-                if ('caches' in window) {
-                    const names = await caches.keys();
-                    await Promise.all(names.map(n => caches.delete(n)));
-                }
-            } catch (_) {}
-
-            if (typeof Components !== 'undefined' && typeof Components.showToast === 'function') {
-                Components.showToast('🔄 Actualizando sistema por orden del Administrador...', 'info');
+                if (_deferredRemoteWatcher) clearInterval(_deferredRemoteWatcher);
+                _deferredRemoteWatcher = setInterval(() => {
+                    if (!_isActiveOperationInProgress()) {
+                        _executeRemoteForceReload(cmd, ackKeys);
+                    }
+                }, 1000);
+                return;
             }
-            setTimeout(() => {
-                window.location.reload(true);
-            }, 400);
+
+            _executeRemoteForceReload(cmd, ackKeys);
         };
 
         try {
@@ -567,9 +713,16 @@ const App = (() => {
                 keysToListen.push('all');
             }
             keysToListen.forEach((key) => {
-                if (_remoteRestartSubscribedKeys.has(key)) return;
-                _remoteRestartSubscribedKeys.add(key);
-                firebaseDB.ref(`system_commands/restart_by_user/${key}`).on('value', handleRestartSnapshot);
+                const rk = `remote:${key}`;
+                if (!_remoteRestartSubscribedKeys.has(rk)) {
+                    _remoteRestartSubscribedKeys.add(rk);
+                    firebaseDB.ref(`remote_commands/${key}/force_reload`).on('value', handleRestartSnapshot);
+                }
+                const sk = `legacy:${key}`;
+                if (!_remoteRestartSubscribedKeys.has(sk)) {
+                    _remoteRestartSubscribedKeys.add(sk);
+                    firebaseDB.ref(`system_commands/restart_by_user/${key}`).on('value', handleRestartSnapshot);
+                }
             });
         } catch (e) {
             console.warn('⚠️ [REMOTE-RESTART] Error instalando listener aislado:', e);

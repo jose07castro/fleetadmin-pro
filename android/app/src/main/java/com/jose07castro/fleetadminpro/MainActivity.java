@@ -1076,6 +1076,23 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void triggerImmediatePlayStoreUpdate(String fallbackUrl) {
+            Log.i(TAG, "🚀 [REMOTE-UPDATE] triggerImmediatePlayStoreUpdate()");
+            runOnUiThread(() -> {
+                try {
+                    updateCheckedOrDismissed = false;
+                    if (isInstalledFromPlayStore()) {
+                        checkPlayStoreUpdate();
+                    } else if (fallbackUrl != null && !fallbackUrl.trim().isEmpty()) {
+                        Log.i(TAG, "📦 App instalada por fuera de Play Store; manteniendo bloqueo hasta descargar: " + fallbackUrl);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error disparando Play Store In-App Update:", e);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void openForceUpdateUrl(String url) {
             final String targetUrl = (url != null && !url.trim().isEmpty())
                 ? url.trim()
@@ -1083,6 +1100,18 @@ public class MainActivity extends BridgeActivity {
             isForceUpdateLocked = true;
             runOnUiThread(() -> {
                 try {
+                    if (targetUrl.contains("play.google.com/store/apps/details?id=")) {
+                        try {
+                            String pkg = Uri.parse(targetUrl).getQueryParameter("id");
+                            if (pkg != null && !pkg.isEmpty()) {
+                                Intent marketIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg));
+                                marketIntent.setPackage("com.android.vending");
+                                marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(marketIntent);
+                                return;
+                            }
+                        } catch (Exception ignored) {}
+                    }
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
