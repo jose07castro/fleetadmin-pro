@@ -256,7 +256,7 @@ if (window.location.hostname === 'localhost' ||
    ============================================ */
 
 const App = (() => {
-    const LOCAL_APP_VERSION = '1.2.247';
+    const LOCAL_APP_VERSION = '1.2.248';
     window.APP_VERSION = LOCAL_APP_VERSION;
 
     let _lastResumeTime = 0; // Top-level App IIFE

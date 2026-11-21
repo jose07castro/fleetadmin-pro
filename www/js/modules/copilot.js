@@ -4397,8 +4397,8 @@ const CopilotModule = (() => {
                 top: calc(env(safe-area-inset-top, 0px) + 8px);
                 left: 50%;
                 transform: translateX(-50%) translateY(-150%);
-                width: auto;
-                max-width: calc(100vw - 16px);
+                width: 94vw;
+                max-width: 560px;
                 background: transparent !important;
                 border: none;
                 box-shadow: none;
@@ -4418,17 +4418,20 @@ const CopilotModule = (() => {
                 position: relative;
                 background: rgba(0, 0, 0, 0.22);
                 border: 1.5px solid rgba(255, 255, 255, 0.28);
-                border-radius: 999px;
+                border-radius: 28px;
                 box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
-                padding: 6px 12px 6px 8px;
-                display: inline-flex;
+                width: 100%;
+                min-height: 198px;
+                padding: 24px 20px;
+                display: flex;
+                flex-direction: column;
                 align-items: center;
-                gap: 10px;
+                justify-content: center;
+                text-align: center;
                 color: #ffffff;
                 box-sizing: border-box;
-                max-width: calc(100vw - 16px);
             }
             .copilot-hud-card.hud-speeding {
                 background: rgba(220, 38, 38, 0.3);
@@ -4441,11 +4444,11 @@ const CopilotModule = (() => {
             }
             .copilot-traffic-sign {
                 flex-shrink: 0;
-                width: 56px;
-                height: 56px;
+                width: 88px;
+                height: 88px;
                 border-radius: 50%;
                 background: #ffffff;
-                border: 4px solid #dc2626;
+                border: 6px solid #dc2626;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -4454,7 +4457,7 @@ const CopilotModule = (() => {
                 box-sizing: border-box;
             }
             .copilot-traffic-sign .speed-num {
-                font-size: 23px;
+                font-size: 38px;
                 font-weight: 900;
                 line-height: 1;
                 color: #0f172a;
@@ -4463,28 +4466,31 @@ const CopilotModule = (() => {
             }
             .copilot-traffic-sign.is-traffic {
                 background: rgba(15, 23, 42, 0.75);
-                border-width: 3px;
+                border-width: 5px;
             }
             .copilot-traffic-sign.is-traffic .traffic-icon {
-                font-size: 26px;
+                font-size: 42px;
                 line-height: 1;
             }
             .copilot-hud-main {
                 display: flex;
                 flex-direction: column;
+                align-items: center;
                 justify-content: center;
+                width: 100%;
                 min-width: 0;
-                gap: 2px;
+                gap: 14px;
             }
             .copilot-hud-pill-row {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                white-space: nowrap;
+                justify-content: center;
+                gap: 14px;
+                flex-wrap: wrap;
             }
             .copilot-hud-pill-dist {
                 color: #ffffff;
-                font-size: 22px;
+                font-size: 36px;
                 font-weight: 900;
                 line-height: 1.1;
                 letter-spacing: -0.2px;
@@ -4494,10 +4500,10 @@ const CopilotModule = (() => {
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
-                font-size: 14.5px;
+                font-size: 21px;
                 font-weight: 800;
                 line-height: 1.1;
-                padding: 3px 10px;
+                padding: 7px 18px;
                 border-radius: 999px;
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
             }
@@ -4518,20 +4524,28 @@ const CopilotModule = (() => {
                 border: 1px solid rgba(255, 255, 255, 0.2);
             }
             .copilot-hud-name {
-                font-size: 14px;
-                font-weight: 700;
+                font-size: 22px;
+                font-weight: 800;
                 color: rgba(248, 250, 252, 0.95);
-                line-height: 1.2;
-                max-width: 260px;
-                white-space: nowrap;
+                line-height: 1.25;
+                text-align: center;
+                width: 100%;
+                max-width: 96%;
+                white-space: normal;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
                 overflow: hidden;
-                text-overflow: ellipsis;
                 text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.75);
             }
             .copilot-close-btn {
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                z-index: 2;
                 flex-shrink: 0;
-                width: 36px;
-                height: 36px;
+                width: 42px;
+                height: 42px;
                 border-radius: 50%;
                 background: rgba(0, 0, 0, 0.28);
                 border: 1px solid rgba(255, 255, 255, 0.32);
@@ -4541,8 +4555,8 @@ const CopilotModule = (() => {
                 justify-content: center;
                 cursor: pointer;
                 padding: 0;
-                margin-left: 4px;
-                font-size: 16px;
+                margin-left: 0;
+                font-size: 19px;
                 font-weight: 900;
                 line-height: 1;
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
@@ -4656,15 +4670,15 @@ const CopilotModule = (() => {
             hud.setAttribute('aria-live', 'polite');
             hud.innerHTML = `
                 <div class="${cardClass}" id="copilotHudCard" style="border-color:${cardBorderColor};">
-                    <div id="copilotHudSignWrap" style="cursor:pointer;">${signHtml}</div>
+                    <button class="copilot-close-btn" id="copilotCloseBtn" type="button" aria-label="Cerrar alerta" title="Cerrar aviso">✕</button>
                     <div class="copilot-hud-main">
                         <div class="copilot-hud-pill-row">
+                            <div id="copilotHudSignWrap" style="cursor:pointer;">${signHtml}</div>
                             <span class="copilot-hud-pill-dist" id="copilotHudDist">${distLabel}</span>
                             <span id="copilotHudBottomRow">${speedBadgeHtml}</span>
                         </div>
                         <div class="copilot-hud-name" id="copilotHudName" title="${target.name || ''}">${target.name || ''}</div>
                     </div>
-                    <button class="copilot-close-btn" id="copilotCloseBtn" type="button" aria-label="Cerrar alerta" title="Cerrar aviso">✕</button>
                 </div>
             `;
             document.body.appendChild(hud);
